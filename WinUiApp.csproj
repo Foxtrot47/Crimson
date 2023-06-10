@@ -39,9 +39,6 @@
   <ItemGroup>
     <Folder Include="Legendary\" />
   </ItemGroup>
-  <ItemGroup>
-    <None Remove="Legendary\legendary.exe" />
-  </ItemGroup>
 
   <!-- 
     Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution 
