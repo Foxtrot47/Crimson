@@ -34,7 +34,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
 
-        contentFrame.Navigate(typeof(Library));
+        ContentFrame.Navigate(typeof(GameInfo));
     }
 
 }

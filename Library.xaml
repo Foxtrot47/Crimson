@@ -18,7 +18,7 @@
             <Grid.Resources>
                 <UniformGridLayout x:Name="UniformGridLayout"/>
                 <DataTemplate x:Key="GameCardTemplate" x:DataType="local:GameItem">
-                    <Button Background="{StaticResource SmokeFillColorDefaultBrush}" Padding="16,16,16,16" BorderThickness="0">
+                    <Button Background="{ThemeResource SmokeFillColorDefaultBrush}" Padding="16,16,16,16" BorderThickness="0">
                         <StackPanel Spacing="20">
                             <Image Source="{x:Bind GameImage.Url}" Stretch="UniformToFill"
                                    Width="226" Height="300"

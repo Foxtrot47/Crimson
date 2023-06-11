@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net6.0-windows10.0.19041.0</TargetFramework>
@@ -13,6 +13,7 @@
 	<WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
   <ItemGroup>
+    <None Remove="GameInfo.xaml" />
     <None Remove="Library.xaml" />
   </ItemGroup>
 
@@ -44,6 +45,10 @@
     <Folder Include="Legendary\" />
   </ItemGroup>
   <ItemGroup>
+    <Page Update="GameInfo.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
   <ItemGroup>
     <Page Update="Library.xaml">
       <Generator>MSBuild:Compile</Generator>
