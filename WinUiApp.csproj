@@ -12,6 +12,9 @@
     <EnableMsixTooling>true</EnableMsixTooling>
 	<WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
+  <ItemGroup>
+    <None Remove="Library.xaml" />
+  </ItemGroup>
 
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
@@ -39,6 +42,12 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Legendary\" />
+  </ItemGroup>
+  <ItemGroup>
+  <ItemGroup>
+    <Page Update="Library.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
 
   <!-- 

@@ -7,47 +7,10 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <ScrollViewer HorizontalContentAlignment="Center">
-        <Grid x:Name="GamesGrid" HorizontalAlignment="Center" Loaded="GamesGrid_Loaded">
-
-            <Grid.Resources>
-                <UniformGridLayout x:Name="UniformGridLayout"/>
-                <DataTemplate x:Key="GameCardTemplate" x:DataType="local:GameItem">
-                    <Button Background="{StaticResource CardBackgroundFillColorDefaultBrush}" Padding="16,16,16,16" BorderThickness="0">
-                        <StackPanel Spacing="20">
-                            <Image Source="{x:Bind GameImage.Url}" Stretch="UniformToFill"
-                                   Width="226" Height="300"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            <TextBlock Text="{x:Bind Name}" FontSize="18" Foreground="White"
-                                       VerticalAlignment="Bottom" HorizontalAlignment="Left"
-                               MaxWidth="200" TextTrimming="CharacterEllipsis"/>
-                        </StackPanel>
-                    </Button>
-                </DataTemplate>
-            </Grid.Resources>
-
-
-            <StackPanel
-                x:Name="LoadingIndicator"
-                VerticalAlignment="Center"
-                >
-                <ProgressRing
-                IsActive="True"
-                Width="50"
-                Height="50"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Foreground="White" />
-                <TextBlock>Loading...</TextBlock>
-            </StackPanel>
-
-            <ItemsRepeater
-               ItemsSource="{x:Bind GamesList}"
-               Layout="{StaticResource UniformGridLayout}"
-               ItemTemplate="{StaticResource GameCardTemplate}"
-               Margin="0,20,0,20"/>
-        </Grid>
-
-    </ScrollViewer>
-
+    <NavigationView x:Name="navControl">
+        <NavigationView.MenuItems>
+            <NavigationViewItem Icon="Library" Content="Library" Tag="Library" />
+        </NavigationView.MenuItems>
+        <Frame x:Name="contentFrame" />
+    </NavigationView>
 </Window>

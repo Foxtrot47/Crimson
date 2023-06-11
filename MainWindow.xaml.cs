@@ -29,74 +29,12 @@ namespace WinUiApp;
 /// </summary>
 public sealed partial class MainWindow : Window
 {
-    public ObservableCollection<GameItem> GamesList { get; } = new();
 
     public MainWindow()
     {
         InitializeComponent();
-    }
-    private async void GamesGrid_Loaded(object sender, RoutedEventArgs e)
-    {
-        LoadingIndicator.Visibility = Visibility.Visible;
-        await FetchGameLibraryAsync();
-        LoadingIndicator.Visibility = Visibility.Visible;
+
+        contentFrame.Navigate(typeof(Library));
     }
 
-    private async Task FetchGameLibraryAsync()
-    {
-        try
-        {
-            await Task.Run(() =>
-            {
-                var lib = new Library("D:\\Software\\Projects\\WinUiApp\\Binaries\\legendary.exe");
-                var json = lib.FetchGamesList();
-                foreach (var game in json.EnumerateArray())
-                {
-                    Console.WriteLine(game);
-                    var appName = game.GetProperty("metadata").GetProperty("title").GetString();
-
-                    // Get the keyImages
-                    var keyImages = game
-                        .GetProperty("metadata")
-                        .GetProperty("keyImages")
-                        .EnumerateArray();
-
-                    var image = new GameImage();
-                    foreach (var keyImage in keyImages)
-                    {
-                        // we are taking image with resolution 1200 x 1600 for proper cropping
-                        if (keyImage.GetProperty("type").GetString() == "DieselGameBoxTall")
-                        {
-                            // Pass height and width to url to get cropped image
-                            image.Url = keyImage.GetProperty("url").GetString() + "?h=400&resize=1&w=300";
-                            image.Width = keyImage.GetProperty("width").GetInt32();
-                            image.Height = keyImage.GetProperty("height").GetInt32();
-                            break;
-                        }
-                    }
-
-                    var gameItem = new GameItem { Name = appName, GameImage = image };
-                    DispatcherQueue.TryEnqueue(() => GamesList.Add(gameItem)); // Update the GamesList on the UI thread
-                }
-            });
-        }
-        catch(Exception ex)
-        {
-            Console.WriteLine(ex.ToString());
-        }
-    }
-}
-
-
-public class GameItem
-{
-    public string Name { get; set; }
-    public GameImage GameImage { get; set; }
-}
-
-public class GameImage
-{
-    public string Url { get; set; }
-    public int Width { get; set; }
-    public int Height { get; set; }
 }
