@@ -8,7 +8,7 @@
     mc:Ignorable="d">
 
     <ScrollViewer HorizontalContentAlignment="Center">
-        <Grid x:Name="GamesGrid" HorizontalAlignment="Center">
+        <Grid x:Name="GamesGrid" HorizontalAlignment="Center" Loaded="GamesGrid_Loaded">
 
             <Grid.Resources>
                 <UniformGridLayout x:Name="UniformGridLayout"/>
@@ -26,12 +26,26 @@
                 </DataTemplate>
             </Grid.Resources>
 
+
+            <StackPanel
+                x:Name="LoadingIndicator"
+                VerticalAlignment="Center"
+                >
+                <ProgressRing
+                IsActive="True"
+                Width="50"
+                Height="50"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Foreground="White" />
+                <TextBlock>Loading...</TextBlock>
+            </StackPanel>
+
             <ItemsRepeater
                ItemsSource="{x:Bind GamesList}"
                Layout="{StaticResource UniformGridLayout}"
                ItemTemplate="{StaticResource GameCardTemplate}"
                Margin="0,20,0,20"/>
-
         </Grid>
 
     </ScrollViewer>
