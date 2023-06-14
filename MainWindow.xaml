@@ -7,10 +7,10 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <NavigationView x:Name="navControl">
+    <NavigationView x:Name="navControl" IsBackEnabled="True" BackRequested="navControl_BackRequested">
         <NavigationView.MenuItems>
             <NavigationViewItem Icon="Library" Content="Library" Tag="Library" />
         </NavigationView.MenuItems>
-        <Frame x:Name="ContentFrame" />
+        <Frame x:Name="ContentFrame" IsNavigationStackEnabled="True" />
     </NavigationView>
 </Window>

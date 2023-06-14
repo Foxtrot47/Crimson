@@ -34,7 +34,22 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
 
-        ContentFrame.Navigate(typeof(GameInfo));
+        ContentFrame.Navigate(typeof(Library));
+    }
+
+    private void navControl_BackRequested(NavigationView sender,
+                                   NavigationViewBackRequestedEventArgs args)
+    {
+        if (!ContentFrame.CanGoBack)
+            return;
+
+        // Don't go back if the nav pane is overlayed.
+        if (navControl.IsPaneOpen &&
+            (navControl.DisplayMode == NavigationViewDisplayMode.Compact ||
+             navControl.DisplayMode == NavigationViewDisplayMode.Minimal))
+            return;
+
+        ContentFrame.GoBack();
     }
 
 }
