@@ -24,7 +24,7 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Spacing="20">
-                <TextBlock Style="{StaticResource TitleLargeTextBlockStyle}">Metro Exodus</TextBlock>
+                <TextBlock Text="{x:Bind Game.Name}" Style="{StaticResource TitleLargeTextBlockStyle}" />
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <FontIcon Glyph="&#xE735;" FontSize="15"/>
                     <FontIcon Glyph="&#xE735;" FontSize="15"/>
@@ -35,7 +35,7 @@
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                    <Border BorderBrush="Black" Padding="10,5,10,5" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="10">
+                    <!--<Border BorderBrush="Black" Padding="10,5,10,5" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="10">
                         <TextBlock>
                                     First Person
                         </TextBlock>
@@ -59,10 +59,10 @@
                         <TextBlock>
                                 Single Player
                         </TextBlock>
-                    </Border>
+                    </Border>-->
                 </StackPanel>
 
-                <StackPanel Orientation="Horizontal" Spacing="20"  Margin="0,170,0,0">
+                <StackPanel Orientation="Horizontal" Spacing="20">
                     <Button Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
                         Background="{ThemeResource AccentFillColorDefaultBrush}"
                             Padding="20,10,20,10">
@@ -100,7 +100,7 @@
 
             <StackPanel Grid.Column="1">
                 <Border BorderBrush="Black" BorderThickness="1" CornerRadius="10" Width="700" Height="400">
-                    <Image Source="https://cdn2.unrealengine.com/metroexodus-pcenhancededition-s1-2560x1440-26d6d2b0fe2a.jpg" Stretch="UniformToFill" />
+                    <Image Source="{x:Bind Game.GameImage.Url}" Stretch="UniformToFill" />
                 </Border>
             </StackPanel>
         </Grid>

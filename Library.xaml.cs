@@ -85,14 +85,35 @@ namespace WinUiApp
                 Console.WriteLine(ex.ToString());
             }
         }
-    }
-    public class GameItem
-    {
-        public string Name { get; set; }
-        public GameImage GameImage { get; set; }
+
+        private void GameButton_Click(object sender, RoutedEventArgs e)
+        {
+            Button clickedButton = (Button)sender;
+            GameItem gameItem = (GameItem)clickedButton.DataContext;
+
+            Frame navControl = FindParentFrame(this);
+
+            if (navControl == null)
+                return;
+
+            string param = JsonSerializer.Serialize(gameItem);
+
+            navControl.Navigate(typeof(GameInfo), param);
     }
 
-    public class GameImage
+        private Frame FindParentFrame(DependencyObject child)
+        {
+            DependencyObject parent = VisualTreeHelper.GetParent(child);
+
+            while (parent != null && !(parent is Frame))
+    {
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+
+            return parent as Frame;
+    }
+
+
     {
         public string Url { get; set; }
         public int Width { get; set; }

@@ -26,6 +26,8 @@ namespace WinUiApp
     /// </summary>
     public sealed partial class GameInfo : Page
     {
+        public GameItem Game { get; set; }
+
         public GameInfo()
         {
             this.InitializeComponent();
