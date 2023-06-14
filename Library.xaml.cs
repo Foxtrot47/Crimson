@@ -14,6 +14,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
@@ -28,18 +29,20 @@ namespace WinUiApp
     /// </summary>
     public sealed partial class Library : Page
     {
-        public ObservableCollection<GameItem> GamesList { get; } = new();
+        public static ObservableCollection<GameItem> GamesList { get; } = new ObservableCollection<GameItem>();
+        public static bool LoadingFinished = false;
 
         public Library()
         {
             InitializeComponent();
         }
 
-        private async void GamesGrid_Loaded(object sender, RoutedEventArgs e)
+        protected override void OnNavigatedTo(NavigationEventArgs e)
         {
+            if (LoadingFinished)
+                return;
             LoadingSection.Visibility = Visibility.Visible;
-            await FetchGameLibraryAsync();
-            LoadingSection.Visibility = Visibility.Visible;
+             FetchGameLibraryAsync();
         }
 
         private async Task FetchGameLibraryAsync()
@@ -77,6 +80,8 @@ namespace WinUiApp
 
                         var gameItem = new GameItem { Name = appName, GameImage = image };
                         DispatcherQueue.TryEnqueue(() => GamesList.Add(gameItem)); // Update the GamesList on the UI thread
+                        DispatcherQueue.TryEnqueue(() => LoadingSection.Visibility = Visibility.Collapsed);
+                        LoadingFinished = true;
                     }
                 });
             }
@@ -99,24 +104,20 @@ namespace WinUiApp
             string param = JsonSerializer.Serialize(gameItem);
 
             navControl.Navigate(typeof(GameInfo), param);
-    }
+        }
 
         private Frame FindParentFrame(DependencyObject child)
         {
             DependencyObject parent = VisualTreeHelper.GetParent(child);
 
             while (parent != null && !(parent is Frame))
-    {
+            {
                 parent = VisualTreeHelper.GetParent(parent);
             }
 
             return parent as Frame;
-    }
+        }
 
 
-    {
-        public string Url { get; set; }
-        public int Width { get; set; }
-        public int Height { get; set; }
     }
 }

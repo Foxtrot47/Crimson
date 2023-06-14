@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text.Json;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 
@@ -31,6 +32,11 @@ namespace WinUiApp
         public GameInfo()
         {
             this.InitializeComponent();
+        }
+
+        protected override void OnNavigatedTo(NavigationEventArgs e)
+        {
+            Game = JsonSerializer.Deserialize<GameItem>((string)e.Parameter);
         }
     }
 }

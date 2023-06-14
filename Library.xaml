@@ -13,12 +13,16 @@
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
 
     <ScrollViewer HorizontalContentAlignment="Center">
-        <Grid x:Name="GamesGrid" HorizontalAlignment="Center" Loaded="GamesGrid_Loaded">
+        <Grid x:Name="GamesGrid" HorizontalAlignment="Center">
 
             <Grid.Resources>
                 <UniformGridLayout x:Name="UniformGridLayout"/>
                 <DataTemplate x:Key="GameCardTemplate" x:DataType="local:GameItem">
-                    <Button Background="{ThemeResource SmokeFillColorDefaultBrush}" Padding="16,16,16,16" BorderThickness="0">
+                    <Button Background="{ThemeResource SmokeFillColorDefaultBrush}" 
+                            Padding="16,16,16,16" 
+                            BorderThickness="0" 
+                            Click="GameButton_Click"
+                            DataContext="{x:Bind}">
                         <StackPanel Spacing="20">
                             <Image Source="{x:Bind GameImage.Url}" Stretch="UniformToFill"
                                    Width="226" Height="300"
@@ -35,6 +39,7 @@
             <StackPanel
                 x:Name="LoadingSection"
                 VerticalAlignment="Center"
+                Visibility="Collapsed"
                 >
                 <ProgressRing
                 IsActive="True"
@@ -47,7 +52,7 @@
             </StackPanel>
 
             <ItemsRepeater
-               ItemsSource="{x:Bind GamesList}"
+               ItemsSource="{x:Bind local:Library.GamesList}"
                Layout="{StaticResource UniformGridLayout}"
                ItemTemplate="{StaticResource GameCardTemplate}"
                Margin="0,20,0,20"/>
