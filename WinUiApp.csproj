@@ -14,7 +14,7 @@
   </PropertyGroup>
   <ItemGroup>
     <None Remove="GameInfoPage.xaml" />
-    <None Remove="Library.xaml" />
+    <None Remove="LibraryPage.xaml" />
   </ItemGroup>
 
   <ItemGroup>
@@ -47,7 +47,7 @@
     </Page>
   </ItemGroup>
   <ItemGroup>
-    <Page Update="Library.xaml">
+    <Page Update="LibraryPage.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
   </ItemGroup>

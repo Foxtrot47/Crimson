@@ -27,12 +27,12 @@ namespace WinUiApp
     /// <summary>
     /// Library Page which shows list of currently installed games
     /// </summary>
-    public sealed partial class Library : Page
+    public sealed partial class LibraryPage : Page
     {
         public static ObservableCollection<GameItem> GamesList { get; } = new ObservableCollection<GameItem>();
         public static bool LoadingFinished = false;
 
-        public Library()
+        public LibraryPage()
         {
             InitializeComponent();
         }
