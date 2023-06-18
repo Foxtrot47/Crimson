@@ -104,7 +104,7 @@ namespace WinUiApp
 
             string param = JsonSerializer.Serialize(gameItem);
 
-            navControl.Navigate(typeof(GameInfo), param);
+            navControl.Navigate(typeof(GameInfoPage), param);
         }
 
         private Frame FindParentFrame(DependencyObject child)
