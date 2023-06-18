@@ -7,10 +7,23 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <NavigationView x:Name="navControl" IsBackEnabled="True" BackRequested="navControl_BackRequested">
+
+    <NavigationView x:Name="NavControl" IsBackEnabled="True"
+                    Loaded="navControl_Loaded"
+                    BackRequested="navControl_BackRequested"
+                    ItemInvoked="navControl_ItemInvoked">
         <NavigationView.MenuItems>
-            <NavigationViewItem Icon="Library" Content="Library" Tag="Library" />
+            <NavigationViewItem Icon="Library" Content="Library" Tag="WinUiApp.LibraryPage" />
         </NavigationView.MenuItems>
-        <Frame x:Name="ContentFrame" IsNavigationStackEnabled="True" />
+
+        <ScrollViewer>
+            <Frame x:Name="ContentFrame" IsTabStop="True" />
+        </ScrollViewer>
+
+        <NavigationView.FooterMenuItems>
+            <NavigationViewItem Tag="WinUiApp.DownloadsPage">
+                <local:CurrentDownloadControl />
+            </NavigationViewItem>
+        </NavigationView.FooterMenuItems>
     </NavigationView>
 </Window>
