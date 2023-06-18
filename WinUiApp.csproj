@@ -13,7 +13,7 @@
 	<WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
   <ItemGroup>
-    <None Remove="GameInfo.xaml" />
+    <None Remove="GameInfoPage.xaml" />
     <None Remove="Library.xaml" />
   </ItemGroup>
 
@@ -42,7 +42,7 @@
     <ProjectCapability Include="Msix" />
   </ItemGroup>
   <ItemGroup>
-    <Page Update="GameInfo.xaml">
+    <Page Update="GameInfoPage.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
   </ItemGroup>
