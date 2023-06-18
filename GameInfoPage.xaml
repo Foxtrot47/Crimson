@@ -1,6 +1,3 @@
-<!-- Copyright (c) Microsoft Corporation. All rights reserved. -->
-<!-- Licensed under the MIT License. See LICENSE in the project root for license information. -->
-
 <Page
     x:Class="WinUiApp.GameInfoPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -24,7 +21,7 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Spacing="20">
-                <TextBlock Text="{x:Bind Game.Name}" Style="{StaticResource TitleLargeTextBlockStyle}" />
+                <TextBlock Text="{x:Bind Game.AppTitle}" Style="{StaticResource TitleLargeTextBlockStyle}" />
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <FontIcon Glyph="&#xE735;" FontSize="15"/>
                     <FontIcon Glyph="&#xE735;" FontSize="15"/>
@@ -63,17 +60,42 @@
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Spacing="20">
-                    <Button Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                    <Button
+                        x:Name="DownloadButton"
+                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
                         Background="{ThemeResource AccentFillColorDefaultBrush}"
-                            Padding="20,10,20,10">
+                        Padding="20,10,20,10"
+                        Click="DownloadButtonClick">
                         <StackPanel Orientation="Horizontal" Spacing="10">
-                            <FontIcon Glyph="&#xE896;" />
-                            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}">
+                            <ProgressRing 
+                                x:Name="DownloadProgressRing" 
+                                IsIndeterminate="{x:Bind HasDownloadStarted}"
+                                Visibility="Collapsed"/>
+                            <FontIcon
+                                x:Name="DownloadButtonIcon"
+                                Glyph="&#xE896;" />
+                            <TextBlock 
+                                x:Name="DownloadButtonText"
+                                Style="{StaticResource SubtitleTextBlockStyle}">
                                 Download
                             </TextBlock>
                         </StackPanel>
                     </Button>
-
+                    
+                    <Button
+                        x:Name="CancelButton"
+                        Padding="20,10,20,10"
+                        Click="CancelButton_Click"
+                        Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xE711;" />
+                            <TextBlock
+                                Style="{StaticResource SubtitleTextBlockStyle}">
+                                Cancel
+                            </TextBlock>
+                        </StackPanel>
+                    </Button>
+                    
                     <DropDownButton>
                         <DropDownButton.Content>
                             <StackPanel Orientation="Horizontal" Spacing="10" Padding="10,5,10,5">
