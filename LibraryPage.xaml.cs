@@ -51,7 +51,8 @@ namespace WinUiApp
             {
                 await Task.Run(() =>
                 {
-                    var lib = new Legendary.Library("D:\\Software\\Projects\\WinUiApp\\Binaries\\legendary.exe");
+                    string userName = Environment.UserName;
+                    var lib = new Legendary.Library($@"C:\Users\{userName}\AppData\Local\WinUIEGL\bin\legendary.exe");
                     var json = lib.FetchGamesList();
                     foreach (var game in json.EnumerateArray())
                     {
