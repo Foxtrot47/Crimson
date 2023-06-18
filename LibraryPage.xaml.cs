@@ -42,7 +42,7 @@ namespace WinUiApp
             if (LoadingFinished)
                 return;
             LoadingSection.Visibility = Visibility.Visible;
-             FetchGameLibraryAsync();
+            FetchGameLibraryAsync();
         }
 
         private async Task FetchGameLibraryAsync()
@@ -56,8 +56,8 @@ namespace WinUiApp
                     var json = lib.FetchGamesList();
                     foreach (var game in json.EnumerateArray())
                     {
-                        Console.WriteLine(game);
-                        var appName = game.GetProperty("metadata").GetProperty("title").GetString();
+                        var appTitle = game.GetProperty("app_title").GetString();
+                        var appName = game.GetProperty("app_name").GetString();
 
                         // Get the keyImages
                         var keyImages = game
@@ -79,7 +79,7 @@ namespace WinUiApp
                             }
                         }
 
-                        var gameItem = new GameItem { Name = appName, GameImage = image };
+                        var gameItem = new GameItem { AppName = appName,  AppTitle = appTitle, GameImage = image };
                         DispatcherQueue.TryEnqueue(() => GamesList.Add(gameItem)); // Update the GamesList on the UI thread
                         DispatcherQueue.TryEnqueue(() => LoadingSection.Visibility = Visibility.Collapsed);
                         LoadingFinished = true;
@@ -118,7 +118,5 @@ namespace WinUiApp
 
             return parent as Frame;
         }
-
-
     }
 }
