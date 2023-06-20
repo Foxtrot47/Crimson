@@ -66,7 +66,7 @@ public class Legendary
         // Create a new task to run the function logic
         var task = new Task<ObservableCollection<Game>>(() =>
         {
-            ObservableCollection<Game> gameList = null;
+            ObservableCollection<Game> gameList = new ObservableCollection<Game>();
             var process = new Process();
             process.StartInfo.FileName = _legendaryBinaryPath;
             // Output installed games as JSON
@@ -98,19 +98,21 @@ public class Legendary
                     .GetProperty("keyImages")
                     .EnumerateArray();
 
-                var image = new Game.Image();
+                game.Images = new List<Game.Image>();
                 foreach (var keyImage in keyImages)
                 {
+                    var image = new Game.Image(); // Create a new Game.Image object for each iteration
                     image.Width = keyImage.GetProperty("width").GetInt32();
                     image.Height = keyImage.GetProperty("height").GetInt32();
+                    image.Type = keyImage.GetProperty("type").GetString();
 
                     // we are taking image with resolution 1200 x 1600 for proper cropping
                     if (keyImage.GetProperty("type").GetString() == "DieselGameBoxTall")
                         // Pass height and width to url to get cropped image
                         image.Url = keyImage.GetProperty("url").GetString() + "?h=400&resize=1&w=300";
-
                     // For other images, don't crop
-                    else image.Url = keyImage.GetProperty("url").GetString();
+                    else
+                        image.Url = keyImage.GetProperty("url").GetString();
 
                     game.Images.Add(image);
                 }
