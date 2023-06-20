@@ -73,13 +73,14 @@ public class Legendary
             process.StartInfo.Arguments = "list --json";
             // Redirect the standard output so we can read it
             process.StartInfo.RedirectStandardOutput = true;
-            // Enable process output redirection
+            process.StartInfo.RedirectStandardError = true;
             process.StartInfo.UseShellExecute = false;
             // Set CreateNoWindow to true to hide the console window
             process.StartInfo.CreateNoWindow = true;
             process.Start();
 
             var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
             process.WaitForExit();
             process.Dispose();
 
