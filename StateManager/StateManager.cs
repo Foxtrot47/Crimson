@@ -32,8 +32,15 @@ public static class StateManager
         // If stored data exists load it
         if (File.Exists(_gameDataFile))
         {
-            var data = File.Open(_gameDataFile, FileMode.Open);
-            _gameData = JsonSerializer.Deserialize<ObservableCollection<Game>>(data);
+            try
+            {
+                using var data = File.Open(_gameDataFile, FileMode.Open);
+                _gameData = JsonSerializer.Deserialize<ObservableCollection<Game>>(data);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
         }
         // Else create new data and save it
         else
