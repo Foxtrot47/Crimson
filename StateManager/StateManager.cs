@@ -50,9 +50,6 @@ public static class StateManager
         else
             _gameData = new ObservableCollection<Game>();
 
-        // Initial Library Fetch
-        UpdateLibrary();
-
         // Create a timer with a 10-minute interval
         _timer = new Timer(600000);
 
@@ -146,16 +143,14 @@ public static class StateManager
         }
     }
 
-            // Update the existing games in _gameData
-            foreach (var game in gamesToUpdate)
-            {
-                // Update some properties of game in _gameData
-                // For example, update the title and images
-                var existingGame = _gameData.First(g => g.Name == game.Name);
-                existingGame.Title = game.Title;
-                existingGame.Images = game.Images;
-            }
-        });
+    public static ObservableCollection<Game> GetLibraryData()
+    {
+        return _gameData;
+    }
+
+    public static Game GetGameInfo(string name)
+    {
+        return _gameData.FirstOrDefault(game => game.Name == name);
     }
 
     // Stop the timer when the application exits
