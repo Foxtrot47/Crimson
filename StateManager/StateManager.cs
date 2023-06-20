@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using System.Timers;
 using Serilog;
 
@@ -19,6 +20,8 @@ public static class StateManager
     private static readonly ILogger Log;
     private static readonly string legendaryBinaryPath;
     private static FileStream _fileStream;
+
+    public static event Action<ObservableCollection<Game>> LibraryUpdated;
 
     static StateManager()
     {
@@ -90,33 +93,58 @@ public static class StateManager
     // <summary>
     // Handles the updated game info from legendary and compares it with current game data
     // </summary>
-    public static void UpdateLibrary()
+    public static async Task UpdateLibraryAsync()
     {
-        var legendaryHandle = new Legendary(legendaryBinaryPath);
-        legendaryHandle.GetLibraryData().ContinueWith(t =>
+        try
         {
-            var games = t.Result;
+            var legendaryHandle = new Legendary(legendaryBinaryPath);
+            var legendaryGameList = await legendaryHandle.GetLibraryData();
+
             // ReSharper disable once CommentTypo
             // User do not have any games in his library, pathetic lmao
-            if (games == null)
+            if (legendaryGameList == null)
                 return;
 
-            // Find the games that need to be added to _gameData
-            var gamesToAdd = games.Except(_gameData);
+            _gameData ??= new ObservableCollection<Game>();
 
             // Find the games that need to be removed from _gameData
-            var gamesToRemove = _gameData.Except(games);
+            var gamesToRemove = _gameData.Where(existingGame => legendaryGameList.All(game => game.Name != existingGame.Name))
+                .ToList();
+
+            foreach (var game in gamesToRemove)
+                _gameData.Remove(game);
 
             // Find the games that need to be updated in _gameData
-            var gamesToUpdate = games.Intersect(_gameData);
+            // We only need to consider change in game title or image changes
+            var gamesToUpdate = _gameData.Where(existingGame => legendaryGameList.Any(game => game.Name == existingGame.Name)).ToList();
 
-            // Add the new games to _gameData
+            foreach (var game in gamesToUpdate)
+            {
+                var existingGame = _gameData.FirstOrDefault(g => g.Name == game.Name);
+                if (existingGame == null)
+                    continue;
+                existingGame.Title = game.Title;
+                existingGame.Images.Clear();
+                foreach (var image in game.Images)
+                    existingGame.Images.Add(image);
+            }
+
+            // Find the games that need to be added to _gameData
+            // Doing this at last because we don't want to add and update the same games
+            var gamesToAdd = legendaryGameList.Where(game => _gameData.All(existingGame => existingGame.Name != game.Name))
+                .ToList();
+
             foreach (var game in gamesToAdd)
                 _gameData.Add(game);
 
-            // Remove the old games from _gameData
-            foreach (var game in gamesToRemove)
-                _gameData.Remove(game);
+            LibraryUpdated?.Invoke(_gameData);
+            await UpdateJsonFileAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("UpdateLibraryAsync: Error updating library {Exception}", ex.Message);
+        }
+    }
 
             // Update the existing games in _gameData
             foreach (var game in gamesToUpdate)
