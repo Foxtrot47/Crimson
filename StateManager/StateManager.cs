@@ -18,6 +18,7 @@ public static class StateManager
     private static Timer _timer;
     private static readonly ILogger Log;
     private static readonly string legendaryBinaryPath;
+    private static FileStream _fileStream;
 
     static StateManager()
     {
@@ -56,7 +57,7 @@ public static class StateManager
         _timer.Elapsed += (sender, e) =>
         {
             // Call the UpdateJsonFile method when the timer elapses
-            UpdateJsonFile();
+            UpdateJsonFileAsync();
         };
 
         // Start the timer when the application starts
@@ -66,19 +67,23 @@ public static class StateManager
     // Declare a method to update the JSON file when the data changes
     // Method must be public as it should be called when program is being terminated
     // ReSharper disable once MemberCanBePrivate.Global
-    public static void UpdateJsonFile()
+    public static async Task UpdateJsonFileAsync()
     {
         try
         {
             // Serialize the games list to a JSON string
             var jsonString = JsonSerializer.Serialize(_gameData);
 
-            // Write the JSON string to the JSON file
-            File.WriteAllText(_gameDataFile, jsonString);
+            using (var fileStream = File.Open(_gameDataFile, FileMode.Create, FileAccess.Write, FileShare.Read))
+            {
+                await using var streamWriter = new StreamWriter(fileStream);
+                await streamWriter.WriteAsync(jsonString);
+                await streamWriter.FlushAsync();
+            }
         }
         catch (Exception exception)
         {
-            Log.Error("UpdateJsonFile: Error while saving updating json {Exception}", exception.ToString());
+            Log.Error("UpdateJsonFile: Error while updating json {Exception}", exception.ToString());
         }
     }
 
