@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -24,7 +24,7 @@ public static class StateManager
         // Setup logging
         var dateTime = DateTime.Now.ToString("yyyy-MM-dd");
         var logFilePath = $@"C:\Users\{Environment.UserName}\AppData\Local\WinUIEGL\logs\{dateTime}.txt";
-        legendaryBinaryPath = $@"C:\Users\{Environment.UserName}\AppData\Local\WinUIEGL\bin\{dateTime}.txt";
+        legendaryBinaryPath = $@"C:\Users\{Environment.UserName}\AppData\Local\WinUIEGL\bin\legendary.exe";
         Log = new LoggerConfiguration().WriteTo.File(logFilePath).CreateLogger();
 
         _gameDataFile = $@"C:\Users\{Environment.UserName}\AppData\Local\WinUIEGL\storage\gamedata.json";
