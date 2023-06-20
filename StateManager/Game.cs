@@ -132,4 +132,16 @@ public class Game : INotifyPropertyChanged
             OnPropertyChanged(nameof(DiskSizeMiB));
         }
     }
+    
+    private string _version;
+
+    public string Version
+    {
+        get => _version;
+        set
+        {
+            _version = value;
+            OnPropertyChanged(nameof(Version));
+        }
+    }
 }
