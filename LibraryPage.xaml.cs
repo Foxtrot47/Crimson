@@ -1,26 +1,11 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License. See LICENSE in the project root for license information.
-
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Navigation;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
-using System.Text.Json;
-using System.Threading.Tasks;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
-
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
+using Microsoft.UI.Xaml.Media.Imaging;
+using WinUiApp.StateManager;
 
 namespace WinUiApp
 {
@@ -29,94 +14,102 @@ namespace WinUiApp
     /// </summary>
     public sealed partial class LibraryPage : Page
     {
-        public static ObservableCollection<GameItem> GamesList { get; } = new ObservableCollection<GameItem>();
-        public static bool LoadingFinished = false;
+        public static ObservableCollection<LibraryItem> GamesList { get; set; }
+        public bool LoadingFinished = false;
 
         public LibraryPage()
         {
             InitializeComponent();
-        }
-
-        protected override void OnNavigatedTo(NavigationEventArgs e)
-        {
-            if (LoadingFinished)
-                return;
             LoadingSection.Visibility = Visibility.Visible;
-            FetchGameLibraryAsync();
+            GamesGrid.Visibility = Visibility.Collapsed;
+            DataContext = this;
+            StateManager.StateManager.LibraryUpdated += UpdateLibrary;
+            if (!LoadingFinished)
+            {
+                GamesList = new ObservableCollection<LibraryItem>();
+                try
+                {
+                    var data = StateManager.StateManager.GetLibraryData();
+                    if (data == null) return;
+                    UpdateLibrary(data);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex.ToString());
+                }
+            }
+
+            LoadingFinished = true;
         }
 
-        private async Task FetchGameLibraryAsync()
+        private void UpdateLibrary(ObservableCollection<Game> games)
         {
             try
             {
-                await Task.Run(() =>
+                if (games == null) return;
+                DispatcherQueue.TryEnqueue(() =>
                 {
-                    string userName = Environment.UserName;
-                    var lib = new Legendary.Library($@"C:\Users\{userName}\AppData\Local\WinUIEGL\bin\legendary.exe");
-                    var json = lib.FetchGamesList();
-                    foreach (var game in json.EnumerateArray())
+                    GamesList = new ObservableCollection<LibraryItem>();
+                    foreach (var game in games)
                     {
-                        var appTitle = game.GetProperty("app_title").GetString();
-                        var appName = game.GetProperty("app_name").GetString();
-
-                        // Get the keyImages
-                        var keyImages = game
-                            .GetProperty("metadata")
-                            .GetProperty("keyImages")
-                            .EnumerateArray();
-
-                        var image = new GameImage();
-                        foreach (var keyImage in keyImages)
+                        var item = new LibraryItem
                         {
-                            // we are taking image with resolution 1200 x 1600 for proper cropping
-                            if (keyImage.GetProperty("type").GetString() == "DieselGameBoxTall")
-                            {
-                                // Pass height and width to url to get cropped image
-                                image.Url = keyImage.GetProperty("url").GetString() + "?h=400&resize=1&w=300";
-                                image.Width = keyImage.GetProperty("width").GetInt32();
-                                image.Height = keyImage.GetProperty("height").GetInt32();
-                                break;
-                            }
-                        }
-
-                        var gameItem = new GameItem { AppName = appName,  AppTitle = appTitle, GameImage = image };
-                        DispatcherQueue.TryEnqueue(() => GamesList.Add(gameItem)); // Update the GamesList on the UI thread
-                        DispatcherQueue.TryEnqueue(() => LoadingSection.Visibility = Visibility.Collapsed);
-                        LoadingFinished = true;
+                            Name = game.Name,
+                            Title = game.Title,
+                            InstallState = game.State,
+                            Image = GetBitmapImage(game.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                        };
+                        GamesList.Add(item);
                     }
+                    ItemsRepeater.ItemsSource = GamesList;
+                    LoadingSection.Visibility = Visibility.Collapsed;
+                    GamesGrid.Visibility = Visibility.Visible;
                 });
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.ToString());
+                Console.Write(ex.ToString());
             }
         }
 
         private void GameButton_Click(object sender, RoutedEventArgs e)
         {
-            Button clickedButton = (Button)sender;
-            GameItem gameItem = (GameItem)clickedButton.DataContext;
-
-            Frame navControl = FindParentFrame(this);
-
-            if (navControl == null)
-                return;
-
-            string param = JsonSerializer.Serialize(gameItem);
-
-            navControl.Navigate(typeof(GameInfoPage), param);
+             var clickedButton = (Button)sender;
+             var game = (LibraryItem)clickedButton.DataContext;
+             var navControl = FindParentFrame(this);
+            
+             if (navControl == null)
+                 return;
+             
+             navControl.Navigate(typeof(GameInfoPage), game.Name);
         }
-
-        private Frame FindParentFrame(DependencyObject child)
+        private static BitmapImage GetBitmapImage(string imageUrl)
         {
-            DependencyObject parent = VisualTreeHelper.GetParent(child);
+            if (string.IsNullOrEmpty(imageUrl)) return null;
+            var bitmapImage = new BitmapImage
+            {
+                UriSource = new Uri(imageUrl)
+            };
+            return bitmapImage;
+        }
+        private static Frame FindParentFrame(DependencyObject child)
+        {
+            var parent = VisualTreeHelper.GetParent(child);
 
-            while (parent != null && !(parent is Frame))
+            while (parent != null && parent is not Microsoft.UI.Xaml.Controls.Frame)
             {
                 parent = VisualTreeHelper.GetParent(parent);
             }
 
             return parent as Frame;
         }
+    }
+
+    public class LibraryItem
+    {
+        public string Name { get; set; }
+        public string Title { get; set; }
+        public BitmapImage Image { get; set; }
+        public Game.InstallState InstallState { get; set; }
     }
 }

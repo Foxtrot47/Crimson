@@ -11,17 +11,17 @@
     <Grid x:Name="GamesGrid" HorizontalAlignment="Center">
         <Grid.Resources>
             <UniformGridLayout x:Name="UniformGridLayout" />
-            <DataTemplate x:Key="GameCardTemplate" x:DataType="local:GameItem">
+            <DataTemplate x:Key="GameCardTemplate" x:DataType="local:LibraryItem">
                 <Button Background="{ThemeResource SmokeFillColorDefaultBrush}"
                         Padding="16,16,16,16"
                         BorderThickness="0"
                         Click="GameButton_Click"
                         DataContext="{x:Bind}">
                     <StackPanel Spacing="20">
-                        <Image Source="{x:Bind GameImage.Url}" Stretch="UniformToFill"
+                        <Image Source="{x:Bind Image}" Stretch="UniformToFill"
                                Width="226" Height="300"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        <TextBlock Text="{x:Bind AppTitle}" FontSize="18" Foreground="White"
+                        <TextBlock Text="{x:Bind Title}" FontSize="18" Foreground="White"
                                    VerticalAlignment="Bottom" HorizontalAlignment="Left"
                                    MaxWidth="200" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
@@ -32,8 +32,7 @@
 
         <StackPanel
             x:Name="LoadingSection"
-            VerticalAlignment="Center"
-            Visibility="Collapsed">
+            VerticalAlignment="Center">
             <ProgressRing
                 IsActive="True"
                 Width="50"
@@ -45,7 +44,7 @@
         </StackPanel>
 
         <ItemsRepeater
-            ItemsSource="{x:Bind local:LibraryPage.GamesList}"
+            x:Name="ItemsRepeater"
             Layout="{StaticResource UniformGridLayout}"
             ItemTemplate="{StaticResource GameCardTemplate}"
             Margin="0,20,0,20" />
