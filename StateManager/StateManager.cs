@@ -120,7 +120,13 @@ public static class StateManager
                 var existingGame = _gameData.FirstOrDefault(g => g.Name == game.Name);
                 if (existingGame == null)
                     continue;
-                existingGame.Title = game.Title;
+
+                // Do not set title to null for whatever reason
+                if (existingGame.Title != null) existingGame.Title = game.Title;
+
+                // same thing
+                if (game.Images == null) continue;
+
                 existingGame.Images.Clear();
                 foreach (var image in game.Images)
                     existingGame.Images.Add(image);
