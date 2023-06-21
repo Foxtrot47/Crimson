@@ -140,6 +140,33 @@ public static class StateManager
             foreach (var game in gamesToAdd)
                 _gameData.Add(game);
 
+            // TODO: Improve this dumb logic
+            var installedGamesList = await legendaryHandle.GetInstalledGames();
+            if (installedGamesList != null)
+            {
+                foreach (var installedGame in installedGamesList)
+                {
+                    var existingGame = _gameData.FirstOrDefault(g => g.Name == installedGame.Name);
+                    if (existingGame == null)
+                        continue;
+
+                    // Possible sign that legendary might got have killed and is reporting wrong game state
+                    if (existingGame.State == Game.InstallState.Installing && installedGame.State == Game.InstallState.Installed)
+                        existingGame.State = Game.InstallState.Installing;
+
+                    // Legendary detected new version and we need to update game
+                    else if (existingGame.Version != null && installedGame.Version != existingGame.Version)
+                        existingGame.State = Game.InstallState.NeedUpdate;
+
+                    // Don't change games state if we have update pending
+                    else if(existingGame.State != Game.InstallState.NeedUpdate)
+                        existingGame.State = installedGame.State;
+
+                    existingGame.Version = installedGame.Version;
+                    existingGame.InstallLocation = installedGame.InstallLocation;
+                }
+            }
+
             LibraryUpdated?.Invoke(_gameData);
             await UpdateJsonFileAsync();
         }
