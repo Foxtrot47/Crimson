@@ -151,11 +151,13 @@ public class Legendary
             var json = JsonDocument.Parse(output).RootElement;
             foreach (var item in json.EnumerateArray())
             {
-                var game = new Game();
-                game.Name = item.GetProperty("app_name").GetString();
-                game.State = Game.InstallState.Installed;
-                game.InstallLocation = item.GetProperty("install_path").GetString();
-                game.Version = item.GetProperty("version").GetString();
+                var game = new Game
+                {
+                    Name = item.GetProperty("app_name").GetString(),
+                    State = Game.InstallState.Installed,
+                    InstallLocation = item.GetProperty("install_path").GetString(),
+                    Version = item.GetProperty("version").GetString()
+                };
                 gameList.Add(game);
             }
             return gameList;
