@@ -1,8 +1,10 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using System;
-using System.Text.Json;
+using System.Linq;
+using WinUiApp.StateManager;
 
 namespace WinUiApp
 {
@@ -12,7 +14,7 @@ namespace WinUiApp
     /// </summary>
     public sealed partial class GameInfoPage : Page
     {
-        public GameItem Game { get; set; }
+        public Game Game { get; set; }
         private bool HasDownloadStarted { get; set; }
 
         public GameInfoPage()
@@ -22,8 +24,11 @@ namespace WinUiApp
 
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
-            Game = JsonSerializer.Deserialize<GameItem>((string)e.Parameter);
+            Game = StateManager.StateManager.GetGameInfo((string)e.Parameter);
+            var gameImage = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox");
+            TitleImage.SetValue(Image.SourceProperty, gameImage != null ? new BitmapImage(new Uri(gameImage.Url)) : null);
             InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
+
         }
 
         private void DownloadButtonClick(object sender, RoutedEventArgs e)
@@ -35,7 +40,7 @@ namespace WinUiApp
                 DownloadProgressRing.Visibility = Visibility.Visible;
                 DownloadProgressRing.IsIndeterminate = true;
                 DownloadButtonIcon.Visibility = Visibility.Collapsed;
-                var installItem = new InstallItem(Game.AppName,
+                var installItem = new InstallItem(Game.Name,
                     ActionType.Install,
                     $@"C:\Users\{Environment.UserName}\AppData\Local\WinUIEGL\games");
 
@@ -57,8 +62,8 @@ namespace WinUiApp
             try
             {
                 var game = installItem;
-                if (game.AppName != Game.AppName)
-                    game = InstallManager.GameGameInQueue(Game.AppName);
+                if (game.AppName != Game.Name)
+                    game = InstallManager.GameGameInQueue(Game.Name);
 
                 if (game == null || game == default)
                 {
@@ -119,7 +124,7 @@ namespace WinUiApp
 
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
-            InstallManager.CancelInstall(Game.AppName);
+            InstallManager.CancelInstall(Game.Name);
         }
     }
 }
