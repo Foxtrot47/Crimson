@@ -30,6 +30,9 @@ public sealed partial class CurrentDownloadControl : UserControl
                 return;
             }
 
+            var gameInfo = StateManager.StateManager.GetGameInfo(installItem.AppName);
+            if (gameInfo == null) return;
+
             DispatcherQueue.TryEnqueue(() =>
             {
                 DownloadSpeed.Text = "";
@@ -38,7 +41,7 @@ public sealed partial class CurrentDownloadControl : UserControl
                 ProgressBar.IsIndeterminate = true;
                 EmptyDownloadText.Visibility = Visibility.Collapsed;
                 DownloadStatus.Visibility = Visibility.Visible;
-                GameName.Text = game.AppName;
+                GameName.Text = gameInfo.Title;
             });
 
             if (game.Status == ActionStatus.Processing)
@@ -46,10 +49,10 @@ public sealed partial class CurrentDownloadControl : UserControl
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     ProgressBar.IsIndeterminate = false;
-                    ProgressBar.Value = InstallManager.CurrentInstall.ProgressPercentage;
+                    ProgressBar.Value = game.ProgressPercentage;
                     DownloadedSize.Text =
                         $@"{installItem.DownloadedSize} MiB of  {installItem.TotalDownloadSizeMb} MiB";
-                    DownloadSpeed.Text = $@"{InstallManager.CurrentInstall.DownloadSpeedRaw} MB/s";
+                    DownloadSpeed.Text = $@"{game.DownloadSpeedRaw} MB/s";
                 });
                 return;
             }
