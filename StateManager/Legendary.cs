@@ -20,7 +20,7 @@ public class Legendary
         // Create a new task to run the function logic
         var task = new Task<ObservableCollection<Game>>(() =>
         {
-            ObservableCollection<Game> gameList = null;
+            var gameList = new ObservableCollection<Game>();
             var process = new Process();
             process.StartInfo.FileName = _legendaryBinaryPath;
             // Output game info as JSON
@@ -66,7 +66,7 @@ public class Legendary
         // Create a new task to run the function logic
         var task = new Task<ObservableCollection<Game>>(() =>
         {
-            ObservableCollection<Game> gameList = new ObservableCollection<Game>();
+            var gameList = new ObservableCollection<Game>();
             var process = new Process();
             process.StartInfo.FileName = _legendaryBinaryPath;
             // Output installed games as JSON
