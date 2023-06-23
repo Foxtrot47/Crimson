@@ -1,6 +1,7 @@
 using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using WinUiApp.StateManager;
 
 namespace WinUiApp;
 
@@ -51,7 +52,7 @@ public sealed partial class CurrentDownloadControl : UserControl
                     ProgressBar.IsIndeterminate = false;
                     ProgressBar.Value = game.ProgressPercentage;
                     DownloadedSize.Text =
-                        $@"{installItem.DownloadedSize} MiB of  {installItem.TotalDownloadSizeMb} MiB";
+                        $@"{Util.ConvertMiBToGiBOrMiB(installItem.DownloadedSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalDownloadSizeMb)}";
                     DownloadSpeed.Text = $@"{game.DownloadSpeedRaw} MB/s";
                 });
                 return;

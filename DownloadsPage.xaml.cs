@@ -76,7 +76,7 @@ namespace WinUiApp
                             DownloadProgressBar.IsIndeterminate = false;
                             DownloadProgressBar.Value = Convert.ToDouble(installItem.ProgressPercentage);
                             CurrentDownloadAction.Text = $@"{installItem.Action}ing";
-                            CurrentDownloadedSize.Text = $@"{installItem.DownloadedSize} MiB of  {installItem.TotalDownloadSizeMb} MiB";
+                            CurrentDownloadedSize.Text = $@"{Util.ConvertMiBToGiBOrMiB(installItem.DownloadedSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalDownloadSizeMb)}";
                             CurrentDownloadSpeed.Text = $@"{installItem.DownloadSpeedRaw} MiB/s";
                         });
                         break;
