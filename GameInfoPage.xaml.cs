@@ -27,6 +27,26 @@ namespace WinUiApp
             Game = StateManager.StateManager.GetGameInfo((string)e.Parameter);
             var gameImage = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox");
             TitleImage.SetValue(Image.SourceProperty, gameImage != null ? new BitmapImage(new Uri(gameImage.Url)) : null);
+
+            if (Game.State == Game.InstallState.Installed)
+            {
+                PrimaryActionButtonText.Text = "Play";
+                PrimaryActionButtonIcon.Glyph = "\uE768";
+            }
+            else if (Game.State == Game.InstallState.Installing)
+            {
+                PrimaryActionButtonText.Text = "Resume";
+            }
+            else if (Game.State == Game.InstallState.NeedUpdate)
+            {
+                PrimaryActionButtonText.Text = "Update";
+                PrimaryActionButtonIcon.Glyph = "\uE777";
+            }
+            else if (Game.State == Game.InstallState.Broken)
+            {
+                PrimaryActionButtonText.Text = "Repair";
+                PrimaryActionButtonIcon.Glyph = "\uE90F";
+            }
             InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
 
         }
@@ -35,26 +55,22 @@ namespace WinUiApp
         {
             try
             {
-                DownloadButton.IsEnabled = false;
-                DownloadButtonText.Text = "Pending...";
+                PrimaryActionButton.IsEnabled = false;
+                PrimaryActionButtonText.Text = "Pending...";
                 DownloadProgressRing.Visibility = Visibility.Visible;
                 DownloadProgressRing.IsIndeterminate = true;
-                DownloadButtonIcon.Visibility = Visibility.Collapsed;
-                var installItem = new InstallItem(Game.Name,
-                    ActionType.Install,
-                    $@"C:\Users\{Environment.UserName}\AppData\Local\WinUIEGL\games");
-
-                InstallManager.AddToQueue(installItem);
+                PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
+                StateManager.StateManager.AddToInstallationQueue(Game.Name, ActionType.Install, @"D:\Games\");
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex);
                 DownloadProgressRing.Visibility = Visibility.Collapsed;
-                DownloadButton.IsEnabled = true;
+                PrimaryActionButton.IsEnabled = true;
             }
         }
 
-        // Handing Installtion State Change
+        // Handing Installation State Change
         // This function is never run on UI Thread
         // So always make sure to use Dispatcher Queue to update UI thread
         private void HandleInstallationStatusChanged(InstallItem installItem)
@@ -65,26 +81,24 @@ namespace WinUiApp
                 if (game.AppName != Game.Name)
                     game = InstallManager.GameGameInQueue(Game.Name);
 
-                if (game == null || game == default)
+                if (game == null)
                 {
                     DispatcherQueue.TryEnqueue(() =>
                     {
-                        DownloadButton.IsEnabled = true;
+                        PrimaryActionButton.IsEnabled = true;
                         DownloadProgressRing.Visibility = Visibility.Collapsed;
-                        DownloadButtonIcon.Visibility = Visibility.Visible;
-                        CancelButton.Visibility = Visibility.Collapsed;
+                        PrimaryActionButtonIcon.Visibility = Visibility.Visible;
                     });
                     return;
                 }
                 HasDownloadStarted = true;
                 DispatcherQueue.TryEnqueue(() =>
                 {
-                    DownloadButton.IsEnabled = false;
-                    DownloadButtonText.Text = "Pending...";
+                    PrimaryActionButton.IsEnabled = false;
+                    PrimaryActionButtonText.Text = "Pending...";
                     DownloadProgressRing.Visibility = Visibility.Visible;
                     DownloadProgressRing.IsIndeterminate = true;
-                    DownloadButtonIcon.Visibility = Visibility.Collapsed;
-                    CancelButton.Visibility = Visibility.Visible;
+                    PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
                 });
 
                 if (game.Status == ActionStatus.Processing)
@@ -94,27 +108,20 @@ namespace WinUiApp
                         HasDownloadStarted = true;
                         DownloadProgressRing.IsIndeterminate = false;
                         DownloadProgressRing.Value = Convert.ToDouble(InstallManager.CurrentInstall.ProgressPercentage);
-                        DownloadButtonText.Text = $@"{InstallManager.CurrentInstall.ProgressPercentage} %";
+                        PrimaryActionButtonText.Text = $@"{InstallManager.CurrentInstall.ProgressPercentage} %";
                     });
                     return;
                 }
 
-                if (game.Status == ActionStatus.Success && 
-                    (game.Action == ActionType.Install ||
-                    game.Action == ActionType.Update ||
-                    game.Action == ActionType.Repair)
-                    )
+                if (game.Status != ActionStatus.Success ||
+                    game.Action is not (ActionType.Install or ActionType.Update or ActionType.Repair)) return;
+                DispatcherQueue.TryEnqueue(() =>
                 {
-                    DispatcherQueue.TryEnqueue(() =>
-                    {
-                        DownloadProgressRing.Visibility = Visibility.Collapsed;
-                        DownloadButtonIcon.Visibility = Visibility.Visible;
-                        DownloadButtonIcon.Glyph = "\uE768";
-                        DownloadButtonText.Text = "Play";
-                        DownloadButton.IsEnabled= true;
-                    });
-                    return;
-                }
+                    DownloadProgressRing.Visibility = Visibility.Collapsed;
+                    PrimaryActionButton.Visibility = Visibility.Visible;
+                    PrimaryActionButtonText.Text = "Play";
+                    PrimaryActionButton.IsEnabled= true;
+                });
             }
             catch (Exception ex)
             {

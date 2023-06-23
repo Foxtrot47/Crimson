@@ -61,7 +61,7 @@
 
                 <StackPanel Orientation="Horizontal" Spacing="20">
                     <Button
-                        x:Name="DownloadButton"
+                        x:Name="PrimaryActionButton"
                         Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
                         Background="{ThemeResource AccentFillColorDefaultBrush}"
                         Padding="20,10,20,10"
@@ -72,26 +72,12 @@
                                 IsIndeterminate="{x:Bind HasDownloadStarted}"
                                 Visibility="Collapsed"/>
                             <FontIcon
-                                x:Name="DownloadButtonIcon"
+                                x:Name="PrimaryActionButtonIcon"
                                 Glyph="&#xE896;" />
                             <TextBlock 
-                                x:Name="DownloadButtonText"
+                                x:Name="PrimaryActionButtonText"
                                 Style="{StaticResource SubtitleTextBlockStyle}">
                                 Download
-                            </TextBlock>
-                        </StackPanel>
-                    </Button>
-                    
-                    <Button
-                        x:Name="CancelButton"
-                        Padding="20,10,20,10"
-                        Click="CancelButton_Click"
-                        Visibility="Collapsed">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <FontIcon Glyph="&#xE711;" />
-                            <TextBlock
-                                Style="{StaticResource SubtitleTextBlockStyle}">
-                                Cancel
                             </TextBlock>
                         </StackPanel>
                     </Button>
