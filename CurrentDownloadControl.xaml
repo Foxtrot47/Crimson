@@ -24,7 +24,15 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="0" x:Name="GameName" FontSize="24" />
+            <TextBlock 
+                Grid.Row="0" 
+                x:Name="GameName" 
+                Style="{ThemeResource SubtitleTextBlockStyle}"
+                TextWrapping="NoWrap"
+                Width="300"
+                HorizontalAlignment="Left"
+                TextTrimming="WordEllipsis"
+                />
             <ProgressBar x:Name="ProgressBar" Height="10" Grid.Row="1" />
 
             <Grid Grid.Row="2">
