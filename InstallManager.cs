@@ -293,7 +293,8 @@ public static class InstallManager
     {
         if (CurrentInstall == null || CurrentInstall.AppName != gameName)
             return;
-
+        CurrentInstall.Status = ActionStatus.Cancelling;
+        InstallationStatusChanged?.Invoke(CurrentInstall);
         Log.Information("Cancelling {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
 
         // Attach the console of the calling process to the console of the specified process
@@ -304,6 +305,8 @@ public static class InstallManager
 
         // Send a Ctrl+C signal to the attached console
         GenerateConsoleCtrlEvent(ConsoleCtrlEvent.CtrlC, 0);
+        CurrentInstall.Status = ActionStatus.Cancelled;
+        InstallationStatusChanged?.Invoke(CurrentInstall);
     }
 
     // DLL Imports for Windows Kernel
