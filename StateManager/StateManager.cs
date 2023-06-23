@@ -111,26 +111,28 @@ public static class StateManager
             foreach (var game in gamesToRemove)
                 _gameData.Remove(game);
 
-            // Find the games that need to be updated in _gameData
-            // We only need to consider change in game title or image changes
-            var gamesToUpdate = _gameData.Where(existingGame => legendaryGameList.Any(game => game.Name == existingGame.Name)).ToList();
 
-            foreach (var game in gamesToUpdate)
-            {
-                var existingGame = _gameData.FirstOrDefault(g => g.Name == game.Name);
-                if (existingGame == null)
-                    continue;
+            // Disable for now. Its causing unwanted bugs
+            //// Find the games that need to be updated in _gameData
+            //// We only need to consider change in game title or image changes
+            //var gamesToUpdate = _gameData.Where(existingGame => legendaryGameList.Any(game => game.Name == existingGame.Name)).ToList();
 
-                // Do not set title to null for whatever reason
-                if (existingGame.Title != null) existingGame.Title = game.Title;
+            //foreach (var game in gamesToUpdate)
+            //{
+            //    var existingGame = _gameData.FirstOrDefault(g => g.Name == game.Name);
+            //    if (existingGame == null)
+            //        continue;
 
-                // same thing
-                if (game.Images == null) continue;
+            //    // Do not set title to null for whatever reason
+            //    if (existingGame.Title != null) existingGame.Title = game.Title;
 
-                existingGame.Images.Clear();
-                foreach (var image in game.Images)
-                    existingGame.Images.Add(image);
-            }
+            //    // same thing
+            //    if (game.Images == null) continue;
+
+            //    existingGame.Images.Clear();
+            //    foreach (var image in game.Images)
+            //        existingGame.Images.Add(image);
+            //}
 
             // Find the games that need to be added to _gameData
             // Doing this at last because we don't want to add and update the same games
