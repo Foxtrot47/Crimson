@@ -56,13 +56,15 @@ public class Game : INotifyPropertyChanged
     public enum InstallState
     {
         NotInstalled,
-        Pending,
         Installing,
+        InstallationPaused,
         Installed,
         Playing,
         Broken,
+        Repairing,
         NeedUpdate,
-        Uninstalling
+        Updating,
+        UpdatingPaused
     }
 
     private InstallState _installState;
