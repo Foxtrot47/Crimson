@@ -186,6 +186,17 @@ public static class StateManager
         return _gameData.FirstOrDefault(game => game.Name == name);
     }
 
+    public static void AddToInstallationQueue(string gameName, ActionType actionType, string location)
+    {
+        var game = _gameData.FirstOrDefault(g => g.Name == gameName);
+        if (game == null) return;
+
+        if (actionType == ActionType.Install) 
+            game.State = Game.InstallState.Installing;
+
+        InstallManager.AddToQueue(new InstallItem(gameName, actionType, location));
+    }
+
     // Stop the timer when the application exits
     public static void Dispose()
     {
