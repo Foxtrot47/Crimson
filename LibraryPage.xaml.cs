@@ -57,7 +57,7 @@ namespace WinUiApp
                             Name = game.Name,
                             Title = game.Title,
                             InstallState = game.State,
-                            Image = GetBitmapImage(game.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                            Image = Util.GetBitmapImage(game.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
                         };
                         GamesList.Add(item);
                     }
@@ -83,15 +83,7 @@ namespace WinUiApp
              
              navControl.Navigate(typeof(GameInfoPage), game.Name);
         }
-        private static BitmapImage GetBitmapImage(string imageUrl)
-        {
-            if (string.IsNullOrEmpty(imageUrl)) return null;
-            var bitmapImage = new BitmapImage
-            {
-                UriSource = new Uri(imageUrl)
-            };
-            return bitmapImage;
-        }
+
         private static Frame FindParentFrame(DependencyObject child)
         {
             var parent = VisualTreeHelper.GetParent(child);
