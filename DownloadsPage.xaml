@@ -17,9 +17,10 @@
                         x:Name="CurrentDownloadImage"
                         Height="200"></Image>
                     <StackPanel Orientation="Vertical">
-                        <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" 
-                                   x:Name="CurrentDownloadTitle"
-                                   Text="{x:Bind _currentInstallItem.Title}"></TextBlock>
+                        <TextBlock 
+                            Style="{ThemeResource SubtitleTextBlockStyle}" 
+                            x:Name="CurrentDownloadTitle"
+                            />
                         <StackPanel Orientation="Horizontal" Spacing="30">
                             <ProgressBar Height="50" Width="500" x:Name="DownloadProgressBar"></ProgressBar>
                             <Button Height="30" Width="30" Padding="5" x:Name="CancelInstallButton" Click="CancelInstallButton_OnClick">
