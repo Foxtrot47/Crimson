@@ -79,9 +79,17 @@ namespace WinUiApp
                             CurrentDownloadedSize.Text = $@"{installItem.DownloadedSize} MiB of  {installItem.TotalDownloadSizeMb} MiB";
                             CurrentDownloadSpeed.Text = $@"{installItem.DownloadSpeedRaw} MiB/s";
                         });
-                        return;
+                        break;
                     case ActionStatus.Success:
-                        ActiveDownloadSection.Visibility = Visibility.Collapsed;
+                    case ActionStatus.Failed:
+                    case ActionStatus.Cancelled:
+                        DispatcherQueue.TryEnqueue(() =>
+                        {
+                            CurrentDownloadAction.Text = $@"{installItem.Action} {installItem.Status}";
+                            CurrentDownloadedSize.Text = "";
+                            DownloadProgressBar.IsIndeterminate = false;
+                            DownloadProgressBar.Value = 100;
+                        });
                         break;
                 }
             }
