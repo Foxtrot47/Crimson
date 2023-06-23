@@ -13,15 +13,16 @@
             <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Active Downloads</TextBlock>
             <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" Padding="20" CornerRadius="10" x:Name="ActiveDownloadSection">
                 <StackPanel Orientation="Horizontal" Spacing="20">
-                    <Image 
+                    <Image
                         x:Name="CurrentDownloadImage"
-                        Source="https://cdn1.epicgames.com/offer/snapdragon/metro_exodus_epic_tile_1200x1600_1200x1600-bfecd8f57c04dac1b5a772d050bcfc39?h=480&amp;quality=medium&amp;resize=1&amp;w=360" 
                         Height="200"></Image>
                     <StackPanel Orientation="Vertical">
-                        <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" x:Name="CurrentDownloadTitle"></TextBlock>
+                        <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" 
+                                   x:Name="CurrentDownloadTitle"
+                                   Text="{x:Bind _currentInstallItem.Title}"></TextBlock>
                         <StackPanel Orientation="Horizontal" Spacing="30">
                             <ProgressBar Height="50" Width="500" x:Name="DownloadProgressBar"></ProgressBar>
-                            <Button Height="30" Width="30" Padding="5">
+                            <Button Height="30" Width="30" Padding="5" x:Name="CancelInstallButton" Click="CancelInstallButton_OnClick">
                                 <FontIcon Glyph="&#xE711;" />
                             </Button>
                         </StackPanel>

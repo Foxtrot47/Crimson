@@ -14,6 +14,8 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
+using Microsoft.UI.Xaml.Media.Imaging;
+using WinUiApp.StateManager;
 
 namespace WinUiApp
 {
@@ -22,10 +24,14 @@ namespace WinUiApp
     /// </summary>
     public sealed partial class DownloadsPage : Page
     {
-
+        private DownloadManagerItem _currentInstallItem = new DownloadManagerItem();
         public DownloadsPage()
         {
             this.InitializeComponent();
+            DataContext = _currentInstallItem;
+            if (InstallManager.CurrentInstall?.AppName == null)
+                ActiveDownloadSection.Visibility = Visibility.Collapsed;
+
             InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
         }
 
@@ -49,6 +55,17 @@ namespace WinUiApp
                     ActiveDownloadSection.Visibility = Visibility.Visible;
                     CurrentDownloadTitle.Text = installItem.AppName;
                     DownloadProgressBar.IsIndeterminate = true;
+
+                    var gameInfo = StateManager.StateManager.GetGameInfo(installItem.AppName);
+                    _currentInstallItem = new DownloadManagerItem
+                    {
+                        Name = gameInfo.Name,
+                        Title = gameInfo.Title,
+                        InstallState = gameInfo.State,
+                        Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")
+                            ?.Url)
+                    };
+                    CurrentDownloadImage.Source = _currentInstallItem.Image;
                 });
 
                 switch (installItem.Status)
@@ -73,5 +90,17 @@ namespace WinUiApp
                 Console.WriteLine(ex.ToString());
             }
         }
+
+        private void CancelInstallButton_OnClick(object sender, RoutedEventArgs e)
+        {
+            InstallManager.CancelInstall(_currentInstallItem.Name);
+        }
+    }
+    public class DownloadManagerItem
+    {
+        public string Name { get; set; }
+        public string Title { get; set; }
+        public BitmapImage Image { get; set; }
+        public Game.InstallState InstallState { get; set; }
     }
 }
