@@ -53,7 +53,6 @@ namespace WinUiApp
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     ActiveDownloadSection.Visibility = Visibility.Visible;
-                    CurrentDownloadTitle.Text = installItem.AppName;
                     DownloadProgressBar.IsIndeterminate = true;
 
                     var gameInfo = StateManager.StateManager.GetGameInfo(installItem.AppName);
@@ -65,6 +64,7 @@ namespace WinUiApp
                         Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")
                             ?.Url)
                     };
+                    CurrentDownloadTitle.Text = _currentInstallItem.Title;
                     CurrentDownloadImage.Source = _currentInstallItem.Image;
                 });
 
