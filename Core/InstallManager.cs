@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Serilog;
 
-namespace WinUiApp;
+namespace WinUiApp.Core;
 
 public enum ActionType
 {
@@ -327,7 +327,7 @@ public static class InstallManager
 
     private delegate bool ConsoleCtrlDelegate(CtrlTypes ctrlType);
 
-// ReSharper disable InconsistentNaming
+    // ReSharper disable InconsistentNaming
     private enum CtrlTypes
     {
         CTRL_C_EVENT = 0,
