@@ -62,11 +62,7 @@ namespace WinUiApp
         {
             try
             {
-                var game = installItem;
-                if (game.AppName != Game.Name)
-                    game = InstallManager.GameGameInQueue(Game.Name);
-
-                if (game == null)
+                if (installItem == null)
                 {
                     DispatcherQueue.TryEnqueue(() =>
                     {
@@ -86,20 +82,20 @@ namespace WinUiApp
                     PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
                 });
 
-                if (game.Status == ActionStatus.Processing)
+                if (installItem.Status == ActionStatus.Processing)
                 {
                     DispatcherQueue.TryEnqueue(() =>
                     {
                         HasDownloadStarted = true;
                         DownloadProgressRing.IsIndeterminate = false;
-                        DownloadProgressRing.Value = Convert.ToDouble(InstallManager.CurrentInstall.ProgressPercentage);
-                        PrimaryActionButtonText.Text = $@"{InstallManager.CurrentInstall.ProgressPercentage} %";
+                        DownloadProgressRing.Value = Convert.ToDouble(installItem.ProgressPercentage);
+                        PrimaryActionButtonText.Text = $@"{installItem.ProgressPercentage} %";
                     });
                     return;
                 }
 
-                if (game.Status != ActionStatus.Success ||
-                    game.Action is not (ActionType.Install or ActionType.Update or ActionType.Repair)) return;
+                if (installItem.Status != ActionStatus.Success ||
+                    installItem.Action is not (ActionType.Install or ActionType.Update or ActionType.Repair)) return;
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     DownloadProgressRing.Visibility = Visibility.Collapsed;
