@@ -22,6 +22,7 @@ public static class StateManager
     private static FileStream _fileStream;
 
     public static event Action<ObservableCollection<Game>> LibraryUpdated;
+    public static event Action<Game> GameStatusUpdated;
 
     static StateManager()
     {

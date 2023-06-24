@@ -28,26 +28,11 @@ namespace WinUiApp
             var gameImage = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox");
             TitleImage.SetValue(Image.SourceProperty, gameImage != null ? new BitmapImage(new Uri(gameImage.Url)) : null);
 
-            if (Game.State == Game.InstallState.Installed)
-            {
-                PrimaryActionButtonText.Text = "Play";
-                PrimaryActionButtonIcon.Glyph = "\uE768";
-            }
-            else if (Game.State == Game.InstallState.Installing)
-            {
-                PrimaryActionButtonText.Text = "Resume";
-            }
-            else if (Game.State == Game.InstallState.NeedUpdate)
-            {
-                PrimaryActionButtonText.Text = "Update";
-                PrimaryActionButtonIcon.Glyph = "\uE777";
-            }
-            else if (Game.State == Game.InstallState.Broken)
-            {
-                PrimaryActionButtonText.Text = "Repair";
-                PrimaryActionButtonIcon.Glyph = "\uE90F";
-            }
-            InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
+            CheckGameStatus(Game);
+
+            // Unregister event handlers on start
+            StateManager.GameStatusUpdated -= CheckGameStatus;
+            StateManager.GameStatusUpdated += CheckGameStatus;
 
         }
 
@@ -133,5 +118,50 @@ namespace WinUiApp
         {
             InstallManager.CancelInstall(Game.Name);
         }
+
+        private void CheckGameStatus(Game updatedGame)
+        {
+            if (updatedGame == null || updatedGame.Name != Game.Name) return;
+
+            // Unregister the handle instlallation handler for things to work properly
+            InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
+            Game = updatedGame;
+
+            // Clear ui elements state
+            PrimaryActionButtonText.Text = "";
+            PrimaryActionButtonIcon.Glyph = "";
+            DownloadProgressRing.Visibility = Visibility.Collapsed;
+
+            if (Game.State == Game.InstallState.NotInstalled)
+            {
+                PrimaryActionButtonText.Text = "Install";
+                PrimaryActionButtonIcon.Glyph = "\uE896";
+            }
+            else if (Game.State == Game.InstallState.Installed)
+            {
+                PrimaryActionButtonText.Text = "Play";
+                PrimaryActionButtonIcon.Glyph = "\uE768";
+            }
+            else if (Game.State == Game.InstallState.Installing || Game.State == Game.InstallState.Updating || Game.State == Game.InstallState.Repairing)
+            {
+                // Default button text and glyph if game isn't in instllation queue yet
+                PrimaryActionButtonText.Text = "Resume";
+                PrimaryActionButtonIcon.Glyph = "\uE768";
+                var gameInQueue = InstallManager.GameGameInQueue(Game.Name);
+                HandleInstallationStatusChanged(gameInQueue);
+                InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
+            }
+            else if (Game.State == Game.InstallState.NeedUpdate)
+            {
+                PrimaryActionButtonText.Text = "Update";
+                PrimaryActionButtonIcon.Glyph = "\uE777";
+            }
+            else if (Game.State == Game.InstallState.Broken)
+            {
+                PrimaryActionButtonText.Text = "Repair";
+                PrimaryActionButtonIcon.Glyph = "\uE90F";
+            }
+        }
+
     }
 }
