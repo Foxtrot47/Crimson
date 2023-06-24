@@ -65,20 +65,4 @@ public sealed partial class MainWindow : Window
         NavControl.SelectedItem = NavControl.MenuItems[0];
         navControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
     }
-
-    private void On_Navigated(object sender, NavigationEventArgs e)
-    {
-        NavControl.IsBackEnabled = ContentFrame.CanGoBack;
-
-        if (ContentFrame.SourcePageType != null)
-        {
-            // Select the nav view item that corresponds to the page being navigated to.
-            NavControl.SelectedItem = NavControl.MenuItems
-                .OfType<NavigationViewItem>()
-                .First(i => i.Tag.Equals(ContentFrame.SourcePageType.FullName));
-
-            NavControl.Header =
-                ((NavigationViewItem)NavControl.SelectedItem)?.Content?.ToString();
-        }
-    }
 }
