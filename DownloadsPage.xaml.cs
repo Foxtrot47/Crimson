@@ -32,6 +32,8 @@ namespace WinUiApp
             if (InstallManager.CurrentInstall?.AppName == null)
                 ActiveDownloadSection.Visibility = Visibility.Collapsed;
 
+            var gameInQueue = InstallManager.CurrentInstall;
+            HandleInstallationStatusChanged(gameInQueue);
             InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
         }
 
