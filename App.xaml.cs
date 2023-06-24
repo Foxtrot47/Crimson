@@ -1,5 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.Extensions.Logging;
+using Windows.ApplicationModel.Core;
+using WinUiApp.Core;
+using Windows.UI.Core;
 
 namespace WinUiApp
 {
@@ -26,6 +29,13 @@ namespace WinUiApp
         {
             m_window = new MainWindow();
             m_window.Activate();
+            m_window.Closed += OnExit;
+        }
+
+        // Save gamedata to storage on application exit
+        private static async void OnExit(object sender, object e)
+        {
+            await StateManager.UpdateJsonFileAsync();
         }
 
         private Window m_window;
