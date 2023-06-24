@@ -240,7 +240,10 @@ public static class InstallManager
 
             // Cancelled
             if (Regex.Match(updateString, @"\[cli\] INFO: Command was aborted via KeyboardInterrupt, cleaning up...")
-                .Success)
+                .Success || 
+                Regex.Match(updateString, @"\[DLManager\] WARNING: Immediate exit requested!")
+                .Success
+                )
             {
                 Log.Information("Cancelled {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
 
