@@ -310,8 +310,6 @@ public static class InstallManager
 
         // Send a Ctrl+C signal to the attached console
         GenerateConsoleCtrlEvent(ConsoleCtrlEvent.CtrlC, 0);
-        CurrentInstall.Status = ActionStatus.Cancelled;
-        InstallationStatusChanged?.Invoke(CurrentInstall);
     }
 
     // DLL Imports for Windows Kernel
