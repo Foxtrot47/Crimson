@@ -159,5 +159,14 @@ namespace WinUiApp
             }
         }
 
+        protected override void OnNavigatedFrom(NavigationEventArgs e)
+        {
+            // Unregister both event handlers before navigating out
+            StateManager.GameStatusUpdated -= CheckGameStatus; 
+            InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
+
+            // Call the base implementation
+            base.OnNavigatedFrom(e);
+        }
     }
 }
