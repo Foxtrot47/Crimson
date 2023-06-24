@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using System;
 using System.Linq;
-using WinUiApp.StateManager;
+using WinUiApp.Core;
 
 namespace WinUiApp
 {
@@ -24,7 +24,7 @@ namespace WinUiApp
 
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
-            Game = StateManager.StateManager.GetGameInfo((string)e.Parameter);
+            Game = StateManager.GetGameInfo((string)e.Parameter);
             var gameImage = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox");
             TitleImage.SetValue(Image.SourceProperty, gameImage != null ? new BitmapImage(new Uri(gameImage.Url)) : null);
 
@@ -60,7 +60,7 @@ namespace WinUiApp
                 DownloadProgressRing.Visibility = Visibility.Visible;
                 DownloadProgressRing.IsIndeterminate = true;
                 PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
-                StateManager.StateManager.AddToInstallationQueue(Game.Name, ActionType.Install, @"D:\Games\");
+                StateManager.AddToInstallationQueue(Game.Name, ActionType.Install, @"D:\Games\");
             }
             catch (Exception ex)
             {

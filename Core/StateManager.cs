@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using System.Timers;
 using Serilog;
 
-namespace WinUiApp.StateManager;
+namespace WinUiApp.Core;
 
 public static class StateManager
 {

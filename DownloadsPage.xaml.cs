@@ -15,7 +15,7 @@ using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 using Microsoft.UI.Xaml.Media.Imaging;
-using WinUiApp.StateManager;
+using WinUiApp.Core;
 
 namespace WinUiApp
 {
@@ -55,7 +55,7 @@ namespace WinUiApp
                     ActiveDownloadSection.Visibility = Visibility.Visible;
                     DownloadProgressBar.IsIndeterminate = true;
 
-                    var gameInfo = StateManager.StateManager.GetGameInfo(installItem.AppName);
+                    var gameInfo = StateManager.GetGameInfo(installItem.AppName);
                     _currentInstallItem = new DownloadManagerItem
                     {
                         Name = gameInfo.Name,

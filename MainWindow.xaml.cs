@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
-using WinUiApp.StateManager;
+using WinUiApp.Core;
 
 namespace WinUiApp;
 
@@ -16,7 +16,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        StateManager.StateManager.UpdateLibraryAsync();
+        StateManager.UpdateLibraryAsync();
     }
 
     private void navControl_BackRequested(NavigationView sender,

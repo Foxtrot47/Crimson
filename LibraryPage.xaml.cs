@@ -5,7 +5,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Microsoft.UI.Xaml.Media.Imaging;
-using WinUiApp.StateManager;
+using WinUiApp.Core;
 
 namespace WinUiApp
 {
@@ -23,13 +23,13 @@ namespace WinUiApp
             LoadingSection.Visibility = Visibility.Visible;
             GamesGrid.Visibility = Visibility.Collapsed;
             DataContext = this;
-            StateManager.StateManager.LibraryUpdated += UpdateLibrary;
+            StateManager.LibraryUpdated += UpdateLibrary;
             if (!LoadingFinished)
             {
                 GamesList = new ObservableCollection<LibraryItem>();
                 try
                 {
-                    var data = StateManager.StateManager.GetLibraryData();
+                    var data = StateManager.GetLibraryData();
                     if (data == null) return;
                     UpdateLibrary(data);
                 }

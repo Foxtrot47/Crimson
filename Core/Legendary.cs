@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace WinUiApp.StateManager;
+namespace WinUiApp.Core;
 
 public class Legendary
 {

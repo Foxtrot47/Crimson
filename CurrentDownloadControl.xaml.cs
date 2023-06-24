@@ -1,7 +1,7 @@
 using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using WinUiApp.StateManager;
+using WinUiApp.Core;
 
 namespace WinUiApp;
 
@@ -31,7 +31,7 @@ public sealed partial class CurrentDownloadControl : UserControl
                 return;
             }
 
-            var gameInfo = StateManager.StateManager.GetGameInfo(installItem.AppName);
+            var gameInfo = StateManager.GetGameInfo(installItem.AppName);
             if (gameInfo == null) return;
 
             DispatcherQueue.TryEnqueue(() =>

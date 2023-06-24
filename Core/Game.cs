@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 
-namespace WinUiApp.StateManager;
+namespace WinUiApp.Core;
 
 // Make the game info class implement INotifyPropertyChanged interface
 public class Game : INotifyPropertyChanged
