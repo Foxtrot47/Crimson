@@ -200,6 +200,29 @@ public static class StateManager
         InstallManager.AddToQueue(new InstallItem(gameName, actionType, location));
     }
 
+    public static void FinishedInstall(InstallItem item)
+    {
+        var game = _gameData.FirstOrDefault(game => game.Name == item.AppName);
+        if (game == null) return;
+        
+        if (item.Action == ActionType.Uninstall && item.Status == ActionStatus.Success)
+            game.State = Game.InstallState.NotInstalled;
+
+        else if ((item.Action == ActionType.Install || item.Action == ActionType.Update || item.Action == ActionType.Repair) && item.Status == ActionStatus.Success)
+            game.State = Game.InstallState.Installed;
+
+        else if (item.Action == ActionType.Install && (item.Status == ActionStatus.Failed || item.Status == ActionStatus.Cancelled))
+                game.State = Game.InstallState.NotInstalled;
+
+        else if (item.Action == ActionType.Update && (item.Status == ActionStatus.Failed || item.Status == ActionStatus.Cancelled))
+                game.State = Game.InstallState.NeedUpdate;
+
+        else if (item.Action == ActionType.Repair && (item.Status == ActionStatus.Failed || item.Status == ActionStatus.Cancelled))
+            game.State = Game.InstallState.Broken;
+
+        GameStatusUpdated?.Invoke(game);
+    }
+
     // Stop the timer when the application exits
     public static void Dispose()
     {
