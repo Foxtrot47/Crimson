@@ -221,8 +221,9 @@ public static class InstallManager
 
                 // Store current Item to temp else it will get cleared
                 var tempItem = CurrentInstall;
-                CurrentInstall = null;
                 InstallationStatusChanged?.Invoke(tempItem);
+                StateManager.FinishedInstall(CurrentInstall);
+                CurrentInstall = null;
                 ProcessNext();
                 return;
             }
@@ -245,6 +246,7 @@ public static class InstallManager
 
                 CurrentInstall.Status = ActionStatus.Cancelled;
                 InstallationStatusChanged?.Invoke(CurrentInstall);
+                StateManager.FinishedInstall(CurrentInstall);
                 CurrentInstall = null;
                 ProcessNext();
                 return;
