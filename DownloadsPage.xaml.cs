@@ -112,6 +112,8 @@ namespace WinUiApp
 
         private void FetchQueueItemsList()
         {
+            try
+            {
             var queueItemNames = InstallManager.GetQueueItemNames();
             if (queueItemNames == null || queueItemNames.Count < 1) return;
 
@@ -136,8 +138,15 @@ namespace WinUiApp
                 InstallQueueListView.ItemsSource = queueItems;
             });
         }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.ToString());
+            }
+        }
         private void FetchHistoryItemsList()
         {
+            try
+            {
             var historyItemsNames = InstallManager.GetHistoryItemsNames();
             if (historyItemsNames == null || historyItemsNames.Count < 1) return;
 
@@ -161,6 +170,11 @@ namespace WinUiApp
                 historyItems = itemList;
                 HistoryItemsList.ItemsSource = historyItems;
             });
+        }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.ToString());
+            }
         }
 
         private void InstallationProgressUpdate(InstallItem installItem)
