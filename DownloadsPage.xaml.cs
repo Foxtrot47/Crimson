@@ -90,10 +90,7 @@ namespace WinUiApp
                     case ActionStatus.Cancelled:
                         DispatcherQueue.TryEnqueue(() =>
                         {
-                            CurrentDownloadAction.Text = $@"{installItem.Action} {installItem.Status}";
-                            CurrentDownloadedSize.Text = "";
-                            DownloadProgressBar.IsIndeterminate = false;
-                            DownloadProgressBar.Value = 100;
+                            ActiveDownloadSection.Visibility = Visibility.Collapsed;
                         });
                         break;
                 }
