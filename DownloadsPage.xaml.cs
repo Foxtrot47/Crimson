@@ -114,30 +114,30 @@ namespace WinUiApp
         {
             try
             {
-            var queueItemNames = InstallManager.GetQueueItemNames();
-            if (queueItemNames == null || queueItemNames.Count < 1) return;
+                var queueItemNames = InstallManager.GetQueueItemNames();
+                if (queueItemNames == null || queueItemNames.Count < 1) return;
 
-            DispatcherQueue.TryEnqueue(() => queueItems.Clear());
+                DispatcherQueue.TryEnqueue(() => queueItems.Clear());
 
-            ObservableCollection<DownloadManagerItem> itemList = new();
-            foreach (var queueItemName in queueItemNames)
-            {
-
-                var gameInfo = StateManager.GetGameInfo(queueItemName);
-                if (gameInfo is null) continue;
-                itemList.Add(new DownloadManagerItem()
+                ObservableCollection<DownloadManagerItem> itemList = new();
+                foreach (var queueItemName in queueItemNames)
                 {
-                    Name = queueItemName,
-                    Title = gameInfo.Title,
-                    Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+
+                    var gameInfo = StateManager.GetGameInfo(queueItemName);
+                    if (gameInfo is null) continue;
+                    itemList.Add(new DownloadManagerItem()
+                    {
+                        Name = queueItemName,
+                        Title = gameInfo.Title,
+                        Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                    });
+                }
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    queueItems = itemList;
+                    InstallQueueListView.ItemsSource = queueItems;
                 });
             }
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                queueItems = itemList;
-                InstallQueueListView.ItemsSource = queueItems;
-            });
-        }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.ToString());
@@ -147,30 +147,31 @@ namespace WinUiApp
         {
             try
             {
-            var historyItemsNames = InstallManager.GetHistoryItemsNames();
-            if (historyItemsNames == null || historyItemsNames.Count < 1) return;
+                var historyItemsNames = InstallManager.GetHistoryItemsNames();
+                if (historyItemsNames == null || historyItemsNames.Count < 1) return;
 
-            DispatcherQueue.TryEnqueue(() => historyItems.Clear());
+                DispatcherQueue.TryEnqueue(() => historyItems.Clear());
 
-            ObservableCollection<DownloadManagerItem> itemList = new();
-            foreach (var historyItemName in historyItemsNames)
-            {
+                ObservableCollection<DownloadManagerItem> itemList = new();
 
-                var gameInfo = StateManager.GetGameInfo(historyItemName);
-                if (gameInfo is null) continue;
-                itemList.Add(new DownloadManagerItem()
+                DispatcherQueue.TryEnqueue(() =>
                 {
-                    Name = historyItemName,
-                    Title = gameInfo.Title,
-                    Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                    foreach (var historyItemName in historyItemsNames)
+                    {
+
+                        var gameInfo = StateManager.GetGameInfo(historyItemName);
+                        if (gameInfo is null) continue;
+                        itemList.Add(new DownloadManagerItem()
+                        {
+                            Name = historyItemName,
+                            Title = gameInfo.Title,
+                            Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                        });
+                    }
+                    historyItems = itemList;
+                    HistoryItemsList.ItemsSource = historyItems;
                 });
             }
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                historyItems = itemList;
-                HistoryItemsList.ItemsSource = historyItems;
-            });
-        }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.ToString());
