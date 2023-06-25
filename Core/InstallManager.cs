@@ -148,12 +148,21 @@ public static class InstallManager
 
             Log.Information("UpdateProgress: Output received from legendary {Output}", updateString);
 
+            // Update State to Processing just before legendary sends download progress
+            if (Regex.Match(updateString,
+                @"\[DLManager\] INFO: Starting file writing worker...").Success)
+            {
+                CurrentInstall.Status = ActionStatus.Processing;
+                Log.Information("Started {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
+                InstallationStatusChanged?.Invoke(CurrentInstall);
+                return;
+            }
+
             // Update Progress, StartTime and Eta of Install
             var match = Regex.Match(updateString,
                 @"Progress: (\d+)\.\d+%.*Running for (\d{2}:\d{2}:\d{2}).*ETA: (\d{2}:\d{2}:\d{2})");
             if (match.Success)
             {
-                CurrentInstall.Status = ActionStatus.Processing;
                 CurrentInstall.ProgressPercentage = int.Parse(match.Groups[1].Value);
                 CurrentInstall.RunningTime =
                     TimeSpan.ParseExact(match.Groups[2].Value, @"hh\:mm\:ss", CultureInfo.InvariantCulture);
