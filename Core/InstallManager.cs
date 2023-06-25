@@ -61,6 +61,7 @@ public class InstallItem
 public static class InstallManager
 {
     public static event Action<InstallItem> InstallationStatusChanged;
+    public static event Action<InstallItem> InstallProgressUpdate;
     public static InstallItem CurrentInstall;
     private static readonly Queue<InstallItem> InstallQueue;
     private static readonly List<InstallItem> InstallHistory = new ();
@@ -160,7 +161,7 @@ public static class InstallManager
                     TimeSpan.ParseExact(match.Groups[3].Value, @"hh\:mm\:ss", CultureInfo.InvariantCulture);
                 Log.Information("UpdateProgress: Progress: {Progress} RunningTime: {RunningTime} Eta: {Eta}",
                     CurrentInstall.ProgressPercentage, CurrentInstall.RunningTime, CurrentInstall.Eta);
-                InstallationStatusChanged?.Invoke(CurrentInstall);
+                InstallProgressUpdate?.Invoke(CurrentInstall);
                 return;
             }
 
@@ -170,7 +171,7 @@ public static class InstallManager
             {
                 CurrentInstall.DownloadedSize = double.Parse(match.Groups[1].Value);
                 CurrentInstall.WrittenSize = double.Parse(match.Groups[2].Value);
-                InstallationStatusChanged?.Invoke(CurrentInstall);
+                InstallProgressUpdate?.Invoke(CurrentInstall);
                 return;
             }
 
@@ -180,7 +181,7 @@ public static class InstallManager
             {
                 CurrentInstall.DownloadSpeedRaw = double.Parse(match.Groups[1].Value);
                 CurrentInstall.DownloadSpeedDecompressed = double.Parse(match.Groups[2].Value);
-                InstallationStatusChanged?.Invoke(CurrentInstall);
+                InstallProgressUpdate?.Invoke(CurrentInstall);
                 return;
             }
 
@@ -190,7 +191,7 @@ public static class InstallManager
             {
                 CurrentInstall.WriteSpeed = double.Parse(match.Groups[1].Value);
                 CurrentInstall.ReadSpeed = double.Parse(match.Groups[2].Value);
-                InstallationStatusChanged?.Invoke(CurrentInstall);
+                InstallProgressUpdate?.Invoke(CurrentInstall);
                 return;
             }
 

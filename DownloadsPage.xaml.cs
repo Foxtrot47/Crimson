@@ -39,6 +39,7 @@ namespace WinUiApp
             FetchQueueItemsList();
             FetchHistoryItemsList();
             InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
+            InstallManager.InstallProgressUpdate += InstallationProgressUpdate;
         }
 
         // Handing Installtion State Change
@@ -160,6 +161,27 @@ namespace WinUiApp
                 historyItems = itemList;
                 HistoryItemsList.ItemsSource = historyItems;
             });
+        }
+
+        private void InstallationProgressUpdate(InstallItem installItem)
+        {
+            try
+            {
+                if (installItem == null) return;
+
+                if (installItem.Status != ActionStatus.Processing) return;
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    DownloadProgressBar.IsIndeterminate = false;
+                    DownloadProgressBar.Value = Convert.ToDouble(installItem.ProgressPercentage);
+                    CurrentDownloadedSize.Text = $@"{Util.ConvertMiBToGiBOrMiB(installItem.DownloadedSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalDownloadSizeMb)}";
+                    CurrentDownloadSpeed.Text = $@"{installItem.DownloadSpeedRaw} MiB/s";
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.ToString());
+            }
         }
     }
     public class DownloadManagerItem
