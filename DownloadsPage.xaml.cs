@@ -25,6 +25,7 @@ namespace WinUiApp
     public sealed partial class DownloadsPage : Page
     {
         private DownloadManagerItem _currentInstallItem = new DownloadManagerItem();
+        private ObservableCollection<DownloadManagerItem> queueItems = new();
         public DownloadsPage()
         {
             this.InitializeComponent();
@@ -34,6 +35,7 @@ namespace WinUiApp
 
             var gameInQueue = InstallManager.CurrentInstall;
             HandleInstallationStatusChanged(gameInQueue);
+            FetchQueueItemsList();
             InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
         }
 
@@ -50,6 +52,7 @@ namespace WinUiApp
                     {
                         ActiveDownloadSection.Visibility = Visibility.Collapsed;
                     });
+                    FetchQueueItemsList();
                     return;
                 }
                 DispatcherQueue.TryEnqueue(() =>
@@ -104,6 +107,33 @@ namespace WinUiApp
         private void CancelInstallButton_OnClick(object sender, RoutedEventArgs e)
         {
             InstallManager.CancelInstall(_currentInstallItem.Name);
+        }
+
+        private void FetchQueueItemsList()
+        {
+            var queueItemNames = InstallManager.GetQueueItemNames();
+            if (queueItemNames == null || queueItemNames.Count < 1) return;
+
+            DispatcherQueue.TryEnqueue(() => queueItems.Clear());
+
+            ObservableCollection<DownloadManagerItem> itemList = new();
+            foreach (var queueItemName in queueItemNames)
+            {
+
+                var gameInfo = StateManager.GetGameInfo(queueItemName);
+                if (gameInfo is null) continue;
+                itemList.Add(new DownloadManagerItem()
+                {
+                    Name = queueItemName,
+                    Title = gameInfo.Title,
+                    Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                });
+            }
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                queueItems = itemList;
+                InstallQueueListView.ItemsSource = queueItems;
+            });
         }
     }
     public class DownloadManagerItem

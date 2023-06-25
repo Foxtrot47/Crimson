@@ -312,6 +312,16 @@ public static class InstallManager
         GenerateConsoleCtrlEvent(ConsoleCtrlEvent.CtrlC, 0);
     }
 
+    public static List<string> GetQueueItemNames()
+    {
+        var queueItemsName = new List<string>();
+        foreach (var item in InstallQueue)
+        {
+            queueItemsName.Add(item.AppName);
+        }
+        return queueItemsName;
+    }
+
     // DLL Imports for Windows Kernel
     // Required for sending Ctrl + C to legendary
     [DllImport("kernel32.dll", SetLastError = true)]
