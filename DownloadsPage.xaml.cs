@@ -46,13 +46,13 @@ namespace WinUiApp
         {
             try
             {
+                FetchQueueItemsList();
                 if (installItem == null)
                 {
                     DispatcherQueue.TryEnqueue(() =>
                     {
                         ActiveDownloadSection.Visibility = Visibility.Collapsed;
                     });
-                    FetchQueueItemsList();
                     return;
                 }
                 DispatcherQueue.TryEnqueue(() =>
