@@ -63,6 +63,7 @@ public static class InstallManager
     public static event Action<InstallItem> InstallationStatusChanged;
     public static InstallItem CurrentInstall;
     private static readonly Queue<InstallItem> InstallQueue;
+    private static readonly List<InstallItem> InstallHistory = new ();
 
     private static readonly ILogger Log;
     private static readonly string LegendaryBinaryPath;
@@ -218,10 +219,8 @@ public static class InstallManager
 
                 CurrentInstall.Status = ActionStatus.Success;
                 CurrentInstall.Process.Dispose();
-
-                // Store current Item to temp else it will get cleared
-                var tempItem = CurrentInstall;
-                InstallationStatusChanged?.Invoke(tempItem);
+                InstallHistory.Add(CurrentInstall);
+                InstallationStatusChanged?.Invoke(CurrentInstall);
                 StateManager.FinishedInstall(CurrentInstall);
                 CurrentInstall = null;
                 ProcessNext();
@@ -248,6 +247,7 @@ public static class InstallManager
                 Log.Information("Cancelled {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
 
                 CurrentInstall.Status = ActionStatus.Cancelled;
+                InstallHistory.Add(CurrentInstall);
                 InstallationStatusChanged?.Invoke(CurrentInstall);
                 StateManager.FinishedInstall(CurrentInstall);
                 CurrentInstall = null;
@@ -320,6 +320,15 @@ public static class InstallManager
             queueItemsName.Add(item.AppName);
         }
         return queueItemsName;
+    }
+    public static List<string> GetHistoryItemsNames()
+    {
+        var historyItemsName = new List<string>();
+        foreach (var item in InstallHistory)
+        {
+            historyItemsName.Add(item.AppName);
+        }
+        return historyItemsName;
     }
 
     // DLL Imports for Windows Kernel

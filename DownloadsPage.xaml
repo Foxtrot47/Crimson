@@ -67,6 +67,35 @@
                     </Style>
                 </ListView.ItemContainerStyle>
             </ListView>
+            
+            <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Previous Installs</TextBlock>
+            <ListView x:Name="HistoryItemsList" ItemsSource="{x:Bind historyItems}">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="local:DownloadManagerItem">
+                        <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                Padding="0"
+                                Margin="0"
+                                CornerRadius="10"
+                                BorderThickness="0">
+                            <StackPanel Orientation="Horizontal" Spacing="20">
+                                <Image Source="{x:Bind Image}"
+                                       Stretch="UniformToFill"
+                                       Height="150" />
+                                <TextBlock Text="{x:Bind Title}" 
+                                           Style="{ThemeResource SubtitleTextBlockStyle}" 
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="0,0,0,5" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+            </ListView>
 
         </StackPanel>
     </Grid>

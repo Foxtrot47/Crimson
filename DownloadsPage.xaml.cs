@@ -26,6 +26,7 @@ namespace WinUiApp
     {
         private DownloadManagerItem _currentInstallItem = new DownloadManagerItem();
         private ObservableCollection<DownloadManagerItem> queueItems = new();
+        private ObservableCollection<DownloadManagerItem> historyItems = new();
         public DownloadsPage()
         {
             this.InitializeComponent();
@@ -36,6 +37,7 @@ namespace WinUiApp
             var gameInQueue = InstallManager.CurrentInstall;
             HandleInstallationStatusChanged(gameInQueue);
             FetchQueueItemsList();
+            FetchHistoryItemsList();
             InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
         }
 
@@ -47,6 +49,7 @@ namespace WinUiApp
             try
             {
                 FetchQueueItemsList();
+                FetchHistoryItemsList();
                 if (installItem == null)
                 {
                     DispatcherQueue.TryEnqueue(() =>
@@ -130,6 +133,32 @@ namespace WinUiApp
             {
                 queueItems = itemList;
                 InstallQueueListView.ItemsSource = queueItems;
+            });
+        }
+        private void FetchHistoryItemsList()
+        {
+            var historyItemsNames = InstallManager.GetHistoryItemsNames();
+            if (historyItemsNames == null || historyItemsNames.Count < 1) return;
+
+            DispatcherQueue.TryEnqueue(() => historyItems.Clear());
+
+            ObservableCollection<DownloadManagerItem> itemList = new();
+            foreach (var historyItemName in historyItemsNames)
+            {
+
+                var gameInfo = StateManager.GetGameInfo(historyItemName);
+                if (gameInfo is null) continue;
+                itemList.Add(new DownloadManagerItem()
+                {
+                    Name = historyItemName,
+                    Title = gameInfo.Title,
+                    Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                });
+            }
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                historyItems = itemList;
+                HistoryItemsList.ItemsSource = historyItems;
             });
         }
     }
