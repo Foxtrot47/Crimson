@@ -204,6 +204,13 @@ public static class InstallManager
                 return;
             }
 
+            // Verification Start
+            if(Regex.Match(updateString, $@"^\[cli\] INFO: Verifying ""([^""]+)"" version ""\d+""$").Success)
+            {
+                CurrentInstall.Status = ActionStatus.Processing;
+                InstallationStatusChanged?.Invoke(CurrentInstall);
+            }
+
             // Verification Progress Regex
             match = Regex.Match(updateString, @"Verification progress: (\d+)/\d+ \(\d+\.\d+%\).*\[(\d+\.\d+) MiB/s\]");
             if (match.Success)
@@ -211,7 +218,7 @@ public static class InstallManager
                 CurrentInstall.Status = ActionStatus.Processing;
                 CurrentInstall.ProgressPercentage = int.Parse(match.Groups[1].Value);
                 CurrentInstall.ReadSpeed = double.Parse(match.Groups[2].Value);
-                InstallationStatusChanged?.Invoke(CurrentInstall);
+                InstallProgressUpdate?.Invoke(CurrentInstall);
             }
 
             // Logic for Installation, Repair, Verify , Update , Move finish are same
