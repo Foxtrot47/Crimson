@@ -10,7 +10,6 @@
 
     <Grid>
         <NavigationView x:Name="NavControl" IsBackEnabled="True"
-                        Loaded="navControl_Loaded"
                         BackRequested="navControl_BackRequested"
                         ItemInvoked="navControl_ItemInvoked"
                         Background="{ThemeResource SmokeFillColorDefaultBrush}">

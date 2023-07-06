@@ -11,6 +11,8 @@ using WinUiApp.Core;
 using WinRT;
 using System.Threading.Tasks;
 using static WinUiApp.Core.Legendary;
+using static System.Net.WebRequestMethods;
+using Windows.Storage;
 
 namespace WinUiApp;
 
@@ -28,7 +30,16 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         IsLoggedIn = false;
-        legendaryBinaryPath = string.Format(LegendaryBinaryPathFormat, Environment.UserName);
+        Task.Run(async () =>
+        {
+            var localFolder = ApplicationData.Current.LocalFolder;
+            var res = await Legendary.DownloadBinaryAsync(localFolder);
+            legendaryBinaryPath = res.Path;
+            var legendaryInstance = new Legendary(legendaryBinaryPath);
+            legendaryInstance.CheckAuthentication();
+            legendaryInstance.AuthenticationStatusChanged += HandleAuthenticationChanges;
+        });
+
     }
     private void navControl_BackRequested(NavigationView sender,
         NavigationViewBackRequestedEventArgs args)
@@ -69,13 +80,6 @@ public sealed partial class MainWindow : Window
         // Only navigate if the selected page isn't currently loaded.
         if (navPageType is not null && !Equals(preNavPageType, navPageType))
             ContentFrame.Navigate(navPageType, null, transitionInfo);
-    }
-
-    private void navControl_Loaded(object sender, RoutedEventArgs e)
-    {
-        var legendaryInstance = new Legendary(legendaryBinaryPath);
-        legendaryInstance.CheckAuthentication();
-        legendaryInstance.AuthenticationStatusChanged += HandleAuthenticationChanges;
     }
 
     private void UpdateUIBasedOnAuthenticationStatus(AuthenticationStatus authStatus)

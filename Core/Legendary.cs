@@ -2,9 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.IO;
+using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Xml.Linq;
+using Windows.Storage;
 
 namespace WinUiApp.Core;
 
@@ -212,9 +216,58 @@ public class Legendary
         {
             AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoggedIn);
         }
-        else if (updateString =="[cli] ERROR: WebView login attempt failed, please see log for details.")
+        else if (updateString == "[cli] ERROR: WebView login attempt failed, please see log for details.")
         {
             AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoginFailed);
+        }
+    }
+
+    public static async Task<StorageFile> DownloadBinaryAsync(StorageFolder outputFolder)
+    {
+        try
+        {
+            var legendaryVersion = "0.20.33";
+            var binaryUrl = $"https://github.com/derrod/legendary/releases/download/{legendaryVersion}/legendary.exe";
+            var binaryFile = await outputFolder.CreateFileAsync("legendary.exe", CreationCollisionOption.OpenIfExists);
+
+            var properties = await binaryFile.GetBasicPropertiesAsync();
+            if (properties.Size > 0)
+            {
+                var process = new Process();
+                process.StartInfo.FileName = binaryFile.Path;
+                process.StartInfo.Arguments = "--version";
+                process.StartInfo.RedirectStandardOutput = true;
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+
+                var output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+                process.Dispose();
+
+                var match = Regex.Match(output, @"version ""(.*?)""");
+                if (match.Success && match.Groups.Count > 1 && match.Groups[1].Value == legendaryVersion)
+                {
+                    Console.WriteLine("Legendary binary exists");
+                    return binaryFile;
+                }
+            }
+
+            var httpClient = new HttpClient();
+            var binaryData = await httpClient.GetByteArrayAsync(binaryUrl);
+
+            using (var stream = await binaryFile.OpenStreamForWriteAsync())
+            {
+                await stream.WriteAsync(binaryData);
+            }
+
+            Console.WriteLine("Legendary binary downloaded successfully to app data directory.");
+            return binaryFile;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to download legendary binary: {ex.Message}");
+            return null;
         }
     }
 
