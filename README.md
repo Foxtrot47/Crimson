@@ -16,9 +16,9 @@
 
 2. Clone this repo
 
-3. Download latest legendary [release](https://github.com/derrod/legendary/releases/download/0.20.33/legendary.exe) binary 
-    into   `C:\Users\{username}\AppData\Local\WinUIEGL\bin`
+3. ~~Download latest legendary [release](https://github.com/derrod/legendary/releases/download/0.20.33/legendary.exe) binary 
+    into   `C:\Users\{username}\AppData\Local\WinUIEGL\bin`~~
 
-4. Follow legendary docs to initialise auth (this won't be necessary later)
+4. ~~Follow legendary docs to initialise auth (this won't be necessary later)~~
 
 5. Compile and run the app
