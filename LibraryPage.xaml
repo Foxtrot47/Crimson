@@ -5,18 +5,17 @@
     xmlns:local="using:WinUiApp"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d"
-    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    mc:Ignorable="d">
 
     <Grid x:Name="GamesGrid" HorizontalAlignment="Center">
         <Grid.Resources>
             <UniformGridLayout x:Name="UniformGridLayout" />
             <DataTemplate x:Key="GameCardTemplate" x:DataType="local:LibraryItem">
-                <Button Background="{ThemeResource SmokeFillColorDefaultBrush}"
-                        Padding="16,16,16,16"
+                <Button Padding="16,16,16,16"
                         BorderThickness="0"
                         Click="GameButton_Click"
-                        DataContext="{x:Bind}">
+                        DataContext="{x:Bind}"
+                        Background="Transparent">
                     <StackPanel Spacing="20">
                         <Image Source="{x:Bind Image}" Stretch="UniformToFill"
                                Width="226" Height="300"
