@@ -10,7 +10,10 @@ public sealed partial class CurrentDownloadControl : UserControl
     public CurrentDownloadControl()
     {
         InitializeComponent();
-        InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
+            var gameInQueue = InstallManager.CurrentInstall;
+            HandleInstallationStatusChanged(gameInQueue);
+            InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
+            InstallManager.InstallProgressUpdate += InstallationProgressUpdate;
     }
 
     // Handing Installtion State Change
@@ -61,6 +64,26 @@ public sealed partial class CurrentDownloadControl : UserControl
             if (game.Status != ActionStatus.Success ||
                 game.Action is not (ActionType.Install or ActionType.Update or ActionType.Repair)) return;
             DispatcherQueue.TryEnqueue(() => { DownloadStatus.Visibility = Visibility.Collapsed; });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.ToString());
+        }
+    }
+    private void InstallationProgressUpdate(InstallItem installItem)
+    {
+        try
+        {
+            if (installItem == null) return;
+
+            if (installItem.Status != ActionStatus.Processing) return;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                ProgressBar.Value = installItem.ProgressPercentage;
+                DownloadedSize.Text =
+                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.DownloadedSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalDownloadSizeMb)}";
+                DownloadSpeed.Text = $@"{installItem.DownloadSpeedRaw} MB/s";
+            });
         }
         catch (Exception ex)
         {
