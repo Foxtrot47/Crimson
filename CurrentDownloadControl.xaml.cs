@@ -10,10 +10,10 @@ public sealed partial class CurrentDownloadControl : UserControl
     public CurrentDownloadControl()
     {
         InitializeComponent();
-            var gameInQueue = InstallManager.CurrentInstall;
-            HandleInstallationStatusChanged(gameInQueue);
-            InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
-            InstallManager.InstallProgressUpdate += InstallationProgressUpdate;
+        var gameInQueue = InstallManager.CurrentInstall;
+        HandleInstallationStatusChanged(gameInQueue);
+        InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
+        InstallManager.InstallProgressUpdate += InstallationProgressUpdate;
     }
 
     // Handing Installtion State Change
@@ -39,37 +39,55 @@ public sealed partial class CurrentDownloadControl : UserControl
 
             DispatcherQueue.TryEnqueue(() =>
             {
-                DownloadSpeed.Text = "";
-                DownloadedSize.Text = "";
-                ProgressBar.IsEnabled = true;
-                ProgressBar.IsIndeterminate = true;
-                EmptyDownloadText.Visibility = Visibility.Collapsed;
-                DownloadStatus.Visibility = Visibility.Visible;
-                GameName.Text = gameInfo.Title;
+                UpdateStatus(installItem, game, gameInfo);
             });
-
-            if (game.Status == ActionStatus.Processing)
-            {
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    ProgressBar.IsIndeterminate = false;
-                    ProgressBar.Value = game.ProgressPercentage;
-                    DownloadedSize.Text =
-                        $@"{Util.ConvertMiBToGiBOrMiB(installItem.DownloadedSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalDownloadSizeMb)}";
-                    DownloadSpeed.Text = $@"{game.DownloadSpeedRaw} MB/s";
-                });
-                return;
-            }
-
-            if (game.Status != ActionStatus.Success ||
-                game.Action is not (ActionType.Install or ActionType.Update or ActionType.Repair)) return;
-            DispatcherQueue.TryEnqueue(() => { DownloadStatus.Visibility = Visibility.Collapsed; });
         }
         catch (Exception ex)
         {
             Console.WriteLine(ex.ToString());
         }
     }
+
+    private void UpdateStatus(InstallItem installItem, InstallItem game, Game gameInfo)
+    {
+        DownloadSpeed.Text = "";
+        DownloadedSize.Text = "";
+        ProgressBar.IsEnabled = true;
+        ProgressBar.IsIndeterminate = true;
+        EmptyDownloadText.Visibility = Visibility.Collapsed;
+        DownloadStatus.Visibility = Visibility.Visible;
+        GameName.Text = gameInfo.Title;
+
+        switch (game.Status)
+        {
+            case ActionStatus.Processing:
+                ProgressBar.IsIndeterminate = false;
+                ProgressBar.Value = game.ProgressPercentage;
+                DownloadedSize.Text =
+                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.DownloadedSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalDownloadSizeMb)}";
+                DownloadSpeed.Text = $@"{game.DownloadSpeedRaw} MB/s";
+                break;
+            case ActionStatus.Success:
+                DownloadedSize.Text = "Installation Completed";
+                DownloadSpeed.Text = string.Empty;
+                ProgressBar.IsIndeterminate = false;
+                ProgressBar.Value = 100;
+                break;
+            case ActionStatus.Failed:
+                DownloadedSize.Text = "Installation Failed";
+                DownloadSpeed.Text = string.Empty;
+                ProgressBar.IsIndeterminate = false;
+                ProgressBar.Value = 100;
+                break;
+            case ActionStatus.Cancelled:
+                DownloadedSize.Text = "Installation Cancelled";
+                DownloadSpeed.Text = string.Empty;
+                ProgressBar.IsIndeterminate = false;
+                ProgressBar.Value = 100;
+                break;
+        }
+    }
+
     private void InstallationProgressUpdate(InstallItem installItem)
     {
         try
