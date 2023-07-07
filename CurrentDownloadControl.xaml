@@ -11,10 +11,11 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <StackPanel VerticalAlignment="Stretch">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
             <TextBlock x:Name="EmptyDownloadText"
                        Text="No Downloads in Queue"
-                       Visibility="Visible" />
+                       Visibility="Visible"
+                       Style="{ThemeResource BodyTextBlockStyle}"/>
         </StackPanel>
 
         <Grid Margin="5" x:Name="DownloadStatus" Visibility="Collapsed">
