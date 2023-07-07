@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Serilog;
 
@@ -64,7 +63,7 @@ public static class InstallManager
     public static event Action<InstallItem> InstallProgressUpdate;
     public static InstallItem CurrentInstall;
     private static readonly Queue<InstallItem> InstallQueue;
-    private static readonly List<InstallItem> InstallHistory = new ();
+    private static readonly List<InstallItem> InstallHistory = new();
 
     private static readonly ILogger Log;
     private static readonly string LegendaryBinaryPath;
@@ -205,7 +204,7 @@ public static class InstallManager
             }
 
             // Verification Start
-            if(Regex.Match(updateString, $@"^\[cli\] INFO: Verifying ""([^""]+)"" version ""\d+""$").Success)
+            if (Regex.Match(updateString, $@"^\[cli\] INFO: Verifying ""([^""]+)"" version ""\d+""$").Success)
             {
                 CurrentInstall.Status = ActionStatus.Processing;
                 InstallationStatusChanged?.Invoke(CurrentInstall);
@@ -256,7 +255,7 @@ public static class InstallManager
 
             // Cancelled
             if (Regex.Match(updateString, @"\[cli\] INFO: Command was aborted via KeyboardInterrupt, cleaning up...")
-                .Success || 
+                .Success ||
                 Regex.Match(updateString, @"\[DLManager\] WARNING: Immediate exit requested!")
                 .Success
                 )
@@ -319,14 +318,25 @@ public static class InstallManager
         InstallationStatusChanged?.Invoke(CurrentInstall);
         Log.Information("Cancelling {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
 
-        // Attach the console of the calling process to the console of the specified process
-        AttachConsole((uint)CurrentInstall.Process.Id);
+        var psi = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = "-NoProfile -ExecutionPolicy Bypass -Command Stop-Process -name legendary",
+            CreateNoWindow = true
+        };
 
-        // Add a ConsoleCtrlDelegate to handle control signals received by the process
-        SetConsoleCtrlHandler(ConsoleCtrlCheck, true);
+        var proc = new Process();
+        proc.StartInfo = psi;
+        proc.Start();
+        proc.WaitForExit();
+        proc.Dispose();
 
-        // Send a Ctrl+C signal to the attached console
-        GenerateConsoleCtrlEvent(ConsoleCtrlEvent.CtrlC, 0);
+        CurrentInstall.Status = ActionStatus.Cancelled;
+        InstallHistory.Add(CurrentInstall);
+        InstallationStatusChanged?.Invoke(CurrentInstall);
+        StateManager.FinishedInstall(CurrentInstall);
+        CurrentInstall = null;
+        ProcessNext();
     }
 
     public static List<string> GetQueueItemNames()
@@ -346,40 +356,6 @@ public static class InstallManager
             historyItemsName.Add(item.AppName);
         }
         return historyItemsName;
-    }
-
-    // DLL Imports for Windows Kernel
-    // Required for sending Ctrl + C to legendary
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool AttachConsole(uint dwProcessId);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool SetConsoleCtrlHandler(ConsoleCtrlDelegate handlerRoutine, bool add);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GenerateConsoleCtrlEvent(ConsoleCtrlEvent sigevent, int dwProcessGroupId);
-
-    private enum ConsoleCtrlEvent
-    {
-        CtrlC = 0
-    }
-
-    private delegate bool ConsoleCtrlDelegate(CtrlTypes ctrlType);
-
-    // ReSharper disable InconsistentNaming
-    private enum CtrlTypes
-    {
-        CTRL_C_EVENT = 0,
-        CTRL_BREAK_EVENT = 1,
-        CTRL_CLOSE_EVENT = 2,
-        CTRL_LOGOFF_EVENT = 5,
-        CTRL_SHUTDOWN_EVENT = 6
-    }
-
-    // Ignore Control + Control even created by ourselves
-    private static bool ConsoleCtrlCheck(CtrlTypes ctrlType)
-    {
-        return true;
     }
 }
 
