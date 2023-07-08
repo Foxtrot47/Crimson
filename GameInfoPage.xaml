@@ -68,7 +68,6 @@
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <ProgressRing 
                                 x:Name="DownloadProgressRing" 
-                                IsIndeterminate="{x:Bind HasDownloadStarted}"
                                 Visibility="Collapsed"/>
                             <FontIcon
                                 x:Name="PrimaryActionButtonIcon"

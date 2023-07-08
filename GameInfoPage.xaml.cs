@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using WinUiApp.Core;
 
 namespace WinUiApp
@@ -15,8 +16,6 @@ namespace WinUiApp
     public sealed partial class GameInfoPage : Page
     {
         public Game Game { get; set; }
-        private bool HasDownloadStarted { get; set; }
-
         public GameInfoPage()
         {
             this.InitializeComponent();
@@ -33,6 +32,10 @@ namespace WinUiApp
             // Unregister event handlers on start
             StateManager.GameStatusUpdated -= CheckGameStatus;
             StateManager.GameStatusUpdated += CheckGameStatus;
+            InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
+            InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
+            InstallManager.InstallProgressUpdate -= HandleInstallationStatusChanged;
+            InstallManager.InstallProgressUpdate += HandleInstallationStatusChanged;
 
         }
 
@@ -62,46 +65,35 @@ namespace WinUiApp
         {
             try
             {
-                if (installItem == null)
-                {
-                    DispatcherQueue.TryEnqueue(() =>
-                    {
-                        PrimaryActionButton.IsEnabled = true;
-                        DownloadProgressRing.Visibility = Visibility.Collapsed;
-                        PrimaryActionButtonIcon.Visibility = Visibility.Visible;
-                    });
-                    return;
-                }
-                HasDownloadStarted = true;
+                if (installItem == null) return;
                 DispatcherQueue.TryEnqueue(() =>
                 {
-                    PrimaryActionButton.IsEnabled = false;
-                    PrimaryActionButtonText.Text = "Pending...";
-                    DownloadProgressRing.Visibility = Visibility.Visible;
-                    DownloadProgressRing.IsIndeterminate = true;
-                    PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
-                });
-
-                if (installItem.Status == ActionStatus.Processing)
-                {
-                    DispatcherQueue.TryEnqueue(() =>
+                    switch (installItem.Status)
                     {
-                        HasDownloadStarted = true;
-                        DownloadProgressRing.IsIndeterminate = false;
-                        DownloadProgressRing.Value = Convert.ToDouble(installItem.ProgressPercentage);
-                        PrimaryActionButtonText.Text = $@"{installItem.ProgressPercentage} %";
-                    });
-                    return;
-                }
+                        case ActionStatus.Processing:
+                            DownloadProgressRing.IsIndeterminate = false;
+                            DownloadProgressRing.Value = Convert.ToDouble(installItem.ProgressPercentage);
+                            DownloadProgressRing.Visibility = Visibility.Visible;
+                            PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
+                            PrimaryActionButton.IsEnabled = false;
+                            PrimaryActionButtonText.Text = $"{installItem.ProgressPercentage}%";
+                            break;
 
-                if (installItem.Status != ActionStatus.Success ||
-                    installItem.Action is not (ActionType.Install or ActionType.Update or ActionType.Repair)) return;
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    DownloadProgressRing.Visibility = Visibility.Collapsed;
-                    PrimaryActionButton.Visibility = Visibility.Visible;
-                    PrimaryActionButtonText.Text = "Play";
-                    PrimaryActionButton.IsEnabled= true;
+                        case ActionStatus.Pending:
+
+                            PrimaryActionButtonText.Text = "Pending...";
+                            DownloadProgressRing.Visibility = Visibility.Visible;
+                            DownloadProgressRing.IsIndeterminate = true;
+                            PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
+
+                            break;
+                        case ActionStatus.Cancelling:
+                            PrimaryActionButtonText.Text = "Cancelling...";
+                            DownloadProgressRing.Visibility = Visibility.Visible;
+                            DownloadProgressRing.IsIndeterminate = true;
+                            PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
+                            break;
+                    }
                 });
             }
             catch (Exception ex)
@@ -119,8 +111,6 @@ namespace WinUiApp
         {
             if (updatedGame == null || updatedGame.Name != Game.Name) return;
 
-            // Unregister the handle instlallation handler for things to work properly
-            InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
             Game = updatedGame;
 
             DispatcherQueue.TryEnqueue(() =>
@@ -128,8 +118,22 @@ namespace WinUiApp
                 // Clear ui elements state
                 PrimaryActionButtonText.Text = "";
                 PrimaryActionButtonIcon.Glyph = "";
-                DownloadProgressRing.Visibility = Visibility.Collapsed;
 
+                if (Game.State == Game.InstallState.Installing || Game.State == Game.InstallState.Updating || Game.State == Game.InstallState.Repairing)
+                {
+                    var gameInQueue = InstallManager.GameGameInQueue(Game.Name);
+                    if (gameInQueue == null)
+                    {
+                        // Default button text and glyph if game isn't in instllation queue yet
+                        PrimaryActionButtonText.Text = "Resume";
+                        PrimaryActionButtonIcon.Glyph = "\uE768";
+                    }
+                    HandleInstallationStatusChanged(gameInQueue);
+                    return;
+                }
+                PrimaryActionButtonIcon.Visibility = Visibility.Visible;
+                DownloadProgressRing.Visibility = Visibility.Collapsed;
+                PrimaryActionButton.IsEnabled = true;
                 if (Game.State == Game.InstallState.NotInstalled)
                 {
                     PrimaryActionButtonText.Text = "Install";
@@ -140,15 +144,7 @@ namespace WinUiApp
                     PrimaryActionButtonText.Text = "Play";
                     PrimaryActionButtonIcon.Glyph = "\uE768";
                 }
-                else if (Game.State == Game.InstallState.Installing || Game.State == Game.InstallState.Updating || Game.State == Game.InstallState.Repairing)
-                {
-                    // Default button text and glyph if game isn't in instllation queue yet
-                    PrimaryActionButtonText.Text = "Resume";
-                    PrimaryActionButtonIcon.Glyph = "\uE768";
-                    var gameInQueue = InstallManager.GameGameInQueue(Game.Name);
-                    HandleInstallationStatusChanged(gameInQueue);
-                    InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
-                }
+
                 else if (Game.State == Game.InstallState.NeedUpdate)
                 {
                     PrimaryActionButtonText.Text = "Update";
@@ -165,8 +161,9 @@ namespace WinUiApp
         protected override void OnNavigatedFrom(NavigationEventArgs e)
         {
             // Unregister both event handlers before navigating out
-            StateManager.GameStatusUpdated -= CheckGameStatus; 
+            StateManager.GameStatusUpdated -= CheckGameStatus;
             InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
+            InstallManager.InstallProgressUpdate -= HandleInstallationStatusChanged;
 
             // Call the base implementation
             base.OnNavigatedFrom(e);
