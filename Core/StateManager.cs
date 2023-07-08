@@ -197,6 +197,7 @@ public static class StateManager
         if (actionType == ActionType.Install) 
             game.State = Game.InstallState.Installing;
 
+        GameStatusUpdated?.Invoke(game);
         InstallManager.AddToQueue(new InstallItem(gameName, actionType, location));
     }
 
