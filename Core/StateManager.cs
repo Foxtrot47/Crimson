@@ -162,7 +162,7 @@ public static class StateManager
                         existingGame.State = Game.InstallState.NeedUpdate;
 
                     // Don't change games state if we have update pending
-                    else if(existingGame.State != Game.InstallState.NeedUpdate)
+                    else if (existingGame.State != Game.InstallState.NeedUpdate)
                         existingGame.State = installedGame.State;
 
                     existingGame.Version = installedGame.Version;
@@ -194,7 +194,7 @@ public static class StateManager
         var game = _gameData.FirstOrDefault(g => g.Name == gameName);
         if (game == null) return;
 
-        if (actionType == ActionType.Install) 
+        if (actionType == ActionType.Install)
             game.State = Game.InstallState.Installing;
 
         GameStatusUpdated?.Invoke(game);
@@ -205,7 +205,7 @@ public static class StateManager
     {
         var game = _gameData.FirstOrDefault(game => game.Name == item.AppName);
         if (game == null) return;
-        
+
         if (item.Action == ActionType.Uninstall && item.Status == ActionStatus.Success)
             game.State = Game.InstallState.NotInstalled;
 
@@ -213,15 +213,24 @@ public static class StateManager
             game.State = Game.InstallState.Installed;
 
         else if (item.Action == ActionType.Install && (item.Status == ActionStatus.Failed || item.Status == ActionStatus.Cancelled))
-                game.State = Game.InstallState.NotInstalled;
+            game.State = Game.InstallState.NotInstalled;
 
         else if (item.Action == ActionType.Update && (item.Status == ActionStatus.Failed || item.Status == ActionStatus.Cancelled))
-                game.State = Game.InstallState.NeedUpdate;
+            game.State = Game.InstallState.NeedUpdate;
 
         else if (item.Action == ActionType.Repair && (item.Status == ActionStatus.Failed || item.Status == ActionStatus.Cancelled))
             game.State = Game.InstallState.Broken;
 
         GameStatusUpdated?.Invoke(game);
+    }
+    public static Game GetGameData(string gameName)
+    {
+        var legendaryHandle = new Legendary(legendaryBinaryPath);
+        var data = legendaryHandle.GetGameData(gameName);
+        var game = _gameData.FirstOrDefault(game => game.Name == gameName);
+        game.DownloadSizeMiB = data.DownloadSizeMiB;
+        game.DiskSizeMiB = data.DiskSizeMiB;
+        return game;
     }
 
     // Stop the timer when the application exits
