@@ -5,6 +5,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Serilog;
 using WinUiApp.Core;
 
 namespace WinUiApp
@@ -17,8 +18,12 @@ namespace WinUiApp
         public static ObservableCollection<LibraryItem> GamesList { get; set; }
         public bool LoadingFinished = false;
 
+        // Get logger instance from MainWindow window class
+        private readonly ILogger _log = ((MainWindow)Window.Current).Log;
+
         public LibraryPage()
         {
+            _log.Information("LibraryPage: Loading Page");
             InitializeComponent();
             LoadingSection.Visibility = Visibility.Visible;
             GamesGrid.Visibility = Visibility.Collapsed;
@@ -35,17 +40,19 @@ namespace WinUiApp
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.ToString());
+                    _log.Error(ex.ToString());
                 }
             }
 
             LoadingFinished = true;
+            _log.Information("LibraryPage: Loading finished");
         }
 
         private void UpdateLibrary(ObservableCollection<Game> games)
         {
             try
             {
+                _log.Information("UpdateLibrary: Updating Library Page");
                 if (games == null) return;
                 DispatcherQueue.TryEnqueue(() =>
                 {
@@ -59,16 +66,18 @@ namespace WinUiApp
                             InstallState = game.State,
                             Image = Util.GetBitmapImage(game.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
                         };
+                        _log.Information($"UpdateLibrary: Adding {item.Name} to Library");
                         GamesList.Add(item);
                     }
                     ItemsRepeater.ItemsSource = GamesList;
                     LoadingSection.Visibility = Visibility.Collapsed;
                     GamesGrid.Visibility = Visibility.Visible;
                 });
+                _log.Information("UpdateLibrary: Updated Library Page");
             }
             catch (Exception ex)
             {
-                Console.Write(ex.ToString());
+                _log.Error(ex.ToString());
             }
         }
 

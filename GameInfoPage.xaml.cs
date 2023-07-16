@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Navigation;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Serilog;
 using WinUiApp.Core;
 
 namespace WinUiApp
@@ -20,7 +21,7 @@ namespace WinUiApp
         {
             this.InitializeComponent();
         }
-
+        private readonly ILogger _log = ((MainWindow)Window.Current).Log;
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             Game = StateManager.GetGameInfo((string)e.Parameter);
@@ -43,16 +44,26 @@ namespace WinUiApp
         {
             try
             {
+                _log.Information("GameInfoPage: Primary Action Button Clicked for {Game}", Game.Title);
+                if (Game == null) return;
+                if (Game.State == Game.InstallState.Installed)
+                {
+                    _log.Information("GameInfoPage: Starting Game {Game}", Game.Title);
+                    StateManager.StartGame(Game.Name);
+                    return;
+                }
+
                 PrimaryActionButton.IsEnabled = false;
                 PrimaryActionButtonText.Text = "Pending...";
                 DownloadProgressRing.Visibility = Visibility.Visible;
                 DownloadProgressRing.IsIndeterminate = true;
                 PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
-                StateManager.AddToInstallationQueue(Game.Name, ActionType.Install, @"D:\Games\");
+                StateManager.AddToInstallationQueue(Game.Name, ActionType.Install, @"E:\Games\");
+                _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.Title);
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex);
+                _log.Error(ex.ToString());
                 DownloadProgressRing.Visibility = Visibility.Collapsed;
                 PrimaryActionButton.IsEnabled = true;
             }
@@ -68,6 +79,7 @@ namespace WinUiApp
                 if (installItem == null) return;
                 DispatcherQueue.TryEnqueue(() =>
                 {
+                    _log.Information("GameInfoPage: Installation Status Changed for {Game}", installItem.AppName);
                     switch (installItem.Status)
                     {
                         case ActionStatus.Processing:
@@ -98,19 +110,14 @@ namespace WinUiApp
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.ToString());
+                _log.Error(ex.ToString());
             }
-        }
-
-        private void CancelButton_Click(object sender, RoutedEventArgs e)
-        {
-            InstallManager.CancelInstall(Game.Name);
         }
 
         private void CheckGameStatus(Game updatedGame)
         {
             if (updatedGame == null || updatedGame.Name != Game.Name) return;
-
+            _log.Information("GameInfoPage: Game Status Changed for {Game}", updatedGame.Title);
             Game = updatedGame;
 
             DispatcherQueue.TryEnqueue(() =>

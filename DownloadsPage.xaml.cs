@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Serilog;
 using WinUiApp.Core;
 
 namespace WinUiApp
@@ -27,9 +28,11 @@ namespace WinUiApp
         private DownloadManagerItem _currentInstallItem = new DownloadManagerItem();
         private ObservableCollection<DownloadManagerItem> queueItems = new();
         private ObservableCollection<DownloadManagerItem> historyItems = new();
+        private readonly ILogger _log = ((MainWindow)Window.Current).Log;
         public DownloadsPage()
         {
             this.InitializeComponent();
+            _log.Information("DownloadsPage: Loading Page");
             DataContext = _currentInstallItem;
             if (InstallManager.CurrentInstall?.AppName == null)
                 ActiveDownloadSection.Visibility = Visibility.Collapsed;
@@ -49,10 +52,12 @@ namespace WinUiApp
         {
             try
             {
+                _log.Information("HandleInstallationStatusChanged: Handling Installation Status Change");
                 FetchQueueItemsList();
                 FetchHistoryItemsList();
                 if (installItem == null)
                 {
+                    _log.Information("HandleInstallationStatusChanged: No installation in progress");
                     DispatcherQueue.TryEnqueue(() =>
                     {
                         ActiveDownloadSection.Visibility = Visibility.Collapsed;
@@ -65,6 +70,7 @@ namespace WinUiApp
                     DownloadProgressBar.IsIndeterminate = true;
 
                     var gameInfo = StateManager.GetGameInfo(installItem.AppName);
+                    _log.Information("HandleInstallationStatusChanged: Game Info: {GameInfo}", gameInfo);
                     _currentInstallItem = new DownloadManagerItem
                     {
                         Name = gameInfo.Name,
@@ -76,7 +82,7 @@ namespace WinUiApp
                     CurrentDownloadTitle.Text = _currentInstallItem.Title;
                     CurrentDownloadImage.Source = _currentInstallItem.Image;
                 });
-
+                _log.Information("HandleInstallationStatusChanged: Installation Status: {Status}", installItem.Status);
                 switch (installItem.Status)
                 {
                     case ActionStatus.Processing:
@@ -107,6 +113,7 @@ namespace WinUiApp
 
         private void CancelInstallButton_OnClick(object sender, RoutedEventArgs e)
         {
+            _log.Information("CancelInstallButton_OnClick: Cancelling Installation");
             InstallManager.CancelInstall(_currentInstallItem.Name);
         }
 
@@ -150,6 +157,8 @@ namespace WinUiApp
                 var historyItemsNames = InstallManager.GetHistoryItemsNames();
                 if (historyItemsNames == null || historyItemsNames.Count < 1) return;
 
+                _log.Information("FetchHistoryItemsList: History Items: {HistoryItems}", historyItemsNames);
+
                 DispatcherQueue.TryEnqueue(() => historyItems.Clear());
 
                 ObservableCollection<DownloadManagerItem> itemList = new();
@@ -174,12 +183,14 @@ namespace WinUiApp
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.ToString());
+                _log.Error(ex, "FetchHistoryItemsList: Error while fetching history items");
             }
         }
 
         private void InstallationProgressUpdate(InstallItem installItem)
         {
+            // Its better not to log the progress update as it will be called very frequently
+            // It can make the log file very big
             try
             {
                 if (installItem == null) return;
@@ -195,7 +206,7 @@ namespace WinUiApp
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.ToString());
+                _log.Error(ex, "InstallationProgressUpdate: Error while updating progress");
             }
         }
     }

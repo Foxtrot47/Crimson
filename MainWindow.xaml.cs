@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using static WinUiApp.Core.Legendary;
 using static System.Net.WebRequestMethods;
 using Windows.Storage;
+using Serilog;
 
 namespace WinUiApp;
 
@@ -21,10 +22,9 @@ namespace WinUiApp;
 /// </summary>
 public sealed partial class MainWindow : Window
 {
-    private const string LegendaryBinaryPathFormat = @"C:\Users\{0}\AppData\Local\WinUIEGL\bin\legendary.exe";
-
     public bool IsLoggedIn;
-    public string legendaryBinaryPath;
+    private string _legendaryBinaryPath;
+    public ILogger Log;
 
     public MainWindow()
     {
@@ -33,9 +33,13 @@ public sealed partial class MainWindow : Window
         Task.Run(async () =>
         {
             var localFolder = ApplicationData.Current.LocalFolder;
-            var res = await Legendary.DownloadBinaryAsync(localFolder);
-            legendaryBinaryPath = res.Path;
-            var legendaryInstance = new Legendary(legendaryBinaryPath);
+            var logFilePath = $@"{localFolder.Path}\logs\{DateTime.Now:yyyy-MM-dd}.txt";
+            Log = new LoggerConfiguration().WriteTo.File(logFilePath).CreateLogger();
+            Log.Information("Starting up");
+
+            var res = await Legendary.DownloadBinaryAsync(localFolder, Log);
+            _legendaryBinaryPath = res.Path;
+            var legendaryInstance = new Legendary(_legendaryBinaryPath, Log);
             legendaryInstance.CheckAuthentication();
             legendaryInstance.AuthenticationStatusChanged += HandleAuthenticationChanges;
         });
@@ -85,6 +89,7 @@ public sealed partial class MainWindow : Window
     private void UpdateUIBasedOnAuthenticationStatus(AuthenticationStatus authStatus)
     {
         LoginModal.Visibility = Visibility.Visible;
+        Log.Information($"Auth status: {authStatus}");
 
         switch (authStatus)
         {
@@ -99,12 +104,19 @@ public sealed partial class MainWindow : Window
                 break;
 
             case AuthenticationStatus.LoggedIn:
+                Log.Information("Logged in");
                 LoginModalTitle.Text = "Login Success";
                 LoginModalDescription.Text = "Please wait...";
+
+                StateManager.Initialize(_legendaryBinaryPath, Log);
                 _ = StateManager.UpdateLibraryAsync();
+
+                InstallManager.Initialize(_legendaryBinaryPath, Log);
+
                 LoginModal.Visibility = Visibility.Collapsed;
                 NavControl.SelectedItem = NavControl.MenuItems[0];
                 navControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
+                Log.Information("Opening Library Page");
                 break;
 
             case AuthenticationStatus.LoginFailed:

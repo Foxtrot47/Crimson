@@ -1,3 +1,4 @@
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -14,15 +15,18 @@ namespace WinUiApp.Core;
 
 public class Legendary
 {
-    private string _legendaryBinaryPath;
+    private readonly string _legendaryBinaryPath;
+    private readonly ILogger _log;
     public event Action<AuthenticationStatus> AuthenticationStatusChanged;
-    public Legendary(string legendaryBinaryPath)
+    public Legendary(string legendaryBinaryPath, ILogger log)
     {
         _legendaryBinaryPath = legendaryBinaryPath;
+        _log = log;
     }
 
     public Game GetGameData(string name)
     {
+        _log.Information("Getting game data for {name}", name);
         var process = new Process();
         process.StartInfo.FileName = _legendaryBinaryPath;
         // Output game info as JSON
@@ -47,9 +51,11 @@ public class Legendary
             DownloadSizeMiB = info.GetProperty("disk_size").GetInt64(),
             DiskSizeMiB = info.GetProperty("download_size").GetInt64()
         };
+        _log.Information("Game data for {name} retrieved", name);
 
         if (info.GetProperty("install").GetProperty("install_path").GetString() != null)
         {
+            _log.Information("Game {name} is installed", name);
             game.InstallLocation = info.GetProperty("install").GetProperty("install_path").GetString();
             game.Version = info.GetProperty("install").GetProperty("version").GetString();
             game.State = Game.InstallState.Installed;
@@ -57,209 +63,254 @@ public class Legendary
         return game;
     }
 
-        public Task<ObservableCollection<Game>> GetLibraryData()
+    public Task<ObservableCollection<Game>> GetLibraryData()
+    {
+        Log.Information("GetLibraryData: Initializing");
+        // Create a new task to run the function logic
+        var task = new Task<ObservableCollection<Game>>(() =>
         {
-            // Create a new task to run the function logic
-            var task = new Task<ObservableCollection<Game>>(() =>
+            var gameList = new ObservableCollection<Game>();
+            var process = new Process();
+            process.StartInfo.FileName = _legendaryBinaryPath;
+            // Output installed games as JSON
+            process.StartInfo.Arguments = "list --json";
+            // Redirect the standard output so we can read it
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+            process.StartInfo.UseShellExecute = false;
+            // Set CreateNoWindow to true to hide the console window
+            process.StartInfo.CreateNoWindow = true;
+            process.Start();
+
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            process.Dispose();
+
+            // parse json
+            var json = JsonDocument.Parse(output).RootElement;
+            foreach (var item in json.EnumerateArray())
             {
-                var gameList = new ObservableCollection<Game>();
-                var process = new Process();
-                process.StartInfo.FileName = _legendaryBinaryPath;
-                // Output installed games as JSON
-                process.StartInfo.Arguments = "list --json";
-                // Redirect the standard output so we can read it
-                process.StartInfo.RedirectStandardOutput = true;
-                process.StartInfo.RedirectStandardError = true;
-                process.StartInfo.UseShellExecute = false;
-                // Set CreateNoWindow to true to hide the console window
-                process.StartInfo.CreateNoWindow = true;
-                process.Start();
+                var game = new Game();
+                game.Name = item.GetProperty("app_name").GetString();
+                game.Title = item.GetProperty("app_title").GetString();
 
-                var output = process.StandardOutput.ReadToEnd();
-                var error = process.StandardError.ReadToEnd();
-                process.WaitForExit();
-                process.Dispose();
+                // Get the keyImages
+                var keyImages = item
+                    .GetProperty("metadata")
+                    .GetProperty("keyImages")
+                    .EnumerateArray();
 
-                // parse json
-                var json = JsonDocument.Parse(output).RootElement;
-                foreach (var item in json.EnumerateArray())
+                game.Images = new List<Game.Image>();
+                foreach (var keyImage in keyImages)
                 {
-                    var game = new Game();
-                    game.Name = item.GetProperty("app_name").GetString();
-                    game.Title = item.GetProperty("app_title").GetString();
+                    var image = new Game.Image(); // Create a new Game.Image object for each iteration
+                    image.Width = keyImage.GetProperty("width").GetInt32();
+                    image.Height = keyImage.GetProperty("height").GetInt32();
+                    image.Type = keyImage.GetProperty("type").GetString();
 
-                    // Get the keyImages
-                    var keyImages = item
-                        .GetProperty("metadata")
-                        .GetProperty("keyImages")
-                        .EnumerateArray();
+                    // we are taking image with resolution 1200 x 1600 for proper cropping
+                    if (keyImage.GetProperty("type").GetString() == "DieselGameBoxTall")
+                        // Pass height and width to url to get cropped image
+                        image.Url = keyImage.GetProperty("url").GetString() + "?h=400&resize=1&w=300";
+                    // For other images, don't crop
+                    else
+                        image.Url = keyImage.GetProperty("url").GetString();
 
-                    game.Images = new List<Game.Image>();
-                    foreach (var keyImage in keyImages)
-                    {
-                        var image = new Game.Image(); // Create a new Game.Image object for each iteration
-                        image.Width = keyImage.GetProperty("width").GetInt32();
-                        image.Height = keyImage.GetProperty("height").GetInt32();
-                        image.Type = keyImage.GetProperty("type").GetString();
-
-                        // we are taking image with resolution 1200 x 1600 for proper cropping
-                        if (keyImage.GetProperty("type").GetString() == "DieselGameBoxTall")
-                            // Pass height and width to url to get cropped image
-                            image.Url = keyImage.GetProperty("url").GetString() + "?h=400&resize=1&w=300";
-                        // For other images, don't crop
-                        else
-                            image.Url = keyImage.GetProperty("url").GetString();
-
-                        game.Images.Add(image);
-                    }
-                    gameList.Add(game);
+                    game.Images.Add(image);
                 }
-                return gameList;
-            });
+                Log.Information("GetLibraryData: Adding game {name}", game.Name);
+                gameList.Add(game);
+            }
+            return gameList;
+        });
 
-            // Start the task and return it
-            task.Start();
-            return task;
-        }
-        public Task<ObservableCollection<Game>> GetInstalledGames()
+        // Start the task and return it
+        task.Start();
+        return task;
+    }
+    public Task<ObservableCollection<Game>> GetInstalledGames()
+    {
+        Log.Information("GetInstalledGames: Initializing");
+        // Create a new task to run the function logic
+        var task = new Task<ObservableCollection<Game>>(() =>
         {
-            // Create a new task to run the function logic
-            var task = new Task<ObservableCollection<Game>>(() =>
+            var gameList = new ObservableCollection<Game>();
+            var process = new Process();
+            process.StartInfo.FileName = _legendaryBinaryPath;
+            // Output installed games as JSON
+            process.StartInfo.Arguments = "list-installed --json";
+            // Redirect the standard output so we can read it
+            process.StartInfo.RedirectStandardOutput = true;
+            // Enable process output redirection
+            process.StartInfo.UseShellExecute = false;
+            // Set CreateNoWindow to true to hide the console window
+            process.StartInfo.CreateNoWindow = true;
+            process.Start();
+
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit();
+            process.Dispose();
+
+            // parse json
+            var json = JsonDocument.Parse(output).RootElement;
+            foreach (var item in json.EnumerateArray())
             {
-                var gameList = new ObservableCollection<Game>();
-                var process = new Process();
-                process.StartInfo.FileName = _legendaryBinaryPath;
-                // Output installed games as JSON
-                process.StartInfo.Arguments = "list-installed --json";
-                // Redirect the standard output so we can read it
-                process.StartInfo.RedirectStandardOutput = true;
-                // Enable process output redirection
-                process.StartInfo.UseShellExecute = false;
-                // Set CreateNoWindow to true to hide the console window
-                process.StartInfo.CreateNoWindow = true;
-                process.Start();
-
-                var output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit();
-                process.Dispose();
-
-                // parse json
-                var json = JsonDocument.Parse(output).RootElement;
-                foreach (var item in json.EnumerateArray())
+                var game = new Game
                 {
-                    var game = new Game
-                    {
-                        Name = item.GetProperty("app_name").GetString(),
-                        State = Game.InstallState.Installed,
-                        InstallLocation = item.GetProperty("install_path").GetString(),
-                        Version = item.GetProperty("version").GetString()
-                    };
-                    gameList.Add(game);
-                }
-                return gameList;
-            });
-            // Start the task and return it
-            task.Start();
-            return task;
-        }
-
-        public void CheckAuthentication()
-        {
-            try
-            {
-                var process = new Process();
-                process.StartInfo.FileName = $@"C:\Users\{Environment.UserName}\AppData\Local\WinUIEGL\bin\legendary.exe";
-                process.StartInfo.Arguments = "auth";
-                process.StartInfo.RedirectStandardOutput = true;
-                process.StartInfo.RedirectStandardError = true;
-                process.StartInfo.RedirectStandardInput = true;
-                process.StartInfo.CreateNoWindow = true;
-
-                process.ErrorDataReceived += (_, e) => UpdateAuthStatus(e.Data);
-                process.Start();
-                process.BeginErrorReadLine();
+                    Name = item.GetProperty("app_name").GetString(),
+                    State = Game.InstallState.Installed,
+                    InstallLocation = item.GetProperty("install_path").GetString(),
+                    Version = item.GetProperty("version").GetString()
+                };
+                Log.Information("GetInstalledGames: Adding game {name}", game.Name);
+                gameList.Add(game);
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex);
-            }
-        }
+            return gameList;
+        });
+        // Start the task and return it
+        task.Start();
+        return task;
+    }
 
-        public void UpdateAuthStatus(string updateString)
+    public void CheckAuthentication()
+    {
+        try
         {
-            if (updateString == null) return;
+            Log.Information("CheckAuthentication: Initializing");
+            var process = new Process();
+            process.StartInfo.FileName = _legendaryBinaryPath;
+            process.StartInfo.Arguments = "auth";
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+            process.StartInfo.RedirectStandardInput = true;
+            process.StartInfo.CreateNoWindow = true;
 
-            var loginRegex = new Regex(@"\[cli\] INFO: Successfully logged in as ""(.+?)"" via WebView");
-            if (updateString == "[cli] INFO: Stored credentials are still valid, if you wish to switch to a different account, run \"legendary auth --delete\" and try again.")
-            {
+            process.ErrorDataReceived += (_, e) => UpdateAuthStatus(e.Data);
+            process.Start();
+            process.BeginErrorReadLine();
+            Log.Information("CheckAuthentication: Finished");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "CheckAuthentication: Error");
+            if (ex.StackTrace != null) Log.Error(ex.StackTrace);
+        }
+    }
+
+    public void UpdateAuthStatus(string updateString)
+    {
+        if (updateString == null || AuthenticationStatusChanged == null) return;
+
+        var loginRegex = new Regex(@"\[cli\] INFO: Successfully logged in as ""(.+?)"" via WebView");
+        switch (updateString)
+        {
+            case "[cli] INFO: Stored credentials are still valid, if you wish to switch to a different account, run \"legendary auth --delete\" and try again.":
                 AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoggedIn);
-            }
-            else if (updateString == "[cli] INFO: Testing existing login data if present...")
-            {
+                Log.Information("UpdateAuthStatus: Logged in");
+                break;
+            case "[cli] INFO: Testing existing login data if present...":
                 AuthenticationStatusChanged.Invoke(AuthenticationStatus.Checking);
-            }
-            else if (updateString == "[WebViewHelper] INFO: Opening Epic Games login window...")
-            {
+                Log.Information("UpdateAuthStatus: Checking");
+                break;
+            case "[WebViewHelper] INFO: Opening Epic Games login window...":
                 AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoginWindowOpen);
-            }
-            else if (loginRegex.Match(updateString).Success)
+                Log.Information("UpdateAuthStatus: LoginWindowOpen");
+                break;
+            default:
             {
-                AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoggedIn);
-            }
-            else if (updateString == "[cli] ERROR: WebView login attempt failed, please see log for details.")
-            {
-                AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoginFailed);
+                if (loginRegex.Match(updateString).Success)
+                {
+                    AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoggedIn);
+                    Log.Information("UpdateAuthStatus: Logged in");
+                }
+                else if (updateString == "[cli] ERROR: WebView login attempt failed, please see log for details.")
+                {
+                    AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoginFailed);
+                    Log.Warning("UpdateAuthStatus: LoginFailed");
+                }
+                else
+                {
+                    Log.Information("UpdateAuthStatus: {updateString}", updateString);
+                }
+                break;
             }
         }
+    }
 
-        public static async Task<StorageFile> DownloadBinaryAsync(StorageFolder outputFolder)
+    public static async Task<StorageFile> DownloadBinaryAsync(StorageFolder outputFolder, ILogger _log)
+    {
+        try
         {
-            try
+            var legendaryVersion = "0.20.33";
+            var binaryUrl = $"https://github.com/derrod/legendary/releases/download/{legendaryVersion}/legendary.exe";
+            var binaryFile = await outputFolder.CreateFileAsync("legendary.exe", CreationCollisionOption.OpenIfExists);
+            _log.Information("DownloadBinaryAsync: Checking for existing Legendary binary");
+
+            var properties = await binaryFile.GetBasicPropertiesAsync();
+            if (properties.Size > 0)
             {
-                var legendaryVersion = "0.20.33";
-                var binaryUrl = $"https://github.com/derrod/legendary/releases/download/{legendaryVersion}/legendary.exe";
-                var binaryFile = await outputFolder.CreateFileAsync("legendary.exe", CreationCollisionOption.OpenIfExists);
+                _log.Information("Legendary binary exists");
+                var process = new Process();
+                process.StartInfo.FileName = binaryFile.Path;
+                process.StartInfo.Arguments = "--version";
+                process.StartInfo.RedirectStandardOutput = true;
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
 
-                var properties = await binaryFile.GetBasicPropertiesAsync();
-                if (properties.Size > 0)
+                var output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+                process.Dispose();
+
+                var match = Regex.Match(output, @"version ""(.*?)""");
+                if (match.Success && match.Groups.Count > 1 && match.Groups[1].Value == legendaryVersion)
                 {
-                    var process = new Process();
-                    process.StartInfo.FileName = binaryFile.Path;
-                    process.StartInfo.Arguments = "--version";
-                    process.StartInfo.RedirectStandardOutput = true;
-                    process.StartInfo.UseShellExecute = false;
-                    process.StartInfo.CreateNoWindow = true;
-                    process.Start();
-
-                    var output = process.StandardOutput.ReadToEnd();
-                    process.WaitForExit();
-                    process.Dispose();
-
-                    var match = Regex.Match(output, @"version ""(.*?)""");
-                    if (match.Success && match.Groups.Count > 1 && match.Groups[1].Value == legendaryVersion)
-                    {
-                        Console.WriteLine("Legendary binary exists");
-                        return binaryFile;
-                    }
+                    _log.Error("DownloadBinaryAsync: Legendary binary exists and matches required version");
+                    return binaryFile;
                 }
-
-                var httpClient = new HttpClient();
-                var binaryData = await httpClient.GetByteArrayAsync(binaryUrl);
-
-                using (var stream = await binaryFile.OpenStreamForWriteAsync())
-                {
-                    await stream.WriteAsync(binaryData);
-                }
-
-                Console.WriteLine("Legendary binary downloaded successfully to app data directory.");
-                return binaryFile;
             }
-            catch (Exception ex)
+
+            var httpClient = new HttpClient();
+            var binaryData = await httpClient.GetByteArrayAsync(binaryUrl);
+
+            _log.Information("DownloadBinaryAsync: Downloading Legendary binary");
+            using (var stream = await binaryFile.OpenStreamForWriteAsync())
             {
-                Console.WriteLine($"Failed to download legendary binary: {ex.Message}");
-                return null;
+                await stream.WriteAsync(binaryData);
             }
+            _log.Information("DownloadBinaryAsync: Legendary binary downloaded");
+            return binaryFile;
         }
+        catch (Exception ex)
+        {
+            _log.Information("DownloadBinaryAsync: Legendary binary download failed");
+            _log.Information(ex.Message);
+            return null;
+        }
+    }
+
+    internal void StartGame(string name)
+    {
+        try
+        {
+            Log.Information("StartGame: Starting game {name}", name);
+            var process = new Process();
+            process.StartInfo.FileName = _legendaryBinaryPath;
+            process.StartInfo.Arguments = $"launch {name}";
+            process.StartInfo.CreateNoWindow = true;
+
+            process.Start();
+            process.WaitForExit();
+            process.Dispose();
+            Log.Information("StartGame: Finished");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "StartGame: Error");
+            if (ex.StackTrace != null) Log.Error(ex.StackTrace);
+        }
+    }
 
     public enum AuthenticationStatus
     {

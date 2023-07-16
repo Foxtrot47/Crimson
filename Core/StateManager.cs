@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Timers;
 using Serilog;
+using Windows.Storage;
 
 namespace WinUiApp.Core;
 
@@ -17,22 +18,20 @@ public static class StateManager
     private static ObservableCollection<Game> _gameData;
     // Timer to trigger the file update periodically
     private static Timer _timer;
-    private static readonly ILogger Log;
-    private static readonly string legendaryBinaryPath;
-    private static FileStream _fileStream;
+    private static ILogger _log;
+    private static string _legendaryBinaryPath;
 
     public static event Action<ObservableCollection<Game>> LibraryUpdated;
     public static event Action<Game> GameStatusUpdated;
 
-    static StateManager()
+    public static void Initialize(string binaryPath, ILogger log)
     {
-        // Setup logging
-        var dateTime = DateTime.Now.ToString("yyyy-MM-dd");
-        var logFilePath = $@"C:\Users\{Environment.UserName}\AppData\Local\WinUIEGL\logs\{dateTime}.txt";
-        legendaryBinaryPath = $@"C:\Users\{Environment.UserName}\AppData\Local\WinUIEGL\bin\legendary.exe";
-        Log = new LoggerConfiguration().WriteTo.File(logFilePath).CreateLogger();
+        _legendaryBinaryPath = binaryPath;
+        _log = log;
 
-        _gameDataFile = $@"C:\Users\{Environment.UserName}\AppData\Local\WinUIEGL\storage\gamedata.json";
+
+        var localFolder = ApplicationData.Current.LocalFolder;
+        _gameDataFile = $@"{localFolder.Path}\gamedata.json";
 
         // If stored data exists load it
         if (File.Exists(_gameDataFile))
@@ -75,16 +74,14 @@ public static class StateManager
             // Serialize the games list to a JSON string
             var jsonString = JsonSerializer.Serialize(_gameData);
 
-            using (var fileStream = File.Open(_gameDataFile, FileMode.Create, FileAccess.Write, FileShare.Read))
-            {
-                await using var streamWriter = new StreamWriter(fileStream);
-                await streamWriter.WriteAsync(jsonString);
-                await streamWriter.FlushAsync();
-            }
+            await using var fileStream = File.Open(_gameDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
+            await using var streamWriter = new StreamWriter(fileStream);
+            await streamWriter.WriteAsync(jsonString);
+            await streamWriter.FlushAsync();
         }
         catch (Exception exception)
         {
-            Log.Error("UpdateJsonFile: Error while updating json {Exception}", exception.ToString());
+            _log.Error("UpdateJsonFile: Error while updating json {Exception}", exception.ToString());
         }
     }
 
@@ -95,7 +92,7 @@ public static class StateManager
     {
         try
         {
-            var legendaryHandle = new Legendary(legendaryBinaryPath);
+            var legendaryHandle = new Legendary(_legendaryBinaryPath, _log);
             var legendaryGameList = await legendaryHandle.GetLibraryData();
 
             // ReSharper disable once CommentTypo
@@ -152,30 +149,41 @@ public static class StateManager
                     var existingGame = _gameData.FirstOrDefault(g => g.Name == installedGame.Name);
                     if (existingGame == null)
                         continue;
+                    _log.Information("UpdateLibraryAsync: Checking {Game}", existingGame.Name);
 
                     // Possible sign that legendary might got have killed and is reporting wrong game state
-                    if (existingGame.State == Game.InstallState.Installing && installedGame.State == Game.InstallState.Installed)
+                    if (existingGame.State == Game.InstallState.Installing &&
+                        installedGame.State == Game.InstallState.Installed)
+                    {
                         existingGame.State = Game.InstallState.Installing;
+                        _log.Information("UpdateLibraryAsync: Game {Game} is still installing", existingGame.Name);
+                    }
 
                     // Legendary detected new version and we need to update game
                     else if (existingGame.Version != null && installedGame.Version != existingGame.Version)
+                    {
                         existingGame.State = Game.InstallState.NeedUpdate;
+                        _log.Information("UpdateLibraryAsync: Game {Game} needs update", existingGame.Name);
+                    }
 
                     // Don't change games state if we have update pending
                     else if (existingGame.State != Game.InstallState.NeedUpdate)
+                    {
                         existingGame.State = installedGame.State;
+                        _log.Information("UpdateLibraryAsync: Game {Game} state changed to {State}", existingGame.Name, existingGame.State);
+                    }
 
                     existingGame.Version = installedGame.Version;
                     existingGame.InstallLocation = installedGame.InstallLocation;
                 }
             }
-
+            _log.Information("UpdateLibraryAsync: Library updated");
             LibraryUpdated?.Invoke(_gameData);
             await UpdateJsonFileAsync();
         }
         catch (Exception ex)
         {
-            Log.Error("UpdateLibraryAsync: Error updating library {Exception}", ex.Message);
+            _log.Error("UpdateLibraryAsync: Error updating library {Exception}", ex.Message);
         }
     }
 
@@ -199,6 +207,7 @@ public static class StateManager
 
         GameStatusUpdated?.Invoke(game);
         InstallManager.AddToQueue(new InstallItem(gameName, actionType, location));
+        _log.Information("AddToInstallationQueue: {Game} {Action} {location}", gameName, actionType, location);
     }
 
     public static void FinishedInstall(InstallItem item)
@@ -206,30 +215,33 @@ public static class StateManager
         var game = _gameData.FirstOrDefault(game => game.Name == item.AppName);
         if (game == null) return;
 
+        _log.Information("FinishedInstall: {Game} {Action} {Status}", item.AppName, item.Action, item.Status);
         if (item.Action == ActionType.Uninstall && item.Status == ActionStatus.Success)
             game.State = Game.InstallState.NotInstalled;
 
-        else if ((item.Action == ActionType.Install || item.Action == ActionType.Update || item.Action == ActionType.Repair) && item.Status == ActionStatus.Success)
+        else if (item.Action is ActionType.Install or ActionType.Update or ActionType.Repair && item.Status == ActionStatus.Success)
             game.State = Game.InstallState.Installed;
 
-        else if (item.Action == ActionType.Install && (item.Status == ActionStatus.Failed || item.Status == ActionStatus.Cancelled))
+        else if (item.Action == ActionType.Install && item.Status is ActionStatus.Failed or ActionStatus.Cancelled)
             game.State = Game.InstallState.NotInstalled;
 
-        else if (item.Action == ActionType.Update && (item.Status == ActionStatus.Failed || item.Status == ActionStatus.Cancelled))
+        else if (item.Action == ActionType.Update && item.Status is ActionStatus.Failed or ActionStatus.Cancelled)
             game.State = Game.InstallState.NeedUpdate;
 
-        else if (item.Action == ActionType.Repair && (item.Status == ActionStatus.Failed || item.Status == ActionStatus.Cancelled))
+        else if (item.Action == ActionType.Repair && item.Status is ActionStatus.Failed or ActionStatus.Cancelled)
             game.State = Game.InstallState.Broken;
 
         GameStatusUpdated?.Invoke(game);
     }
     public static Game GetGameData(string gameName)
     {
-        var legendaryHandle = new Legendary(legendaryBinaryPath);
+        var legendaryHandle = new Legendary(_legendaryBinaryPath, _log);
         var data = legendaryHandle.GetGameData(gameName);
         var game = _gameData.FirstOrDefault(game => game.Name == gameName);
         game.DownloadSizeMiB = data.DownloadSizeMiB;
         game.DiskSizeMiB = data.DiskSizeMiB;
+        _log.Information("GetGameData: {Game} {DownloadSizeMiB} {DiskSizeMiB}", gameName, data.DownloadSizeMiB, data.DiskSizeMiB);
+        ;
         return game;
     }
 
@@ -237,5 +249,13 @@ public static class StateManager
     public static void Dispose()
     {
         _timer.Stop();
+    }
+    public static void StartGame(string name)
+    {
+        var game = _gameData.FirstOrDefault(game => game.Name == name);
+        if (game == null) return;
+
+        var legendaryHandle = new Legendary(_legendaryBinaryPath, _log);
+        legendaryHandle.StartGame(game.Name);
     }
 }

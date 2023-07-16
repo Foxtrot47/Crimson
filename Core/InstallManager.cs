@@ -62,21 +62,18 @@ public static class InstallManager
     public static event Action<InstallItem> InstallationStatusChanged;
     public static event Action<InstallItem> InstallProgressUpdate;
     public static InstallItem CurrentInstall;
-    private static readonly Queue<InstallItem> InstallQueue;
+    private static Queue<InstallItem> _installQueue;
     private static readonly List<InstallItem> InstallHistory = new();
 
-    private static readonly ILogger Log;
-    private static readonly string LegendaryBinaryPath;
+    private static ILogger _log;
+    private static string _legendaryBinaryPath;
 
-    static InstallManager()
+    public static void Initialize(string legendaryBinaryPath, ILogger log)
     {
-        InstallQueue = new Queue<InstallItem>();
-        CurrentInstall = null;
-        var dateTime = DateTime.Now.ToString("yyyy-MM-dd");
-        var logFilePath = $@"C:\Users\{Environment.UserName}\AppData\Local\WinUIEGL\logs\Downloader\{dateTime}.txt";
-        Log = new LoggerConfiguration().WriteTo.File(logFilePath).CreateLogger();
-        LegendaryBinaryPath = $@"C:\Users\{Environment.UserName}\AppData\Local\WinUIEGL\bin\legendary.exe";
-        Log.Information("Legendary Binary Path {Path}", LegendaryBinaryPath);
+        _installQueue = new Queue<InstallItem>();
+        CurrentInstall = null; ;
+        _log = log;
+        _legendaryBinaryPath = legendaryBinaryPath;
     }
 
     public static void AddToQueue(InstallItem item)
@@ -84,8 +81,8 @@ public static class InstallManager
         if (item == null)
             return;
 
-        Log.Information("AddToQueue: Adding new Install to queue {Name} Action {Action}", item.AppName, item.Action);
-        InstallQueue.Enqueue(item);
+        _log.Information("AddToQueue: Adding new Install to queue {Name} Action {Action}", item.AppName, item.Action);
+        _installQueue.Enqueue(item);
         if (CurrentInstall == null)
             ProcessNext();
     }
@@ -94,14 +91,14 @@ public static class InstallManager
     {
         try
         {
-            if (CurrentInstall != null || InstallQueue.Count <= 0) return;
+            if (CurrentInstall != null || _installQueue.Count <= 0) return;
 
-            CurrentInstall = InstallQueue.Dequeue();
-            Log.Information("ProcessNext: Processing {Action} of {AppName}. Game Location {Location} ",
+            CurrentInstall = _installQueue.Dequeue();
+            _log.Information("ProcessNext: Processing {Action} of {AppName}. Game Location {Location} ",
                 CurrentInstall.Action, CurrentInstall.AppName, CurrentInstall.Location);
 
             CurrentInstall.Process = new Process();
-            CurrentInstall.Process.StartInfo.FileName = LegendaryBinaryPath;
+            CurrentInstall.Process.StartInfo.FileName = _legendaryBinaryPath;
             CurrentInstall.Process.StartInfo.Arguments =
                 $"{CurrentInstall.Action.ToString().ToLower()} {CurrentInstall.AppName} --base-path {CurrentInstall.Location} --debug -y";
             CurrentInstall.Process.StartInfo.RedirectStandardOutput = true;
@@ -112,7 +109,7 @@ public static class InstallManager
             CurrentInstall.Process.OutputDataReceived += (_, e) => UpdateProgress(e.Data);
             CurrentInstall.Process.ErrorDataReceived += (_, e) => UpdateProgress(e.Data);
 
-            Log.Information(
+            _log.Information(
                 "ProcessNext: Starting Legendary Process for {Action} {AppName} with arguments {Argument}",
                 CurrentInstall.Action,
                 CurrentInstall.AppName,
@@ -125,7 +122,7 @@ public static class InstallManager
         }
         catch (Exception ex)
         {
-            Log.Error("ProcessNext: {Exception}", ex);
+            _log.Error("ProcessNext: {Exception}", ex);
             if (CurrentInstall != null)
             {
                 CurrentInstall.Status = ActionStatus.Failed;
@@ -145,14 +142,14 @@ public static class InstallManager
             if (updateString == null || CurrentInstall == null)
                 return;
 
-            Log.Information("UpdateProgress: Output received from legendary {Output}", updateString);
+            _log.Information("UpdateProgress: Output received from legendary {Output}", updateString);
 
             // Update State to Processing just before legendary sends download progress
             if (Regex.Match(updateString,
                 @"\[DLManager\] INFO: Starting file writing worker...").Success)
             {
                 CurrentInstall.Status = ActionStatus.Processing;
-                Log.Information("Started {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
+                _log.Information("Started {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
                 InstallationStatusChanged?.Invoke(CurrentInstall);
                 return;
             }
@@ -167,7 +164,7 @@ public static class InstallManager
                     TimeSpan.ParseExact(match.Groups[2].Value, @"hh\:mm\:ss", CultureInfo.InvariantCulture);
                 CurrentInstall.Eta =
                     TimeSpan.ParseExact(match.Groups[3].Value, @"hh\:mm\:ss", CultureInfo.InvariantCulture);
-                Log.Information("UpdateProgress: Progress: {Progress} RunningTime: {RunningTime} Eta: {Eta}",
+                _log.Information("UpdateProgress: Progress: {Progress} RunningTime: {RunningTime} Eta: {Eta}",
                     CurrentInstall.ProgressPercentage, CurrentInstall.RunningTime, CurrentInstall.Eta);
                 InstallProgressUpdate?.Invoke(CurrentInstall);
                 return;
@@ -230,7 +227,7 @@ public static class InstallManager
                 Regex.Match(updateString, @"\[cli\] INFO: Game has been uninstalled.").Success ||
                 Regex.Match(updateString, @"\[cli\] INFO: Finished.").Success)
             {
-                Log.Information("{Action} of {AppName} completed successfully", CurrentInstall.Action,
+                _log.Information("{Action} of {AppName} completed successfully", CurrentInstall.Action,
                     CurrentInstall.AppName);
 
                 CurrentInstall.Status = ActionStatus.Success;
@@ -246,7 +243,7 @@ public static class InstallManager
             // Cancelling
             if (Regex.Match(updateString, @"\[DLManager\] WARNING: Immediate exit requested!").Success)
             {
-                Log.Information("Cancelling {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
+                _log.Information("Cancelling {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
 
                 CurrentInstall.Status = ActionStatus.Cancelling;
                 InstallationStatusChanged?.Invoke(CurrentInstall);
@@ -260,7 +257,7 @@ public static class InstallManager
                 .Success
                 )
             {
-                Log.Information("Cancelled {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
+                _log.Information("Cancelled {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
 
                 CurrentInstall.Status = ActionStatus.Cancelled;
                 InstallHistory.Add(CurrentInstall);
@@ -276,7 +273,7 @@ public static class InstallManager
             if (match.Success)
             {
                 CurrentInstall.TotalWriteSizeMb = double.Parse(match.Groups[1].Value);
-                Log.Information("Install size of {AppName} is {Size} MiB", CurrentInstall.AppName,
+                _log.Information("Install size of {AppName} is {Size} MiB", CurrentInstall.AppName,
                     match.Groups[1].Value);
                 InstallationStatusChanged?.Invoke(CurrentInstall);
                 return;
@@ -288,14 +285,14 @@ public static class InstallManager
             if (match.Success)
             {
                 CurrentInstall.TotalDownloadSizeMb = double.Parse(match.Groups[1].Value);
-                Log.Information("Download size of {AppName} is {Size} MiB", CurrentInstall.AppName,
+                _log.Information("Download size of {AppName} is {Size} MiB", CurrentInstall.AppName,
                     match.Groups[1].Value);
                 InstallationStatusChanged?.Invoke(CurrentInstall);
             }
         }
         catch (Exception ex)
         {
-            Log.Error("UpdateProgress: {Exception}", ex);
+            _log.Error("UpdateProgress: {Exception}", ex);
             if (CurrentInstall != null) CurrentInstall.Status = ActionStatus.Failed;
         }
     }
@@ -306,7 +303,7 @@ public static class InstallManager
         if (CurrentInstall != null && CurrentInstall.AppName == gameName)
             item = CurrentInstall;
         else
-            item = InstallQueue.FirstOrDefault(r => r.AppName == gameName);
+            item = _installQueue.FirstOrDefault(r => r.AppName == gameName);
         return item;
     }
 
@@ -314,10 +311,10 @@ public static class InstallManager
     {
         if (CurrentInstall == null || CurrentInstall.AppName != gameName)
             return;
+        _log.Information("Cancelling {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
         CurrentInstall.Status = ActionStatus.Cancelling;
         InstallationStatusChanged?.Invoke(CurrentInstall);
-        Log.Information("Cancelling {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
-
+        
         var psi = new ProcessStartInfo
         {
             FileName = "powershell.exe",
@@ -331,6 +328,8 @@ public static class InstallManager
         proc.WaitForExit();
         proc.Dispose();
 
+        _log.Information("CancelInstall: Cancelled {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
+
         CurrentInstall.Status = ActionStatus.Cancelled;
         InstallHistory.Add(CurrentInstall);
         InstallationStatusChanged?.Invoke(CurrentInstall);
@@ -342,7 +341,7 @@ public static class InstallManager
     public static List<string> GetQueueItemNames()
     {
         var queueItemsName = new List<string>();
-        foreach (var item in InstallQueue)
+        foreach (var item in _installQueue)
         {
             queueItemsName.Add(item.AppName);
         }
