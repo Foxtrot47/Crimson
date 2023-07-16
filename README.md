@@ -1,4 +1,4 @@
-# WinUiApp
+# Epsilon
 
 **Highly WIP**
 

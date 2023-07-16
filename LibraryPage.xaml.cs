@@ -1,14 +1,14 @@
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using Epsilon.Core;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
-using WinUiApp.Core;
 
-namespace WinUiApp
+namespace Epsilon
 {
     /// <summary>
     /// Library Page which shows list of currently installed games
@@ -19,7 +19,7 @@ namespace WinUiApp
         public bool LoadingFinished = false;
 
         // Get logger instance from MainWindow window class
-        private readonly ILogger _log = ((MainWindow)Window.Current).Log;
+        private readonly ILogger _log = ((Epsilon.MainWindow)Window.Current).Log;
 
         public LibraryPage()
         {

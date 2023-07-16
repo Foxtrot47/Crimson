@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Serilog;
 
-namespace WinUiApp.Core;
+namespace Epsilon.Core;
 
 public enum ActionType
 {
@@ -314,7 +314,7 @@ public static class InstallManager
         _log.Information("Cancelling {Action} of {AppName}", CurrentInstall.Action, CurrentInstall.AppName);
         CurrentInstall.Status = ActionStatus.Cancelling;
         InstallationStatusChanged?.Invoke(CurrentInstall);
-        
+
         var psi = new ProcessStartInfo
         {
             FileName = "powershell.exe",

@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using Windows.Storage;
 
-namespace WinUiApp.Core;
+namespace Epsilon.Core;
 
 public class Legendary
 {
@@ -218,23 +218,23 @@ public class Legendary
                 Log.Information("UpdateAuthStatus: LoginWindowOpen");
                 break;
             default:
-            {
-                if (loginRegex.Match(updateString).Success)
                 {
-                    AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoggedIn);
-                    Log.Information("UpdateAuthStatus: Logged in");
+                    if (loginRegex.Match(updateString).Success)
+                    {
+                        AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoggedIn);
+                        Log.Information("UpdateAuthStatus: Logged in");
+                    }
+                    else if (updateString == "[cli] ERROR: WebView login attempt failed, please see log for details.")
+                    {
+                        AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoginFailed);
+                        Log.Warning("UpdateAuthStatus: LoginFailed");
+                    }
+                    else
+                    {
+                        Log.Information("UpdateAuthStatus: {updateString}", updateString);
+                    }
+                    break;
                 }
-                else if (updateString == "[cli] ERROR: WebView login attempt failed, please see log for details.")
-                {
-                    AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoginFailed);
-                    Log.Warning("UpdateAuthStatus: LoginFailed");
-                }
-                else
-                {
-                    Log.Information("UpdateAuthStatus: {updateString}", updateString);
-                }
-                break;
-            }
         }
     }
 

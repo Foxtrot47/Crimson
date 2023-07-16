@@ -7,15 +7,15 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
-using WinUiApp.Core;
 using WinRT;
 using System.Threading.Tasks;
-using static WinUiApp.Core.Legendary;
+using static Epsilon.Core.Legendary;
 using static System.Net.WebRequestMethods;
 using Windows.Storage;
 using Serilog;
+using Epsilon.Core;
 
-namespace WinUiApp;
+namespace Epsilon;
 
 /// <summary>
 ///     Main Window
@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Title = "Epsilon";
         IsLoggedIn = false;
         Task.Run(async () =>
         {

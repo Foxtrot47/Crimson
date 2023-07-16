@@ -16,9 +16,9 @@ using Windows.Foundation;
 using Windows.Foundation.Collections;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
-using WinUiApp.Core;
+using Epsilon.Core;
 
-namespace WinUiApp
+namespace Epsilon
 {
     /// <summary>
     /// Page where we list current and past downloads

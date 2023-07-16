@@ -8,7 +8,7 @@ using System.Timers;
 using Serilog;
 using Windows.Storage;
 
-namespace WinUiApp.Core;
+namespace Epsilon.Core;
 
 public static class StateManager
 {

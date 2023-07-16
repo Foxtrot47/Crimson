@@ -1,10 +1,7 @@
+using Epsilon.Core;
 using Microsoft.UI.Xaml;
-using Microsoft.Extensions.Logging;
-using Windows.ApplicationModel.Core;
-using WinUiApp.Core;
-using Windows.UI.Core;
 
-namespace WinUiApp
+namespace Epsilon
 {
     /// <summary>
     /// Provides application-specific behavior to supplement the default Application class.
@@ -27,7 +24,7 @@ namespace WinUiApp
         /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            m_window = new MainWindow();
+            m_window = new Epsilon.MainWindow();
             m_window.Activate();
             m_window.Closed += OnExit;
         }

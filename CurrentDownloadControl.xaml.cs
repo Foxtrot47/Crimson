@@ -1,9 +1,9 @@
 using System;
+using Epsilon.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using WinUiApp.Core;
 
-namespace WinUiApp;
+namespace Epsilon;
 
 public sealed partial class CurrentDownloadControl : UserControl
 {

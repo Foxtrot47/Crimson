@@ -1,14 +1,13 @@
+using System;
+using System.Linq;
+using Epsilon.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
-using System;
-using System.Linq;
-using System.Threading.Tasks;
 using Serilog;
-using WinUiApp.Core;
 
-namespace WinUiApp
+namespace Epsilon
 {
     /// <summary>
     /// Page for Showing Details of individual game and allowing play
@@ -21,7 +20,7 @@ namespace WinUiApp
         {
             this.InitializeComponent();
         }
-        private readonly ILogger _log = ((MainWindow)Window.Current).Log;
+        private readonly ILogger _log = ((Epsilon.MainWindow)Window.Current).Log;
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             Game = StateManager.GetGameInfo((string)e.Parameter);

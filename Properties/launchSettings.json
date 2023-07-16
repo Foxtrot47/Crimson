@@ -1,9 +1,9 @@
 {
   "profiles": {
-    "WinUiApp (Package)": {
+    "Epsilon (Package)": {
       "commandName": "MsixPackage"
     },
-    "WinUiApp (Unpackaged)": {
+    "Epsilon (Unpackaged)": {
       "commandName": "Project"
     }
   }

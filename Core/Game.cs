@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 
-namespace WinUiApp.Core;
+namespace Epsilon.Core;
 
 // Make the game info class implement INotifyPropertyChanged interface
 public class Game : INotifyPropertyChanged
@@ -134,7 +134,7 @@ public class Game : INotifyPropertyChanged
             OnPropertyChanged(nameof(DiskSizeMiB));
         }
     }
-    
+
     private string _version;
 
     public string Version
