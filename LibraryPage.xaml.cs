@@ -19,7 +19,7 @@ namespace Epsilon
         public bool LoadingFinished = false;
 
         // Get logger instance from MainWindow window class
-        private readonly ILogger _log = ((Epsilon.MainWindow)Window.Current).Log;
+        private readonly ILogger _log = ((App)Application.Current).Log;
 
         public LibraryPage()
         {

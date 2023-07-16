@@ -1,5 +1,6 @@
 using Epsilon.Core;
 using Microsoft.UI.Xaml;
+using Serilog;
 
 namespace Epsilon
 {
@@ -8,6 +9,7 @@ namespace Epsilon
     /// </summary>
     public partial class App : Application
     {
+        public ILogger Log => ((Epsilon.MainWindow)m_window).Log;
         /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
         /// executed, and as such is the logical equivalent of main() or WinMain().

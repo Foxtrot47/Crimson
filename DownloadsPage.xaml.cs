@@ -28,7 +28,7 @@ namespace Epsilon
         private DownloadManagerItem _currentInstallItem = new DownloadManagerItem();
         private ObservableCollection<DownloadManagerItem> queueItems = new();
         private ObservableCollection<DownloadManagerItem> historyItems = new();
-        private readonly ILogger _log = ((MainWindow)Window.Current).Log;
+        private readonly ILogger _log = ((App)Application.Current).Log;
         public DownloadsPage()
         {
             this.InitializeComponent();

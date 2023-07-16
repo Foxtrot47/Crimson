@@ -16,11 +16,12 @@ namespace Epsilon
     public sealed partial class GameInfoPage : Page
     {
         public Game Game { get; set; }
+
         public GameInfoPage()
         {
             this.InitializeComponent();
         }
-        private readonly ILogger _log = ((Epsilon.MainWindow)Window.Current).Log;
+        private readonly ILogger _log = ((App)Application.Current).Log;
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             Game = StateManager.GetGameInfo((string)e.Parameter);
