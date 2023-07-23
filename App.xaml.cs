@@ -38,5 +38,10 @@ namespace Epsilon
         }
 
         private Window m_window;
+
+        public Window GetWindow()
+        {
+            return m_window;
+        }
     }
 }

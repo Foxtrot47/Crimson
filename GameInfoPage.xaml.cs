@@ -1,11 +1,14 @@
 using System;
 using System.Linq;
+using Windows.Storage.AccessCache;
+using Windows.Storage.Pickers;
 using Epsilon.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using Serilog;
+using WinRT.Interop;
 
 namespace Epsilon
 {
@@ -40,7 +43,12 @@ namespace Epsilon
 
         }
 
-        private void DownloadButtonClick(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Check Game Status and update UI accordingly
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private async void DownloadButtonClick(object sender, RoutedEventArgs e)
         {
             try
             {
@@ -53,13 +61,29 @@ namespace Epsilon
                     return;
                 }
 
-                PrimaryActionButton.IsEnabled = false;
-                PrimaryActionButtonText.Text = "Pending...";
-                DownloadProgressRing.Visibility = Visibility.Visible;
-                DownloadProgressRing.IsIndeterminate = true;
-                PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
-                StateManager.AddToInstallationQueue(Game.Name, ActionType.Install, @"E:\Games\");
-                _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.Title);
+                ConfirmInstallTitleText.Text = Game.Title;
+                ConfirmInstallImage.Source = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(Game.Images.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
+                InstallLocationText.Text = "C:\\Games\\";
+                ConfirmInstallDialog.Width = 4000;
+                ConfirmInstallDialog.MaxWidth = 4000;
+                var downloadResult = await ConfirmInstallDialog.ShowAsync();
+
+                switch (downloadResult.ToString())
+                {
+                    case "Primary":
+                        PrimaryActionButton.IsEnabled = false;
+                        PrimaryActionButtonText.Text = "Pending...";
+                        DownloadProgressRing.Visibility = Visibility.Visible;
+                        DownloadProgressRing.IsIndeterminate = true;
+                        PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
+                        StateManager.AddToInstallationQueue(Game.Name, ActionType.Install, InstallLocationText.Text);
+                        _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.Title);
+                        break;
+                    case "Secondary":
+                        // Nothing here for now
+                        break;
+                }
+
             }
             catch (Exception ex)
             {
@@ -69,9 +93,14 @@ namespace Epsilon
             }
         }
 
-        // Handing Installation State Change
-        // This function is never run on UI Thread
-        // So always make sure to use Dispatcher Queue to update UI thread
+        /// <summary>
+        /// Handing Installation State Change.
+        /// <br/>
+        /// This function is never run on UI Thread.
+        /// <br/>
+        /// So always make sure to use Dispatcher Queue to update UI thread
+        /// </summary>
+        /// <param name="installItem"></param>
         private void HandleInstallationStatusChanged(InstallItem installItem)
         {
             try
@@ -174,6 +203,42 @@ namespace Epsilon
 
             // Call the base implementation
             base.OnNavigatedFrom(e);
+        }
+
+        private void ToggleModalButton_OnClick(object sender, RoutedEventArgs e)
+        {
+            throw new NotImplementedException();
+        }
+
+        /// <summary>
+        ///  Handles the Click event of the InstallLocationChangeButton control.
+        /// </summary>
+        private async void InstallLocationChangeButton_OnClick(object sender, RoutedEventArgs e)
+        {
+            // Create a folder picker
+            var openPicker = new FolderPicker();
+
+            var window = ((App)Application.Current).GetWindow();
+            var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+
+            // Initialize the folder picker with the window handle (HWND).
+            InitializeWithWindow.Initialize(openPicker, hWnd);
+
+            // Set options for your folder picker
+            openPicker.SuggestedStartLocation = PickerLocationId.Desktop;
+            openPicker.FileTypeFilter.Add("*");
+
+            // Open the picker for the user to pick a folder
+            var folder = await openPicker.PickSingleFolderAsync();
+            if (folder == null) return;
+            StorageApplicationPermissions.FutureAccessList.AddOrReplace("PickedFolderToken", folder);
+            InstallLocationText.Text = folder.Path;
+
+        }
+
+        private void ConfirmInstallCloseButton_OnClick(object sender, RoutedEventArgs e)
+        {
+            ConfirmInstallDialog.Hide();
         }
     }
 }
