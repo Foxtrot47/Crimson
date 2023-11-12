@@ -111,16 +111,8 @@
             </StackPanel>
         </Grid>
 
-        <ContentDialog x:Name="ConfirmInstallDialog" MaxWidth="4000">
-
-            <ContentDialog.Resources>
-                <ResourceDictionary>
-                    <x:Double x:Key="ContentDialogMaxWidth">4000</x:Double>
-                </ResourceDictionary>
-            </ContentDialog.Resources>
-
-            <StackPanel Spacing="30">
-
+        <ContentDialog x:Name="ConfirmInstallDialog">
+            <StackPanel Spacing="30" HorizontalAlignment="Stretch">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />

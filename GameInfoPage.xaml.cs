@@ -64,7 +64,6 @@ namespace Epsilon
                 ConfirmInstallTitleText.Text = Game.Title;
                 ConfirmInstallImage.Source = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(Game.Images.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
                 InstallLocationText.Text = "C:\\Games\\";
-                ConfirmInstallDialog.Width = 4000;
                 ConfirmInstallDialog.MaxWidth = 4000;
                 var downloadResult = await ConfirmInstallDialog.ShowAsync();
 
