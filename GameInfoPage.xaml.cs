@@ -67,22 +67,6 @@ namespace Epsilon
                 ConfirmInstallDialog.MaxWidth = 4000;
                 var downloadResult = await ConfirmInstallDialog.ShowAsync();
 
-                switch (downloadResult.ToString())
-                {
-                    case "Primary":
-                        PrimaryActionButton.IsEnabled = false;
-                        PrimaryActionButtonText.Text = "Pending...";
-                        DownloadProgressRing.Visibility = Visibility.Visible;
-                        DownloadProgressRing.IsIndeterminate = true;
-                        PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
-                        StateManager.AddToInstallationQueue(Game.Name, ActionType.Install, InstallLocationText.Text);
-                        _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.Title);
-                        break;
-                    case "Secondary":
-                        // Nothing here for now
-                        break;
-                }
-
             }
             catch (Exception ex)
             {
@@ -238,6 +222,17 @@ namespace Epsilon
         private void ConfirmInstallCloseButton_OnClick(object sender, RoutedEventArgs e)
         {
             ConfirmInstallDialog.Hide();
+        }
+        private async void PrimaryButton_Click(object sender, RoutedEventArgs e)
+        {
+            ConfirmInstallDialog.Hide();
+            PrimaryActionButton.IsEnabled = false;
+            PrimaryActionButtonText.Text = "Pending...";
+            DownloadProgressRing.Visibility = Visibility.Visible;
+            DownloadProgressRing.IsIndeterminate = true;
+            PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
+            StateManager.AddToInstallationQueue(Game.Name, ActionType.Install, InstallLocationText.Text);
+            _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.Title);
         }
     }
 }

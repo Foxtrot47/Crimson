@@ -190,8 +190,8 @@
 
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="1" HorizontalAlignment="Right">
-                        <Button Content="Import" FontSize="20" />
-                        <Button Style="{ThemeResource AccentButtonStyle}" FontSize="20" Content="Download"/>
+                        <Button IsEnabled="False" Content="Import" FontSize="20" />
+                        <Button x:Name="PrimaryButton"  Style="{ThemeResource AccentButtonStyle}" FontSize="20" Content="Download" Click="PrimaryButton_Click" />
                     </StackPanel>
                 </Grid>
             </StackPanel>
