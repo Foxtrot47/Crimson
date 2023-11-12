@@ -104,6 +104,11 @@ public sealed partial class MainWindow : Window
                 LoginModalDescription.Text = "Please switch to the opened window";
                 break;
 
+            case AuthenticationStatus.OverlaySetup:
+                LoginModalTitle.Text = "Setting up Epic Online Service Overlay";
+                LoginModalDescription.Text = "Please wait...";
+                break;
+
             case AuthenticationStatus.LoggedIn:
                 Log.Information("Logged in");
                 LoginModalTitle.Text = "Login Success";

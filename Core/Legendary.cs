@@ -206,6 +206,8 @@ public class Legendary
         switch (updateString)
         {
             case "[cli] INFO: Stored credentials are still valid, if you wish to switch to a different account, run \"legendary auth --delete\" and try again.":
+                AuthenticationStatusChanged.Invoke(AuthenticationStatus.OverlaySetup);
+                InstallEoSOverlay();
                 AuthenticationStatusChanged.Invoke(AuthenticationStatus.LoggedIn);
                 Log.Information("UpdateAuthStatus: Logged in");
                 break;
@@ -289,6 +291,38 @@ public class Legendary
             return null;
         }
     }
+    public void InstallEoSOverlay()
+    {
+        try
+        {
+            Log.Information("InstallEoSOverlay: Initializing");
+            var process = new Process();
+            process.StartInfo.FileName = _legendaryBinaryPath;
+            process.StartInfo.Arguments = "eos-overlay install -y";
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+            process.StartInfo.RedirectStandardInput = true;
+            process.StartInfo.CreateNoWindow = true;
+
+            process.ErrorDataReceived += (_, e) => CheckOverlayInstallStatus(e.Data);
+            process.Start();
+            process.BeginErrorReadLine();
+            process.WaitForExit();
+            var output = process.StandardOutput.ReadToEnd();
+            Log.Information("InstallEoSOverlay: Finished");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "CheckAuthentication: Error");
+            if (ex.StackTrace != null) Log.Error(ex.StackTrace);
+        }
+    }
+    public void CheckOverlayInstallStatus(string updateString)
+    {
+        if (updateString == null || AuthenticationStatusChanged == null) return;
+
+        Debug.WriteLine(updateString);
+    }
 
     internal void StartGame(string name)
     {
@@ -319,6 +353,7 @@ public class Legendary
         LoginWindowOpen,
         LoggingIn,
         LoggedIn,
-        LoginFailed
+        LoginFailed,
+        OverlaySetup
     }
 }
