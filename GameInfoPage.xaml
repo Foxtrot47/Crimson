@@ -135,6 +135,10 @@
                     </StackPanel>
 
                     <Button
+                        Margin="12,0,0,0"
+                        Width="48"
+                        Height="34"
+                        VerticalAlignment="Top"
                         x:Name="ConfirmInstallCloseButton"
                         Click="ConfirmInstallCloseButton_OnClick"  Grid.Column="2">
 
@@ -185,9 +189,9 @@
                         <TextBlock FontSize="18" Text="disk space required" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="1">
+                    <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="1" HorizontalAlignment="Right">
                         <Button Content="Import" FontSize="20" />
-                        <Button Style="{StaticResource AccentButtonStyle}" FontSize="20" Content="Download"/>
+                        <Button Style="{ThemeResource AccentButtonStyle}" FontSize="20" Content="Download"/>
                     </StackPanel>
                 </Grid>
             </StackPanel>
