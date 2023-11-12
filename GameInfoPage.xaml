@@ -125,6 +125,7 @@
                         <StackPanel Orientation="Vertical">
                             <TextBlock 
                                 x:Name="ConfirmInstallTitleText" 
+                                MaxWidth="500"
                                 Style="{StaticResource TitleTextBlockStyle}" 
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}">Download Options</TextBlock>
