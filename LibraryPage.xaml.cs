@@ -83,14 +83,14 @@ namespace Crimson
 
         private void GameButton_Click(object sender, RoutedEventArgs e)
         {
-             var clickedButton = (Button)sender;
-             var game = (LibraryItem)clickedButton.DataContext;
-             var navControl = FindParentFrame(this);
-            
-             if (navControl == null)
-                 return;
-             
-             navControl.Navigate(typeof(GameInfoPage), game.Name);
+            var clickedButton = (Button)sender;
+            var game = (LibraryItem)clickedButton.DataContext;
+            var navControl = FindParentFrame(this);
+
+            if (navControl == null)
+                return;
+
+            navControl.Navigate(typeof(GameInfoPage), game.Name);
         }
 
         private static Frame FindParentFrame(DependencyObject child)

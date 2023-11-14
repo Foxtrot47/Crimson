@@ -66,7 +66,7 @@
                     </Style>
                 </ListView.ItemContainerStyle>
             </ListView>
-            
+
             <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Previous Installs</TextBlock>
             <ListView x:Name="HistoryItemsList" ItemsSource="{x:Bind historyItems}">
                 <ListView.ItemTemplate>
