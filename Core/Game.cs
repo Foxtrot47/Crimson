@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 
-namespace Epsilon.Core;
+namespace Crimson.Core;
 
 // Make the game info class implement INotifyPropertyChanged interface
 public class Game : INotifyPropertyChanged

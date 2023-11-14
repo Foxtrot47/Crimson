@@ -14,11 +14,11 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
+using Crimson.Core;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
-using Epsilon.Core;
 
-namespace Epsilon
+namespace Crimson
 {
     /// <summary>
     /// Page where we list current and past downloads

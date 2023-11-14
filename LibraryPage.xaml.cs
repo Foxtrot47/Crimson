@@ -1,14 +1,14 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using Epsilon.Core;
+using Crimson.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
 
-namespace Epsilon
+namespace Crimson
 {
     /// <summary>
     /// Library Page which shows list of currently installed games

@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using Windows.Storage;
 
-namespace Epsilon.Core;
+namespace Crimson.Core;
 
 public class Legendary
 {

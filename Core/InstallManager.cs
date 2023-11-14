@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Serilog;
 
-namespace Epsilon.Core;
+namespace Crimson.Core;
 
 public enum ActionType
 {

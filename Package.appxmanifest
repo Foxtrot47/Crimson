@@ -7,12 +7,12 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="Epsilon"
+    Name="Crimson"
     Publisher="CN=foxtrot47"
     Version="1.0.0.0" />
 
   <Properties>
-    <DisplayName>Epsilon</DisplayName>
+    <DisplayName>Crimson</DisplayName>
     <PublisherDisplayName>Joyal Jose</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -31,7 +31,7 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="Epsilon"
+        DisplayName="Crimson"
         Description="A simple launcher for Epic Games made with WinUI3"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
@@ -44,5 +44,6 @@
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
+    <Capability Name="internetClient"/>
   </Capabilities>
 </Package>

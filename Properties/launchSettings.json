@@ -1,9 +1,9 @@
 {
   "profiles": {
-    "Epsilon (Package)": {
+    "Crimson (Package)": {
       "commandName": "MsixPackage"
     },
-    "Epsilon (Unpackaged)": {
+    "Crimson (Unpackaged)": {
       "commandName": "Project"
     }
   }

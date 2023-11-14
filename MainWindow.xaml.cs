@@ -9,13 +9,13 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using WinRT;
 using System.Threading.Tasks;
-using static Epsilon.Core.Legendary;
+using static Crimson.Core.Legendary;
 using static System.Net.WebRequestMethods;
 using Windows.Storage;
+using Crimson.Core;
 using Serilog;
-using Epsilon.Core;
 
-namespace Epsilon;
+namespace Crimson;
 
 /// <summary>
 ///     Main Window
@@ -29,7 +29,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        Title = "Epsilon";
+        Title = "Crimson";
         IsLoggedIn = false;
         Task.Run(async () =>
         {
@@ -87,29 +87,29 @@ public sealed partial class MainWindow : Window
             ContentFrame.Navigate(navPageType, null, transitionInfo);
     }
 
-    private void UpdateUIBasedOnAuthenticationStatus(AuthenticationStatus authStatus)
+    private void UpdateUIBasedOnAuthenticationStatus(Legendary.AuthenticationStatus authStatus)
     {
         LoginModal.Visibility = Visibility.Visible;
         Log.Information($"Auth status: {authStatus}");
 
         switch (authStatus)
         {
-            case AuthenticationStatus.Checking:
+            case Legendary.AuthenticationStatus.Checking:
                 LoginModalTitle.Text = "Logging in to Epic Games Store";
                 LoginModalDescription.Text = "Please wait...";
                 break;
 
-            case AuthenticationStatus.LoginWindowOpen:
+            case Legendary.AuthenticationStatus.LoginWindowOpen:
                 LoginModalTitle.Text = "Logging in to Epic Games Store";
                 LoginModalDescription.Text = "Please switch to the opened window";
                 break;
 
-            case AuthenticationStatus.OverlaySetup:
+            case Legendary.AuthenticationStatus.OverlaySetup:
                 LoginModalTitle.Text = "Setting up Epic Online Service Overlay";
                 LoginModalDescription.Text = "Please wait...";
                 break;
 
-            case AuthenticationStatus.LoggedIn:
+            case Legendary.AuthenticationStatus.LoggedIn:
                 Log.Information("Logged in");
                 LoginModalTitle.Text = "Login Success";
                 LoginModalDescription.Text = "Please wait...";
@@ -125,14 +125,14 @@ public sealed partial class MainWindow : Window
                 Log.Information("Opening Library Page");
                 break;
 
-            case AuthenticationStatus.LoginFailed:
+            case Legendary.AuthenticationStatus.LoginFailed:
                 LoginModalTitle.Text = "Login failed";
                 LoginModalDescription.Text = "Please try again";
                 break;
         }
     }
 
-    private void HandleAuthenticationChanges(AuthenticationStatus authStatus)
+    private void HandleAuthenticationChanges(Legendary.AuthenticationStatus authStatus)
     {
         DispatcherQueue.TryEnqueue(() => UpdateUIBasedOnAuthenticationStatus(authStatus));
     }

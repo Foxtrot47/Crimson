@@ -1,15 +1,15 @@
-using Epsilon.Core;
+using Crimson.Core;
 using Microsoft.UI.Xaml;
 using Serilog;
 
-namespace Epsilon
+namespace Crimson
 {
     /// <summary>
     /// Provides application-specific behavior to supplement the default Application class.
     /// </summary>
     public partial class App : Application
     {
-        public ILogger Log => ((Epsilon.MainWindow)m_window).Log;
+        public ILogger Log => ((MainWindow)m_window).Log;
         /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
         /// executed, and as such is the logical equivalent of main() or WinMain().
@@ -26,7 +26,7 @@ namespace Epsilon
         /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            m_window = new Epsilon.MainWindow();
+            m_window = new MainWindow();
             m_window.Activate();
             m_window.Closed += OnExit;
         }

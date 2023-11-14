@@ -62,9 +62,9 @@
     <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
     <GenerateTestArtifacts>True</GenerateTestArtifacts>
     <AppxBundlePlatforms>x64</AppxBundlePlatforms>
-    <AppInstallerUri>E:\Software\Projects\Epsilon\Package</AppInstallerUri>
+    <AppInstallerUri>E:\Software\Projects\Crimson\Package</AppInstallerUri>
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
-    <EntryPointProjectUniqueName>..\Epsilon.csproj</EntryPointProjectUniqueName>
+    <EntryPointProjectUniqueName>..\Crimson.csproj</EntryPointProjectUniqueName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <AppxBundle>Always</AppxBundle>
@@ -123,6 +123,9 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.756" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Epsilon.csproj" />
+    <ProjectReference Include="..\Crimson.csproj">
+      <Project>{07489315-3d4e-4811-9716-0ae7019aae6e}</Project>
+      <Name>Crimson</Name>
+    </ProjectReference>
   </ItemGroup>
 </Project>
