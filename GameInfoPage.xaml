@@ -80,7 +80,7 @@
                         </StackPanel>
                     </Button>
 
-                    <DropDownButton>
+                    <DropDownButton IsEnabled="False">
                         <DropDownButton.Content>
                             <StackPanel Orientation="Horizontal" Spacing="10" Padding="10,5,10,5">
                                 <FontIcon Glyph="&#xE713;" />
@@ -189,7 +189,7 @@
                         <TextBlock FontSize="18" Text="disk space required" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="1" HorizontalAlignment="Right">
+                    <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="1" HorizontalAlignment="Right" Margin="20,0,0,0">
                         <Button IsEnabled="False" Content="Import" FontSize="20" />
                         <Button x:Name="PrimaryButton"  Style="{ThemeResource AccentButtonStyle}" FontSize="20" Content="Download" Click="PrimaryButton_Click" />
                     </StackPanel>
