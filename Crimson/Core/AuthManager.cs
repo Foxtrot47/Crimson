@@ -119,6 +119,84 @@ public static class AuthManager
         }
     }
 
+    // <summary>
+    // Check if the user is logged in or not
+    // </summary>
+    public static async Task<AuthenticationStatus> CheckAuthStatus()
+    {
+        try
+        {
+            _authenticationStatus = AuthenticationStatus.Checking;
+            OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
+
+            if (!File.Exists(_userDataFile))
+            {
+                _authenticationStatus = AuthenticationStatus.LoggedOut;
+                OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
+
+                // Create the file on exit
+                await SaveAuthData(new UserData());
+                return _authenticationStatus;
+            }
+
+            using FileStream fileStream = File.Open(_userDataFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using StreamReader streamReader = new(fileStream);
+            var jsonString = await streamReader.ReadToEndAsync();
+            var userData = JsonSerializer.Deserialize<UserData>(jsonString);
+
+            if (userData.AccessToken == null)
+            {
+                _log.Error("CheckAuthStatus: Failed to parse user data from string");
+                throw new Exception("CheckAuthStatus: Failed to parse user data");
+            }
+
+            userData.AccessToken = KeyManager.DecryptString(userData.AccessToken);
+            userData.RefreshToken = KeyManager.DecryptString(userData.RefreshToken);
+
+            // check if the access token expiry date is in the past and if it is then refresh the token calling another method
+            var expiryDate = DateTime.Parse(userData.ExpiresAt);
+            if (expiryDate < DateTime.Now)
+            {
+                _log.Information("CheckAuthStatus: Access token expired, refreshing");
+                var newAccessToken = await RefreshToken(userData);
+                userData.AccessToken = newAccessToken;
+                await SaveAuthData(userData);
+            }
+            else
+            {
+                _log.Information("CheckAuthStatus: Access token is still valid");
+            }
+
+            // check if the refresh token expiry date is in the past and if it is then log the user out
+            var refreshExpiryDate = DateTime.Parse(userData.RefreshExpiresAt);
+            if (refreshExpiryDate < DateTime.Now)
+            {
+                _log.Information("CheckAuthStatus: Refresh token expired, logging out");
+                _authenticationStatus = AuthenticationStatus.LoggedOut;
+                OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
+                return _authenticationStatus;
+            }
+
+
+            _authenticationStatus = AuthenticationStatus.LoggedIn;
+            OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
+            return _authenticationStatus;
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"CheckAuthStatus: {ex}");
+            _authenticationStatus = AuthenticationStatus.LoggedOut;
+            OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
+            return _authenticationStatus;
+        }
+    }
+
+    private static async Task<string> RefreshToken(UserData data)
+    {
+        return "";
+    }
+
+
     // Wrap event invocations inside a protected virtual method
     // to allow derived classes to override the event invocation behavior.
     // Wrap event invocations inside a private static method.
@@ -130,6 +208,7 @@ public static class AuthManager
 
 public enum AuthenticationStatus
 {
+    Checking,
     LoggedOut,
     LoggedIn,
     LoginFailed

@@ -6,11 +6,8 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
-using Microsoft.UI.Xaml.Navigation;
 using WinRT;
 using System.Threading.Tasks;
-using static Crimson.Core.Legendary;
-using static System.Net.WebRequestMethods;
 using Windows.Storage;
 using Crimson.Core;
 using Serilog;
@@ -37,17 +34,15 @@ public sealed partial class MainWindow : Window
             var logFilePath = $@"{localFolder.Path}\logs\{DateTime.Now:yyyy-MM-dd}.txt";
             Log = new LoggerConfiguration().WriteTo.File(logFilePath).CreateLogger();
             Log.Information("Starting up");
+            AuthManager.Initialize(Log);
 
-            var res = await Legendary.DownloadBinaryAsync(localFolder, Log);
-            _legendaryBinaryPath = res.Path;
-            var legendaryInstance = new Legendary(_legendaryBinaryPath, Log);
-            legendaryInstance.CheckAuthentication();
-            legendaryInstance.AuthenticationStatusChanged += HandleAuthenticationChanges;
+            AuthManager.AuthStatusChanged += AuthStatusChangedHandler;
+            await AuthManager.CheckAuthStatus();
         });
-
     }
+
     private void navControl_BackRequested(NavigationView sender,
-        NavigationViewBackRequestedEventArgs args)
+    NavigationViewBackRequestedEventArgs args)
     {
         if (!ContentFrame.CanGoBack)
             return;
@@ -86,55 +81,58 @@ public sealed partial class MainWindow : Window
         if (navPageType is not null && !Equals(preNavPageType, navPageType))
             ContentFrame.Navigate(navPageType, null, transitionInfo);
     }
-
-    private void UpdateUIBasedOnAuthenticationStatus(Legendary.AuthenticationStatus authStatus)
+    private void UpdateUIBasedOnAuthenticationStatus(AuthenticationStatus authStatus)
     {
-        LoginModal.Visibility = Visibility.Visible;
         Log.Information($"Auth status: {authStatus}");
 
         switch (authStatus)
         {
-            case Legendary.AuthenticationStatus.Checking:
-                LoginModalTitle.Text = "Logging in to Epic Games Store";
+            case AuthenticationStatus.Checking:
+                NavControl.Visibility = Visibility.Collapsed;
+                LoginPage.Visibility = Visibility.Collapsed;
+                LoginModal.Visibility = Visibility.Visible;
+                LoginModalTitle.Text = "Checking authentication status";
                 LoginModalDescription.Text = "Please wait...";
                 break;
 
-            case Legendary.AuthenticationStatus.LoginWindowOpen:
-                LoginModalTitle.Text = "Logging in to Epic Games Store";
-                LoginModalDescription.Text = "Please switch to the opened window";
+            case AuthenticationStatus.LoggedOut:
+                NavControl.Visibility = Visibility.Collapsed;
+                LoginPage.Visibility = Visibility.Visible;
+                LoginPage.InitWebView();
                 break;
 
-            case Legendary.AuthenticationStatus.OverlaySetup:
-                LoginModalTitle.Text = "Setting up Epic Online Service Overlay";
-                LoginModalDescription.Text = "Please wait...";
-                break;
-
-            case Legendary.AuthenticationStatus.LoggedIn:
+            case AuthenticationStatus.LoggedIn:
                 Log.Information("Logged in");
                 LoginModalTitle.Text = "Login Success";
-                LoginModalDescription.Text = "Please wait...";
 
-                StateManager.Initialize(_legendaryBinaryPath, Log);
-                _ = StateManager.UpdateLibraryAsync();
+                //StateManager.Initialize(_legendaryBinaryPath, Log);
+                //_ = StateManager.UpdateLibraryAsync();
+                //InstallManager.Initialize(_legendaryBinaryPath, Log);
 
-                InstallManager.Initialize(_legendaryBinaryPath, Log);
+                LoginPage.CloseWebView();
 
+                NavControl.Visibility = Visibility.Visible;
+                NavControl.IsEnabled = true;
+                LoginPage.Visibility = Visibility.Collapsed;
                 LoginModal.Visibility = Visibility.Collapsed;
                 NavControl.SelectedItem = NavControl.MenuItems[0];
                 navControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
                 Log.Information("Opening Library Page");
                 break;
 
-            case Legendary.AuthenticationStatus.LoginFailed:
+            case AuthenticationStatus.LoginFailed:
                 LoginModalTitle.Text = "Login failed";
                 LoginModalDescription.Text = "Please try again";
+                LoginModal.Visibility = Visibility.Visible;
+                NavControl.Visibility = Visibility.Collapsed;
+                LoginPage.Visibility = Visibility.Visible;
                 break;
         }
     }
 
-    private void HandleAuthenticationChanges(Legendary.AuthenticationStatus authStatus)
+    private void AuthStatusChangedHandler(object sender, AuthStatusChangedEventArgs e)
     {
-        DispatcherQueue.TryEnqueue(() => UpdateUIBasedOnAuthenticationStatus(authStatus));
+        DispatcherQueue.TryEnqueue(() => UpdateUIBasedOnAuthenticationStatus(e.NewStatus));
     }
 }
 

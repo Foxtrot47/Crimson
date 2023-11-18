@@ -29,16 +29,6 @@ namespace Crimson
         public LoginPage()
         {
             this.InitializeComponent();
-            this.InitializeAsync();
-        }
-        async void InitializeAsync()
-        {
-            await LoginWebView.EnsureCoreWebView2Async();
-            LoginWebView.NavigationStarting += WebView_NavigationStarting;
-            LoginWebView.WebMessageReceived += WebView_WebMessageReceived;
-
-            var targetUri = new Uri("https://www.epicgames.com/id/login");
-            LoginWebView.Source = targetUri;
         }
         async void WebView_NavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
         {
@@ -60,6 +50,19 @@ namespace Crimson
             var message = e.TryGetWebMessageAsString();
             var response = JsonSerializer.Deserialize<EpicLoginResponse>(message);
             await AuthManager.RequestTokens(response);
+        }
+        public async void InitWebView()
+        {
+            await LoginWebView.EnsureCoreWebView2Async();
+            LoginWebView.NavigationStarting += WebView_NavigationStarting;
+            LoginWebView.WebMessageReceived += WebView_WebMessageReceived;
+
+            var targetUri = new Uri("https://www.epicgames.com/id/login");
+            LoginWebView.Source = targetUri;
+        }
+        public void CloseWebView()
+        {
+            LoginWebView.Close();
         }
     }
 }

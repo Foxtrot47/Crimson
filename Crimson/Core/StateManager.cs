@@ -74,10 +74,10 @@ public static class StateManager
             // Serialize the games list to a JSON string
             var jsonString = JsonSerializer.Serialize(_gameData);
 
-            await using var fileStream = File.Open(_gameDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
-            await using var streamWriter = new StreamWriter(fileStream);
-            await streamWriter.WriteAsync(jsonString);
-            await streamWriter.FlushAsync();
+            //await using var fileStream = File.Open(_gameDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
+            //await using var streamWriter = new StreamWriter(fileStream);
+            //await streamWriter.WriteAsync(jsonString);
+            //await streamWriter.FlushAsync();
         }
         catch (Exception exception)
         {

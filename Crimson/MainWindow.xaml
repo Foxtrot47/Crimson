@@ -10,7 +10,8 @@
 
 
     <Grid>
-        <NavigationView x:Name="NavControl" IsBackEnabled="True"
+        <NavigationView x:Name="NavControl"
+                        IsBackEnabled="True"
                         BackRequested="navControl_BackRequested"
                         ItemInvoked="navControl_ItemInvoked"
                         Background="{ThemeResource SmokeFillColorDefaultBrush}">
@@ -29,22 +30,27 @@
             </NavigationView.FooterMenuItems>
         </NavigationView>
 
-        <local:LoginPage />
-              Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" 
-              VerticalAlignment="Stretch" 
-              HorizontalAlignment="Stretch">
+        <Grid x:Name="LoginModal" 
+               Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" 
+               VerticalAlignment="Stretch" 
+               HorizontalAlignment="Stretch">
             <Border Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" 
-                    HorizontalAlignment="Center" 
-                    VerticalAlignment="Center" 
-                    Padding="40">
+                     HorizontalAlignment="Center" 
+                     VerticalAlignment="Center" 
+                     Padding="40">
                 <StackPanel Orientation="Vertical" Spacing="20">
-                    <StackPanel Orientation="Horizontal" Spacing="20" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="20" HorizontalAlignment="Center" 
+                                 VerticalAlignment="Center">
                         <ProgressRing IsActive="True" />
-                        <TextBlock Text="Loading...." x:Name="LoginModalTitle" Foreground="{ThemeResource TextFillColorPrimaryBrush}" Style="{ThemeResource TitleTextBlockStyle}"/>
+                        <TextBlock Text="Loading...." x:Name="LoginModalTitle" 
+                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" 
+                                    Style="{ThemeResource TitleTextBlockStyle}" />
                     </StackPanel>
-                    <TextBlock Text="Please wait" x:Name="LoginModalDescription" HorizontalAlignment="Center" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Please wait" x:Name="LoginModalDescription" HorizontalAlignment="Center" 
+                                Style="{ThemeResource SubtitleTextBlockStyle}" />
                 </StackPanel>
             </Border>
         </Grid>
+        <local:LoginPage x:Name="LoginPage" Visibility="Collapsed"/>
     </Grid>
 </Window>
