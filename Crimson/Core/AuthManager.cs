@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
@@ -100,8 +100,10 @@ public static class AuthManager
             if (expiryDate < DateTime.Now)
             {
                 _log.Information("CheckAuthStatus: Access token expired, refreshing");
-                var newAccessToken = await RefreshToken(userData);
-                userData.AccessToken = newAccessToken;
+                var newData= await RequestTokens("refresh_token", "refresh_token", userData.RefreshToken);
+                userData = newData;
+                newData.AccessToken = KeyManager.EncryptString(newData.AccessToken);
+                newData.RefreshToken = KeyManager.EncryptString(newData.RefreshToken);
                 await SaveAuthData(userData);
             }
             else
@@ -155,8 +157,53 @@ public static class AuthManager
 
         await SaveAuthData(userData);
     }
+
+    private static async Task<UserData> RequestTokens(string grantType, string codeName, string codeValue)
     {
         var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{BasicAuthUsername}:{BasicAuthPassword}"));
+
+        var formData = new FormUrlEncodedContent(new[]
+        {
+            new KeyValuePair<string, string>(codeName, codeValue),
+            new KeyValuePair<string, string>("grant_type", grantType),
+            new KeyValuePair<string, string>("token_type", "eg1")
+        });
+
+        // Set the Authorization header with the Basic authentication credentials
+        HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+
+        try
+        {
+            // Make the API call with the form data
+            var httpResponse = await HttpClient.PostAsync($"{OAuthHost}/account/api/oauth/token", formData);
+
+            // Check if the request was successful (status code 200)
+            if (httpResponse.IsSuccessStatusCode)
+            {
+                // Parse and use the response content here
+                var result = await httpResponse.Content.ReadAsStringAsync();
+                var userData = JsonSerializer.Deserialize<UserData>(result);
+
+                if (userData.AccessToken == null)
+                {
+                    _log.Error("RequestTokens: Failed to parse user data from string");
+                    throw new Exception("RequestTokens: Failed to parse user data");
+                }
+                return userData;
+            }
+            else
+            {
+                var result = await httpResponse.Content.ReadAsStringAsync();
+                _log.Error($"RequestTokens: Failed to fetch tokens: {httpResponse.ReasonPhrase} - {result}");
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"RequestTokens: {ex.Message}");
+            return null;
+        }
+    }
 
     private static async Task SaveAuthData(UserData data)
     {
