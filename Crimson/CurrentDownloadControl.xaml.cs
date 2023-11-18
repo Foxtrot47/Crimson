@@ -34,7 +34,7 @@ public sealed partial class CurrentDownloadControl : UserControl
                 return;
             }
 
-            var gameInfo = StateManager.GetGameInfo(installItem.AppName);
+            var gameInfo = LibraryManager.GetGameInfo(installItem.AppName);
             if (gameInfo == null) return;
 
             DispatcherQueue.TryEnqueue(() =>

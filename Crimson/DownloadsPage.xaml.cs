@@ -69,7 +69,7 @@ namespace Crimson
                     ActiveDownloadSection.Visibility = Visibility.Visible;
                     DownloadProgressBar.IsIndeterminate = true;
 
-                    var gameInfo = StateManager.GetGameInfo(installItem.AppName);
+                    var gameInfo = LibraryManager.GetGameInfo(installItem.AppName);
                     _log.Information("HandleInstallationStatusChanged: Game Info: {GameInfo}", gameInfo);
                     _currentInstallItem = new DownloadManagerItem
                     {
@@ -130,7 +130,7 @@ namespace Crimson
                 foreach (var queueItemName in queueItemNames)
                 {
 
-                    var gameInfo = StateManager.GetGameInfo(queueItemName);
+                    var gameInfo = LibraryManager.GetGameInfo(queueItemName);
                     if (gameInfo is null) continue;
                     itemList.Add(new DownloadManagerItem()
                     {
@@ -168,7 +168,7 @@ namespace Crimson
                     foreach (var historyItemName in historyItemsNames)
                     {
 
-                        var gameInfo = StateManager.GetGameInfo(historyItemName);
+                        var gameInfo = LibraryManager.GetGameInfo(historyItemName);
                         if (gameInfo is null) continue;
                         itemList.Add(new DownloadManagerItem()
                         {

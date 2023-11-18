@@ -27,15 +27,15 @@ namespace Crimson
         private readonly ILogger _log = ((App)Application.Current).Log;
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
-            Game = StateManager.GetGameInfo((string)e.Parameter);
+            Game = LibraryManager.GetGameInfo((string)e.Parameter);
             var gameImage = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox");
             TitleImage.SetValue(Image.SourceProperty, gameImage != null ? new BitmapImage(new Uri(gameImage.Url)) : null);
 
             CheckGameStatus(Game);
 
             // Unregister event handlers on start
-            StateManager.GameStatusUpdated -= CheckGameStatus;
-            StateManager.GameStatusUpdated += CheckGameStatus;
+            LibraryManager.GameStatusUpdated -= CheckGameStatus;
+            LibraryManager.GameStatusUpdated += CheckGameStatus;
             InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
             InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
             InstallManager.InstallProgressUpdate -= HandleInstallationStatusChanged;
@@ -57,7 +57,7 @@ namespace Crimson
                 if (Game.State == Game.InstallState.Installed)
                 {
                     _log.Information("GameInfoPage: Starting Game {Game}", Game.Title);
-                    StateManager.StartGame(Game.Name);
+                    LibraryManager.StartGame(Game.Name);
                     return;
                 }
 
@@ -180,7 +180,7 @@ namespace Crimson
         protected override void OnNavigatedFrom(NavigationEventArgs e)
         {
             // Unregister both event handlers before navigating out
-            StateManager.GameStatusUpdated -= CheckGameStatus;
+            LibraryManager.GameStatusUpdated -= CheckGameStatus;
             InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
             InstallManager.InstallProgressUpdate -= HandleInstallationStatusChanged;
 
@@ -231,7 +231,7 @@ namespace Crimson
             DownloadProgressRing.Visibility = Visibility.Visible;
             DownloadProgressRing.IsIndeterminate = true;
             PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
-            StateManager.AddToInstallationQueue(Game.Name, ActionType.Install, InstallLocationText.Text);
+            LibraryManager.AddToInstallationQueue(Game.Name, ActionType.Install, InstallLocationText.Text);
             _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.Title);
         }
     }

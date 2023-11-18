@@ -28,13 +28,13 @@ namespace Crimson
             LoadingSection.Visibility = Visibility.Visible;
             GamesGrid.Visibility = Visibility.Collapsed;
             DataContext = this;
-            StateManager.LibraryUpdated += UpdateLibrary;
+            LibraryManager.LibraryUpdated += UpdateLibrary;
             if (!LoadingFinished)
             {
                 GamesList = new ObservableCollection<LibraryItem>();
                 try
                 {
-                    var data = StateManager.GetLibraryData();
+                    var data = LibraryManager.GetLibraryData();
                     if (data == null) return;
                     UpdateLibrary(data);
                 }

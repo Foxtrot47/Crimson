@@ -10,7 +10,7 @@ using Windows.Storage;
 
 namespace Crimson.Core;
 
-public static class StateManager
+public static class LibraryManager
 {
     // File contains game data
     private static string _gameDataFile;

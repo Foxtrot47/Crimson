@@ -234,7 +234,7 @@ public static class InstallManager
                 CurrentInstall.Process.Dispose();
                 InstallHistory.Add(CurrentInstall);
                 InstallationStatusChanged?.Invoke(CurrentInstall);
-                StateManager.FinishedInstall(CurrentInstall);
+                LibraryManager.FinishedInstall(CurrentInstall);
                 CurrentInstall = null;
                 ProcessNext();
                 return;
@@ -262,7 +262,7 @@ public static class InstallManager
                 CurrentInstall.Status = ActionStatus.Cancelled;
                 InstallHistory.Add(CurrentInstall);
                 InstallationStatusChanged?.Invoke(CurrentInstall);
-                StateManager.FinishedInstall(CurrentInstall);
+                LibraryManager.FinishedInstall(CurrentInstall);
                 CurrentInstall = null;
                 ProcessNext();
                 return;
@@ -333,7 +333,7 @@ public static class InstallManager
         CurrentInstall.Status = ActionStatus.Cancelled;
         InstallHistory.Add(CurrentInstall);
         InstallationStatusChanged?.Invoke(CurrentInstall);
-        StateManager.FinishedInstall(CurrentInstall);
+        LibraryManager.FinishedInstall(CurrentInstall);
         CurrentInstall = null;
         ProcessNext();
     }

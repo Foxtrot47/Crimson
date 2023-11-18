@@ -105,8 +105,8 @@ public sealed partial class MainWindow : Window
                 Log.Information("Logged in");
                 LoginModalTitle.Text = "Login Success";
 
-                //StateManager.Initialize(_legendaryBinaryPath, Log);
-                //_ = StateManager.UpdateLibraryAsync();
+                //LibraryManager.Initialize(_legendaryBinaryPath, Log);
+                //_ = LibraryManager.UpdateLibraryAsync();
                 //InstallManager.Initialize(_legendaryBinaryPath, Log);
 
                 LoginPage.CloseWebView();
