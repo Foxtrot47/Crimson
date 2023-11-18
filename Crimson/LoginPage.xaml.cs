@@ -49,7 +49,7 @@ namespace Crimson
         {
             var message = e.TryGetWebMessageAsString();
             var response = JsonSerializer.Deserialize<EpicLoginResponse>(message);
-            await AuthManager.RequestTokens(response);
+            AuthManager.DoExchangeLogin(response.Code);
         }
         public async void InitWebView()
         {
