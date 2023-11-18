@@ -67,10 +67,14 @@ public static class AuthManager
                 return _authenticationStatus;
             }
 
-            using FileStream fileStream = File.Open(_userDataFile, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using StreamReader streamReader = new(fileStream);
-            var jsonString = await streamReader.ReadToEndAsync();
-            var userData = JsonSerializer.Deserialize<UserData>(jsonString);
+            UserData userData = null;
+
+            await using (var fileStream = File.Open(_userDataFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var streamReader = new StreamReader(fileStream))
+            {
+                var jsonString = await streamReader.ReadToEndAsync();
+                userData = JsonSerializer.Deserialize<UserData>(jsonString);
+            }
 
             if (userData.AccessToken == null)
             {
