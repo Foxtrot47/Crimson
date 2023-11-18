@@ -155,6 +155,16 @@ public static class AuthManager
             userData.AccessToken = KeyManager.DecryptString(userData.AccessToken);
             userData.RefreshToken = KeyManager.DecryptString(userData.RefreshToken);
 
+            // check if the refresh token expiry date is in the past and if it is then log the user out
+            var refreshExpiryDate = DateTime.Parse(userData.RefreshExpiresAt);
+            if (refreshExpiryDate < DateTime.Now)
+            {
+                _log.Information("CheckAuthStatus: Refresh token expired, logging out");
+                _authenticationStatus = AuthenticationStatus.LoggedOut;
+                OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
+                return _authenticationStatus;
+            }
+
             // check if the access token expiry date is in the past and if it is then refresh the token calling another method
             var expiryDate = DateTime.Parse(userData.ExpiresAt);
             if (expiryDate < DateTime.Now)
@@ -169,16 +179,13 @@ public static class AuthManager
                 _log.Information("CheckAuthStatus: Access token is still valid");
             }
 
-            // check if the refresh token expiry date is in the past and if it is then log the user out
-            var refreshExpiryDate = DateTime.Parse(userData.RefreshExpiresAt);
-            if (refreshExpiryDate < DateTime.Now)
+            if (!await VerifyAccessToken(userData.AccessToken))
             {
-                _log.Information("CheckAuthStatus: Refresh token expired, logging out");
+                _log.Warning("CheckAuthStatus: Access token is invalid, logging out");
                 _authenticationStatus = AuthenticationStatus.LoggedOut;
-                OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
+                OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
                 return _authenticationStatus;
             }
-
 
             _authenticationStatus = AuthenticationStatus.LoggedIn;
             OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
@@ -196,6 +203,32 @@ public static class AuthManager
     private static async Task<string> RefreshToken(UserData data)
     {
         return "";
+    }
+
+    // <summary>
+    // Verify the access token is still valid
+    // </summary>
+    private static async Task<bool> VerifyAccessToken(string accessToken)
+    {
+        try
+        {
+            // add bearer token to httpcleint
+            HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            // Make the API call with the form data
+            var htpResponse = await HttpClient.GetAsync($"{OAuthHost}/account/api/oauth/verify");
+
+            // Check if the request was successful (status code 200)
+            if (htpResponse.IsSuccessStatusCode)
+                return true;
+            else
+                return false;
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"VerifyAccessToken: {ex.Message}");
+            return false;
+        }
     }
 
 
