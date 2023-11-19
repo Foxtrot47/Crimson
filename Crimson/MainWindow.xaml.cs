@@ -50,7 +50,7 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    private void navControl_BackRequested(NavigationView sender,
+    private void NavControl_BackRequested(NavigationView sender,
     NavigationViewBackRequestedEventArgs args)
     {
         if (!ContentFrame.CanGoBack)
@@ -64,7 +64,7 @@ public sealed partial class MainWindow : Window
         ContentFrame.GoBack();
     }
 
-    private void navControl_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    private void NavControl_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
         //if (args.IsSettingsSelected == true)
         //{
@@ -74,11 +74,11 @@ public sealed partial class MainWindow : Window
         if (args.InvokedItemContainer != null)
         {
             var navPageType = Type.GetType(args.InvokedItemContainer.Tag.ToString() ?? string.Empty);
-            navControl_Navigate(navPageType, args.RecommendedNavigationTransitionInfo);
+            NavControl_Navigate(navPageType, args.RecommendedNavigationTransitionInfo);
         }
     }
 
-    private void navControl_Navigate(
+    private void NavControl_Navigate(
         Type navPageType,
         NavigationTransitionInfo transitionInfo)
     {
@@ -125,7 +125,7 @@ public sealed partial class MainWindow : Window
                 LoginPage.Visibility = Visibility.Collapsed;
                 LoginModal.Visibility = Visibility.Collapsed;
                 NavControl.SelectedItem = NavControl.MenuItems[0];
-                navControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
+                NavControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
                 Log.Information("Opening Library Page");
                 break;
 
