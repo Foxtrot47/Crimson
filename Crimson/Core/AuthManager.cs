@@ -57,23 +57,12 @@ public static class AuthManager
             _authenticationStatus = AuthenticationStatus.Checking;
             OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
 
-            if (!File.Exists(_userDataFile))
+            var userData = await Storage.GetUserData();
+            if (userData == null)
             {
                 _authenticationStatus = AuthenticationStatus.LoggedOut;
                 OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
-
-                // Create the file on exit
-                await SaveAuthData(new UserData());
                 return _authenticationStatus;
-            }
-
-            UserData userData = null;
-
-            await using (var fileStream = File.Open(_userDataFile, FileMode.Open, FileAccess.Read, FileShare.Read))
-            using (var streamReader = new StreamReader(fileStream))
-            {
-                var jsonString = await streamReader.ReadToEndAsync();
-                userData = JsonSerializer.Deserialize<UserData>(jsonString);
             }
 
             if (userData.AccessToken == null)
@@ -104,7 +93,7 @@ public static class AuthManager
                 userData = newData;
                 newData.AccessToken = KeyManager.EncryptString(newData.AccessToken);
                 newData.RefreshToken = KeyManager.EncryptString(newData.RefreshToken);
-                await SaveAuthData(userData);
+                await Storage.SaveUserData(userData);
             }
             else
             {
@@ -155,7 +144,20 @@ public static class AuthManager
         _authenticationStatus = AuthenticationStatus.LoggedIn;
         OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedIn));
 
-        await SaveAuthData(userData);
+        await Storage.SaveUserData(userData);
+    }
+
+    public static async Task<string> GetAccessToken()
+    {
+        if (_authenticationStatus != AuthenticationStatus.LoggedIn)
+        {
+            _log.Error("RequestAccessToken: User is not logged in");
+            return null;
+        }
+
+        // TODO Check for expiry date and refresh if needed
+        var userData = await Storage.GetUserData();
+        return KeyManager.DecryptString(userData.AccessToken);
     }
 
     private static async Task<UserData> RequestTokens(string grantType, string codeName, string codeValue)
@@ -203,17 +205,6 @@ public static class AuthManager
             _log.Error($"RequestTokens: {ex.Message}");
             return null;
         }
-    }
-
-    private static async Task SaveAuthData(UserData data)
-    {
-        var jsonString = JsonSerializer.Serialize(data);
-
-        await using var fileStream = File.Open(_userDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
-        await using var streamWriter = new StreamWriter(fileStream);
-        await streamWriter.WriteAsync(jsonString);
-        await streamWriter.FlushAsync();
-        _log.Information("SaveAuthData: successfully saved userdata to disk");
     }
 
     // <summary>
