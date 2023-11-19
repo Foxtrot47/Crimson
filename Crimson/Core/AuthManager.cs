@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -21,10 +20,10 @@ public static class AuthManager
     private static string _userDataFile;
     private static AuthenticationStatus _authenticationStatus;
 
-    private static readonly string BasicAuthUsername = "34a02cf8f4414e29b15921876da36f9a";
-    private static readonly string BasicAuthPassword = "daafbccc737745039dffe53d94fc76cf";
-    private static readonly string OAuthHost = "https://account-public-service-prod03.ol.epicgames.com";
-    private static readonly string UserAgent = "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit";
+    private const string BasicAuthUsername = "34a02cf8f4414e29b15921876da36f9a";
+    private const string BasicAuthPassword = "daafbccc737745039dffe53d94fc76cf";
+    private const string OAuthHost = "https://account-public-service-prod03.ol.epicgames.com";
+    private const string UserAgent = "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit";
 
     private static readonly HttpClient HttpClient;
 
