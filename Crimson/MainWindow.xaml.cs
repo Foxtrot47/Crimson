@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
             Log = new LoggerConfiguration().WriteTo.File(logFilePath).CreateLogger();
             Log.Information("Starting up");
             AuthManager.Initialize(Log);
+            LibraryManager.Initialize("", Log);
 
             AuthManager.AuthStatusChanged += AuthStatusChangedHandler;
             await AuthManager.CheckAuthStatus();

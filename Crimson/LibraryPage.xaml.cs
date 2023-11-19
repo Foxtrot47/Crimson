@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using Crimson.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -25,26 +26,14 @@ namespace Crimson
         {
             _log.Information("LibraryPage: Loading Page");
             InitializeComponent();
+            InitializeComponent();
             LoadingSection.Visibility = Visibility.Visible;
             GamesGrid.Visibility = Visibility.Collapsed;
+
+            Task.Run(async () => await LibraryManager.GetLibraryData());
+
             DataContext = this;
             LibraryManager.LibraryUpdated += UpdateLibrary;
-            if (!LoadingFinished)
-            {
-                GamesList = new ObservableCollection<LibraryItem>();
-                try
-                {
-                    var data = LibraryManager.GetLibraryData();
-                    if (data == null) return;
-                    UpdateLibrary(data);
-                }
-                catch (Exception ex)
-                {
-                    _log.Error(ex.ToString());
-                }
-            }
-
-            LoadingFinished = true;
             _log.Information("LibraryPage: Loading finished");
         }
 
