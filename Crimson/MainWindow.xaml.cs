@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
 using WinRT;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using Windows.Storage;
 using Crimson.Core;
 using Serilog;
@@ -20,13 +21,21 @@ namespace Crimson;
 public sealed partial class MainWindow : Window
 {
     public bool IsLoggedIn;
-    private string _legendaryBinaryPath;
     public ILogger Log;
+    WindowsSystemDispatcherQueueHelper _mWsdqHelper;
+    MicaController _mBackdropController;
+    SystemBackdropConfiguration _mConfigurationSource;
 
     public MainWindow()
     {
         InitializeComponent();
-        Title = "Crimson";
+
+        // Disable setting mica as default
+        // We will config later when we do configuration manager
+        //TrySetSystemBackdrop();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+
         IsLoggedIn = false;
         Task.Run(async () =>
         {
@@ -133,6 +142,100 @@ public sealed partial class MainWindow : Window
     private void AuthStatusChangedHandler(object sender, AuthStatusChangedEventArgs e)
     {
         DispatcherQueue.TryEnqueue(() => UpdateUIBasedOnAuthenticationStatus(e.NewStatus));
+    }
+    private bool TrySetSystemBackdrop()
+    {
+        if (!MicaController.IsSupported())
+            return false; // Mica is not supported on this system
+        _mWsdqHelper = new WindowsSystemDispatcherQueueHelper();
+        _mWsdqHelper.EnsureWindowsSystemDispatcherQueueController();
+
+        // Create the policy object.
+        _mConfigurationSource = new SystemBackdropConfiguration();
+        this.Activated += Window_Activated;
+        this.Closed += Window_Closed;
+        ((FrameworkElement)this.Content).ActualThemeChanged += Window_ThemeChanged;
+
+        // Initial configuration state.
+        _mConfigurationSource.IsInputActive = true;
+        SetConfigurationSourceTheme();
+
+        _mBackdropController = new MicaController();
+
+        // Enable the system backdrop.
+        // Note: Be sure to have "using WinRT;" to support the Window.As<...>() call.
+        _mBackdropController.AddSystemBackdropTarget(this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>());
+        _mBackdropController.SetSystemBackdropConfiguration(_mConfigurationSource);
+        return true; // succeeded
+
+    }
+
+    private void Window_Activated(object sender, WindowActivatedEventArgs args)
+    {
+        _mConfigurationSource.IsInputActive = args.WindowActivationState != WindowActivationState.Deactivated;
+    }
+
+    private void Window_Closed(object sender, WindowEventArgs args)
+    {
+        // Make sure any Mica/Acrylic controller is disposed
+        // so it doesn't try to use this closed window.
+        if (_mBackdropController != null)
+        {
+            _mBackdropController.Dispose();
+            _mBackdropController = null;
+        }
+        this.Activated -= Window_Activated;
+        _mConfigurationSource = null;
+    }
+
+    private void Window_ThemeChanged(FrameworkElement sender, object args)
+    {
+        if (_mConfigurationSource != null)
+        {
+            SetConfigurationSourceTheme();
+        }
+    }
+
+    private void SetConfigurationSourceTheme()
+    {
+        switch (((FrameworkElement)this.Content).ActualTheme)
+        {
+            case ElementTheme.Dark: _mConfigurationSource.Theme = SystemBackdropTheme.Dark; break;
+            case ElementTheme.Light: _mConfigurationSource.Theme = SystemBackdropTheme.Light; break;
+            case ElementTheme.Default: _mConfigurationSource.Theme = SystemBackdropTheme.Default; break;
+        }
+    }
+}
+
+internal class WindowsSystemDispatcherQueueHelper
+{
+    [StructLayout(LayoutKind.Sequential)]
+    private struct DispatcherQueueOptions
+    {
+        internal int dwSize;
+        internal int threadType;
+        internal int apartmentType;
+    }
+
+    [DllImport("CoreMessaging.dll")]
+    private static extern int CreateDispatcherQueueController([In] DispatcherQueueOptions options, [In, Out, MarshalAs(UnmanagedType.IUnknown)] ref object dispatcherQueueController);
+
+    private object _mDispatcherQueueController = null;
+    public void EnsureWindowsSystemDispatcherQueueController()
+    {
+        if (Windows.System.DispatcherQueue.GetForCurrentThread() != null)
+        {
+            // one already exists, so we'll just use it.
+            return;
+        }
+
+        if (_mDispatcherQueueController != null) return;
+        DispatcherQueueOptions options;
+        options.dwSize = Marshal.SizeOf(typeof(DispatcherQueueOptions));
+        options.threadType = 2;    // DQTYPE_THREAD_CURRENT
+        options.apartmentType = 2; // DQTAT_COM_STA
+
+        CreateDispatcherQueueController(options, ref _mDispatcherQueueController);
     }
 }
 
