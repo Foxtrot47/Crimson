@@ -660,19 +660,19 @@ public class UseAccessControl
 
 public class Asset
 {
-    [JsonPropertyName("app_name")]
+    [JsonPropertyName("appName")]
     public string AppName { get; set; }
 
-    [JsonPropertyName("asset_id")]
+    [JsonPropertyName("assetId")]
     public string AssetId { get; set; }
 
-    [JsonPropertyName("build_version")]
+    [JsonPropertyName("buildVersion")]
     public string BuildVersion { get; set; }
 
-    [JsonPropertyName("catalog_item_id")]
+    [JsonPropertyName("catalogItemId")]
     public string CatalogItemId { get; set; }
 
-    [JsonPropertyName("label_name")]
+    [JsonPropertyName("labelName")]
     public string LabelName { get; set; }
 
     [JsonPropertyName("metadata")]
