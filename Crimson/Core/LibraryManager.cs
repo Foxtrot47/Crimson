@@ -304,7 +304,8 @@ public static class LibraryManager
             new KeyValuePair<string, string>("id", catalogItemId),
             new KeyValuePair<string, string>("includeDLCDetails", "true"),
             new KeyValuePair<string, string>("includeMainGameDetails", "true"),
-            new KeyValuePair<string, string>("country_code", "cc")
+            new KeyValuePair<string, string>("country", "US"),
+            new KeyValuePair<string, string>("locale", "en")
         });
 
         try
