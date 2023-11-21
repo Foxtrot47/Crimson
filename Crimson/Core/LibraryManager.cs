@@ -126,7 +126,7 @@ public static class LibraryManager
 
             foreach (var asset in gameAssetsList)
             {
-                if (asset.NameSpace.Contains("ue")) continue;
+                if (asset.Namespace.Contains("ue")) continue;
 
                 var game = Storage.GetGameMetaData(asset.AppName);
                 var assetUpdated = false;
@@ -141,7 +141,7 @@ public static class LibraryManager
                 fetchList.Add(new FetchListItem()
                 {
                     AppName = asset.AppName,
-                    NameSpace = asset.NameSpace,
+                    NameSpace = asset.Namespace,
                     CatalogItemId = asset.CatalogItemId
                 });
             }
