@@ -150,6 +150,9 @@ public static class LibraryManager
             foreach (var item in fetchList)
             {
                 var egFetchGameMetaData = await FetchGameMetaData(item.NameSpace, item.CatalogItemId);
+
+                // ignore if no metadata can be fetched
+                if (egFetchGameMetaData == null) continue;
                 var gameMetaData = new GameMetaData()
                 {
                     AppName = item.AppName,
