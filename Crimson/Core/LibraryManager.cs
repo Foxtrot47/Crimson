@@ -167,25 +167,30 @@ public static class LibraryManager
             }
 
             gameMetaDataDictionary = Storage.GameMetaDataDictionary;
-            foreach (var game in gameMetaDataDictionary.Select(item => new Game()
-                     {
-                         Name = item.Value.AppName,
-                         Title = item.Value.Metadata.Title,
-                         State = Game.InstallState.NotInstalled,
-                         Images = item.Value.Metadata.KeyImages.Select(image => new Game.Image()
-                         {
-                             Height = image.Height,
-                             Type = image.Type,
-                             Url = image.Url,
-                             Width = image.Width
-                         }).ToList(),
-                         Version = item.Value.AssetInfos.Windows.BuildVersion
-                     }))
+            foreach (var item in gameMetaDataDictionary)
             {
+                var newGame = new Game()
+                {
+                    Name = item.Value.AppName,
+                    Title = item.Value.Metadata.Title,
+                    State = Game.InstallState.NotInstalled,
+                    Images = item.Value.Metadata.KeyImages.Select(image => new Game.Image()
+                    {
+                        Height = image.Height,
+                        Type = image.Type,
+                        Url = image.Url,
+                        Width = image.Width
+                    }).ToList(),
+                    Version = item.Value.AssetInfos.Windows.BuildVersion
+                };
+
+                // Do not add DLC's to gameData
+                if (item.Value.Metadata.MainGameItem != null)
+                    continue;
+
                 // Remove existing data if present
-                if (_gameData.Contains(game))
-                    _gameData.Remove(game);
-                _gameData.Add(game);
+                _gameData.Remove(newGame);
+                _gameData.Add(newGame);
             }
 
             _log.Information("UpdateLibraryAsync: Library updated");
