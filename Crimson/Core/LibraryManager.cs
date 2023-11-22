@@ -167,6 +167,7 @@ public static class LibraryManager
             }
 
             gameMetaDataDictionary = Storage.GameMetaDataDictionary;
+            _gameData = new ObservableCollection<Game>();
             foreach (var item in gameMetaDataDictionary)
             {
                 var newGame = new Game()
@@ -188,8 +189,7 @@ public static class LibraryManager
                 if (item.Value.Metadata.MainGameItem != null)
                     continue;
 
-                // Remove existing data if present
-                _gameData.Remove(newGame);
+                // Remove all existing data
                 _gameData.Add(newGame);
             }
             // Sort _gameData by name
