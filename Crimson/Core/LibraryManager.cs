@@ -136,7 +136,7 @@ public static class LibraryManager
                     gameMetaDataDictionary.Add(asset.AppName, game);
                 }
 
-                if (!updateAssets || (game != null && !forceUpdate && (game == null || !assetUpdated))) continue;
+                if (!updateAssets || (game != null && !forceUpdate && !assetUpdated)) continue;
                 _log.Information($"Scheduling metadata update for {asset.AppName}");
                 fetchList.Add(new FetchListItem()
                 {
