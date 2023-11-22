@@ -192,7 +192,8 @@ public static class LibraryManager
                 _gameData.Remove(newGame);
                 _gameData.Add(newGame);
             }
-
+            // Sort _gameData by name
+            _gameData = new ObservableCollection<Game>(_gameData.OrderBy(game => game.Title));
             _log.Information("UpdateLibraryAsync: Library updated");
             LibraryUpdated?.Invoke(_gameData);
             return _gameData;
