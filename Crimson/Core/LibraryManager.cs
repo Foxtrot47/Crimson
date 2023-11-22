@@ -299,19 +299,13 @@ public static class LibraryManager
         var accessToken = await AuthManager.GetAccessToken();
         HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-        var formData = new FormUrlEncodedContent(new[]
-        {
-            new KeyValuePair<string, string>("id", catalogItemId),
-            new KeyValuePair<string, string>("includeDLCDetails", "true"),
-            new KeyValuePair<string, string>("includeMainGameDetails", "true"),
-            new KeyValuePair<string, string>("country", "US"),
-            new KeyValuePair<string, string>("locale", "en")
-        });
+        // API requests parameters to be in query instead of body
+        var qs = $"?id={catalogItemId}&includeDLCDetails=true&includeMainGameDetails=true&country=US&locale=en";
 
         try
         {
             // Make the API call with the form data
-            var httpResponse = await HttpClient.PostAsync($"https://{CatalogHost}/catalog/api/shared/namespace/{nameSpace}/bulk/items", formData);
+            var httpResponse = await HttpClient.GetAsync($"https://{CatalogHost}/catalog/api/shared/namespace/{nameSpace}/bulk/items{qs}");
             // Check if the request was successful (status code 200)
             if (httpResponse.IsSuccessStatusCode)
             {
