@@ -24,12 +24,8 @@ public static class LibraryManager
 
     // File contains game data
     private static string _gameDataFile;
-    // ObservableCollection to store the game info objects and subscribe to its events
-    private static ObservableCollection<Game> _gameData;
-    // Timer to trigger the file update periodically
-    private static Timer _timer;
+
     private static ILogger _log;
-    private static string _legendaryBinaryPath;
 
     private static readonly HttpClient HttpClient;
 
@@ -45,50 +41,11 @@ public static class LibraryManager
 
     public static void Initialize(string binaryPath, ILogger log)
     {
-        _legendaryBinaryPath = binaryPath;
         _log = log;
 
 
         var localFolder = ApplicationData.Current.LocalFolder;
         _gameDataFile = $@"{localFolder.Path}\gamedata.json";
-
-        // If stored data exists load it
-        if (File.Exists(_gameDataFile))
-        {
-            try
-            {
-                using var data = File.Open(_gameDataFile, FileMode.Open);
-                _gameData = JsonSerializer.Deserialize<ObservableCollection<Game>>(data);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex);
-            }
-        }
-        // Else create new data and save it
-        else
-            _gameData = new ObservableCollection<Game>();
-    }
-
-    // Declare a method to update the JSON file when the data changes
-    // Method must be public as it should be called when program is being terminated
-    // ReSharper disable once MemberCanBePrivate.Global
-    public static async Task UpdateJsonFileAsync()
-    {
-        try
-        {
-            // Serialize the games list to a JSON string
-            var jsonString = JsonSerializer.Serialize(_gameData);
-
-            //await using var fileStream = File.Open(_gameDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
-            //await using var streamWriter = new StreamWriter(fileStream);
-            //await streamWriter.WriteAsync(jsonString);
-            //await streamWriter.FlushAsync();
-        }
-        catch (Exception exception)
-        {
-            _log.Error("UpdateJsonFile: Error while updating json {Exception}", exception.ToString());
-        }
     }
 
     /// <summary>
@@ -97,7 +54,7 @@ public static class LibraryManager
     /// <param name="forceUpdate"></param>
     /// <param name="updateAssets"></param>
     /// <returns></returns>
-    public static async Task<ObservableCollection<Game>> GetLibraryData(bool forceUpdate = false, bool updateAssets = true)
+    public static async Task GetLibraryData(bool forceUpdate = false, bool updateAssets = true)
     {
         try
         {
@@ -105,24 +62,24 @@ public static class LibraryManager
             var gameAssets = await Storage.GetGameAssetsData();
             if (gameAssets == null)
             {
-                _log.Information("GetLibraryData: No cached game assets found");
+                _log.Information("UpdateLibraryData: No cached game assets found");
             }
             var gameAssetsList = gameAssets?.ToList() ?? new List<Asset>();
             if (forceUpdate || gameAssetsList.Count < 1)
             {
-                _log.Error("GetLibraryData: No existing game assets data, updating");
+                _log.Error("UpdateLibraryData: No existing game assets data, updating");
 
                 var assets = (await FetchGameAssets()).ToList();
                 if (assets.Count < 1)
                 {
                     _log.Error("GetLibraryData: Error while fetching game assets");
-                    return null;
+                    return;
                 }
                 gameAssetsList = assets.ToList();
             }
 
             var fetchList = new List<FetchListItem>();
-            var gameMetaDataDictionary = new Dictionary<string, GameMetaData>();
+            var gameMetaDataDictionary = new Dictionary<string, Models.Game>();
 
             foreach (var asset in gameAssetsList)
             {
@@ -153,7 +110,7 @@ public static class LibraryManager
 
                 // ignore if no metadata can be fetched
                 if (egFetchGameMetaData == null) continue;
-                var gameMetaData = new GameMetaData()
+                var gameMetaData = new Models.Game()
                 {
                     AppName = item.AppName,
                     AppTitle = egFetchGameMetaData.Title,
@@ -167,110 +124,19 @@ public static class LibraryManager
             }
 
             gameMetaDataDictionary = Storage.GameMetaDataDictionary;
-            _gameData = new ObservableCollection<Game>();
-            foreach (var item in gameMetaDataDictionary)
-            {
-                var newGame = new Game()
-                {
-                    Name = item.Value.AppName,
-                    Title = item.Value.Metadata.Title,
-                    State = Game.InstallState.NotInstalled,
-                    Images = item.Value.Metadata.KeyImages.Select(image => new Game.Image()
-                    {
-                        Height = image.Height,
-                        Type = image.Type,
-                        Url = image.Url,
-                        Width = image.Width
-                    }).ToList(),
-                    Version = item.Value.AssetInfos.Windows.BuildVersion
-                };
 
-                // Do not add DLC's to gameData
-                if (item.Value.Metadata.MainGameItem != null)
-                    continue;
-
-                // Remove all existing data
-                _gameData.Add(newGame);
-            }
             // Sort _gameData by name
-            _gameData = new ObservableCollection<Game>(_gameData.OrderBy(game => game.Title));
             _log.Information("UpdateLibraryAsync: Library updated");
-            LibraryUpdated?.Invoke(_gameData);
-            return _gameData;
+            //LibraryUpdated?.Invoke(_gameData);
+            return;
         }
         catch (Exception ex)
         {
             _log.Error(ex.ToString());
-            return null;
+            return;
         }
     }
 
-    public static Game GetGameInfo(string name)
-    {
-        return _gameData.FirstOrDefault(game => game.Name == name);
-    }
-
-    public static void AddToInstallationQueue(string gameName, ActionType actionType, string location)
-    {
-        var game = _gameData.FirstOrDefault(g => g.Name == gameName);
-        if (game == null) return;
-
-        if (actionType == ActionType.Install)
-            game.State = Game.InstallState.Installing;
-
-        GameStatusUpdated?.Invoke(game);
-        InstallManager.AddToQueue(new InstallItem(gameName, actionType, location));
-        _log.Information("AddToInstallationQueue: {Game} {Action} {location}", gameName, actionType, location);
-    }
-
-    public static void FinishedInstall(InstallItem item)
-    {
-        var game = _gameData.FirstOrDefault(game => game.Name == item.AppName);
-        if (game == null) return;
-
-        _log.Information("FinishedInstall: {Game} {Action} {Status}", item.AppName, item.Action, item.Status);
-        if (item.Action == ActionType.Uninstall && item.Status == ActionStatus.Success)
-            game.State = Game.InstallState.NotInstalled;
-
-        else if (item.Action is ActionType.Install or ActionType.Update or ActionType.Repair && item.Status == ActionStatus.Success)
-            game.State = Game.InstallState.Installed;
-
-        else if (item.Action == ActionType.Install && item.Status is ActionStatus.Failed or ActionStatus.Cancelled)
-            game.State = Game.InstallState.NotInstalled;
-
-        else if (item.Action == ActionType.Update && item.Status is ActionStatus.Failed or ActionStatus.Cancelled)
-            game.State = Game.InstallState.NeedUpdate;
-
-        else if (item.Action == ActionType.Repair && item.Status is ActionStatus.Failed or ActionStatus.Cancelled)
-            game.State = Game.InstallState.Broken;
-
-        GameStatusUpdated?.Invoke(game);
-    }
-    public static Game GetGameData(string gameName)
-    {
-        var legendaryHandle = new Legendary(_legendaryBinaryPath, _log);
-        var data = legendaryHandle.GetGameData(gameName);
-        var game = _gameData.FirstOrDefault(game => game.Name == gameName);
-        game.DownloadSizeMiB = data.DownloadSizeMiB;
-        game.DiskSizeMiB = data.DiskSizeMiB;
-        _log.Information("GetGameData: {Game} {DownloadSizeMiB} {DiskSizeMiB}", gameName, data.DownloadSizeMiB, data.DiskSizeMiB);
-        ;
-        return game;
-    }
-
-    // Stop the timer when the application exits
-    public static void Dispose()
-    {
-        _timer.Stop();
-    }
-    public static void StartGame(string name)
-    {
-        var game = _gameData.FirstOrDefault(game => game.Name == name);
-        if (game == null) return;
-
-        var legendaryHandle = new Legendary(_legendaryBinaryPath, _log);
-        legendaryHandle.StartGame(game.Name);
-    }
     private static async Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live")
     {
         try
@@ -352,10 +218,5 @@ internal class FetchListItem
     public string AppName { get; set; }
     public string NameSpace { get; set; }
     public string CatalogItemId { get; set; }
-}
-
-public class MetaDataEndPointResponse
-{
-    public Dictionary<string, Metadata> MetadataDictionary { get; set; }
 }
 

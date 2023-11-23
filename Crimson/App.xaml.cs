@@ -34,7 +34,7 @@ namespace Crimson
         // Save gamedata to storage on application exit
         private static async void OnExit(object sender, object e)
         {
-            await LibraryManager.UpdateJsonFileAsync();
+            //await LibraryManager.UpdateJsonFileAsync();
         }
 
         private Window m_window;

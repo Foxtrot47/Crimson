@@ -34,12 +34,12 @@ public sealed partial class CurrentDownloadControl : UserControl
                 return;
             }
 
-            var gameInfo = LibraryManager.GetGameInfo(installItem.AppName);
-            if (gameInfo == null) return;
+            //var gameInfo = LibraryManager.GetGameInfo(installItem.AppName);
+            //if (gameInfo == null) return;
 
             DispatcherQueue.TryEnqueue(() =>
             {
-                UpdateStatus(installItem, game, gameInfo);
+                UpdateStatus(installItem, game);
             });
         }
         catch (Exception ex)
@@ -48,7 +48,7 @@ public sealed partial class CurrentDownloadControl : UserControl
         }
     }
 
-    private void UpdateStatus(InstallItem installItem, InstallItem game, Game gameInfo)
+    private void UpdateStatus(InstallItem installItem, InstallItem game)
     {
         DownloadSpeed.Text = "";
         DownloadedSize.Text = "";
@@ -56,7 +56,7 @@ public sealed partial class CurrentDownloadControl : UserControl
         ProgressBar.IsIndeterminate = true;
         EmptyDownloadText.Visibility = Visibility.Collapsed;
         DownloadStatus.Visibility = Visibility.Visible;
-        GameName.Text = gameInfo.Title;
+        //GameName.Text = gameInfo.Title;
 
         switch (game.Status)
         {

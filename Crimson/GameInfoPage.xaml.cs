@@ -18,7 +18,7 @@ namespace Crimson
     /// </summary>
     public sealed partial class GameInfoPage : Page
     {
-        public Game Game { get; set; }
+        //public Game Game { get; set; }
 
         public GameInfoPage()
         {
@@ -27,15 +27,15 @@ namespace Crimson
         private readonly ILogger _log = ((App)Application.Current).Log;
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
-            Game = LibraryManager.GetGameInfo((string)e.Parameter);
-            var gameImage = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox");
-            TitleImage.SetValue(Image.SourceProperty, gameImage != null ? new BitmapImage(new Uri(gameImage.Url)) : null);
+            //Game = LibraryManager.GetGameInfo((string)e.Parameter);
+            //var gameImage = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox");
+            //TitleImage.SetValue(Image.SourceProperty, gameImage != null ? new BitmapImage(new Uri(gameImage.Url)) : null);
 
-            CheckGameStatus(Game);
+            //CheckGameStatus(Game);
 
             // Unregister event handlers on start
-            LibraryManager.GameStatusUpdated -= CheckGameStatus;
-            LibraryManager.GameStatusUpdated += CheckGameStatus;
+            // LibraryManager.GameStatusUpdated -= CheckGameStatus;
+            // LibraryManager.GameStatusUpdated += CheckGameStatus;
             InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
             InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
             InstallManager.InstallProgressUpdate -= HandleInstallationStatusChanged;
@@ -50,30 +50,30 @@ namespace Crimson
         /// <param name="e"></param>
         private async void DownloadButtonClick(object sender, RoutedEventArgs e)
         {
-            try
-            {
-                _log.Information("GameInfoPage: Primary Action Button Clicked for {Game}", Game.Title);
-                if (Game == null) return;
-                if (Game.State == Game.InstallState.Installed)
-                {
-                    _log.Information("GameInfoPage: Starting Game {Game}", Game.Title);
-                    LibraryManager.StartGame(Game.Name);
-                    return;
-                }
+            //try
+            //{
+            //    _log.Information("GameInfoPage: Primary Action Button Clicked for {Game}", Game.Title);
+            //    if (Game == null) return;
+            //    if (Game.State == Game.InstallState.Installed)
+            //    {
+            //        _log.Information("GameInfoPage: Starting Game {Game}", Game.Title);
+            //        //LibraryManager.StartGame(Game.Name);
+            //        return;
+            //    }
 
-                ConfirmInstallTitleText.Text = Game.Title;
-                ConfirmInstallImage.Source = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(Game.Images.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
-                InstallLocationText.Text = "C:\\Games\\";
-                ConfirmInstallDialog.MaxWidth = 4000;
-                var downloadResult = await ConfirmInstallDialog.ShowAsync();
+            //    ConfirmInstallTitleText.Text = Game.Title;
+            //    ConfirmInstallImage.Source = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(Game.Images.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
+            //    InstallLocationText.Text = "C:\\Games\\";
+            //    ConfirmInstallDialog.MaxWidth = 4000;
+            //    var downloadResult = await ConfirmInstallDialog.ShowAsync();
 
-            }
-            catch (Exception ex)
-            {
-                _log.Error(ex.ToString());
-                DownloadProgressRing.Visibility = Visibility.Collapsed;
-                PrimaryActionButton.IsEnabled = true;
-            }
+            //}
+            //catch (Exception ex)
+            //{
+            //    _log.Error(ex.ToString());
+            //    DownloadProgressRing.Visibility = Visibility.Collapsed;
+            //    PrimaryActionButton.IsEnabled = true;
+            //}
         }
 
         /// <summary>
@@ -126,61 +126,61 @@ namespace Crimson
             }
         }
 
-        private void CheckGameStatus(Game updatedGame)
-        {
-            if (updatedGame == null || updatedGame.Name != Game.Name) return;
-            _log.Information("GameInfoPage: Game Status Changed for {Game}", updatedGame.Title);
-            Game = updatedGame;
+        //private void CheckGameStatus(Game updatedGame)
+        //{
+            //if (updatedGame == null || updatedGame.Name != Game.Name) return;
+            //_log.Information("GameInfoPage: Game Status Changed for {Game}", updatedGame.Title);
+            //Game = updatedGame;
 
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                // Clear ui elements state
-                PrimaryActionButtonText.Text = "";
-                PrimaryActionButtonIcon.Glyph = "";
+            //DispatcherQueue.TryEnqueue(() =>
+            //{
+            //    // Clear ui elements state
+            //    PrimaryActionButtonText.Text = "";
+            //    PrimaryActionButtonIcon.Glyph = "";
 
-                if (Game.State == Game.InstallState.Installing || Game.State == Game.InstallState.Updating || Game.State == Game.InstallState.Repairing)
-                {
-                    var gameInQueue = InstallManager.GameGameInQueue(Game.Name);
-                    if (gameInQueue == null)
-                    {
-                        // Default button text and glyph if game isn't in instllation queue yet
-                        PrimaryActionButtonText.Text = "Resume";
-                        PrimaryActionButtonIcon.Glyph = "\uE768";
-                    }
-                    HandleInstallationStatusChanged(gameInQueue);
-                    return;
-                }
-                PrimaryActionButtonIcon.Visibility = Visibility.Visible;
-                DownloadProgressRing.Visibility = Visibility.Collapsed;
-                PrimaryActionButton.IsEnabled = true;
-                if (Game.State == Game.InstallState.NotInstalled)
-                {
-                    PrimaryActionButtonText.Text = "Install";
-                    PrimaryActionButtonIcon.Glyph = "\uE896";
-                }
-                else if (Game.State == Game.InstallState.Installed)
-                {
-                    PrimaryActionButtonText.Text = "Play";
-                    PrimaryActionButtonIcon.Glyph = "\uE768";
-                }
+            //    if (Game.State == Game.InstallState.Installing || Game.State == Game.InstallState.Updating || Game.State == Game.InstallState.Repairing)
+            //    {
+            //        var gameInQueue = InstallManager.GameGameInQueue(Game.Name);
+            //        if (gameInQueue == null)
+            //        {
+            //            // Default button text and glyph if game isn't in instllation queue yet
+            //            PrimaryActionButtonText.Text = "Resume";
+            //            PrimaryActionButtonIcon.Glyph = "\uE768";
+            //        }
+            //        HandleInstallationStatusChanged(gameInQueue);
+            //        return;
+            //    }
+            //    PrimaryActionButtonIcon.Visibility = Visibility.Visible;
+            //    DownloadProgressRing.Visibility = Visibility.Collapsed;
+            //    PrimaryActionButton.IsEnabled = true;
+            //    if (Game.State == Game.InstallState.NotInstalled)
+            //    {
+            //        PrimaryActionButtonText.Text = "Install";
+            //        PrimaryActionButtonIcon.Glyph = "\uE896";
+            //    }
+            //    else if (Game.State == Game.InstallState.Installed)
+            //    {
+            //        PrimaryActionButtonText.Text = "Play";
+            //        PrimaryActionButtonIcon.Glyph = "\uE768";
+            //    }
 
-                else if (Game.State == Game.InstallState.NeedUpdate)
-                {
-                    PrimaryActionButtonText.Text = "Update";
-                    PrimaryActionButtonIcon.Glyph = "\uE777";
-                }
-                else if (Game.State == Game.InstallState.Broken)
-                {
-                    PrimaryActionButtonText.Text = "Repair";
-                    PrimaryActionButtonIcon.Glyph = "\uE90F";
-                }
-            });
-        }
+            //    else if (Game.State == Game.InstallState.NeedUpdate)
+            //    {
+            //        PrimaryActionButtonText.Text = "Update";
+            //        PrimaryActionButtonIcon.Glyph = "\uE777";
+            //    }
+            //    else if (Game.State == Game.InstallState.Broken)
+            //    {
+            //        PrimaryActionButtonText.Text = "Repair";
+            //        PrimaryActionButtonIcon.Glyph = "\uE90F";
+            //    }
+            //});
+        // }
 
         protected override void OnNavigatedFrom(NavigationEventArgs e)
         {
             // Unregister both event handlers before navigating out
-            LibraryManager.GameStatusUpdated -= CheckGameStatus;
+            //LibraryManager.GameStatusUpdated -= CheckGameStatus;
             InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
             InstallManager.InstallProgressUpdate -= HandleInstallationStatusChanged;
 
@@ -198,24 +198,24 @@ namespace Crimson
         /// </summary>
         private async void InstallLocationChangeButton_OnClick(object sender, RoutedEventArgs e)
         {
-            // Create a folder picker
-            var openPicker = new FolderPicker();
+            //// Create a folder picker
+            //var openPicker = new FolderPicker();
 
-            var window = ((App)Application.Current).GetWindow();
-            var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+            //var window = ((App)Application.Current).GetWindow();
+            //var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
 
-            // Initialize the folder picker with the window handle (HWND).
-            InitializeWithWindow.Initialize(openPicker, hWnd);
+            //// Initialize the folder picker with the window handle (HWND).
+            //InitializeWithWindow.Initialize(openPicker, hWnd);
 
-            // Set options for your folder picker
-            openPicker.SuggestedStartLocation = PickerLocationId.Desktop;
-            openPicker.FileTypeFilter.Add("*");
+            //// Set options for your folder picker
+            //openPicker.SuggestedStartLocation = PickerLocationId.Desktop;
+            //openPicker.FileTypeFilter.Add("*");
 
-            // Open the picker for the user to pick a folder
-            var folder = await openPicker.PickSingleFolderAsync();
-            if (folder == null) return;
-            StorageApplicationPermissions.FutureAccessList.AddOrReplace("PickedFolderToken", folder);
-            InstallLocationText.Text = folder.Path;
+            //// Open the picker for the user to pick a folder
+            //var folder = await openPicker.PickSingleFolderAsync();
+            //if (folder == null) return;
+            //StorageApplicationPermissions.FutureAccessList.AddOrReplace("PickedFolderToken", folder);
+            //InstallLocationText.Text = folder.Path;
 
         }
 
@@ -225,14 +225,14 @@ namespace Crimson
         }
         private async void PrimaryButton_Click(object sender, RoutedEventArgs e)
         {
-            ConfirmInstallDialog.Hide();
-            PrimaryActionButton.IsEnabled = false;
-            PrimaryActionButtonText.Text = "Pending...";
-            DownloadProgressRing.Visibility = Visibility.Visible;
-            DownloadProgressRing.IsIndeterminate = true;
-            PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
-            LibraryManager.AddToInstallationQueue(Game.Name, ActionType.Install, InstallLocationText.Text);
-            _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.Title);
+            //ConfirmInstallDialog.Hide();
+            //PrimaryActionButton.IsEnabled = false;
+            //PrimaryActionButtonText.Text = "Pending...";
+            //DownloadProgressRing.Visibility = Visibility.Visible;
+            //DownloadProgressRing.IsIndeterminate = true;
+            //PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
+            //LibraryManager.AddToInstallationQueue(Game.Name, ActionType.Install, InstallLocationText.Text);
+            //_log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.Title);
         }
     }
 }

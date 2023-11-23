@@ -69,16 +69,16 @@ namespace Crimson
                     ActiveDownloadSection.Visibility = Visibility.Visible;
                     DownloadProgressBar.IsIndeterminate = true;
 
-                    var gameInfo = LibraryManager.GetGameInfo(installItem.AppName);
-                    _log.Information("HandleInstallationStatusChanged: Game Info: {GameInfo}", gameInfo);
-                    _currentInstallItem = new DownloadManagerItem
-                    {
-                        Name = gameInfo.Name,
-                        Title = gameInfo.Title,
-                        InstallState = gameInfo.State,
-                        Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")
-                            ?.Url)
-                    };
+                    //var gameInfo = LibraryManager.GetGameInfo(installItem.AppName);
+                    //_log.Information("HandleInstallationStatusChanged: Game Info: {GameInfo}", gameInfo);
+                    //_currentInstallItem = new DownloadManagerItem
+                    //{
+                    //    Name = gameInfo.Name,
+                    //    Title = gameInfo.Title,
+                    //    InstallState = gameInfo.State,
+                    //    Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")
+                    //        ?.Url)
+                    //};
                     CurrentDownloadTitle.Text = _currentInstallItem.Title;
                     CurrentDownloadImage.Source = _currentInstallItem.Image;
                 });
@@ -130,14 +130,14 @@ namespace Crimson
                 foreach (var queueItemName in queueItemNames)
                 {
 
-                    var gameInfo = LibraryManager.GetGameInfo(queueItemName);
-                    if (gameInfo is null) continue;
-                    itemList.Add(new DownloadManagerItem()
-                    {
-                        Name = queueItemName,
-                        Title = gameInfo.Title,
-                        Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
-                    });
+                    //var gameInfo = LibraryManager.GetGameInfo(queueItemName);
+                    //if (gameInfo is null) continue;
+                    //itemList.Add(new DownloadManagerItem()
+                    //{
+                    //    Name = queueItemName,
+                    //    Title = gameInfo.Title,
+                    //    Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                    //});
                 }
                 DispatcherQueue.TryEnqueue(() =>
                 {
@@ -168,14 +168,14 @@ namespace Crimson
                     foreach (var historyItemName in historyItemsNames)
                     {
 
-                        var gameInfo = LibraryManager.GetGameInfo(historyItemName);
-                        if (gameInfo is null) continue;
-                        itemList.Add(new DownloadManagerItem()
-                        {
-                            Name = historyItemName,
-                            Title = gameInfo.Title,
-                            Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
-                        });
+                        //var gameInfo = LibraryManager.GetGameInfo(historyItemName);
+                        //if (gameInfo is null) continue;
+                        //itemList.Add(new DownloadManagerItem()
+                        //{
+                        //    Name = historyItemName,
+                        //    Title = gameInfo.Title,
+                        //    Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                        //});
                     }
                     historyItems = itemList;
                     HistoryItemsList.ItemsSource = historyItems;
@@ -215,6 +215,6 @@ namespace Crimson
         public string Name { get; set; }
         public string Title { get; set; }
         public BitmapImage Image { get; set; }
-        public Game.InstallState InstallState { get; set; }
+        //public Game.InstallState InstallState { get; set; }
     }
 }

@@ -4,7 +4,7 @@ using System;
 
 namespace Crimson.Models;
 
-public class GameMetaData
+public class Game
 {
     [JsonPropertyName("app_name")]
     public string AppName { get; set; }

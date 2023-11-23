@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using Crimson.Core;
+using Crimson.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -50,10 +51,10 @@ namespace Crimson
                     {
                         var item = new LibraryItem
                         {
-                            Name = game.Name,
-                            Title = game.Title,
-                            InstallState = game.State,
-                            Image = Util.GetBitmapImage(game.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                            Name = game.AppName,
+                            Title = game.AppTitle,
+                            //InstallState = game.State,
+                            Image = Util.GetBitmapImage(game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
                         };
                         _log.Information($"UpdateLibrary: Adding {item.Name} to Library");
                         GamesList.Add(item);
@@ -100,6 +101,6 @@ namespace Crimson
         public string Name { get; set; }
         public string Title { get; set; }
         public BitmapImage Image { get; set; }
-        public Game.InstallState InstallState { get; set; }
+        //public Game.InstallState InstallState { get; set; }
     }
 }

@@ -1,5 +1,4 @@
-﻿using Crimson.Core;
-using Crimson.Models;
+﻿using Crimson.Models;
 using Serilog;
 using System;
 using System.Collections.Generic;
@@ -15,9 +14,9 @@ namespace Crimson.Utils
         private static readonly string UserDataFile = $@"{ApplicationData.Current.LocalFolder.Path}\user.json";
         private static readonly string GameAssetsFile = $@"{ApplicationData.Current.LocalFolder.Path}\assets.json";
 
-        private static readonly Dictionary<string, GameMetaData> _gameMetaDataDictionary;
+        private static readonly Dictionary<string, Game> _gameMetaDataDictionary;
 
-        public static Dictionary<string, GameMetaData> GameMetaDataDictionary => _gameMetaDataDictionary;
+        public static Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
 
         static Storage()
         {
@@ -27,7 +26,7 @@ namespace Crimson.Utils
                 if (!Directory.Exists(metadataDirectory))
                     Directory.CreateDirectory(metadataDirectory);
 
-                var metaDataDictionary = new Dictionary<string, GameMetaData>();
+                var metaDataDictionary = new Dictionary<string, Game>();
 
                 Parallel.ForEach(Directory.EnumerateFiles(metadataDirectory), new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, (file) =>
                 {
@@ -37,7 +36,7 @@ namespace Crimson.Utils
                         var gameName = fileName[..^5];
                         var jsonString = File.ReadAllText(file);
 
-                        var gameMetaData = JsonSerializer.Deserialize<GameMetaData>(jsonString);
+                        var gameMetaData = JsonSerializer.Deserialize<Game>(jsonString);
 
                         // Use lock to ensure thread safety when modifying the dictionary
                         lock (metaDataDictionary)
@@ -126,22 +125,22 @@ namespace Crimson.Utils
             }
         }
 
-        public static GameMetaData GetGameMetaData(string gameName)
+        public static Game GetGameMetaData(string gameName)
         {
             return _gameMetaDataDictionary.TryGetValue(gameName, out var gameMetaData) ? gameMetaData : null;
         }
-        public static void SaveMetaData(GameMetaData gameMetaData)
+        public static void SaveMetaData(Game game)
         {
-            var jsonString = JsonSerializer.Serialize(gameMetaData);
+            var jsonString = JsonSerializer.Serialize(game);
 
             var metadataDirectory = $@"{ApplicationData.Current.LocalFolder.Path}\metadata";
             if (!Directory.Exists(metadataDirectory))
                 Directory.CreateDirectory(metadataDirectory);
 
-            var fileName = $@"{metadataDirectory}\{gameMetaData.AppName}.json";
+            var fileName = $@"{metadataDirectory}\{game.AppName}.json";
             File.WriteAllText(fileName, jsonString);
 
-            _gameMetaDataDictionary.TryAdd(gameMetaData.AppName, gameMetaData);
+            _gameMetaDataDictionary.TryAdd(game.AppName, game);
         }
 
     }
