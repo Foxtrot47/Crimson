@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -17,7 +18,7 @@ namespace Crimson
     /// </summary>
     public sealed partial class LibraryPage : Page
     {
-        public static ObservableCollection<LibraryItem> GamesList { get; set; }
+        public static List<LibraryItem> GamesList { get; set; }
         public bool LoadingFinished = false;
 
         // Get logger instance from MainWindow window class
@@ -35,14 +36,18 @@ namespace Crimson
             LoadingSection.Visibility = Visibility.Visible;
             GamesGrid.Visibility = Visibility.Collapsed;
 
-            Task.Run(async () => await _libraryManager.GetLibraryData());
+            Task.Run(async () =>
+            {
+                var games = await _libraryManager.GetLibraryData();
+                UpdateLibrary(games);
+            });
 
             DataContext = this;
             _libraryManager.LibraryUpdated += UpdateLibrary;
             _log.Information("LibraryPage: Loading finished");
         }
 
-        private void UpdateLibrary(ObservableCollection<Game> games)
+        private void UpdateLibrary(IEnumerable<Game> games)
         {
             try
             {
@@ -50,7 +55,7 @@ namespace Crimson
                 if (games == null) return;
                 DispatcherQueue.TryEnqueue(() =>
                 {
-                    GamesList = new ObservableCollection<LibraryItem>();
+                    GamesList = new List<LibraryItem>();
                     foreach (var game in games)
                     {
                         var item = new LibraryItem

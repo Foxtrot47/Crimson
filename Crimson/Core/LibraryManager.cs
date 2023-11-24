@@ -30,9 +30,10 @@ public class LibraryManager
 
     private static readonly HttpClient HttpClient;
 
-    public event Action<ObservableCollection<Game>> LibraryUpdated;
+    public event Action<IEnumerable<Game>> LibraryUpdated;
     public event Action<Game> GameStatusUpdated;
 
+    private DateTime _lastUpdateDateTime = DateTime.MinValue;
 
     static LibraryManager()
     {
@@ -47,6 +48,26 @@ public class LibraryManager
         _authManager = authManager;
         _storage = storage;
     }
+    /// <summary>
+    /// Public method to get library data, call UpdateLibraryData it's been more than 20 minutes since last update
+    /// </summary>
+    /// <param name="forceUpdate"></param>
+    /// <returns></returns>
+    public async Task<IEnumerable<Game>> GetLibraryData(bool forceUpdate = false)
+    {
+        // Only update library data if it's been more than 20 minutes since last update
+        var dataNeedsUpdate = forceUpdate || (_lastUpdateDateTime == DateTime.MinValue) || (DateTime.Now - _lastUpdateDateTime > TimeSpan.FromMinutes(20));
+
+        if (!dataNeedsUpdate)
+            return _storage.GameMetaDataDictionary.Values.ToList();
+
+        // Update the library data
+        await UpdateLibraryData(forceUpdate);
+        // Optionally, you can update the last update timestamp here
+        _lastUpdateDateTime = DateTime.Now;
+
+        return _storage.GameMetaDataDictionary.Values.ToList();
+    }
 
     /// <summary>
     ///  Updates library data and triggers LibraryUpdated event
@@ -54,7 +75,7 @@ public class LibraryManager
     /// <param name="forceUpdate"></param>
     /// <param name="updateAssets"></param>
     /// <returns></returns>
-    public async Task GetLibraryData(bool forceUpdate = false, bool updateAssets = true)
+    private async Task UpdateLibraryData(bool forceUpdate = false, bool updateAssets = true)
     {
         try
         {
@@ -127,13 +148,11 @@ public class LibraryManager
 
             // Sort _gameData by name
             _log.Information("UpdateLibraryAsync: Library updated");
-            //LibraryUpdated?.Invoke(_gameData);
-            return;
+            LibraryUpdated?.Invoke(gameMetaDataDictionary.Values.ToList());
         }
         catch (Exception ex)
         {
             _log.Error(ex.ToString());
-            return;
         }
     }
 
