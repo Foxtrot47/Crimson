@@ -21,20 +21,24 @@ namespace Crimson
         public bool LoadingFinished = false;
 
         // Get logger instance from MainWindow window class
-        private readonly ILogger _log = ((App)Application.Current).Log;
+        private readonly ILogger _log;
+        private readonly LibraryManager _libraryManager;
 
         public LibraryPage()
         {
+            InitializeComponent();
+
+            _log = DependencyResolver.Resolve<ILogger>();
+            _libraryManager = DependencyResolver.Resolve<LibraryManager>();
             _log.Information("LibraryPage: Loading Page");
-            InitializeComponent();
-            InitializeComponent();
+
             LoadingSection.Visibility = Visibility.Visible;
             GamesGrid.Visibility = Visibility.Collapsed;
 
-            Task.Run(async () => await LibraryManager.GetLibraryData());
+            Task.Run(async () => await _libraryManager.GetLibraryData());
 
             DataContext = this;
-            LibraryManager.LibraryUpdated += UpdateLibrary;
+            _libraryManager.LibraryUpdated += UpdateLibrary;
             _log.Information("LibraryPage: Loading finished");
         }
 

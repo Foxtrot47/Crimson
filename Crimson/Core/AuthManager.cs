@@ -13,12 +13,13 @@ using Serilog;
 
 namespace Crimson.Core;
 
-public static class AuthManager
+public class AuthManager
 {
-    private static ILogger _log;
+    private readonly ILogger _log;
+    private readonly Storage _storage;
 
-    private static string _userDataFile;
-    private static AuthenticationStatus _authenticationStatus;
+    private string _userDataFile;
+    private AuthenticationStatus _authenticationStatus;
 
     private const string BasicAuthUsername = "34a02cf8f4414e29b15921876da36f9a";
     private const string BasicAuthPassword = "daafbccc737745039dffe53d94fc76cf";
@@ -30,9 +31,9 @@ public static class AuthManager
 
     public delegate void AuthStatusChangedEventHandler(object sender, AuthStatusChangedEventArgs e);
 
-    public static event AuthStatusChangedEventHandler AuthStatusChanged;
+    public event AuthStatusChangedEventHandler AuthStatusChanged;
 
-    public static AuthenticationStatus AuthenticationStatus => _authenticationStatus;
+    public AuthenticationStatus AuthenticationStatus => _authenticationStatus;
 
     static AuthManager()
     {
@@ -40,23 +41,24 @@ public static class AuthManager
         HttpClient.DefaultRequestHeaders.Add("User-Agent", UserAgent);
     }
 
-    public static void Initialize(ILogger log)
+    public AuthManager(ILogger log, Storage storage)
     {
         _log = log;
+        _storage = storage;
         var localFolder = ApplicationData.Current.LocalFolder;
         _userDataFile = $@"{localFolder.Path}\user.json";
     }
     // <summary>
     // Check if the user is logged in or not
     // </summary>
-    public static async Task<AuthenticationStatus> CheckAuthStatus()
+    public async Task<AuthenticationStatus> CheckAuthStatus()
     {
         try
         {
             _authenticationStatus = AuthenticationStatus.Checking;
             OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
 
-            var userData = await Storage.GetUserData();
+            var userData = await _storage.GetUserData();
             if (userData == null)
             {
                 _authenticationStatus = AuthenticationStatus.LoggedOut;
@@ -92,7 +94,7 @@ public static class AuthManager
                 userData = newData;
                 newData.AccessToken = KeyManager.EncryptString(newData.AccessToken);
                 newData.RefreshToken = KeyManager.EncryptString(newData.RefreshToken);
-                await Storage.SaveUserData(userData);
+                await _storage.SaveUserData(userData);
             }
             else
             {
@@ -123,7 +125,7 @@ public static class AuthManager
     // <summary>
     // Fetch user data from the exchange code
     // </summary>
-    public static async void DoExchangeLogin(string exchangeCode)
+    public async void DoExchangeLogin(string exchangeCode)
     {
         var userData = await RequestTokens("exchange_code", "exchange_code", exchangeCode);
 
@@ -143,10 +145,10 @@ public static class AuthManager
         _authenticationStatus = AuthenticationStatus.LoggedIn;
         OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedIn));
 
-        await Storage.SaveUserData(userData);
+        await _storage.SaveUserData(userData);
     }
 
-    public static async Task<string> GetAccessToken()
+    public async Task<string> GetAccessToken()
     {
         if (_authenticationStatus != AuthenticationStatus.LoggedIn)
         {
@@ -155,11 +157,11 @@ public static class AuthManager
         }
 
         // TODO Check for expiry date and refresh if needed
-        var userData = await Storage.GetUserData();
+        var userData = await _storage.GetUserData();
         return KeyManager.DecryptString(userData.AccessToken);
     }
 
-    private static async Task<UserData> RequestTokens(string grantType, string codeName, string codeValue)
+    private async Task<UserData> RequestTokens(string grantType, string codeName, string codeValue)
     {
         var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{BasicAuthUsername}:{BasicAuthPassword}"));
 
@@ -209,7 +211,7 @@ public static class AuthManager
     // <summary>
     // Verify the access token is still valid
     // </summary>
-    private static async Task<bool> VerifyAccessToken(string accessToken)
+    private async Task<bool> VerifyAccessToken(string accessToken)
     {
         try
         {
@@ -236,7 +238,7 @@ public static class AuthManager
     // Wrap event invocations inside a protected virtual method
     // to allow derived classes to override the event invocation behavior.
     // Wrap event invocations inside a private static method.
-    private static void OnAuthStatusChanged(AuthStatusChangedEventArgs e)
+    private void OnAuthStatusChanged(AuthStatusChangedEventArgs e)
     {
         AuthStatusChanged?.Invoke(null, e);
     }

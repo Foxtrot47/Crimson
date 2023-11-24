@@ -21,7 +21,8 @@ namespace Crimson;
 public sealed partial class MainWindow : Window
 {
     public bool IsLoggedIn;
-    public ILogger Log;
+    private ILogger _log = DependencyResolver.Resolve<ILogger>();
+    private readonly AuthManager _authManager;
     WindowsSystemDispatcherQueueHelper _mWsdqHelper;
     MicaController _mBackdropController;
     SystemBackdropConfiguration _mConfigurationSource;
@@ -36,18 +37,14 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
+        _authManager = DependencyResolver.Resolve<AuthManager>();
+        _log = DependencyResolver.Resolve<ILogger>();
+
         IsLoggedIn = false;
         Task.Run(async () =>
         {
-            var localFolder = ApplicationData.Current.LocalFolder;
-            var logFilePath = $@"{localFolder.Path}\logs\{DateTime.Now:yyyy-MM-dd}.txt";
-            Log = new LoggerConfiguration().WriteTo.File(logFilePath).CreateLogger();
-            Log.Information("Starting up");
-            AuthManager.Initialize(Log);
-            LibraryManager.Initialize("", Log);
-
-            AuthManager.AuthStatusChanged += AuthStatusChangedHandler;
-            await AuthManager.CheckAuthStatus();
+            _authManager.AuthStatusChanged += AuthStatusChangedHandler;
+            await _authManager.CheckAuthStatus();
         });
     }
 

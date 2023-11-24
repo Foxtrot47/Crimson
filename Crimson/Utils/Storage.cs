@@ -9,17 +9,19 @@ using Windows.Storage;
 
 namespace Crimson.Utils
 {
-    internal static class Storage
+    public class Storage
     {
         private static readonly string UserDataFile = $@"{ApplicationData.Current.LocalFolder.Path}\user.json";
         private static readonly string GameAssetsFile = $@"{ApplicationData.Current.LocalFolder.Path}\assets.json";
 
-        private static readonly Dictionary<string, Game> _gameMetaDataDictionary;
+        private readonly Dictionary<string, Game> _gameMetaDataDictionary;
+        private ILogger _logger;
 
-        public static Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
+        public Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
 
-        static Storage()
+        public Storage()
         {
+            _logger = DependencyResolver.Resolve<ILogger>();
             try
             {
                 var metadataDirectory = $@"{ApplicationData.Current.LocalFolder.Path}\metadata";
@@ -61,7 +63,7 @@ namespace Crimson.Utils
 
         }
 
-        public static async Task<UserData> GetUserData()
+        public async Task<UserData> GetUserData()
         {
             if (!File.Exists(UserDataFile))
             {
@@ -76,7 +78,7 @@ namespace Crimson.Utils
 
             return userData;
         }
-        public static async Task SaveUserData(UserData data)
+        public async Task SaveUserData(UserData data)
         {
             var jsonString = JsonSerializer.Serialize(data);
 
@@ -86,7 +88,7 @@ namespace Crimson.Utils
             streamWriter.Close();
         }
 
-        public static async Task<IEnumerable<Asset>> GetGameAssetsData()
+        public async Task<IEnumerable<Asset>> GetGameAssetsData()
         {
             try
             {
@@ -108,7 +110,7 @@ namespace Crimson.Utils
                 return null;
             }
         }
-        public static async Task SaveGameAssetsData(IEnumerable<Asset> data)
+        public async Task SaveGameAssetsData(IEnumerable<Asset> data)
         {
             try
             {
@@ -125,11 +127,11 @@ namespace Crimson.Utils
             }
         }
 
-        public static Game GetGameMetaData(string gameName)
+        public Game GetGameMetaData(string gameName)
         {
             return _gameMetaDataDictionary.TryGetValue(gameName, out var gameMetaData) ? gameMetaData : null;
         }
-        public static void SaveMetaData(Game game)
+        public void SaveMetaData(Game game)
         {
             var jsonString = JsonSerializer.Serialize(game);
 

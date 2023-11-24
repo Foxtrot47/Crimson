@@ -28,21 +28,27 @@ namespace Crimson
         private DownloadManagerItem _currentInstallItem = new DownloadManagerItem();
         private ObservableCollection<DownloadManagerItem> queueItems = new();
         private ObservableCollection<DownloadManagerItem> historyItems = new();
-        private readonly ILogger _log = ((App)Application.Current).Log;
+
+        private readonly ILogger _log;
+        private readonly InstallManager _installManager;
         public DownloadsPage()
         {
             this.InitializeComponent();
+            _log = DependencyResolver.Resolve<ILogger>();
             _log.Information("DownloadsPage: Loading Page");
+
+            _installManager = DependencyResolver.Resolve<InstallManager>();
+
             DataContext = _currentInstallItem;
-            if (InstallManager.CurrentInstall?.AppName == null)
+            if (_installManager.CurrentInstall?.AppName == null)
                 ActiveDownloadSection.Visibility = Visibility.Collapsed;
 
-            var gameInQueue = InstallManager.CurrentInstall;
+            var gameInQueue = _installManager.CurrentInstall;
             HandleInstallationStatusChanged(gameInQueue);
             FetchQueueItemsList();
             FetchHistoryItemsList();
-            InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
-            InstallManager.InstallProgressUpdate += InstallationProgressUpdate;
+            _installManager.InstallationStatusChanged += HandleInstallationStatusChanged;
+            _installManager.InstallProgressUpdate += InstallationProgressUpdate;
         }
 
         // Handing Installtion State Change
@@ -114,14 +120,14 @@ namespace Crimson
         private void CancelInstallButton_OnClick(object sender, RoutedEventArgs e)
         {
             _log.Information("CancelInstallButton_OnClick: Cancelling Installation");
-            InstallManager.CancelInstall(_currentInstallItem.Name);
+            _installManager.CancelInstall(_currentInstallItem.Name);
         }
 
         private void FetchQueueItemsList()
         {
             try
             {
-                var queueItemNames = InstallManager.GetQueueItemNames();
+                var queueItemNames = _installManager.GetQueueItemNames();
                 if (queueItemNames == null || queueItemNames.Count < 1) return;
 
                 DispatcherQueue.TryEnqueue(() => queueItems.Clear());
@@ -154,7 +160,7 @@ namespace Crimson
         {
             try
             {
-                var historyItemsNames = InstallManager.GetHistoryItemsNames();
+                var historyItemsNames = _installManager.GetHistoryItemsNames();
                 if (historyItemsNames == null || historyItemsNames.Count < 1) return;
 
                 _log.Information("FetchHistoryItemsList: History Items: {HistoryItems}", historyItemsNames);

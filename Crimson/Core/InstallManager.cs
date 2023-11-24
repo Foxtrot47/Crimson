@@ -53,24 +53,24 @@ public class InstallItem
     }
 }
 
-public static class InstallManager
+public class InstallManager
 {
-    public static event Action<InstallItem> InstallationStatusChanged;
-    public static event Action<InstallItem> InstallProgressUpdate;
-    public static InstallItem CurrentInstall;
-    private static Queue<InstallItem> _installQueue;
-    private static readonly List<InstallItem> InstallHistory = new();
+    public event Action<InstallItem> InstallationStatusChanged;
+    public event Action<InstallItem> InstallProgressUpdate;
+    public InstallItem CurrentInstall;
+    private Queue<InstallItem> _installQueue;
+    private readonly List<InstallItem> InstallHistory = new();
 
-    private static ILogger _log;
+    private ILogger _log;
 
-    public static void Initialize(string legendaryBinaryPath, ILogger log)
+    public InstallManager(ILogger log)
     {
         _installQueue = new Queue<InstallItem>();
         CurrentInstall = null; ;
         _log = log;
     }
 
-    public static void AddToQueue(InstallItem item)
+    public void AddToQueue(InstallItem item)
     {
         if (item == null)
             return;
@@ -81,7 +81,7 @@ public static class InstallManager
             ProcessNext();
     }
 
-    private static void ProcessNext()
+    private void ProcessNext()
     {
         try
         {
@@ -105,7 +105,7 @@ public static class InstallManager
         }
     }
 
-    public static InstallItem GameGameInQueue(string gameName)
+    public InstallItem GameGameInQueue(string gameName)
     {
         InstallItem item;
         if (CurrentInstall != null && CurrentInstall.AppName == gameName)
@@ -115,11 +115,11 @@ public static class InstallManager
         return item;
     }
 
-    public static void CancelInstall(string gameName)
+    public void CancelInstall(string gameName)
     {
     }
 
-    public static List<string> GetQueueItemNames()
+    public List<string> GetQueueItemNames()
     {
         var queueItemsName = new List<string>();
         foreach (var item in _installQueue)
@@ -128,7 +128,7 @@ public static class InstallManager
         }
         return queueItemsName;
     }
-    public static List<string> GetHistoryItemsNames()
+    public List<string> GetHistoryItemsNames()
     {
         var historyItemsName = new List<string>();
         foreach (var item in InstallHistory)

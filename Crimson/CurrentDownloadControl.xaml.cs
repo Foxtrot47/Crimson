@@ -7,13 +7,19 @@ namespace Crimson;
 
 public sealed partial class CurrentDownloadControl : UserControl
 {
+    private readonly LibraryManager _libraryManager;
+    private readonly InstallManager _installManager;
     public CurrentDownloadControl()
     {
         InitializeComponent();
-        var gameInQueue = InstallManager.CurrentInstall;
+        _installManager = DependencyResolver.Resolve<InstallManager>();
+        _libraryManager = DependencyResolver.Resolve<LibraryManager>();
+
+        var gameInQueue = _installManager.CurrentInstall;
         HandleInstallationStatusChanged(gameInQueue);
-        InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
-        InstallManager.InstallProgressUpdate += InstallationProgressUpdate;
+        _installManager.InstallationStatusChanged += HandleInstallationStatusChanged;
+        _installManager.InstallProgressUpdate += InstallationProgressUpdate;
+        
     }
 
     // Handing Installtion State Change

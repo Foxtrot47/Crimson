@@ -13,24 +13,25 @@ using Serilog;
 using Windows.Storage;
 using Crimson.Utils;
 using System.Net.Http.Headers;
+using Crimson.Repository;
 
 namespace Crimson.Core;
 
-public static class LibraryManager
+public class LibraryManager
 {
     private const string LauncherHost = "launcher-public-service-prod06.ol.epicgames.com";
     private const string CatalogHost = "catalog-public-service-prod06.ol.epicgames.com";
     private const string UserAgent = "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit";
 
-    // File contains game data
-    private static string _gameDataFile;
-
-    private static ILogger _log;
+    private readonly ILogger _log;
+    private readonly IStoreRepository _storeRepository;
+    private readonly AuthManager _authManager;
+    private readonly Storage _storage;
 
     private static readonly HttpClient HttpClient;
 
-    public static event Action<ObservableCollection<Game>> LibraryUpdated;
-    public static event Action<Game> GameStatusUpdated;
+    public event Action<ObservableCollection<Game>> LibraryUpdated;
+    public event Action<Game> GameStatusUpdated;
 
 
     static LibraryManager()
@@ -39,13 +40,12 @@ public static class LibraryManager
         HttpClient.DefaultRequestHeaders.Add("User-Agent", UserAgent);
     }
 
-    public static void Initialize(string binaryPath, ILogger log)
+    public LibraryManager(ILogger log, IStoreRepository repository, AuthManager authManager, Storage storage)
     {
         _log = log;
-
-
-        var localFolder = ApplicationData.Current.LocalFolder;
-        _gameDataFile = $@"{localFolder.Path}\gamedata.json";
+        _storeRepository = repository;
+        _authManager = authManager;
+        _storage = storage;
     }
 
     /// <summary>
@@ -54,12 +54,12 @@ public static class LibraryManager
     /// <param name="forceUpdate"></param>
     /// <param name="updateAssets"></param>
     /// <returns></returns>
-    public static async Task GetLibraryData(bool forceUpdate = false, bool updateAssets = true)
+    public async Task GetLibraryData(bool forceUpdate = false, bool updateAssets = true)
     {
         try
         {
             var metadataUpdated = false;
-            var gameAssets = await Storage.GetGameAssetsData();
+            var gameAssets = await _storage.GetGameAssetsData();
             if (gameAssets == null)
             {
                 _log.Information("UpdateLibraryData: No cached game assets found");
@@ -85,7 +85,7 @@ public static class LibraryManager
             {
                 if (asset.Namespace.Contains("ue")) continue;
 
-                var game = Storage.GetGameMetaData(asset.AppName);
+                var game = _storage.GetGameMetaData(asset.AppName);
                 var assetUpdated = false;
                 if (game != null)
                 {
@@ -120,10 +120,10 @@ public static class LibraryManager
                     },
                     Metadata = egFetchGameMetaData
                 };
-                Storage.SaveMetaData(gameMetaData);
+                _storage.SaveMetaData(gameMetaData);
             }
 
-            gameMetaDataDictionary = Storage.GameMetaDataDictionary;
+            gameMetaDataDictionary = _storage.GameMetaDataDictionary;
 
             // Sort _gameData by name
             _log.Information("UpdateLibraryAsync: Library updated");
@@ -137,12 +137,12 @@ public static class LibraryManager
         }
     }
 
-    private static async Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live")
+    private async Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live")
     {
         try
         {
             _log.Information("FetchGameAssets: Fetching game assets");
-            var accessToken = await AuthManager.GetAccessToken();
+            var accessToken = await _authManager.GetAccessToken();
 
             HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             var httpResponse = await HttpClient.GetAsync($"https://{LauncherHost}/launcher/api/public/assets/{platform}?label={label}");
@@ -167,11 +167,11 @@ public static class LibraryManager
 
     }
 
-    private static async Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId)
+    private async Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId)
     {
 
         _log.Information("FetchGameMetaData: Fetching game metadata");
-        var accessToken = await AuthManager.GetAccessToken();
+        var accessToken = await _authManager.GetAccessToken();
         HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
         // API requests parameters to be in query instead of body

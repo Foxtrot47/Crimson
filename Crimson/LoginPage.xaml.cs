@@ -26,6 +26,7 @@ namespace Crimson
     /// </summary>
     public sealed partial class LoginPage : Page
     {
+        private readonly AuthManager _authManager = DependencyResolver.Resolve<AuthManager>();
         public LoginPage()
         {
             this.InitializeComponent();
@@ -49,7 +50,7 @@ namespace Crimson
         {
             var message = e.TryGetWebMessageAsString();
             var response = JsonSerializer.Deserialize<EpicLoginResponse>(message);
-            AuthManager.DoExchangeLogin(response.Code);
+            _authManager.DoExchangeLogin(response.Code);
         }
         public async void InitWebView()
         {

@@ -4,9 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Crimson.Interfaces
+namespace Crimson.Repository
 {
-    internal interface IStoreRepository
+    public interface IStoreRepository
     {
     }
 }

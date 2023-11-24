@@ -18,13 +18,16 @@ namespace Crimson
     /// </summary>
     public sealed partial class GameInfoPage : Page
     {
+        private readonly InstallManager _installer;
         //public Game Game { get; set; }
 
         public GameInfoPage()
         {
             this.InitializeComponent();
+            _log = DependencyResolver.Resolve<ILogger>();
+            _installer = DependencyResolver.Resolve<InstallManager>();
         }
-        private readonly ILogger _log = ((App)Application.Current).Log;
+        private readonly ILogger _log;
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             //Game = LibraryManager.GetGameInfo((string)e.Parameter);
@@ -36,10 +39,10 @@ namespace Crimson
             // Unregister event handlers on start
             // LibraryManager.GameStatusUpdated -= CheckGameStatus;
             // LibraryManager.GameStatusUpdated += CheckGameStatus;
-            InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
-            InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
-            InstallManager.InstallProgressUpdate -= HandleInstallationStatusChanged;
-            InstallManager.InstallProgressUpdate += HandleInstallationStatusChanged;
+            _installer.InstallationStatusChanged -= HandleInstallationStatusChanged;
+            _installer.InstallationStatusChanged += HandleInstallationStatusChanged;
+            _installer.InstallProgressUpdate -= HandleInstallationStatusChanged;
+            _installer.InstallProgressUpdate += HandleInstallationStatusChanged;
 
         }
 
@@ -181,8 +184,8 @@ namespace Crimson
         {
             // Unregister both event handlers before navigating out
             //LibraryManager.GameStatusUpdated -= CheckGameStatus;
-            InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
-            InstallManager.InstallProgressUpdate -= HandleInstallationStatusChanged;
+            _installer.InstallationStatusChanged -= HandleInstallationStatusChanged;
+            _installer.InstallProgressUpdate -= HandleInstallationStatusChanged;
 
             // Call the base implementation
             base.OnNavigatedFrom(e);
