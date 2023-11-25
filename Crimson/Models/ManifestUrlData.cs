@@ -22,13 +22,13 @@ public class Element
     public string LabelName { get; set; }
 
     [JsonPropertyName("manifests")]
-    public List<Manifest> Manifests { get; set; }
+    public List<ManifestList> Manifests { get; set; }
 
     [JsonPropertyName("useSignedUrl")]
     public bool UseSignedUrl { get; set; }
 }
 
-public class Manifest
+public class ManifestList
 {
     [JsonPropertyName("queryParams")]
     public List<QueryParam> QueryParams { get; set; }
