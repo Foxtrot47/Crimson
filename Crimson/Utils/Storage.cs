@@ -14,10 +14,12 @@ namespace Crimson.Utils
         private static readonly string UserDataFile = $@"{ApplicationData.Current.LocalFolder.Path}\user.json";
         private static readonly string GameAssetsFile = $@"{ApplicationData.Current.LocalFolder.Path}\assets.json";
 
-        private readonly Dictionary<string, Game> _gameMetaDataDictionary;
+        private Dictionary<string, Game> _gameMetaDataDictionary;
+        private Dictionary<string, InstalledGame> _installedGamesDictionary;
         private ILogger _logger;
 
         public Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
+        public Dictionary<string, InstalledGame> InstalledGamesDictionary => _installedGamesDictionary;
 
         public Storage()
         {
@@ -55,6 +57,14 @@ namespace Crimson.Utils
 
                 // Outside the parallel loop, assign the dictionary to the shared field
                 _gameMetaDataDictionary = metaDataDictionary;
+
+                // Load installed games list
+                var installedGamesFile = $@"{ApplicationData.Current.LocalFolder.Path}\installed.json";
+                if (File.Exists(installedGamesFile))
+                {
+                    var jsonString = File.ReadAllText(installedGamesFile);
+                    _installedGamesDictionary = JsonSerializer.Deserialize<Dictionary<string, InstalledGame>>(jsonString);
+                }
             }
             catch (Exception ex)
             {
@@ -145,5 +155,14 @@ namespace Crimson.Utils
             _gameMetaDataDictionary.TryAdd(game.AppName, game);
         }
 
+        public void SaveInstalledGamesList(InstalledGame installedGame)
+        {
+            _installedGamesDictionary.TryAdd(installedGame.AppName, installedGame);
+
+            var jsonString = JsonSerializer.Serialize(_installedGamesDictionary);
+
+            var fileName = $@"{ApplicationData.Current.LocalFolder.Path}\installed.json";
+            File.WriteAllText(fileName, jsonString);
+        }
     }
 }
