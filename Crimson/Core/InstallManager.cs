@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Crimson.Models;
 using Serilog;
 
 namespace Crimson.Core;
@@ -62,18 +63,53 @@ public class InstallManager
     private readonly List<InstallItem> InstallHistory = new();
 
     private ILogger _log;
+    private readonly LibraryManager _libraryManager;
 
-    public InstallManager(ILogger log)
+    public InstallManager(ILogger log, LibraryManager libraryManager)
     {
+        _log = log;
+        _libraryManager = libraryManager;
         _installQueue = new Queue<InstallItem>();
         CurrentInstall = null; ;
-        _log = log;
     }
 
     public void AddToQueue(InstallItem item)
     {
         if (item == null)
             return;
+        
+        // check if the game is already in the queue
+        if (_installQueue.Contains(item, new InstallItemComparer()))
+        {
+            _log.Warning("AddToQueue: Game {Name} already in queue", item.AppName);
+            return;
+        }
+
+        // Check if the game we are trying to install exists in the library
+        var gameData = _libraryManager.GetGameInfo(item.AppName);
+        if (gameData == null)
+        {
+            _log.Warning("AddToQueue: Game {Name} not found in library", item.AppName);
+            return;
+        }
+
+        if (item.Action != ActionType.Install && gameData.InstallStatus == InstallState.NotInstalled)
+        {
+            _log.Warning($"AddToQueue: {item.AppName} is not installed, cannot {item.Action.ToString()}");
+            return;
+        }
+
+        if (item.Action != ActionType.Repair && gameData.InstallStatus == InstallState.Broken)
+        {
+            _log.Warning($"AddToQueue: {item.AppName} is broken, forcing repair");
+            item.Action = ActionType.Repair;
+        }
+
+        if (gameData.IsDlc())
+        {
+            _log.Warning($"AddToQueue: {item.AppName} is a DLC. DLC Handling is disabled right now");
+            return;
+        }
 
         _log.Information("AddToQueue: Adding new Install to queue {Name} Action {Action}", item.AppName, item.Action);
         _installQueue.Enqueue(item);
