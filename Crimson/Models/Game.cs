@@ -20,6 +20,9 @@ public class Game
 
     [JsonPropertyName("metadata")]
     public Metadata Metadata { get; set; }
+
+    [JsonPropertyName("install_status")]
+    public InstallState InstallStatus { get; set; } = InstallState.NotInstalled;
 }
 
 public class AdditionalCommandLine
@@ -680,4 +683,18 @@ public class Asset
 
     [JsonPropertyName("namespace")]
     public string Namespace { get; set; }
+}
+
+public enum InstallState
+{
+    NotInstalled,
+    Installing,
+    InstallationPaused,
+    Installed,
+    Playing,
+    Broken,
+    Repairing,
+    NeedUpdate,
+    Updating,
+    UpdatingPaused
 }
