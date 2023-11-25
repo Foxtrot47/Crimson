@@ -23,6 +23,11 @@ public class Game
 
     [JsonPropertyName("install_status")]
     public InstallState InstallStatus { get; set; } = InstallState.NotInstalled;
+
+    public bool IsDlc()
+    {
+        return Metadata.MainGameItem != null;
+    }
 }
 
 public class AdditionalCommandLine
