@@ -21,13 +21,16 @@ public class Manifest
     public int Version { get; private set; } = 18;
     public byte[] Data { get; private set; } = Array.Empty<byte>();
 
+    public ManifestMeta ManifestMeta { get; set; }
+
     public bool Compressed => (StoredAs & 0x1) != 0;
 
     public static Manifest ReadAll(byte[] data)
     {
-        var m = Read(data);
-        using (var stream = new MemoryStream(m.Data))
+        var manifest = Read(data);
+        using (var stream = new MemoryStream(manifest.Data))
         {
+            manifest.ManifestMeta = ManifestMeta.Read(new BinaryReader(stream));
             var unhandledDataLength = stream.Length - stream.Position;
             if (unhandledDataLength > 0)
             {
@@ -35,9 +38,9 @@ public class Manifest
             }
         }
         // Throw this away since the raw data is no longer needed
-        m.Data = Array.Empty<byte>();
+        manifest.Data = Array.Empty<byte>();
 
-        return m;
+        return manifest;
     }
 
     public static Manifest Read(byte[] data)
@@ -105,5 +108,133 @@ public class Manifest
             zlibStream.CopyTo(decompressedStream);
         }
         return decompressedStream.ToArray();
+    }
+}
+
+public class ManifestMeta
+{
+    public int MetaSize { get; private set; }
+    public byte DataVersion { get; private set; }
+    public uint FeatureLevel { get; private set; }
+    public bool IsFileData { get; private set; }
+    public uint AppId { get; private set; }
+    public string AppName { get; private set; }
+    public string BuildVersion { get; private set; }
+    public string LaunchExe { get; private set; }
+    public string LaunchCommand { get; private set; }
+    public List<string> PrereqIds { get; private set; }
+    public string PrereqName { get; private set; }
+    public string PrereqPath { get; private set; }
+    public string PrereqArgs { get; private set; }
+    public string UninstallActionPath { get; private set; }
+    public string UninstallActionArgs { get; private set; }
+
+    private string _buildId;
+
+    public string BuildId
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(_buildId))
+            {
+                return _buildId;
+            }
+
+            using (var sha1 = new SHA1Managed())
+            {
+                var hashBytes = sha1.ComputeHash(BitConverter.GetBytes(AppId));
+                hashBytes = CombineArrays(hashBytes, Encoding.UTF8.GetBytes(AppName));
+                hashBytes = CombineArrays(hashBytes, Encoding.UTF8.GetBytes(BuildVersion));
+                hashBytes = CombineArrays(hashBytes, Encoding.UTF8.GetBytes(LaunchExe));
+                hashBytes = CombineArrays(hashBytes, Encoding.UTF8.GetBytes(LaunchCommand));
+
+                _buildId = Convert.ToBase64String(hashBytes)
+                    .Replace("+", "-")
+                    .Replace("/", "_")
+                    .Replace("=", "");
+            }
+
+            return _buildId;
+        }
+    }
+
+    public static ManifestMeta Read(BinaryReader reader)
+    {
+        var meta = new ManifestMeta
+        {
+            MetaSize = reader.ReadInt32(),
+            DataVersion = reader.ReadByte(),
+            FeatureLevel = reader.ReadUInt32(),
+            IsFileData = reader.ReadByte() == 1,
+            AppId = reader.ReadUInt32(),
+            AppName = ReadFString(reader),
+            BuildVersion = ReadFString(reader),
+            LaunchExe = ReadFString(reader),
+            LaunchCommand = ReadFString(reader)
+        };
+
+        var entries = reader.ReadUInt32();
+        meta.PrereqIds = new List<string>();
+        for (var i = 0; i < entries; i++)
+        {
+            meta.PrereqIds.Add(ReadFString(reader));
+        }
+
+        meta.PrereqName = ReadFString(reader);
+        meta.PrereqPath = ReadFString(reader);
+        meta.PrereqArgs = ReadFString(reader);
+
+        if (meta.DataVersion >= 1)
+        {
+            meta._buildId = ReadFString(reader);
+        }
+
+        if (meta.DataVersion >= 2)
+        {
+            meta.UninstallActionPath = ReadFString(reader);
+            meta.UninstallActionArgs = ReadFString(reader);
+        }
+
+        var sizeRead = (int)reader.BaseStream.Position;
+        if (sizeRead == meta.MetaSize) return meta;
+
+        Console.WriteLine($"Did not read entire manifest metadata! Version: {meta.DataVersion}, " +
+                          $"{meta.MetaSize - sizeRead} bytes missing, skipping...");
+        reader.BaseStream.Seek(meta.MetaSize - sizeRead, SeekOrigin.Current);
+        // Downgrade version to prevent issues during serialization
+        meta.DataVersion = 0;
+
+        return meta;
+    }
+
+    private static byte[] CombineArrays(byte[] first, byte[] second)
+    {
+        var result = new byte[first.Length + second.Length];
+        Buffer.BlockCopy(first, 0, result, 0, first.Length);
+        Buffer.BlockCopy(second, 0, result, first.Length, second.Length);
+        return result;
+    }
+
+    private static string ReadFString(BinaryReader reader)
+    {
+        var length = reader.ReadInt32();
+        switch (length)
+        {
+            case < 0:
+            {
+                length *= -2;
+                var utf16Bytes = reader.ReadBytes(length - 2);
+                reader.BaseStream.Seek(2, SeekOrigin.Current); // UTF-16 strings have two-byte null terminators
+                return Encoding.Unicode.GetString(utf16Bytes);
+            }
+            case > 0:
+            {
+                var asciiBytes = reader.ReadBytes(length - 1);
+                reader.BaseStream.Seek(1, SeekOrigin.Current); // Skip string null terminator
+                return Encoding.ASCII.GetString(asciiBytes);
+            }
+            default:
+                return string.Empty;
+        }
     }
 }
