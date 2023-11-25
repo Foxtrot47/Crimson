@@ -1,12 +1,15 @@
-﻿using System;
+﻿using Crimson.Models;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Crimson.Repository
+namespace Crimson.Repository;
+
+public interface IStoreRepository
 {
-    public interface IStoreRepository
-    {
-    }
+    public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId);
+
+    public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live");
 }
