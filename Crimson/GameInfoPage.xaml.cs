@@ -57,30 +57,30 @@ namespace Crimson
         /// <param name="e"></param>
         private async void DownloadButtonClick(object sender, RoutedEventArgs e)
         {
-            //try
-            //{
-            //    _log.Information("GameInfoPage: Primary Action Button Clicked for {Game}", Game.Title);
-            //    if (Game == null) return;
-            //    if (Game.State == Game.InstallState.Installed)
-            //    {
-            //        _log.Information("GameInfoPage: Starting Game {Game}", Game.Title);
-            //        //LibraryManager.StartGame(Game.Name);
-            //        return;
-            //    }
+            try
+            {
+                _log.Information("GameInfoPage: Primary Action Button Clicked for {Game}", Game.AppTitle);
+                if (Game == null) return;
+                if (Game.InstallStatus == InstallState.Installed)
+                {
+                    _log.Information("GameInfoPage: Starting Game {Game}", Game.AppTitle);
+                    //LibraryManager.StartGame(Game.Name);
+                    return;
+                }
 
-            //    ConfirmInstallTitleText.Text = Game.Title;
-            //    ConfirmInstallImage.Source = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(Game.Images.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
-            //    InstallLocationText.Text = "C:\\Games\\";
-            //    ConfirmInstallDialog.MaxWidth = 4000;
-            //    var downloadResult = await ConfirmInstallDialog.ShowAsync();
+                ConfirmInstallTitleText.Text = Game.AppTitle;
+                ConfirmInstallImage.Source = Game.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(Game.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
+                InstallLocationText.Text = "C:\\Games\\";
+                ConfirmInstallDialog.MaxWidth = 4000;
+                var downloadResult = await ConfirmInstallDialog.ShowAsync();
 
-            //}
-            //catch (Exception ex)
-            //{
-            //    _log.Error(ex.ToString());
-            //    DownloadProgressRing.Visibility = Visibility.Collapsed;
-            //    PrimaryActionButton.IsEnabled = true;
-            //}
+            }
+            catch (Exception ex)
+            {
+                _log.Error(ex.ToString());
+                DownloadProgressRing.Visibility = Visibility.Collapsed;
+                PrimaryActionButton.IsEnabled = true;
+            }
         }
 
         /// <summary>
@@ -232,14 +232,14 @@ namespace Crimson
         }
         private async void PrimaryButton_Click(object sender, RoutedEventArgs e)
         {
-            //ConfirmInstallDialog.Hide();
-            //PrimaryActionButton.IsEnabled = false;
-            //PrimaryActionButtonText.Text = "Pending...";
-            //DownloadProgressRing.Visibility = Visibility.Visible;
-            //DownloadProgressRing.IsIndeterminate = true;
-            //PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
-            //LibraryManager.AddToInstallationQueue(Game.Name, ActionType.Install, InstallLocationText.Text);
-            //_log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.Title);
+            ConfirmInstallDialog.Hide();
+            PrimaryActionButton.IsEnabled = false;
+            PrimaryActionButtonText.Text = "Pending...";
+            DownloadProgressRing.Visibility = Visibility.Visible;
+            DownloadProgressRing.IsIndeterminate = true;
+            PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
+            _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Install, InstallLocationText.Text));
+            _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.AppTitle);
         }
     }
 }
