@@ -46,6 +46,19 @@ public class LibraryManager
 
         return _storage.GameMetaDataDictionary.Values.ToList();
     }
+    /// <summary>
+    /// Get list of installed games
+    /// </summary>
+    /// <returns></returns>
+    public IEnumerable<InstalledGame> GetInstalledGames()
+    {
+        return _storage.InstalledGamesDictionary.Values.ToList();
+    }
+
+    public Game GetGameInfo(string name)
+    {
+        return _storage.GetGameMetaData(name);
+    }
 
     /// <summary>
     ///  Updates library data and triggers LibraryUpdated event

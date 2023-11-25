@@ -20,7 +20,7 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Spacing="20">
-                <!--<TextBlock Text="{x:Bind Game.Title}" Style="{StaticResource TitleLargeTextBlockStyle}" />-->
+                <TextBlock Text="{x:Bind Game.AppTitle}" Style="{StaticResource TitleLargeTextBlockStyle}" />
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <FontIcon Glyph="&#xE735;" FontSize="15"/>
                     <FontIcon Glyph="&#xE735;" FontSize="15"/>
