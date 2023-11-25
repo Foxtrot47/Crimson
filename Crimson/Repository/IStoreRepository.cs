@@ -12,4 +12,6 @@ public interface IStoreRepository
     public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId);
 
     public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live");
+
+    public Task<GetGameManifest> GetGameManifest(string nameSpace, string catalogItem, string appName, bool disableHttps = false);
 }

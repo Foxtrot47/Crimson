@@ -12,7 +12,7 @@ using System.Text.Json;
 
 namespace Crimson.Repository
 {
-    internal class EpicGamesRepository: IStoreRepository
+    internal class EpicGamesRepository : IStoreRepository
     {
         private const string LauncherHost = "launcher-public-service-prod06.ol.epicgames.com";
         private const string CatalogHost = "catalog-public-service-prod06.ol.epicgames.com";
@@ -107,5 +107,143 @@ namespace Crimson.Repository
 
         }
 
+        public async Task<GetGameManifest> GetGameManifest(string nameSpace, string catalogItem, string appName, bool disableHttps = false)
+        {
+            try
+            {
+                _log.Information($"GetGameManifest: Fetching manifest for {appName}");
+                var urlData = await GetManifestUrls(nameSpace, catalogItem, appName);
+                if (urlData == null)
+                {
+                    _log.Error($"GetGameManifest: Failed to get manifest urls for {appName}");
+                    throw new Exception("Cannot fetch manifest data");
+                }
+                if (disableHttps)
+                { 
+                    urlData.ManifestUrls = urlData.ManifestUrls.Select(url => url.Replace("https", "http")).ToList();
+                }
+
+                foreach (var url in urlData.ManifestUrls)
+                {
+                    _log.Information($"GetGameManifest: Trying to load manifests from {url}");
+
+                    try
+                    {
+                        var httpResponse = await HttpClient.GetAsync(url);
+                        if (!httpResponse.IsSuccessStatusCode)
+                        {
+                            _log.Error($"Failed to fetch manifests from {url}, trying next url");
+                            continue;
+                        }
+                        var result = await httpResponse.Content.ReadAsByteArrayAsync();
+                        return new GetGameManifest()
+                        {
+                            ManifestBytes = result,
+                            BaseUrls = urlData.BaseUrls,
+                        };
+                    }
+                    catch (Exception e)
+                    {
+                        _log.Error($"Failed to fetch manifests from {url}, trying next url");
+                    }
+                }
+                return null;
+            }
+            catch (Exception e)
+            {
+                _log.Error(e.ToString());
+                throw;
+            }
+        }
+
+        private async Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live")
+        {
+            try
+            {
+                _log.Information("GetGameManifest: Fetching game assets");
+                var accessToken = await _authManager.GetAccessToken();
+
+                HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                var httpResponse = await HttpClient.GetAsync($"https://{LauncherHost}/launcher/api/public/assets/v2/platform/{platform}/namespace/{nameSpace}/catalogItem/{catalogItem}/app/{appName}/label/{label}");
+
+                if (httpResponse.IsSuccessStatusCode)
+                {
+                    var result = await httpResponse.Content.ReadAsStringAsync();
+                    var manifestUrlDatas = JsonSerializer.Deserialize<ManifestUrlData>(result);
+                    if (manifestUrlDatas == null)
+                    {
+                        _log.Error($"GetGameManifest: Failed to parse manifest data from: {result}");
+                        throw new Exception("Failed to retrieve manifest data");
+                    }
+
+                    if (manifestUrlDatas.Elements.Count > 1)
+                    {
+                        _log.Warning($"GetGameManifest: Multiple manifest urls found for {appName}");
+                    }
+
+                    var manifestUrls = new List<string>();
+                    var baseUrls = new List<string>();
+
+                    foreach (var urlData in manifestUrlDatas.Elements[0].Manifests)
+                    {
+                        var baseUrl = urlData.Uri.SubstringBeforeLast("/");
+                        if (!baseUrls.Contains(baseUrl))
+                        {
+                            baseUrls.Add(baseUrl);
+                        }
+
+                        if (urlData.QueryParams != null)
+                        {
+                            var paramsString = string.Join("&", urlData.QueryParams.Select(p => $"{p.Name}={p.Value}"));
+                            manifestUrls.Add($"{urlData.Uri}?{paramsString}");
+                        }
+                        else
+                        {
+                            manifestUrls.Add(urlData.Uri);
+                        }
+                    }
+
+                    return new GetManifestUrlData()
+                    {
+                        BaseUrls = baseUrls,
+                        ManifestUrls = manifestUrls,
+                        ManifestHash = manifestUrlDatas.Elements[0].Hash,
+                    };
+                }
+                else
+                {
+                    _log.Error($"GetGameManifest: Error while fetching game manifest {httpResponse.StatusCode} {httpResponse.ReasonPhrase}");
+                    return null;
+                }
+
+            }
+            catch (Exception e)
+            {
+                _log.Error(e.ToString());
+                throw;
+            }
+        }
+    }
+
+    internal class GetManifestUrlData
+    {
+        public List<string> BaseUrls { get; set; }
+        public List<string> ManifestUrls { get; set; }
+        public string ManifestHash { get; set; }
+    }
+
+    public class GetGameManifest
+    {
+        public byte[] ManifestBytes { get; set; }
+        public List<string> BaseUrls { get; set; }
+    }
+
+    public static class StringExtensions
+    {
+        public static string SubstringBeforeLast(this string source, string delimiter)
+        {
+            var lastIndexOfDelimiter = source.LastIndexOf(delimiter, StringComparison.Ordinal);
+            return lastIndexOfDelimiter == -1 ? source : source.Substring(0, lastIndexOfDelimiter);
+        }
     }
 }
