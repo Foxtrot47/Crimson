@@ -58,6 +58,7 @@ namespace Crimson
                     GamesList = new List<LibraryItem>();
                     foreach (var game in games)
                     {
+                        if(game.Metadata.MainGameItem != null) continue;
                         var item = new LibraryItem
                         {
                             Name = game.AppName,
