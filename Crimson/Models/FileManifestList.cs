@@ -27,29 +27,21 @@ public class FileManifestList
     public FileManifest GetFileByPath(string path)
     {
         if (_pathMap.Count == 0)
-        {
-            for (int i = 0; i < Elements.Count; i++)
-            {
+            for (var i = 0; i < Elements.Count; i++)
                 _pathMap[Elements[i].Filename] = i;
-            }
-        }
 
-        if (_pathMap.TryGetValue(path, out int index))
-        {
+        if (_pathMap.TryGetValue(path, out var index))
             return Elements[index];
-        }
         else
-        {
             throw new ArgumentException($"Invalid path! {path}");
-        }
     }
 
     public static FileManifestList Read(Stream bio)
     {
         var fml = new FileManifestList();
-        BinaryReader reader = new BinaryReader(bio);
+        var reader = new BinaryReader(bio);
 
-        long fmlStart = bio.Position;
+        var fmlStart = bio.Position;
         fml.Size = reader.ReadInt32();
         fml.Version = reader.ReadByte();
         fml.Count = reader.ReadInt32();
@@ -62,47 +54,33 @@ public class FileManifestList
             };
             fml.Elements.Add(fm);
         }
-        foreach (var fm in fml.Elements)
-        {
-            fm.SymlinkTarget = ReadFString(reader);
-        }
+
+        foreach (var fm in fml.Elements) fm.SymlinkTarget = ReadFString(reader);
         // For files this is actually the SHA1 instead of whatever it is for chunks...
-        foreach (var fm in fml.Elements)
-        {
-            fm.Hash = reader.ReadBytes(20);
-        }
+        foreach (var fm in fml.Elements) fm.Hash = reader.ReadBytes(20);
         // Flags, the only one I've seen is for executables
-        foreach (var fm in fml.Elements)
-        {
-            fm.Flags = reader.ReadByte();
-        }
-        
+        foreach (var fm in fml.Elements) fm.Flags = reader.ReadByte();
+
         foreach (var fm in fml.Elements)
         {
             var tagCount = reader.ReadInt32();
-            for (var j = 0; j < tagCount; j++)
-            {
-                fm.InstallTags.Add(ReadFString(reader));
-            }
+            for (var j = 0; j < tagCount; j++) fm.InstallTags.Add(ReadFString(reader));
         }
-        
+
         // Each file is made up of "Chunk Parts" that can be spread across the "chunk stream"
         foreach (var fm in fml.Elements)
         {
             var partCount = reader.ReadInt32();
             var offset = 0;
-            for (int j = 0; j < partCount; j++)
+            for (var j = 0; j < partCount; j++)
             {
-                long chunkPartStart = bio.Position;
-                int chunkPartSize = reader.ReadInt32();
+                var chunkPartStart = bio.Position;
+                var chunkPartSize = reader.ReadInt32();
                 var chunkPart = new ChunkPart
                 {
                     Guid = new int[4]
                 };
-                for (int k = 0; k < 4; k++)
-                {
-                    chunkPart.Guid[k] = reader.ReadInt32();
-                }
+                for (var k = 0; k < 4; k++) chunkPart.Guid[k] = reader.ReadInt32();
 
                 chunkPart.Offset = reader.ReadInt32();
                 chunkPart.Size = reader.ReadInt32();
@@ -112,46 +90,31 @@ public class FileManifestList
 
                 // Skipping unread bytes if any
                 var diff = bio.Position - chunkPartStart - chunkPartSize;
-                if (diff > 0)
-                {
-                    bio.Seek(diff, SeekOrigin.Current);
-                }
+                if (diff > 0) bio.Seek(diff, SeekOrigin.Current);
             }
         }
-        
+
         // MD5 hash + MIME type (Manifest feature level 19)
         if (fml.Version >= 1)
         {
             foreach (var fm in fml.Elements)
             {
                 var hasMd5 = reader.ReadInt32();
-                if (hasMd5 != 0)
-                {
-                    fm.HashMd5 = reader.ReadBytes(16);
-                }
+                if (hasMd5 != 0) fm.HashMd5 = reader.ReadBytes(16);
             }
-            foreach (var fm in fml.Elements)
-            {
-                fm.MimeType = ReadFString(reader);
-            }
-        }
-        // SHA256 hash (Manifest feature level 20)
-        if (fml.Version >= 2)
-        {
-            foreach (var fm in fml.Elements)
-            {
-                fm.HashSha256 = reader.ReadBytes(32);
-            }
-            
-        }
-        
-        // Calculate file size ourselves
-        foreach (var fm in fml.Elements)
-        {
-            fm.FileSize = fm.ChunkParts.Sum(c => (long)c.Size);
+
+            foreach (var fm in fml.Elements) fm.MimeType = ReadFString(reader);
         }
 
-        long sizeRead = bio.Position - fmlStart;
+        // SHA256 hash (Manifest feature level 20)
+        if (fml.Version >= 2)
+            foreach (var fm in fml.Elements)
+                fm.HashSha256 = reader.ReadBytes(32);
+
+        // Calculate file size ourselves
+        foreach (var fm in fml.Elements) fm.FileSize = fm.ChunkParts.Sum(c => (long)c.Size);
+
+        var sizeRead = bio.Position - fmlStart;
         if (sizeRead != fml.Size)
         {
             // Log warning here and seek forward
@@ -165,11 +128,8 @@ public class FileManifestList
     private static string ReadFString(BinaryReader reader)
     {
         // Assuming ReadFString reads a length-prefixed string
-        int length = reader.ReadInt32();
-        if (length == 0)
-        {
-            return string.Empty;
-        }
+        var length = reader.ReadInt32();
+        if (length == 0) return string.Empty;
 
         var bytes = reader.ReadBytes(length);
         return Encoding.UTF8.GetString(bytes).TrimEnd('\0');
@@ -247,10 +207,7 @@ public class ChunkPart
     {
         get
         {
-            if (_guidStr == null && Guid != null)
-            {
-                _guidStr = string.Join("-", Guid.Select(g => g.ToString("x8")));
-            }
+            if (_guidStr == null && Guid != null) _guidStr = string.Join("-", Guid.Select(g => g.ToString("x8")));
 
             return _guidStr;
         }
@@ -261,12 +218,10 @@ public class ChunkPart
         get
         {
             if (_guidNum == -1 && Guid != null)
-            {
                 _guidNum = new BigInteger(Guid[3])
                            + (new BigInteger(Guid[2]) << 32)
                            + (new BigInteger(Guid[1]) << 64)
                            + (new BigInteger(Guid[0]) << 96);
-            }
 
             return _guidNum;
         }
@@ -274,7 +229,7 @@ public class ChunkPart
 
     public override string ToString()
     {
-        string guidReadable = string.Join("-", Guid.Select(g => g.ToString("x8")));
+        var guidReadable = string.Join("-", Guid.Select(g => g.ToString("x8")));
         return $"<ChunkPart (guid={guidReadable}, offset={Offset}, size={Size}, file_offset={FileOffset})>";
     }
 }

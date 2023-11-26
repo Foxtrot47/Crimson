@@ -25,41 +25,29 @@ public class CDL
         Elements = new List<ChunkInfo>();
         _manifestVersion = manifestVersion;
     }
-    
+
     public ChunkInfo GetChunkByPath(string path)
     {
         if (_pathMap == null)
         {
             _pathMap = new Dictionary<string, int>();
-            for (var i = 0; i < Elements.Count; i++)
-            {
-                _pathMap[Elements[i].Path] = i;
-            }
+            for (var i = 0; i < Elements.Count; i++) _pathMap[Elements[i].Path] = i;
         }
 
         if (_pathMap.TryGetValue(path, out var index))
-        {
             return Elements[index];
-        }
         else
-        {
             throw new ArgumentException($"Invalid path! \"{path}\"");
-        }
     }
+
     public ChunkInfo GetChunkByGuid(object guid)
     {
         if (guid is int)
-        {
             return GetChunkByGuidNum((BigInteger)guid);
-        }
         else if (guid is string)
-        {
             return GetChunkByGuidStr((string)guid);
-        }
         else
-        {
             throw new ArgumentException("Invalid GUID type!");
-        }
     }
 
     public ChunkInfo GetChunkByGuidStr(string guid)
@@ -67,20 +55,13 @@ public class CDL
         if (_guidMap == null)
         {
             _guidMap = new Dictionary<string, int>();
-            for (var i = 0; i < Elements.Count; i++)
-            {
-                _guidMap[Elements[i].GuidStr.ToLower()] = i;
-            }
+            for (var i = 0; i < Elements.Count; i++) _guidMap[Elements[i].GuidStr.ToLower()] = i;
         }
 
         if (_guidMap.TryGetValue(guid.ToLower(), out var index))
-        {
             return Elements[index];
-        }
         else
-        {
             throw new ArgumentException($"Invalid GUID! {guid}");
-        }
     }
 
     public ChunkInfo GetChunkByGuidNum(BigInteger guidInt)
@@ -88,20 +69,13 @@ public class CDL
         if (_guidIntMap == null)
         {
             _guidIntMap = new Dictionary<BigInteger, int>();
-            for (var i = 0; i < Elements.Count; i++)
-            {
-                _guidIntMap[Elements[i].GuidNum] = i;
-            }
+            for (var i = 0; i < Elements.Count; i++) _guidIntMap[Elements[i].GuidNum] = i;
         }
 
         if (_guidIntMap.TryGetValue(guidInt, out var index))
-        {
             return Elements[index];
-        }
         else
-        {
             throw new ArgumentException($"Invalid GUID! {guidInt.ToString("x")}");
-        }
     }
 
     public static CDL Read(Stream bio, int manifestVersion = 18)
@@ -115,49 +89,28 @@ public class CDL
         cdl.Count = reader.ReadInt32();
 
         // Read elements
-        for (var i = 0; i < cdl.Count; i++)
-        {
-            cdl.Elements.Add(new ChunkInfo(manifestVersion));
-        }
+        for (var i = 0; i < cdl.Count; i++) cdl.Elements.Add(new ChunkInfo(manifestVersion));
 
         foreach (var chunk in cdl.Elements)
         {
             chunk.Guid = new int[4];
-            for (var i = 0; i < 4; i++)
-            {
-                chunk.Guid[i] = reader.ReadInt32();
-            }
+            for (var i = 0; i < 4; i++) chunk.Guid[i] = reader.ReadInt32();
         }
 
         // Read Hashes
-        foreach (var chunk in cdl.Elements)
-        {
-            chunk.Hash = reader.ReadInt64();
-        }
+        foreach (var chunk in cdl.Elements) chunk.Hash = reader.ReadInt64();
 
         // Read SHA1 Hashes
-        foreach (var chunk in cdl.Elements)
-        {
-            chunk.ShaHash = reader.ReadBytes(20);
-        }
+        foreach (var chunk in cdl.Elements) chunk.ShaHash = reader.ReadBytes(20);
 
         // Read Group Numbers
-        foreach (var chunk in cdl.Elements)
-        {
-            chunk.GroupNum = reader.ReadByte();
-        }
+        foreach (var chunk in cdl.Elements) chunk.GroupNum = reader.ReadByte();
 
         // Read Window Sizes
-        foreach (var chunk in cdl.Elements)
-        {
-            chunk.WindowSize = reader.ReadInt32();
-        }
+        foreach (var chunk in cdl.Elements) chunk.WindowSize = reader.ReadInt32();
 
         // Read File Sizes
-        foreach (var chunk in cdl.Elements)
-        {
-            chunk.FileSize = reader.ReadInt64();
-        }
+        foreach (var chunk in cdl.Elements) chunk.FileSize = reader.ReadInt64();
 
         var sizeRead = bio.Position - cdlStart;
         if (sizeRead == cdl.Size) return cdl;
@@ -194,17 +147,15 @@ public class ChunkInfo
 
     public override string ToString()
     {
-        return $"<ChunkInfo (guid={GuidStr}, hash={Hash}, sha_hash={BitConverter.ToString(ShaHash).Replace("-", "")}, group_num={GroupNum}, window_size={WindowSize}, file_size={FileSize})>";
+        return
+            $"<ChunkInfo (guid={GuidStr}, hash={Hash}, sha_hash={BitConverter.ToString(ShaHash).Replace("-", "")}, group_num={GroupNum}, window_size={WindowSize}, file_size={FileSize})>";
     }
 
     public string GuidStr
     {
         get
         {
-            if (_guidStr == null && Guid != null)
-            {
-                _guidStr = string.Join("-", Guid.Select(g => g.ToString("x8")));
-            }
+            if (_guidStr == null && Guid != null) _guidStr = string.Join("-", Guid.Select(g => g.ToString("x8")));
             return _guidStr;
         }
     }
@@ -214,12 +165,10 @@ public class ChunkInfo
         get
         {
             if (_guidNum == -1 && Guid != null)
-            {
                 _guidNum = new BigInteger(Guid[3])
                            + (new BigInteger(Guid[2]) << 32)
                            + (new BigInteger(Guid[1]) << 64)
                            + (new BigInteger(Guid[0]) << 96);
-            }
 
             return _guidNum;
         }
@@ -231,14 +180,14 @@ public class ChunkInfo
         {
             if (!_groupNum.HasValue && Guid != null)
             {
-                byte[] guidBytes = Guid.SelectMany(BitConverter.GetBytes).ToArray();
-                uint crc = Crc32.Compute(guidBytes);
+                var guidBytes = Guid.SelectMany(BitConverter.GetBytes).ToArray();
+                var crc = Crc32.Compute(guidBytes);
                 _groupNum = (int)(crc % 100);
             }
 
             return _groupNum ?? throw new InvalidOperationException("GUID is not set.");
         }
-        set { _groupNum = value; }
+        set => _groupNum = value;
     }
 
     public string Path
@@ -246,9 +195,10 @@ public class ChunkInfo
         get
         {
             var guidHex = string.Join("", Guid.Select(g => g.ToString("X8")));
-            return $"{GetChunkDir(_manifestVersion)}/{GroupNum:D2}/{Hash:X16}_{guidHex}.chunk"; 
+            return $"{GetChunkDir(_manifestVersion)}/{GroupNum:D2}/{Hash:X16}_{guidHex}.chunk";
         }
     }
+
     private static class Crc32
     {
         public static uint Compute(byte[] bytes)
@@ -257,15 +207,13 @@ public class ChunkInfo
             foreach (var b in bytes)
             {
                 crc ^= b;
-                for (var i = 0; i < 8; i++)
-                {
-                    crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
-                }
+                for (var i = 0; i < 8; i++) crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
             }
+
             return ~crc;
         }
     }
-    
+
     private static string GetChunkDir(int manifestVersion)
     {
         return manifestVersion switch

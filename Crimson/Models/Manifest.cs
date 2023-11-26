@@ -2,10 +2,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
+
 namespace Crimson.Models;
 
 public class Manifest
@@ -39,10 +38,10 @@ public class Manifest
             manifest.CustomFields = CustomFields.Read(stream);
             var unhandledDataLength = stream.Length - stream.Position;
             if (unhandledDataLength > 0)
-            {
-                Console.WriteLine($"Did not read {unhandledDataLength} remaining bytes in manifest! This may not be a problem.");
-            }
+                Console.WriteLine(
+                    $"Did not read {unhandledDataLength} remaining bytes in manifest! This may not be a problem.");
         }
+
         // Throw this away since the raw data is no longer needed
         manifest.Data = Array.Empty<byte>();
 
@@ -53,9 +52,7 @@ public class Manifest
     {
         using var bio = new MemoryStream(data);
         if (BitConverter.ToUInt32(ReadBytes(bio, 4), 0) != HeaderMagic)
-        {
             throw new InvalidOperationException("No header magic!");
-        }
 
         var manifest = new Manifest
         {
@@ -69,7 +66,8 @@ public class Manifest
 
         if (bio.Position != manifest.HeaderSize)
         {
-            Console.WriteLine($"Did not read entire header {bio.Position} != {manifest.HeaderSize}! Header version: {manifest.Version}");
+            Console.WriteLine(
+                $"Did not read entire header {bio.Position} != {manifest.HeaderSize}! Header version: {manifest.Version}");
             bio.Seek(manifest.HeaderSize, SeekOrigin.Begin);
         }
 
@@ -80,10 +78,7 @@ public class Manifest
             var decHash = BitConverter.ToString(SHA1.HashData(manifest.Data)).Replace("-", string.Empty);
             var hexShaHash = BitConverter.ToString(manifest.ShaHash).Replace("-", string.Empty);
 
-            if (decHash != hexShaHash)
-            {
-                throw new InvalidOperationException("Hash does not match!");
-            }
+            if (decHash != hexShaHash) throw new InvalidOperationException("Hash does not match!");
         }
         else
         {
@@ -113,6 +108,7 @@ public class Manifest
         {
             zlibStream.CopyTo(decompressedStream);
         }
+
         return decompressedStream.ToArray();
     }
 }
@@ -141,10 +137,7 @@ public class ManifestMeta
     {
         get
         {
-            if (!string.IsNullOrEmpty(_buildId))
-            {
-                return _buildId;
-            }
+            if (!string.IsNullOrEmpty(_buildId)) return _buildId;
 
             using (var sha1 = new SHA1Managed())
             {
@@ -154,10 +147,7 @@ public class ManifestMeta
                 hashBytes = CombineArrays(hashBytes, Encoding.UTF8.GetBytes(LaunchExe));
                 hashBytes = CombineArrays(hashBytes, Encoding.UTF8.GetBytes(LaunchCommand));
 
-                _buildId = Convert.ToBase64String(hashBytes)
-                    .Replace("+", "-")
-                    .Replace("/", "_")
-                    .Replace("=", "");
+                _buildId = Convert.ToBase64String(hashBytes).Replace("+", "-").Replace("/", "_").Replace("=", "");
             }
 
             return _buildId;
@@ -181,19 +171,13 @@ public class ManifestMeta
 
         var entries = reader.ReadUInt32();
         meta.PrereqIds = new List<string>();
-        for (var i = 0; i < entries; i++)
-        {
-            meta.PrereqIds.Add(ReadFString(reader));
-        }
+        for (var i = 0; i < entries; i++) meta.PrereqIds.Add(ReadFString(reader));
 
         meta.PrereqName = ReadFString(reader);
         meta.PrereqPath = ReadFString(reader);
         meta.PrereqArgs = ReadFString(reader);
 
-        if (meta.DataVersion >= 1)
-        {
-            meta._buildId = ReadFString(reader);
-        }
+        if (meta.DataVersion >= 1) meta._buildId = ReadFString(reader);
 
         if (meta.DataVersion >= 2)
         {
