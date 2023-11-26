@@ -32,7 +32,8 @@ public class Manifest
         using (var stream = new MemoryStream(manifest.Data))
         {
             manifest.ManifestMeta = ManifestMeta.Read(new BinaryReader(stream));
-            manifest.CDL = CDL.Read(stream);
+            manifest.CDL = CDL.Read(stream, Convert.ToInt32(manifest.ManifestMeta.FeatureLevel));
+            manifest.FML = FML.Read(stream);
             var unhandledDataLength = stream.Length - stream.Position;
             if (unhandledDataLength > 0)
             {
@@ -355,13 +356,6 @@ public class CDL
             cdl.Elements.Add(new ChunkInfo(manifestVersion));
         }
 
-        // Read elements
-        for (int i = 0; i < cdl.Count; i++)
-        {
-            cdl.Elements.Add(new ChunkInfo(manifestVersion));
-        }
-
-        // Read GUIDs, Hashes, SHA1 hashes, group numbers, window sizes, and file sizes
         foreach (var chunk in cdl.Elements)
         {
             chunk.Guid = new int[4];
@@ -369,10 +363,35 @@ public class CDL
             {
                 chunk.Guid[i] = reader.ReadInt32();
             }
+        }
+
+        // Read Hashes
+        foreach (var chunk in cdl.Elements)
+        {
             chunk.Hash = reader.ReadInt64();
+        }
+
+        // Read SHA1 Hashes
+        foreach (var chunk in cdl.Elements)
+        {
             chunk.ShaHash = reader.ReadBytes(20);
+        }
+
+        // Read Group Numbers
+        foreach (var chunk in cdl.Elements)
+        {
             chunk.GroupNum = reader.ReadByte();
+        }
+
+        // Read Window Sizes
+        foreach (var chunk in cdl.Elements)
+        {
             chunk.WindowSize = reader.ReadInt32();
+        }
+
+        // Read File Sizes
+        foreach (var chunk in cdl.Elements)
+        {
             chunk.FileSize = reader.ReadInt64();
         }
 
