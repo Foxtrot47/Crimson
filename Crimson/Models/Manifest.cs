@@ -23,6 +23,7 @@ public class Manifest
 
     public ManifestMeta ManifestMeta { get; set; }
     public CDL CDL { get; set; }
+    public FileManifestList FileManifestList { get; set; }
 
     public bool Compressed => (StoredAs & 0x1) != 0;
 
@@ -33,7 +34,7 @@ public class Manifest
         {
             manifest.ManifestMeta = ManifestMeta.Read(new BinaryReader(stream));
             manifest.CDL = CDL.Read(stream, Convert.ToInt32(manifest.ManifestMeta.FeatureLevel));
-            manifest.FML = FML.Read(stream);
+            manifest.FileManifestList = FileManifestList.Read(stream);
             var unhandledDataLength = stream.Length - stream.Position;
             if (unhandledDataLength > 0)
             {
@@ -488,12 +489,6 @@ public class ChunkInfo
             return $"{GetChunkDir(_manifestVersion)}/{GroupNum:D2}/{Hash:X16}_{guidHex}.chunk"; 
         }
     }
-
-    private string GetChunkDir(int manifestVersion)
-    {
-        // Implementation for this method should be based on your specific logic
-        return $"chunks_v{manifestVersion}";
-    }
     private static class Crc32
     {
         public static uint Compute(byte[] bytes)
@@ -522,5 +517,3 @@ public class ChunkInfo
         };
     }
 }
-
- 
