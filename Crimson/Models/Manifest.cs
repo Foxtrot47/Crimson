@@ -484,7 +484,8 @@ public class ChunkInfo
     {
         get
         {
-            return $"{GetChunkDir(_manifestVersion)}/{GroupNum:D2}/{Hash:X16}_{GuidStr}.chunk";
+            var guidHex = string.Join("", Guid.Select(g => g.ToString("X8")));
+            return $"{GetChunkDir(_manifestVersion)}/{GroupNum:D2}/{Hash:X16}_{guidHex}.chunk"; 
         }
     }
 
@@ -508,6 +509,17 @@ public class ChunkInfo
             }
             return ~crc;
         }
+    }
+    
+    private static string GetChunkDir(int manifestVersion)
+    {
+        return manifestVersion switch
+        {
+            >= 15 => "ChunksV4",
+            >= 6 => "ChunksV3",
+            >= 3 => "ChunksV2",
+            _ => "Chunks"
+        };
     }
 }
 
