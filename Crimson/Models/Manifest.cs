@@ -24,6 +24,7 @@ public class Manifest
     public ManifestMeta ManifestMeta { get; set; }
     public CDL CDL { get; set; }
     public FileManifestList FileManifestList { get; set; }
+    public CustomFields CustomFields { get; set; }
 
     public bool Compressed => (StoredAs & 0x1) != 0;
 
@@ -35,6 +36,7 @@ public class Manifest
             manifest.ManifestMeta = ManifestMeta.Read(new BinaryReader(stream));
             manifest.CDL = CDL.Read(stream, Convert.ToInt32(manifest.ManifestMeta.FeatureLevel));
             manifest.FileManifestList = FileManifestList.Read(stream);
+            manifest.CustomFields = CustomFields.Read(stream);
             var unhandledDataLength = stream.Length - stream.Position;
             if (unhandledDataLength > 0)
             {
