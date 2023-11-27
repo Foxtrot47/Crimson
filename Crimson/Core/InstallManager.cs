@@ -1,7 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Crimson.Models;
+using Crimson.Repository;
+using Crimson.Utils;
 using Serilog;
 
 namespace Crimson.Core;
@@ -64,20 +69,24 @@ public class InstallManager
 
     private ILogger _log;
     private readonly LibraryManager _libraryManager;
+    private readonly IStoreRepository _repository;
+    private readonly Storage _storage;
 
-    public InstallManager(ILogger log, LibraryManager libraryManager)
+    public InstallManager(ILogger log, LibraryManager libraryManager, IStoreRepository repository, Storage storage)
     {
         _log = log;
         _libraryManager = libraryManager;
         _installQueue = new Queue<InstallItem>();
-        CurrentInstall = null; ;
+        CurrentInstall = null;
+        _repository = repository;
+        _storage = storage;
     }
 
     public void AddToQueue(InstallItem item)
     {
         if (item == null)
             return;
-        
+
         // check if the game is already in the queue
         if (_installQueue.Contains(item, new InstallItemComparer()))
         {
@@ -117,7 +126,7 @@ public class InstallManager
             ProcessNext();
     }
 
-    private void ProcessNext()
+    private async void ProcessNext()
     {
         try
         {
@@ -126,6 +135,35 @@ public class InstallManager
             CurrentInstall = _installQueue.Dequeue();
             _log.Information("ProcessNext: Processing {Action} of {AppName}. Game Location {Location} ",
                 CurrentInstall.Action, CurrentInstall.AppName, CurrentInstall.Location);
+
+            var gameData = _libraryManager.GetGameInfo(CurrentInstall.AppName);
+            var manifestData = await _repository.GetGameManifest(gameData.AssetInfos.Windows.Namespace,
+                gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
+
+            gameData.BaseUrls = manifestData.BaseUrls;
+            _storage.SaveMetaData(gameData);
+
+            _log.Information("ProcessNext: Parsing game manifest");
+            var data = Manifest.ReadAll(manifestData.ManifestBytes);
+
+            // TODO Handle stats if game is installed
+
+            // create CurrentInstall.folder if it doesn't exist
+            if (!Directory.Exists(CurrentInstall.Location))
+            {
+                Directory.CreateDirectory(CurrentInstall.Location);
+                Console.WriteLine($"Folder created at: {CurrentInstall.Location}");
+            }
+
+            if (!HasFolderWritePermissions(CurrentInstall.Location))
+            {
+                _log.Error("ProcessNext: No write permissions to {Location}", CurrentInstall.Location);
+                CurrentInstall.Status = ActionStatus.Failed;
+                InstallationStatusChanged?.Invoke(CurrentInstall);
+                CurrentInstall = null;
+                ProcessNext();
+            }
+            
         }
         catch (Exception ex)
         {
@@ -162,8 +200,10 @@ public class InstallManager
         {
             queueItemsName.Add(item.AppName);
         }
+
         return queueItemsName;
     }
+
     public List<string> GetHistoryItemsNames()
     {
         var historyItemsName = new List<string>();
@@ -171,7 +211,41 @@ public class InstallManager
         {
             historyItemsName.Add(item.AppName);
         }
+
         return historyItemsName;
+    }
+
+    private bool HasFolderWritePermissions(string folderPath)
+    {
+        try
+        {
+            // Create a DirectoryInfo object representing the specified directory.
+            var directoryInfo = new DirectoryInfo(folderPath);
+
+            // Get the access control list for the folder
+            var directorySecurity = directoryInfo.GetAccessControl();
+
+            // Get the access rules for the current user
+            var accessRules = directorySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier));
+
+            // Check if the current user has write permissions
+            var currentUser = WindowsIdentity.GetCurrent();
+            var hasWritePermissions = accessRules.Cast<FileSystemAccessRule>().Any(rule =>
+                currentUser.User.Equals(rule.IdentityReference) &&
+                rule.AccessControlType == AccessControlType.Allow &&
+                (rule.FileSystemRights & FileSystemRights.Write) == FileSystemRights.Write);
+
+            return hasWritePermissions;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"An error occurred: {ex.Message}");
+            return false;
+        }
     }
 }
 
