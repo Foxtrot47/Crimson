@@ -45,9 +45,9 @@ public class AuthManager
     {
         _log = log;
         _storage = storage;
-        var localFolder = ApplicationData.Current.LocalFolder;
-        _userDataFile = $@"{localFolder.Path}\user.json";
+        _userDataFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\user.json";
     }
+
     // <summary>
     // Check if the user is logged in or not
     // </summary>
@@ -90,7 +90,7 @@ public class AuthManager
             if (expiryDate < DateTime.Now)
             {
                 _log.Information("CheckAuthStatus: Access token expired, refreshing");
-                var newData= await RequestTokens("refresh_token", "refresh_token", userData.RefreshToken);
+                var newData = await RequestTokens("refresh_token", "refresh_token", userData.RefreshToken);
                 userData = newData;
                 newData.AccessToken = KeyManager.EncryptString(newData.AccessToken);
                 newData.RefreshToken = KeyManager.EncryptString(newData.RefreshToken);
@@ -192,6 +192,7 @@ public class AuthManager
                     _log.Error("RequestTokens: Failed to parse user data from string");
                     throw new Exception("RequestTokens: Failed to parse user data");
                 }
+
                 return userData;
             }
             else

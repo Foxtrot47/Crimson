@@ -11,8 +11,9 @@ namespace Crimson.Utils
 {
     public class Storage
     {
-        private static readonly string UserDataFile = $@"{ApplicationData.Current.LocalFolder.Path}\user.json";
-        private static readonly string GameAssetsFile = $@"{ApplicationData.Current.LocalFolder.Path}\assets.json";
+        private static readonly string UserDataFile;
+        private static readonly string GameAssetsFile;
+        private static readonly string MetaDataDirectory;
 
         private Dictionary<string, Game> _gameMetaDataDictionary;
         private Dictionary<string, InstalledGame> _installedGamesDictionary;
@@ -21,56 +22,63 @@ namespace Crimson.Utils
         public Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
         public Dictionary<string, InstalledGame> InstalledGamesDictionary => _installedGamesDictionary;
 
+        static Storage()
+        {
+            UserDataFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\user.json";
+            GameAssetsFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\assets.json";
+            MetaDataDirectory = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\metadata";
+        }
+
         public Storage()
         {
             _logger = DependencyResolver.Resolve<ILogger>();
             try
             {
-                var metadataDirectory = $@"{ApplicationData.Current.LocalFolder.Path}\metadata";
-                if (!Directory.Exists(metadataDirectory))
-                    Directory.CreateDirectory(metadataDirectory);
+                if (!Directory.Exists(MetaDataDirectory))
+                    Directory.CreateDirectory(MetaDataDirectory);
 
                 var metaDataDictionary = new Dictionary<string, Game>();
 
-                Parallel.ForEach(Directory.EnumerateFiles(metadataDirectory), new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, (file) =>
-                {
-                    try
+                Parallel.ForEach(Directory.EnumerateFiles(MetaDataDirectory),
+                    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, (file) =>
                     {
-                        var fileName = Path.GetFileName(file);
-                        var gameName = fileName[..^5];
-                        var jsonString = File.ReadAllText(file);
-
-                        var gameMetaData = JsonSerializer.Deserialize<Game>(jsonString);
-
-                        // Use lock to ensure thread safety when modifying the dictionary
-                        lock (metaDataDictionary)
+                        try
                         {
-                            metaDataDictionary.Add(gameName, gameMetaData);
+                            var fileName = Path.GetFileName(file);
+                            var gameName = fileName[..^5];
+                            var jsonString = File.ReadAllText(file);
+
+                            var gameMetaData = JsonSerializer.Deserialize<Game>(jsonString);
+
+                            // Use lock to ensure thread safety when modifying the dictionary
+                            lock (metaDataDictionary)
+                            {
+                                metaDataDictionary.Add(gameName, gameMetaData);
+                            }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        // Log detailed exception information
-                        Log.Error($"Error processing file {file}. Exception: {ex}");
-                    }
-                });
+                        catch (Exception ex)
+                        {
+                            // Log detailed exception information
+                            Log.Error($"Error processing file {file}. Exception: {ex}");
+                        }
+                    });
 
                 // Outside the parallel loop, assign the dictionary to the shared field
                 _gameMetaDataDictionary = metaDataDictionary;
 
                 // Load installed games list
-                var installedGamesFile = $@"{ApplicationData.Current.LocalFolder.Path}\installed.json";
-                if (File.Exists(installedGamesFile))
+                var installedGamesFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\installed.json";
+                if (!File.Exists(installedGamesFile)) return;
                 {
                     var jsonString = File.ReadAllText(installedGamesFile);
-                    _installedGamesDictionary = JsonSerializer.Deserialize<Dictionary<string, InstalledGame>>(jsonString);
+                    _installedGamesDictionary =
+                        JsonSerializer.Deserialize<Dictionary<string, InstalledGame>>(jsonString);
                 }
             }
             catch (Exception ex)
             {
                 Log.Error(ex.ToString());
             }
-
         }
 
         public async Task<UserData> GetUserData()
@@ -80,6 +88,7 @@ namespace Crimson.Utils
                 await SaveUserData(null);
                 return null;
             }
+
             await using var fileStream = File.Open(UserDataFile, FileMode.Open, FileAccess.Read, FileShare.Read);
             using var streamReader = new StreamReader(fileStream);
             var jsonString = await streamReader.ReadToEndAsync();
@@ -88,6 +97,7 @@ namespace Crimson.Utils
 
             return userData;
         }
+
         public async Task SaveUserData(UserData data)
         {
             var jsonString = JsonSerializer.Serialize(data);
@@ -120,13 +130,15 @@ namespace Crimson.Utils
                 return null;
             }
         }
+
         public async Task SaveGameAssetsData(IEnumerable<Asset> data)
         {
             try
             {
                 var jsonString = JsonSerializer.Serialize(data);
 
-                await using var fileStream = File.Open(GameAssetsFile, FileMode.Create, FileAccess.Write, FileShare.Read);
+                await using var fileStream =
+                    File.Open(GameAssetsFile, FileMode.Create, FileAccess.Write, FileShare.Read);
                 await using var streamWriter = new StreamWriter(fileStream);
                 await streamWriter.WriteAsync(jsonString);
                 await streamWriter.FlushAsync();
@@ -141,15 +153,15 @@ namespace Crimson.Utils
         {
             return _gameMetaDataDictionary.TryGetValue(gameName, out var gameMetaData) ? gameMetaData : null;
         }
+
         public void SaveMetaData(Game game)
         {
             var jsonString = JsonSerializer.Serialize(game);
+            
+            if (!Directory.Exists(MetaDataDirectory))
+                Directory.CreateDirectory(MetaDataDirectory);
 
-            var metadataDirectory = $@"{ApplicationData.Current.LocalFolder.Path}\metadata";
-            if (!Directory.Exists(metadataDirectory))
-                Directory.CreateDirectory(metadataDirectory);
-
-            var fileName = $@"{metadataDirectory}\{game.AppName}.json";
+            var fileName = $@"{MetaDataDirectory}\{game.AppName}.json";
             File.WriteAllText(fileName, jsonString);
 
             _gameMetaDataDictionary.TryAdd(game.AppName, game);
@@ -161,7 +173,7 @@ namespace Crimson.Utils
 
             var jsonString = JsonSerializer.Serialize(_installedGamesDictionary);
 
-            var fileName = $@"{ApplicationData.Current.LocalFolder.Path}\installed.json";
+            var fileName = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\installed.json";
             File.WriteAllText(fileName, jsonString);
         }
     }
