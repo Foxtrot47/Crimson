@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Threading;
+using System.Threading.Tasks;
 using Crimson.Models;
 using Crimson.Repository;
 using Crimson.Utils;
@@ -66,6 +69,9 @@ public class InstallManager
     public InstallItem CurrentInstall;
     private Queue<InstallItem> _installQueue;
     private readonly List<InstallItem> InstallHistory = new();
+
+    private ConcurrentQueue<DownloadTask> downloadQueue = new ConcurrentQueue<DownloadTask>();
+    private CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
 
     private ILogger _log;
     private readonly LibraryManager _libraryManager;
@@ -163,7 +169,30 @@ public class InstallManager
                 CurrentInstall = null;
                 ProcessNext();
             }
+
+            List<DownloadTask> chunkDownloadList = new List<DownloadTask>();
             
+            foreach (var fileManifest in data.FileManifestList.Elements)
+            {
+                foreach (var chunkPart in fileManifest.ChunkParts)
+                {
+                    if(chunkDownloadList.FirstOrDefault( chunk => chunk.Guid == chunkPart.GuidStr) == null)
+                    {
+                        var chunkInfo = data.CDL.GetChunkByGuid(chunkPart.GuidStr);
+                        var newTask = new DownloadTask()
+                        {
+                            Guid = chunkPart.GuidStr,
+                            Url = manifestData.BaseUrls.FirstOrDefault() + "/" + chunkInfo.Path,
+                            TempPath = Path.Combine(CurrentInstall.Location, ".temp", (chunkInfo.GuidStr +".chunk"))
+                        };
+                        chunkDownloadList.Add(newTask);
+                        downloadQueue.Enqueue(newTask);
+                    }
+                }
+            }
+
+            Task.Run( async () => await ProcessDownloadQueue());
+
         }
         catch (Exception ex)
         {
@@ -247,6 +276,44 @@ public class InstallManager
             return false;
         }
     }
+
+
+    private void AddDownloadTask(DownloadTask task)
+    {
+        downloadQueue.Enqueue(task);
+    }
+    
+    public async Task StartProcessing()
+    {
+        await ProcessDownloadQueue();
+    }
+    
+    public void StopProcessing()
+    {
+        cancellationTokenSource.Cancel();
+    }
+
+    private async Task ProcessDownloadQueue()
+    {
+        while (!cancellationTokenSource.IsCancellationRequested)
+        {
+            if (downloadQueue.TryDequeue(out var downloadTask))
+            {
+                try
+                {
+                    await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
+                }
+                catch (Exception ex)
+                {
+                    _log.Error(ex.ToString());
+                }
+            }
+            else
+            {
+                await Task.Delay(100);
+            }
+        }
+    }
 }
 
 internal class InstallItemComparer : IEqualityComparer<InstallItem>
@@ -260,4 +327,15 @@ internal class InstallItemComparer : IEqualityComparer<InstallItem>
     {
         return obj.AppName.GetHashCode();
     }
+}
+
+public class DownloadTask
+{
+    public string Url { get; set; }
+
+    public string Guid { get; set; }
+
+    public string TempPath { get; set; }
+
+    public string Sha1Hash { get; set; }
 }

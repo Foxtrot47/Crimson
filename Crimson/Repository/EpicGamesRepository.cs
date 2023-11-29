@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -154,6 +155,19 @@ namespace Crimson.Repository
                 _log.Error(e.ToString());
                 throw;
             }
+        }
+
+        public async Task DownloadFileAsync(string url, string destinationPath)
+        {
+            var accessToken = await _authManager.GetAccessToken();
+            //HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            
+            using var response = await HttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+
+            await using var stream = await response.Content.ReadAsStreamAsync();
+            await using var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            await stream.CopyToAsync(fileStream);
         }
 
         private async Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live")
