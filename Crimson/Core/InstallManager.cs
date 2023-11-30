@@ -71,7 +71,13 @@ public class InstallManager
     private readonly List<InstallItem> InstallHistory = new();
 
     private ConcurrentQueue<DownloadTask> downloadQueue = new ConcurrentQueue<DownloadTask>();
+    private ConcurrentQueue<IOTask> ioQueue = new ConcurrentQueue<IOTask>();
     private CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+    private ConcurrentDictionary<string, object> fileLocksConcurrentDictionary = new ConcurrentDictionary<string, object>();
+    private ConcurrentDictionary<string, List<FileManifest>> ChunkToFileManifestsDictionary = new ConcurrentDictionary<string, List<FileManifest>>();
+
+    private bool DownloadQueueProcessing = false;
+    private bool IoQueueProcessing = false;
 
     private ILogger _log;
     private readonly LibraryManager _libraryManager;
@@ -170,28 +176,37 @@ public class InstallManager
                 ProcessNext();
             }
 
-            List<DownloadTask> chunkDownloadList = new List<DownloadTask>();
-            
+            var chunkDownloadList = new List<ChunkInfo>();
+
             foreach (var fileManifest in data.FileManifestList.Elements)
             {
                 foreach (var chunkPart in fileManifest.ChunkParts)
                 {
-                    if(chunkDownloadList.FirstOrDefault( chunk => chunk.Guid == chunkPart.GuidStr) == null)
+                    if (ChunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidStr, out var fileManifests))
                     {
-                        var chunkInfo = data.CDL.GetChunkByGuid(chunkPart.GuidStr);
-                        var newTask = new DownloadTask()
-                        {
-                            Guid = chunkPart.GuidStr,
-                            Url = manifestData.BaseUrls.FirstOrDefault() + "/" + chunkInfo.Path,
-                            TempPath = Path.Combine(CurrentInstall.Location, ".temp", (chunkInfo.GuidStr +".chunk"))
-                        };
-                        chunkDownloadList.Add(newTask);
-                        downloadQueue.Enqueue(newTask);
+                        fileManifests.Add(fileManifest);
+                        ChunkToFileManifestsDictionary[chunkPart.GuidStr] = fileManifests;
                     }
+                    else
+                    {
+                        ChunkToFileManifestsDictionary.TryAdd(chunkPart.GuidStr, new List<FileManifest>() { fileManifest });
+                    }
+
+                    if (chunkDownloadList.FirstOrDefault(chunk => chunk.GuidStr == chunkPart.GuidStr) != null) continue;
+
+                    var chunkInfo = data.CDL.GetChunkByGuid(chunkPart.GuidStr);
+                    var newTask = new DownloadTask()
+                    {
+                        Url = manifestData.BaseUrls.FirstOrDefault() + "/" + chunkInfo.Path,
+                        TempPath = Path.Combine(CurrentInstall.Location, ".temp", (chunkInfo.GuidStr + ".chunk")),
+                        Guid = chunkInfo.GuidStr,
+                    };
+                    chunkDownloadList.Add(chunkInfo);
+                    downloadQueue.Enqueue(newTask);
                 }
             }
 
-            Task.Run( async () => await ProcessDownloadQueue());
+            Task.Run(async () => await ProcessDownloadQueue());
 
         }
         catch (Exception ex)
@@ -277,17 +292,6 @@ public class InstallManager
         }
     }
 
-
-    private void AddDownloadTask(DownloadTask task)
-    {
-        downloadQueue.Enqueue(task);
-    }
-    
-    public async Task StartProcessing()
-    {
-        await ProcessDownloadQueue();
-    }
-    
     public void StopProcessing()
     {
         cancellationTokenSource.Cancel();
@@ -295,6 +299,9 @@ public class InstallManager
 
     private async Task ProcessDownloadQueue()
     {
+        if (DownloadQueueProcessing) return;
+
+        DownloadQueueProcessing = true;
         while (!cancellationTokenSource.IsCancellationRequested)
         {
             if (downloadQueue.TryDequeue(out var downloadTask))
@@ -302,6 +309,21 @@ public class InstallManager
                 try
                 {
                     await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
+
+                    // get file manifest from dictionary
+                    var fileManifests = ChunkToFileManifestsDictionary[downloadTask.Guid];
+                    foreach (var fileManifest in fileManifests)
+                    {
+                        ioQueue.Enqueue(new IOTask()
+                        {
+                            SourceFilePath = downloadTask.TempPath,
+                            DestinationFilePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename),
+                            TaskType = IOTaskType.Copy,
+                            Offset = fileManifest.ChunkParts.FirstOrDefault(chuknPart => chuknPart.GuidStr == downloadTask.Guid).Offset,
+                        });
+                    }
+
+                    Task.Run(async () => await ProcessIoQueue());
                 }
                 catch (Exception ex)
                 {
@@ -313,6 +335,63 @@ public class InstallManager
                 await Task.Delay(100);
             }
         }
+        DownloadQueueProcessing = false;
+    }
+
+    private async Task ProcessIoQueue()
+    {
+        // Do not allow multiple IO queue processing
+        if (IoQueueProcessing) return;
+
+        IoQueueProcessing = true;
+        while (!cancellationTokenSource.IsCancellationRequested)
+        {
+            if (ioQueue.TryDequeue(out var ioTask))
+            {
+                try
+                {
+                    switch (ioTask.TaskType)
+                    {
+                        case IOTaskType.Copy:
+                            // Ensure there is a lock object for each destination file
+                            var fileLock =
+                                fileLocksConcurrentDictionary.GetOrAdd(ioTask.DestinationFilePath, new object());
+
+                            lock (fileLock)
+                            {
+                                var data = File.ReadAllBytes(ioTask.SourceFilePath);
+
+                                var directoryPath = Path.GetDirectoryName(ioTask.DestinationFilePath);
+                                if (!string.IsNullOrEmpty(directoryPath))
+                                {
+                                    Directory.CreateDirectory(directoryPath);
+                                }
+
+                                using (var fileStream = new FileStream(ioTask.DestinationFilePath, FileMode.Create,
+                                           FileAccess.Write, FileShare.None))
+                                {
+                                    fileStream.Seek(ioTask.Offset, SeekOrigin.Begin);
+                                    fileStream.Write(data, 0,data.Length);
+                                }
+                            }
+
+                            break;
+                        default:
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.Error(ex.ToString());
+                }
+            }
+            else
+            {
+                await Task.Delay(100);
+            }
+        }
+
+        IoQueueProcessing = false;
     }
 }
 
@@ -336,6 +415,20 @@ public class DownloadTask
     public string Guid { get; set; }
 
     public string TempPath { get; set; }
+}
 
-    public string Sha1Hash { get; set; }
+public class IOTask
+{
+    public string SourceFilePath { get; set; }
+    public string DestinationFilePath { get; set; }
+    public long Offset { get; set; }
+    public IOTaskType TaskType { get; set; }
+}
+
+public enum IOTaskType
+{
+    Copy,
+    Create,
+    Delete,
+    Read
 }
