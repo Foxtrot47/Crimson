@@ -269,15 +269,17 @@ public class InstallManager
             // Get the access control list for the folder
             var directorySecurity = directoryInfo.GetAccessControl();
 
-            // Get the access rules for the current user
-            var accessRules = directorySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier));
-
-            // Check if the current user has write permissions
+            // Get the access rules for the current user and their groups
             var currentUser = WindowsIdentity.GetCurrent();
-            var hasWritePermissions = accessRules.Cast<FileSystemAccessRule>().Any(rule =>
-                currentUser.User.Equals(rule.IdentityReference) &&
-                rule.AccessControlType == AccessControlType.Allow &&
-                (rule.FileSystemRights & FileSystemRights.Write) == FileSystemRights.Write);
+            var principal = new WindowsPrincipal(currentUser);
+
+            var hasWritePermissions = directorySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>()
+                .Any(rule =>
+                    (currentUser.User.Equals(rule.IdentityReference) ||
+                     principal.IsInRole((SecurityIdentifier)rule.IdentityReference)) &&
+                    rule.AccessControlType == AccessControlType.Allow &&
+                    (rule.FileSystemRights & FileSystemRights.Write) == FileSystemRights.Write);
 
             return hasWritePermissions;
         }
