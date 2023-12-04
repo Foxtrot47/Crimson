@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.AccessControl;
+using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
@@ -200,13 +201,14 @@ public class InstallManager
                         Url = manifestData.BaseUrls.FirstOrDefault() + "/" + chunkInfo.Path,
                         TempPath = Path.Combine(CurrentInstall.Location, ".temp", (chunkInfo.GuidStr + ".chunk")),
                         Guid = chunkInfo.GuidStr,
+                        ChunkInfo = chunkInfo
                     };
                     chunkDownloadList.Add(chunkInfo);
                     downloadQueue.Enqueue(newTask);
                 }
             }
 
-            Task.Run(async () => await ProcessDownloadQueue());
+            ProcessDownloadQueue();
 
         }
         catch (Exception ex)
@@ -301,9 +303,7 @@ public class InstallManager
 
     private async Task ProcessDownloadQueue()
     {
-        if (DownloadQueueProcessing) return;
 
-        DownloadQueueProcessing = true;
         while (!cancellationTokenSource.IsCancellationRequested)
         {
             if (downloadQueue.TryDequeue(out var downloadTask))
@@ -316,16 +316,23 @@ public class InstallManager
                     var fileManifests = ChunkToFileManifestsDictionary[downloadTask.Guid];
                     foreach (var fileManifest in fileManifests)
                     {
-                        ioQueue.Enqueue(new IOTask()
+                        foreach (var part in fileManifest.ChunkParts)
                         {
-                            SourceFilePath = downloadTask.TempPath,
-                            DestinationFilePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename),
-                            TaskType = IOTaskType.Copy,
-                            Offset = fileManifest.ChunkParts.FirstOrDefault(chuknPart => chuknPart.GuidStr == downloadTask.Guid).Offset,
-                        });
+                            if(part.GuidStr != downloadTask.Guid) continue;
+                            var task = new IOTask()
+                            {
+                                SourceFilePath = downloadTask.TempPath,
+                                DestinationFilePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename),
+                                TaskType = IOTaskType.Copy,
+                                Size = part.Size,
+                                Offset = part.Offset,
+                                FileOffset = part.FileOffset
+                            };
+                            ioQueue.Enqueue(task);
+                        }
                     }
 
-                    Task.Run(async () => await ProcessIoQueue());
+                    ProcessIoQueue();
                 }
                 catch (Exception ex)
                 {
@@ -337,15 +344,11 @@ public class InstallManager
                 await Task.Delay(100);
             }
         }
-        DownloadQueueProcessing = false;
     }
 
     private async Task ProcessIoQueue()
     {
-        // Do not allow multiple IO queue processing
-        if (IoQueueProcessing) return;
 
-        IoQueueProcessing = true;
         while (!cancellationTokenSource.IsCancellationRequested)
         {
             if (ioQueue.TryDequeue(out var ioTask))
@@ -354,31 +357,46 @@ public class InstallManager
                 {
                     switch (ioTask.TaskType)
                     {
-                        case IOTaskType.Copy:
+                        case IOTaskType.Copy: 
                             // Ensure there is a lock object for each destination file
                             var fileLock =
                                 fileLocksConcurrentDictionary.GetOrAdd(ioTask.DestinationFilePath, new object());
 
-                            lock (fileLock)
+                            var compressedChunkData = await File.ReadAllBytesAsync(ioTask.SourceFilePath);
+
+                            var chunk = Chunk.ReadBuffer(compressedChunkData);
+
+                            var directoryPath = Path.GetDirectoryName(ioTask.DestinationFilePath);
+                            if (!string.IsNullOrEmpty(directoryPath))
                             {
-                                var data = File.ReadAllBytes(ioTask.SourceFilePath);
-
-                                var directoryPath = Path.GetDirectoryName(ioTask.DestinationFilePath);
-                                if (!string.IsNullOrEmpty(directoryPath))
-                                {
-                                    Directory.CreateDirectory(directoryPath);
-                                }
-
-                                using (var fileStream = new FileStream(ioTask.DestinationFilePath, FileMode.Create,
-                                           FileAccess.Write, FileShare.None))
-                                {
-                                    fileStream.Seek(ioTask.Offset, SeekOrigin.Begin);
-                                    fileStream.Write(data, 0,data.Length);
-                                }
+                                Directory.CreateDirectory(directoryPath);
                             }
 
-                            break;
-                        default:
+                            lock (fileLock)
+                            {
+                                using var fileStream = new FileStream(ioTask.DestinationFilePath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
+                                fileStream.Seek(ioTask.FileOffset, SeekOrigin.Begin);
+
+                                // Since chunk offset is a long we cannot use it directly in File stream write or read
+                                // Use a memory stream to seek to the chunk offset
+                                using var memoryStream = new MemoryStream(chunk.Data);
+                                memoryStream.Seek(ioTask.Offset, SeekOrigin.Begin);
+
+                                var remainingBytesToWrite = ioTask.Size;
+                                // Buffer size is irrelevant as write is continuous
+                                const int bufferSize = 4096;
+                                var buffer = new byte[bufferSize];
+
+                                while (remainingBytesToWrite > 0)
+                                {
+                                    var bytesToRead = (int)Math.Min(bufferSize, remainingBytesToWrite);
+                                    var bytesRead = memoryStream.Read(buffer, 0, bytesToRead);
+                                    fileStream.Write(buffer, 0, bytesRead);
+
+                                    remainingBytesToWrite -= bytesRead;
+                                }
+                                fileStream.Flush();
+                            }
                             break;
                     }
                 }
@@ -393,7 +411,12 @@ public class InstallManager
             }
         }
 
-        IoQueueProcessing = false;
+    }
+    public static string CalculateSHA1(byte[] data)
+    {
+        using var sha1 = SHA1.Create();
+        var hashBytes = sha1.ComputeHash(data);
+        return BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
     }
 }
 
@@ -417,13 +440,17 @@ public class DownloadTask
     public string Guid { get; set; }
 
     public string TempPath { get; set; }
+
+    public ChunkInfo ChunkInfo { get; set; }
 }
 
 public class IOTask
 {
     public string SourceFilePath { get; set; }
     public string DestinationFilePath { get; set; }
+    public long Size { get; set; }
     public long Offset { get; set; }
+    public long FileOffset { get; set; }
     public IOTaskType TaskType { get; set; }
 }
 
