@@ -41,6 +41,11 @@ namespace Crimson
                             window.chrome.webview.postMessage(data);
                         },
                     },
+                    common: {
+                        launchexternalurl: function(url) {
+                            window.open(url, '_blank');
+                        }
+                    }
                 };
             ";
 
