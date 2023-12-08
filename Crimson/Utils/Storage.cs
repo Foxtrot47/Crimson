@@ -68,8 +68,11 @@ namespace Crimson.Utils
 
                 // Load installed games list
                 var installedGamesFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\installed.json";
-                if (!File.Exists(installedGamesFile)) return;
+                if (!File.Exists(installedGamesFile))
                 {
+                    _installedGamesDictionary = new Dictionary<string, InstalledGame>();
+                }
+                else {
                     var jsonString = File.ReadAllText(installedGamesFile);
                     _installedGamesDictionary =
                         JsonSerializer.Deserialize<Dictionary<string, InstalledGame>>(jsonString);
