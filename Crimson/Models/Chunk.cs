@@ -82,7 +82,6 @@ public class Chunk
 
             if (_bio != null)
             {
-                Console.WriteLine($"Length of MemoryStream before processing: {_bio.Length} bytes");
 
                 _bio.Position = 0; // Reset stream position
                 if (Compressed)
