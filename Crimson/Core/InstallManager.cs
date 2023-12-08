@@ -219,7 +219,7 @@ public class InstallManager
 
             CurrentInstall!.Status = ActionStatus.OnGoing;
             InstallationStatusChanged?.Invoke(CurrentInstall);
-            ProcessDownloadQueue();
+            _ = ProcessDownloadQueue();
         }
         catch (Exception ex)
         {
@@ -341,7 +341,7 @@ public class InstallManager
                         }
                     }
 
-                    ProcessIoQueue();
+                    _ = ProcessIoQueue();
                 }
                 catch (Exception ex)
                 {
@@ -353,7 +353,7 @@ public class InstallManager
                 await Task.Delay(100);
             }
             if (ioQueue.IsEmpty && downloadQueue.IsEmpty && CurrentInstall != null)
-                UpdateInstalledGameStatus();
+                _ = UpdateInstalledGameStatus();
         }
     }
 
@@ -434,7 +434,7 @@ public class InstallManager
             }
 
             if (ioQueue.IsEmpty && downloadQueue.IsEmpty && CurrentInstall != null)
-                UpdateInstalledGameStatus();
+                _ = UpdateInstalledGameStatus();
         }
     }
     public static string CalculateSHA1(byte[] data)
