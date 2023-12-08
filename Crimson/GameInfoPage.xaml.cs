@@ -221,7 +221,7 @@ namespace Crimson
             // Open the picker for the user to pick a folder
             var folder = await openPicker.PickSingleFolderAsync();
             if (folder == null) return;
-            StorageApplicationPermissions.FutureAccessList.AddOrReplace("PickedFolderToken", folder);
+            //StorageApplicationPermissions.FutureAccessList.AddOrReplace("PickedFolderToken", folder);
             InstallLocationText.Text = folder.Path;
 
         }

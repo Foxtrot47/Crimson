@@ -25,9 +25,6 @@ public class InstalledGame
     [JsonPropertyName("install_size")]
     public int InstallSize { get; set; }
 
-    [JsonPropertyName("install_tags")]
-    public List<object> InstallTags { get; set; }
-
     [JsonPropertyName("is_dlc")]
     public bool IsDlc { get; set; }
 
@@ -36,9 +33,6 @@ public class InstalledGame
 
     [JsonPropertyName("manifest_path")]
     public object ManifestPath { get; set; }
-
-    [JsonPropertyName("needs_verification")]
-    public bool NeedsVerification { get; set; }
 
     [JsonPropertyName("platform")]
     public string Platform { get; set; }
@@ -56,7 +50,7 @@ public class InstalledGame
     public string Title { get; set; }
 
     [JsonPropertyName("uninstaller")]
-    public object Uninstaller { get; set; }
+    public Dictionary<string, string> Uninstaller { get; set; }
 
     [JsonPropertyName("version")]
     public string Version { get; set; }

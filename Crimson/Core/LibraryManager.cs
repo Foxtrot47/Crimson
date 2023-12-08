@@ -61,6 +61,17 @@ public class LibraryManager
     }
 
     /// <summary>
+    /// Updates stored game data and fired GameStatusUpdated event
+    /// Only thing that would call this function would be InstallManager
+    /// </summary>
+    /// <param name="game"></param>
+    public void UpdateGameInfo(Game game)
+    {
+        _storage.SaveMetaData(game);
+        GameStatusUpdated?.Invoke(game);
+    }
+
+    /// <summary>
     ///  Updates library data and triggers LibraryUpdated event
     /// </summary>
     /// <param name="forceUpdate"></param>
