@@ -35,11 +35,11 @@ public enum ActionStatus
     Cancelled
 }
 
-public class InstallItem
+public class InstallItem(string appName, ActionType action, string location)
 {
-    public string AppName { get; set; }
-    public ActionType Action { get; set; }
-    public string Location { get; set; }
+    public string AppName { get; set; } = appName;
+    public ActionType Action { get; set; } = action;
+    public string Location { get; set; } = location;
     public int ProgressPercentage { get; set; }
     public TimeSpan RunningTime { get; set; }
     public TimeSpan Eta { get; set; }
@@ -52,15 +52,7 @@ public class InstallItem
     public double ReadSpeed { get; set; }
     public double WriteSpeed { get; set; }
     public DateTime CreatedTime { get; set; }
-    public ActionStatus Status { get; set; }
-
-    public InstallItem(string appName, ActionType action, string location)
-    {
-        AppName = appName;
-        Action = action;
-        Status = ActionStatus.Pending;
-        Location = location;
-    }
+    public ActionStatus Status { get; set; } = ActionStatus.Pending;
 }
 
 public class InstallManager
@@ -68,18 +60,17 @@ public class InstallManager
     public event Action<InstallItem> InstallationStatusChanged;
     public event Action<InstallItem> InstallProgressUpdate;
     public InstallItem CurrentInstall;
-    private Queue<InstallItem> _installQueue;
-    private readonly List<InstallItem> InstallHistory = new();
+    private readonly Queue<InstallItem> _installQueue;
+    private readonly List<InstallItem> _installHistory = new();
 
-    private ConcurrentQueue<DownloadTask> downloadQueue = new ConcurrentQueue<DownloadTask>();
-    private ConcurrentQueue<IOTask> ioQueue = new ConcurrentQueue<IOTask>();
-    private CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+    private readonly ConcurrentQueue<DownloadTask> _downloadQueue = new();
+    private readonly ConcurrentQueue<IOTask> _ioQueue = new();
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
 
-    private ConcurrentDictionary<string, object> fileLocksConcurrentDictionary =
-        new ConcurrentDictionary<string, object>();
+    private readonly ConcurrentDictionary<string, object> _fileLocksConcurrentDictionary = new();
 
-    private ConcurrentDictionary<string, List<FileManifest>> ChunkToFileManifestsDictionary =
-        new ConcurrentDictionary<string, List<FileManifest>>();
+    private readonly ConcurrentDictionary<string, List<FileManifest>> _chunkToFileManifestsDictionary =
+        new();
 
     private bool DownloadQueueProcessing = false;
     private bool IoQueueProcessing = false;
@@ -173,7 +164,7 @@ public class InstallManager
             if (!Directory.Exists(CurrentInstall.Location))
             {
                 Directory.CreateDirectory(CurrentInstall.Location);
-                Console.WriteLine($"Folder created at: {CurrentInstall.Location}");
+                _log.Information("Folder created at: {@location}", CurrentInstall.Location);
             }
 
             if (!HasFolderWritePermissions(CurrentInstall.Location))
@@ -191,14 +182,14 @@ public class InstallManager
             {
                 foreach (var chunkPart in fileManifest.ChunkParts)
                 {
-                    if (ChunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidStr, out var fileManifests))
+                    if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidStr, out var fileManifests))
                     {
                         fileManifests.Add(fileManifest);
-                        ChunkToFileManifestsDictionary[chunkPart.GuidStr] = fileManifests;
+                        _chunkToFileManifestsDictionary[chunkPart.GuidStr] = fileManifests;
                     }
                     else
                     {
-                        ChunkToFileManifestsDictionary.TryAdd(chunkPart.GuidStr,
+                        _ = _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidStr,
                             new List<FileManifest>() { fileManifest });
                     }
 
@@ -213,7 +204,7 @@ public class InstallManager
                         ChunkInfo = chunkInfo
                     };
                     chunkDownloadList.Add(chunkInfo);
-                    downloadQueue.Enqueue(newTask);
+                    _downloadQueue.Enqueue(newTask);
                 }
             }
 
@@ -251,24 +242,12 @@ public class InstallManager
 
     public List<string> GetQueueItemNames()
     {
-        var queueItemsName = new List<string>();
-        foreach (var item in _installQueue)
-        {
-            queueItemsName.Add(item.AppName);
-        }
-
-        return queueItemsName;
+        return _installQueue.Select(item => item.AppName).ToList();
     }
 
     public List<string> GetHistoryItemsNames()
     {
-        var historyItemsName = new List<string>();
-        foreach (var item in InstallHistory)
-        {
-            historyItemsName.Add(item.AppName);
-        }
-
-        return historyItemsName;
+        return _installHistory.Select(item => item.AppName).ToList();
     }
 
     private bool HasFolderWritePermissions(string folderPath)
@@ -308,21 +287,21 @@ public class InstallManager
 
     public void StopProcessing()
     {
-        cancellationTokenSource.Cancel();
+        _cancellationTokenSource.Cancel();
     }
 
     private async Task ProcessDownloadQueue()
     {
-        while (!cancellationTokenSource.IsCancellationRequested)
+        while (!_cancellationTokenSource.IsCancellationRequested)
         {
-            if (downloadQueue.TryDequeue(out var downloadTask))
+            if (_downloadQueue.TryDequeue(out var downloadTask))
             {
                 try
                 {
                     //await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
 
                     // get file manifest from dictionary
-                    var fileManifests = ChunkToFileManifestsDictionary[downloadTask.Guid];
+                    var fileManifests = _chunkToFileManifestsDictionary[downloadTask.Guid];
                     foreach (var fileManifest in fileManifests)
                     {
                         foreach (var part in fileManifest.ChunkParts)
@@ -337,7 +316,7 @@ public class InstallManager
                                 Offset = part.Offset,
                                 FileOffset = part.FileOffset
                             };
-                            ioQueue.Enqueue(task);
+                            _ioQueue.Enqueue(task);
                         }
                     }
 
@@ -352,16 +331,16 @@ public class InstallManager
             {
                 await Task.Delay(100);
             }
-            if (ioQueue.IsEmpty && downloadQueue.IsEmpty && CurrentInstall != null)
+            if (_ioQueue.IsEmpty && _downloadQueue.IsEmpty && CurrentInstall != null)
                 _ = UpdateInstalledGameStatus();
         }
     }
 
     private async Task ProcessIoQueue()
     {
-        while (!cancellationTokenSource.IsCancellationRequested)
+        while (!_cancellationTokenSource.IsCancellationRequested)
         {
-            if (ioQueue.TryDequeue(out var ioTask))
+            if (_ioQueue.TryDequeue(out var ioTask))
             {
                 try
                 {
@@ -370,7 +349,7 @@ public class InstallManager
                         case IOTaskType.Copy:
                             // Ensure there is a lock object for each destination file
                             var fileLock =
-                                fileLocksConcurrentDictionary.GetOrAdd(ioTask.DestinationFilePath, new object());
+                                _fileLocksConcurrentDictionary.GetOrAdd(ioTask.DestinationFilePath, new object());
 
                             var compressedChunkData = await File.ReadAllBytesAsync(ioTask.SourceFilePath);
 
@@ -433,7 +412,7 @@ public class InstallManager
                 await Task.Delay(100);
             }
 
-            if (ioQueue.IsEmpty && downloadQueue.IsEmpty && CurrentInstall != null)
+            if (_ioQueue.IsEmpty && _downloadQueue.IsEmpty && CurrentInstall != null)
                 _ = UpdateInstalledGameStatus();
         }
     }
@@ -464,7 +443,7 @@ public class InstallManager
             if (CurrentInstall == null) return;
 
             // Stop all queues before doing anything
-            await cancellationTokenSource.CancelAsync();
+            await _cancellationTokenSource.CancelAsync();
 
             var gameData = _libraryManager.GetGameInfo(CurrentInstall.AppName);
             if (gameData == null)
