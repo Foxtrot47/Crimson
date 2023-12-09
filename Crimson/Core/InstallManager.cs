@@ -478,7 +478,7 @@ public class InstallManager
 
             installedGame.BaseUrls = gameData.BaseUrls;
             installedGame.CanRunOffline = canRunOffLine;
-            installedGame.Executable = manifestData.ManifestMeta.LaunchCommand;
+            installedGame.Executable = manifestData.ManifestMeta.LaunchExe;
             installedGame.InstallPath = CurrentInstall.Location;
             installedGame.LaunchParameters = manifestData.ManifestMeta.LaunchCommand;
             installedGame.RequiresOt = requireOwnerShipToken;
@@ -513,7 +513,7 @@ public class InstallManager
             _log.Fatal("UpdateInstalledGameStatus: Exception {@ex}", ex);
 
             CurrentInstall = null;
-                ProcessNext();
+            ProcessNext();
         }
     }
 }
