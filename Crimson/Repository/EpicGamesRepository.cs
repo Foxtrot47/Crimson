@@ -10,6 +10,8 @@ using Crimson.Core;
 using Crimson.Models;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Reflection.Emit;
+using Windows.Foundation.Metadata;
 
 namespace Crimson.Repository
 {
@@ -17,6 +19,7 @@ namespace Crimson.Repository
     {
         private const string LauncherHost = "launcher-public-service-prod06.ol.epicgames.com";
         private const string CatalogHost = "catalog-public-service-prod06.ol.epicgames.com";
+        private const string OAuthHost = "account-public-service-prod03.ol.epicgames.com";
         private const string UserAgent = "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit";
 
         private static readonly HttpClient HttpClient;
@@ -168,6 +171,27 @@ namespace Crimson.Repository
             await using var stream = await response.Content.ReadAsStreamAsync();
             await using var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
             await stream.CopyToAsync(fileStream);
+        }
+
+        public async Task<string> GetGameToken()
+        {
+            try
+            {
+                var accessToken = await _authManager.GetAccessToken();
+                HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                using var response = await HttpClient.GetAsync($"https://{OAuthHost}/account/api/oauth/exchange");
+                response.EnsureSuccessStatusCode();
+
+                await using var stream = await response.Content.ReadAsStreamAsync();
+                using var reader = new StreamReader(stream);
+                string responseContent = await reader.ReadToEndAsync();
+                return responseContent;
+            }
+            catch (Exception ex)
+            {
+                _log.Error("GetGameToken: {@ex}", ex);
+                return null;
+            }
         }
 
         private async Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live")

@@ -6,6 +6,10 @@ using Crimson.Models;
 using Serilog;
 using Crimson.Utils;
 using Crimson.Repository;
+using System.Text.Json.Serialization;
+using System.Diagnostics;
+using System.IO;
+using System.Text.Json;
 
 namespace Crimson.Core;
 
@@ -14,17 +18,19 @@ public class LibraryManager
     private readonly ILogger _log;
     private readonly IStoreRepository _storeRepository;
     private readonly Storage _storage;
+    private readonly AuthManager _authManager;
 
     public event Action<IEnumerable<Game>> LibraryUpdated;
     public event Action<Game> GameStatusUpdated;
 
     private DateTime _lastUpdateDateTime = DateTime.MinValue;
 
-    public LibraryManager(ILogger log, IStoreRepository repository, Storage storage)
+    public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager)
     {
         _log = log;
         _storeRepository = repository;
         _storage = storage;
+        _authManager = authManager;
     }
     /// <summary>
     /// Public method to get library data, call UpdateLibraryData it's been more than 20 minutes since last update
@@ -69,6 +75,83 @@ public class LibraryManager
     {
         _storage.SaveMetaData(game);
         GameStatusUpdated?.Invoke(game);
+    }
+
+    public async Task LaunchApp(string appName)
+    {
+        try
+        {
+            if (appName == null) return;
+
+            _log.Information("LaunchApp: Trying to launch app: {@appName}", appName);
+
+            if (_storage.InstalledGamesDictionary.TryGetValue(appName, out var gameInfo))
+            {
+
+                await UpdateLibraryData(false, true);
+                var metaData = _storage.GetGameMetaData(appName);
+                if (metaData == null)
+                {
+                    _log.Warning("LaunchApp: Trying to launch game not owned {@game}", appName);
+                    return;
+                }
+
+                if (metaData.InstallStatus != InstallState.Installed)
+                {
+                    Log.Warning("LaunchApp: Trying to launch game not installed");
+                }
+
+                if (metaData.IsDlc())
+                {
+                    _log.Warning("LaunchApp: launching DLC's is not yet supported");
+                    return;
+                }
+
+                if (metaData.AssetInfos.Windows.BuildVersion != gameInfo.Version)
+                {
+                    _log.Warning("LaunchApp: Trying to launch out dated game");
+
+                    // Don't disallow launching out of date games until we implement updating mechanism
+                    // return;
+                }
+
+                var responseData = await _storeRepository.GetGameToken();
+                var responseObject = JsonSerializer.Deserialize<GameTokenResponse>(responseData);
+                var userData = await _authManager.GetUserData();
+
+                var parameters = new List<string>();
+                parameters.Add($"-AUTH_LOGIN=unused");
+                parameters.Add($"-AUTH_PASSWORD={responseObject.Code}");
+                parameters.Add("-AUTH_TYPE=exchangecode");
+                parameters.Add($"-epicapp={gameInfo.AppName}");
+                parameters.Add("-epicenv=Prod");
+
+                parameters.Add("-EpicPortal");
+                parameters.Add($"-epicusername={userData.DisplayName}");
+                parameters.Add($"-epicuserid={userData.AccountId}");
+                parameters.Add($"-epicsandboxid={metaData.AssetInfos.Windows.Namespace}");
+
+                string arguments = string.Join(" ", parameters);
+
+                // Create a new process start info
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = Path.Join(gameInfo.InstallPath, gameInfo.Executable),
+                    Arguments = arguments,
+                    UseShellExecute = false
+                };
+
+                // Create and start the process
+                using var process = new Process { StartInfo = startInfo };
+                process.Start();
+                process.WaitForExit();
+                process.Dispose();
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Fatal("LaunchApp: Exception: {@ex}", ex);
+        }
     }
 
     /// <summary>
@@ -167,3 +250,14 @@ internal class FetchListItem
     public string CatalogItemId { get; set; }
 }
 
+public class GameTokenResponse
+{
+    [JsonPropertyName("expiresInSeconds")]
+    public int ExpiresInSeconds { get; set; }
+
+    [JsonPropertyName("code")]
+    public string Code { get; set; }
+
+    [JsonPropertyName("creatingClientId")]
+    public string CreatingClientId { get; set; }
+}

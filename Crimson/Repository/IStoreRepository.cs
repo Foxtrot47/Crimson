@@ -16,4 +16,6 @@ public interface IStoreRepository
     public Task<GetGameManifest> GetGameManifest(string nameSpace, string catalogItem, string appName, bool disableHttps = false);
     
     public Task DownloadFileAsync(string url, string destinationPath);
+
+    public Task<string> GetGameToken();
 }

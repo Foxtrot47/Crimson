@@ -64,7 +64,7 @@ namespace Crimson
                 if (Game.InstallStatus == InstallState.Installed)
                 {
                     _log.Information("GameInfoPage: Starting Game {Game}", Game.AppTitle);
-                    //LibraryManager.StartGame(Game.Name);
+                    await _libraryManager.LaunchApp(Game.AppName);
                     return;
                 }
 
