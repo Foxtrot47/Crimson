@@ -298,7 +298,7 @@ public class InstallManager
             {
                 try
                 {
-                    //await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
+                    await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
 
                     // get file manifest from dictionary
                     var fileManifests = _chunkToFileManifestsDictionary[downloadTask.Guid];
