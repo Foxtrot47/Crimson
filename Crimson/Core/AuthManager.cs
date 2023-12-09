@@ -160,6 +160,15 @@ public class AuthManager
         var userData = await _storage.GetUserData();
         return KeyManager.DecryptString(userData.AccessToken);
     }
+    public async Task<UserData> GetUserData()
+    {
+        if (_authenticationStatus != AuthenticationStatus.LoggedIn)
+        {
+            _log.Error("RequestAccessToken: User is not logged in");
+            return null;
+        }
+        return await _storage.GetUserData();
+    }
 
     private async Task<UserData> RequestTokens(string grantType, string codeName, string codeValue)
     {
