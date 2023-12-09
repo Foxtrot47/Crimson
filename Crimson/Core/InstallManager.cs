@@ -453,7 +453,11 @@ public class InstallManager
                 throw new Exception("Invalid game data");
             }
 
-            _storage.InstalledGamesDictionary.TryGetValue(CurrentInstall.AppName, out var installedGame);
+            if (!_storage.InstalledGamesDictionary.TryGetValue(CurrentInstall.AppName, out InstalledGame installedGame))
+            {
+                installedGame = new InstalledGame();
+            }
+
             var manifestDataBytes = await _repository.GetGameManifest(gameData.AssetInfos.Windows.Namespace,
                 gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
 
