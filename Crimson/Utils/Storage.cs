@@ -74,8 +74,11 @@ namespace Crimson.Utils
                 }
                 else {
                     var jsonString = File.ReadAllText(installedGamesFile);
+                    if (jsonString != null && jsonString != "")
                     _installedGamesDictionary =
                         JsonSerializer.Deserialize<Dictionary<string, InstalledGame>>(jsonString);
+                    else
+                        _installedGamesDictionary = new Dictionary<string, InstalledGame>();
                 }
             }
             catch (Exception ex)
