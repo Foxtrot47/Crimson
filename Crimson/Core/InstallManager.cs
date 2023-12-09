@@ -83,6 +83,9 @@ public class InstallManager
     private readonly IStoreRepository _repository;
     private readonly Storage _storage;
 
+    private readonly SemaphoreSlim _semaphoreSlim;
+    private readonly int _numberOfThreads;
+
     public InstallManager(ILogger log, LibraryManager libraryManager, IStoreRepository repository, Storage storage)
     {
         _log = log;
@@ -91,6 +94,9 @@ public class InstallManager
         CurrentInstall = null;
         _repository = repository;
         _storage = storage;
+
+        _numberOfThreads = Environment.ProcessorCount;
+        _semaphoreSlim = new SemaphoreSlim(_numberOfThreads, _numberOfThreads);
     }
 
     public void AddToQueue(InstallItem item)
@@ -210,7 +216,14 @@ public class InstallManager
 
             CurrentInstall!.Status = ActionStatus.OnGoing;
             InstallationStatusChanged?.Invoke(CurrentInstall);
-            _ = ProcessDownloadQueue();
+
+            for (int i = 0; i < _numberOfThreads; i++)
+            {
+                Thread thread1 = new(async () => await ProcessDownloadQueue());
+                Thread thread2 = new(async () => await ProcessIoQueue());
+                thread1.Start();
+                thread2.Start();
+            }
         }
         catch (Exception ex)
         {
@@ -319,8 +332,6 @@ public class InstallManager
                             _ioQueue.Enqueue(task);
                         }
                     }
-
-                    _ = ProcessIoQueue();
                 }
                 catch (Exception ex)
                 {
