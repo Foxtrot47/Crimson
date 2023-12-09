@@ -467,11 +467,15 @@ public class InstallManager
             var canRunOffLine = gameData.Metadata.CustomAttributes.CanRunOffline.Value == "true";
             var requireOwnerShipToken = gameData.Metadata.CustomAttributes?.OwnershipToken?.Value == "true";
 
-            installedGame ??= new InstalledGame()
+            if(installedGame == null || installedGame.AppName == null)
             {
-                AppName = CurrentInstall.AppName,
-                IsDlc = gameData.IsDlc(),
-            };
+                installedGame = new InstalledGame()
+                {
+                    AppName = CurrentInstall.AppName,
+                    IsDlc = gameData.IsDlc()
+                };
+            }
+
             installedGame.BaseUrls = gameData.BaseUrls;
             installedGame.CanRunOffline = canRunOffLine;
             installedGame.Executable = manifestData.ManifestMeta.LaunchCommand;
