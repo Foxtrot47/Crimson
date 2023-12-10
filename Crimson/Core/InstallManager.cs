@@ -411,19 +411,26 @@ public class InstallManager
 
                                 fileStream.Flush();
                             }
-
-                            if (_chunkPartReferences.TryGetValue(ioTask.GuidStr, out var referenceCount))
-                            {
-                                var newCount = referenceCount - 1;
-                                _chunkPartReferences.TryUpdate(ioTask.GuidStr, newCount, referenceCount);
-
-                                // if reference count is 0 delete the chunk
-                                if (newCount <= 0)
-                                {
-                                    File.Delete(ioTask.SourceFilePath);
+                            // Check for references to the chunk and decrement by one
+                            bool referencesEmpty = false;
+                            _chunkPartReferences.AddOrUpdate(
+                                ioTask.GuidStr,
+                                (key) => { return 0; }, // This won't be called since a decrement implies the key already exists
+                                (key, oldValue) => {
+                                    var newValue = oldValue - 1;
+                                    if (newValue <= 0)
+                                    {
+                                        referencesEmpty = _chunkPartReferences.TryRemove(key, out _);
+                                        return 0; // This return value doesn't matter as we remove the key
+                                    }
+                                    return newValue;
                                 }
+                            );
+                            // If there are no more references , delete the chunk file
+                            if (referencesEmpty)
+                            {
+                                File.Delete(ioTask.SourceFilePath);
                             }
-
                             break;
                     }
                 }
