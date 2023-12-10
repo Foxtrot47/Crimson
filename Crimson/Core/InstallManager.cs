@@ -353,9 +353,6 @@ public class InstallManager
             {
                 await Task.Delay(500);
             }
-
-            if (_ioQueue.IsEmpty && _downloadQueue.IsEmpty && CurrentInstall != null)
-                _ = UpdateInstalledGameStatus();
         }
     }
 
