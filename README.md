@@ -2,8 +2,10 @@
 
 **Highly WIP**
 
-## A Simple Epic Games Launcher frontend using legendary made with WinUI
+## A Simple Epic Games Launcher frontend made with WinUI3
 
+## Downloads
+There are not stable builds at the moment, you have build it yourself
 
 ## Development
 
@@ -16,9 +18,6 @@
 
 2. Clone this repo
 
-3. ~~Download latest legendary [release](https://github.com/derrod/legendary/releases/download/0.20.33/legendary.exe) binary 
-    into   `C:\Users\{username}\AppData\Local\WinUIEGL\bin`~~
-
-4. ~~Follow legendary docs to initialise auth (this won't be necessary later)~~
-
-5. Compile and run the app
+3. Build and run the app
+ - If you want to have loosely packaged binaries, you can just build the main Crimson project and run the Crimson.exe
+ - If you want to get application packaged as appx , you must add a signing key to Crimson Packaging project and run publish from that project

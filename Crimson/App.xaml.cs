@@ -9,7 +9,6 @@ namespace Crimson
     /// </summary>
     public partial class App : Application
     {
-        public ILogger Log => ((MainWindow)m_window).Log;
         /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
         /// executed, and as such is the logical equivalent of main() or WinMain().
@@ -26,6 +25,7 @@ namespace Crimson
         /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
+            DependencyResolver.Initialize();
             m_window = new MainWindow();
             m_window.Activate();
             m_window.Closed += OnExit;
@@ -34,7 +34,7 @@ namespace Crimson
         // Save gamedata to storage on application exit
         private static async void OnExit(object sender, object e)
         {
-            await StateManager.UpdateJsonFileAsync();
+            //await LibraryManager.UpdateJsonFileAsync();
         }
 
         private Window m_window;

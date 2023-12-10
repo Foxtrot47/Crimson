@@ -7,13 +7,19 @@ namespace Crimson;
 
 public sealed partial class CurrentDownloadControl : UserControl
 {
+    private readonly LibraryManager _libraryManager;
+    private readonly InstallManager _installManager;
     public CurrentDownloadControl()
     {
         InitializeComponent();
-        var gameInQueue = InstallManager.CurrentInstall;
+        _installManager = DependencyResolver.Resolve<InstallManager>();
+        _libraryManager = DependencyResolver.Resolve<LibraryManager>();
+
+        var gameInQueue = _installManager.CurrentInstall;
         HandleInstallationStatusChanged(gameInQueue);
-        InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
-        InstallManager.InstallProgressUpdate += InstallationProgressUpdate;
+        _installManager.InstallationStatusChanged += HandleInstallationStatusChanged;
+        _installManager.InstallProgressUpdate += InstallationProgressUpdate;
+        
     }
 
     // Handing Installtion State Change
@@ -34,12 +40,12 @@ public sealed partial class CurrentDownloadControl : UserControl
                 return;
             }
 
-            var gameInfo = StateManager.GetGameInfo(installItem.AppName);
-            if (gameInfo == null) return;
+            //var gameInfo = LibraryManager.GetGameInfo(installItem.AppName);
+            //if (gameInfo == null) return;
 
             DispatcherQueue.TryEnqueue(() =>
             {
-                UpdateStatus(installItem, game, gameInfo);
+                UpdateStatus(installItem, game);
             });
         }
         catch (Exception ex)
@@ -48,7 +54,7 @@ public sealed partial class CurrentDownloadControl : UserControl
         }
     }
 
-    private void UpdateStatus(InstallItem installItem, InstallItem game, Game gameInfo)
+    private void UpdateStatus(InstallItem installItem, InstallItem game)
     {
         DownloadSpeed.Text = "";
         DownloadedSize.Text = "";
@@ -56,7 +62,7 @@ public sealed partial class CurrentDownloadControl : UserControl
         ProgressBar.IsIndeterminate = true;
         EmptyDownloadText.Visibility = Visibility.Collapsed;
         DownloadStatus.Visibility = Visibility.Visible;
-        GameName.Text = gameInfo.Title;
+        //GameName.Text = gameInfo.Title;
 
         switch (game.Status)
         {

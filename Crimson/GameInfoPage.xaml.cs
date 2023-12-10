@@ -3,6 +3,7 @@ using System.Linq;
 using Windows.Storage.AccessCache;
 using Windows.Storage.Pickers;
 using Crimson.Core;
+using Crimson.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -18,28 +19,34 @@ namespace Crimson
     /// </summary>
     public sealed partial class GameInfoPage : Page
     {
+        private readonly InstallManager _installer;
+
+        private readonly LibraryManager _libraryManager;
         public Game Game { get; set; }
 
         public GameInfoPage()
         {
             this.InitializeComponent();
+            _log = DependencyResolver.Resolve<ILogger>();
+            _installer = DependencyResolver.Resolve<InstallManager>();
+            _libraryManager = DependencyResolver.Resolve<LibraryManager>();
         }
-        private readonly ILogger _log = ((App)Application.Current).Log;
+        private readonly ILogger _log;
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
-            Game = StateManager.GetGameInfo((string)e.Parameter);
-            var gameImage = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox");
+            Game = _libraryManager.GetGameInfo((string)e.Parameter);
+            var gameImage = Game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBox");
             TitleImage.SetValue(Image.SourceProperty, gameImage != null ? new BitmapImage(new Uri(gameImage.Url)) : null);
 
             CheckGameStatus(Game);
 
             // Unregister event handlers on start
-            StateManager.GameStatusUpdated -= CheckGameStatus;
-            StateManager.GameStatusUpdated += CheckGameStatus;
-            InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
-            InstallManager.InstallationStatusChanged += HandleInstallationStatusChanged;
-            InstallManager.InstallProgressUpdate -= HandleInstallationStatusChanged;
-            InstallManager.InstallProgressUpdate += HandleInstallationStatusChanged;
+            _libraryManager.GameStatusUpdated -= CheckGameStatus;
+            _libraryManager.GameStatusUpdated += CheckGameStatus;
+            _installer.InstallationStatusChanged -= HandleInstallationStatusChanged;
+            _installer.InstallationStatusChanged += HandleInstallationStatusChanged;
+            _installer.InstallProgressUpdate -= HandleInstallationStatusChanged;
+            _installer.InstallProgressUpdate += HandleInstallationStatusChanged;
 
         }
 
@@ -52,17 +59,17 @@ namespace Crimson
         {
             try
             {
-                _log.Information("GameInfoPage: Primary Action Button Clicked for {Game}", Game.Title);
+                _log.Information("GameInfoPage: Primary Action Button Clicked for {Game}", Game.AppTitle);
                 if (Game == null) return;
-                if (Game.State == Game.InstallState.Installed)
+                if (Game.InstallStatus == InstallState.Installed)
                 {
-                    _log.Information("GameInfoPage: Starting Game {Game}", Game.Title);
-                    StateManager.StartGame(Game.Name);
+                    _log.Information("GameInfoPage: Starting Game {Game}", Game.AppTitle);
+                    await _libraryManager.LaunchApp(Game.AppName);
                     return;
                 }
 
-                ConfirmInstallTitleText.Text = Game.Title;
-                ConfirmInstallImage.Source = Game.Images.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(Game.Images.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
+                ConfirmInstallTitleText.Text = Game.AppTitle;
+                ConfirmInstallImage.Source = Game.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(Game.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
                 InstallLocationText.Text = "C:\\Games\\";
                 ConfirmInstallDialog.MaxWidth = 4000;
                 var downloadResult = await ConfirmInstallDialog.ShowAsync();
@@ -128,8 +135,8 @@ namespace Crimson
 
         private void CheckGameStatus(Game updatedGame)
         {
-            if (updatedGame == null || updatedGame.Name != Game.Name) return;
-            _log.Information("GameInfoPage: Game Status Changed for {Game}", updatedGame.Title);
+            if (updatedGame == null || updatedGame.AppName != Game.AppName) return;
+            _log.Information("GameInfoPage: Game Status Changed for {Game}", updatedGame.AppTitle);
             Game = updatedGame;
 
             DispatcherQueue.TryEnqueue(() =>
@@ -138,38 +145,38 @@ namespace Crimson
                 PrimaryActionButtonText.Text = "";
                 PrimaryActionButtonIcon.Glyph = "";
 
-                if (Game.State == Game.InstallState.Installing || Game.State == Game.InstallState.Updating || Game.State == Game.InstallState.Repairing)
-                {
-                    var gameInQueue = InstallManager.GameGameInQueue(Game.Name);
-                    if (gameInQueue == null)
-                    {
-                        // Default button text and glyph if game isn't in instllation queue yet
-                        PrimaryActionButtonText.Text = "Resume";
-                        PrimaryActionButtonIcon.Glyph = "\uE768";
-                    }
-                    HandleInstallationStatusChanged(gameInQueue);
-                    return;
-                }
+                //if (Game.InstallStatus == InstallState.Installing || Game.InstallStatus == InstallState.Updating || Game.InstallStatus == InstallState.Repairing)
+                //{
+                //    var gameInQueue = InstallManager.GameGameInQueue(Game.Name);
+                //    if (gameInQueue == null)
+                //    {
+                //        // Default button text and glyph if game isn't in instllation queue yet
+                //        PrimaryActionButtonText.Text = "Resume";
+                //        PrimaryActionButtonIcon.Glyph = "\uE768";
+                //    }
+                //    HandleInstallationStatusChanged(gameInQueue);
+                //    return;
+                //}
                 PrimaryActionButtonIcon.Visibility = Visibility.Visible;
                 DownloadProgressRing.Visibility = Visibility.Collapsed;
                 PrimaryActionButton.IsEnabled = true;
-                if (Game.State == Game.InstallState.NotInstalled)
+                if (Game.InstallStatus == InstallState.NotInstalled)
                 {
                     PrimaryActionButtonText.Text = "Install";
                     PrimaryActionButtonIcon.Glyph = "\uE896";
                 }
-                else if (Game.State == Game.InstallState.Installed)
+                else if (Game.InstallStatus == InstallState.Installed)
                 {
                     PrimaryActionButtonText.Text = "Play";
                     PrimaryActionButtonIcon.Glyph = "\uE768";
                 }
 
-                else if (Game.State == Game.InstallState.NeedUpdate)
+                else if (Game.InstallStatus == InstallState.NeedUpdate)
                 {
                     PrimaryActionButtonText.Text = "Update";
                     PrimaryActionButtonIcon.Glyph = "\uE777";
                 }
-                else if (Game.State == Game.InstallState.Broken)
+                else if (Game.InstallStatus == InstallState.Broken)
                 {
                     PrimaryActionButtonText.Text = "Repair";
                     PrimaryActionButtonIcon.Glyph = "\uE90F";
@@ -180,9 +187,9 @@ namespace Crimson
         protected override void OnNavigatedFrom(NavigationEventArgs e)
         {
             // Unregister both event handlers before navigating out
-            StateManager.GameStatusUpdated -= CheckGameStatus;
-            InstallManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
-            InstallManager.InstallProgressUpdate -= HandleInstallationStatusChanged;
+            //LibraryManager.GameStatusUpdated -= CheckGameStatus;
+            _installer.InstallationStatusChanged -= HandleInstallationStatusChanged;
+            _installer.InstallProgressUpdate -= HandleInstallationStatusChanged;
 
             // Call the base implementation
             base.OnNavigatedFrom(e);
@@ -214,7 +221,7 @@ namespace Crimson
             // Open the picker for the user to pick a folder
             var folder = await openPicker.PickSingleFolderAsync();
             if (folder == null) return;
-            StorageApplicationPermissions.FutureAccessList.AddOrReplace("PickedFolderToken", folder);
+            //StorageApplicationPermissions.FutureAccessList.AddOrReplace("PickedFolderToken", folder);
             InstallLocationText.Text = folder.Path;
 
         }
@@ -231,8 +238,8 @@ namespace Crimson
             DownloadProgressRing.Visibility = Visibility.Visible;
             DownloadProgressRing.IsIndeterminate = true;
             PrimaryActionButtonIcon.Visibility = Visibility.Collapsed;
-            StateManager.AddToInstallationQueue(Game.Name, ActionType.Install, InstallLocationText.Text);
-            _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.Title);
+            _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Install, InstallLocationText.Text));
+            _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.AppTitle);
         }
     }
 }
