@@ -489,6 +489,9 @@ public class InstallManager
 
             if (CurrentInstall == null) return;
 
+            // Intentional delay to wait till all files are written
+            await Task.Delay(2000);
+
             // Stop all queues before doing anything
             await _cancellationTokenSource.CancelAsync();
 
