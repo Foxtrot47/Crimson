@@ -4,6 +4,13 @@
 
 ## A Simple Epic Games Launcher frontend made with WinUI3
 
+## What works
+
+- Login with epic games account
+- List all owned games
+- Download and install games (progress indicators are WIP)
+- Play Games (without ownership verification)
+
 ## Downloads
 There are not stable builds at the moment, you have build it yourself
 
