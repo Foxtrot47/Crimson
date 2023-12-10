@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Microsoft.Web.WebView2.Core;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -27,11 +28,13 @@ namespace Crimson
     public sealed partial class LoginPage : Page
     {
         private readonly AuthManager _authManager = DependencyResolver.Resolve<AuthManager>();
+        private readonly ILogger _log;
         private const string EpicGamesLauncherVersion = "11.0.1-14907503+++Portal+Release-Live";
 
         public LoginPage()
         {
             this.InitializeComponent();
+            _log = DependencyResolver.Resolve<ILogger>();
         }
         async void WebView_NavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
         {
@@ -56,11 +59,13 @@ namespace Crimson
         private async void WebView_WebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
             var message = e.TryGetWebMessageAsString();
+            _log.Information("WebView_WebMessageReceived: Message {@message}", message);
             var response = JsonSerializer.Deserialize<EpicLoginResponse>(message);
             _authManager.DoExchangeLogin(response.Code);
         }
         public async void InitWebView()
         {
+            _log.Information("InitWebView: WebView Initializing}");
             await LoginWebView.EnsureCoreWebView2Async();
             LoginWebView.CoreWebView2.Settings.UserAgent = $"EpicGamesLauncher/{EpicGamesLauncherVersion}";
             LoginWebView.NavigationStarting += WebView_NavigationStarting;

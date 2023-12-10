@@ -409,6 +409,7 @@ public class InstallManager
                                 }
 
                                 fileStream.Flush();
+                                _log.Information("ProcessIoQueue: Finished Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
                             }
                             // Check for references to the chunk and decrement by one
                             int newCount = _chunkPartReferences.AddOrUpdate(
