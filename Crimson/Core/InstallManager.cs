@@ -372,8 +372,8 @@ public class InstallManager
                                 _fileLocksConcurrentDictionary.GetOrAdd(ioTask.DestinationFilePath, new object());
 
                             var compressedChunkData = await File.ReadAllBytesAsync(ioTask.SourceFilePath);
-
                             var chunk = Chunk.ReadBuffer(compressedChunkData);
+                            _log.Information("ProcessIoQueue: Reading chunk buffers from {source} finished", ioTask.SourceFilePath);
 
                             var directoryPath = Path.GetDirectoryName(ioTask.DestinationFilePath);
                             if (!string.IsNullOrEmpty(directoryPath))
@@ -396,6 +396,8 @@ public class InstallManager
                                 // Buffer size is irrelevant as write is continuous
                                 const int bufferSize = 4096;
                                 var buffer = new byte[bufferSize];
+
+                                _log.Information("ProcessIoQueue: Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
 
                                 while (remainingBytesToWrite > 0)
                                 {
@@ -452,8 +454,11 @@ public class InstallManager
                 await Task.Delay(500);
             }
 
-            if (_ioQueue.IsEmpty && _downloadQueue.IsEmpty && CurrentInstall != null)
+            if (_chunkPartReferences.Count <= 0 && _downloadQueue.IsEmpty && CurrentInstall != null)
+            {
+                _log.Information("ProcessIoQueue: Both queues are empty. Starting finalize stage");
                 _ = UpdateInstalledGameStatus();
+            }
         }
     }
 
