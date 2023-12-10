@@ -216,7 +216,7 @@ public class InstallManager
                 }
             }
 
-            CurrentInstall!.Status = ActionStatus.OnGoing;
+            CurrentInstall!.Status = ActionStatus.Processing;
             InstallationStatusChanged?.Invoke(CurrentInstall);
 
             for (int i = 0; i < _numberOfThreads; i++)
@@ -543,13 +543,17 @@ public class InstallManager
             _libraryManager.UpdateGameInfo(gameData);
             InstallFinalizing = false;
 
-            if (CurrentInstall == null)
-                ProcessNext();
+            CurrentInstall.Status = ActionStatus.Success;
+            InstallationStatusChanged?.Invoke(CurrentInstall);
+            CurrentInstall = null;
+            ProcessNext();
         }
         catch (Exception ex)
         {
             _log.Fatal("UpdateInstalledGameStatus: Exception {@ex}", ex);
 
+            CurrentInstall.Status = ActionStatus.Failed;
+            InstallationStatusChanged?.Invoke(CurrentInstall);
             CurrentInstall = null;
             ProcessNext();
         }
