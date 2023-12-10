@@ -213,13 +213,17 @@ public class LibraryManager
                 });
             }
 
+            var options = new ParallelOptions()
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            };
             // Only update metadata if there are any updates or if forced
-            foreach (var item in fetchList)
+            await Parallel.ForEachAsync(fetchList, options, async (item, token) =>
             {
                 var egFetchGameMetaData = await _storeRepository.FetchGameMetaData(item.NameSpace, item.CatalogItemId);
 
                 // ignore if no metadata can be fetched
-                if (egFetchGameMetaData == null) continue;
+                if (egFetchGameMetaData == null) return;
                 var gameMetaData = new Models.Game()
                 {
                     AppName = item.AppName,
@@ -231,7 +235,7 @@ public class LibraryManager
                     Metadata = egFetchGameMetaData
                 };
                 _storage.SaveMetaData(gameMetaData);
-            }
+            });
 
             gameMetaDataDictionary = _storage.GameMetaDataDictionary;
 
