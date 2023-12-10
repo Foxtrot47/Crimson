@@ -27,6 +27,8 @@ namespace Crimson
     public sealed partial class LoginPage : Page
     {
         private readonly AuthManager _authManager = DependencyResolver.Resolve<AuthManager>();
+        private const string EpicGamesLauncherVersion = "11.0.1-14907503+++Portal+Release-Live";
+
         public LoginPage()
         {
             this.InitializeComponent();
@@ -60,6 +62,7 @@ namespace Crimson
         public async void InitWebView()
         {
             await LoginWebView.EnsureCoreWebView2Async();
+            LoginWebView.CoreWebView2.Settings.UserAgent = $"EpicGamesLauncher/{EpicGamesLauncherVersion}";
             LoginWebView.NavigationStarting += WebView_NavigationStarting;
             LoginWebView.WebMessageReceived += WebView_WebMessageReceived;
 
