@@ -72,6 +72,8 @@ public class InstallManager
     private readonly ConcurrentDictionary<string, List<FileManifest>> _chunkToFileManifestsDictionary =
         new();
 
+    private readonly ConcurrentDictionary<string, int> _chunkPartReferences = new();
+
     private bool DownloadQueueProcessing = false;
     private bool IoQueueProcessing = false;
     private bool InstallFinalizing = false;
@@ -320,6 +322,14 @@ public class InstallManager
                         foreach (var part in fileManifest.ChunkParts)
                         {
                             if (part.GuidStr != downloadTask.Guid) continue;
+                            
+                            // keep track of files count to which the parts of chunk must be copied to
+                            _chunkPartReferences.AddOrUpdate(
+                                part.GuidStr,
+                                1, // Add with a count of 1 if not present
+                                (key, oldValue) => oldValue + 1 // Update: increment the count
+                            );
+                            
                             var task = new IOTask()
                             {
                                 SourceFilePath = downloadTask.TempPath,
@@ -327,7 +337,8 @@ public class InstallManager
                                 TaskType = IOTaskType.Copy,
                                 Size = part.Size,
                                 Offset = part.Offset,
-                                FileOffset = part.FileOffset
+                                FileOffset = part.FileOffset,
+                                GuidStr = part.GuidStr
                             };
                             _ioQueue.Enqueue(task);
                         }
@@ -400,6 +411,17 @@ public class InstallManager
                                 fileStream.Flush();
                             }
 
+                            if (_chunkPartReferences.TryGetValue(ioTask.GuidStr, out var referenceCount))
+                            {
+                                var newCount = referenceCount - 1;
+                                _chunkPartReferences.TryUpdate(ioTask.GuidStr, newCount, referenceCount);
+                                
+                                // if reference count is 0 delete the chunk
+                                if (newCount <= 0)
+                                {
+                                    File.Delete(ioTask.SourceFilePath);
+                                }
+                            }
 
                             break;
                     }
@@ -561,6 +583,7 @@ public class IOTask
     public long Offset { get; set; }
     public long FileOffset { get; set; }
     public IOTaskType TaskType { get; set; }
+    public string GuidStr { get; set; }
 }
 
 public enum IOTaskType
