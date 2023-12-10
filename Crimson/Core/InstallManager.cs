@@ -64,7 +64,7 @@ public class InstallManager
     private readonly List<InstallItem> _installHistory = new();
 
     private readonly ConcurrentQueue<DownloadTask> _downloadQueue = new();
-    private readonly ConcurrentQueue<IOTask> _ioQueue = new();
+    private readonly ConcurrentQueue<IoTask> _ioQueue = new();
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     private readonly ConcurrentDictionary<string, object> _fileLocksConcurrentDictionary = new();
@@ -322,19 +322,19 @@ public class InstallManager
                         foreach (var part in fileManifest.ChunkParts)
                         {
                             if (part.GuidStr != downloadTask.Guid) continue;
-                            
+
                             // keep track of files count to which the parts of chunk must be copied to
                             _chunkPartReferences.AddOrUpdate(
                                 part.GuidStr,
                                 1, // Add with a count of 1 if not present
                                 (key, oldValue) => oldValue + 1 // Update: increment the count
                             );
-                            
-                            var task = new IOTask()
+
+                            var task = new IoTask()
                             {
                                 SourceFilePath = downloadTask.TempPath,
                                 DestinationFilePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename),
-                                TaskType = IOTaskType.Copy,
+                                TaskType = IoTaskType.Copy,
                                 Size = part.Size,
                                 Offset = part.Offset,
                                 FileOffset = part.FileOffset,
@@ -353,6 +353,7 @@ public class InstallManager
             {
                 await Task.Delay(500);
             }
+
             if (_ioQueue.IsEmpty && _downloadQueue.IsEmpty && CurrentInstall != null)
                 _ = UpdateInstalledGameStatus();
         }
@@ -368,7 +369,7 @@ public class InstallManager
                 {
                     switch (ioTask.TaskType)
                     {
-                        case IOTaskType.Copy:
+                        case IoTaskType.Copy:
                             // Ensure there is a lock object for each destination file
                             var fileLock =
                                 _fileLocksConcurrentDictionary.GetOrAdd(ioTask.DestinationFilePath, new object());
@@ -415,7 +416,7 @@ public class InstallManager
                             {
                                 var newCount = referenceCount - 1;
                                 _chunkPartReferences.TryUpdate(ioTask.GuidStr, newCount, referenceCount);
-                                
+
                                 // if reference count is 0 delete the chunk
                                 if (newCount <= 0)
                                 {
@@ -449,6 +450,7 @@ public class InstallManager
                 _ = UpdateInstalledGameStatus();
         }
     }
+
     public static string CalculateSHA1(byte[] data)
     {
         using var sha1 = SHA1.Create();
@@ -500,7 +502,7 @@ public class InstallManager
             var canRunOffLine = gameData.Metadata.CustomAttributes.CanRunOffline.Value == "true";
             var requireOwnerShipToken = gameData.Metadata.CustomAttributes?.OwnershipToken?.Value == "true";
 
-            if(installedGame == null || installedGame.AppName == null)
+            if (installedGame?.AppName == null)
             {
                 installedGame = new InstalledGame()
                 {
@@ -525,13 +527,16 @@ public class InstallManager
                     { manifestData.ManifestMeta.UninstallActionPath, manifestData.ManifestMeta.UninstallActionArgs }
                 };
             }
-            _log.Information("UpdateInstalledGameStatus: Adding new entry installed games list {@entry}", installedGame);
+
+            _log.Information("UpdateInstalledGameStatus: Adding new entry installed games list {@entry}",
+                installedGame);
 
             _storage.SaveInstalledGamesList(installedGame);
 
             gameData.InstallStatus = CurrentInstall.Action switch
             {
-                ActionType.Install or ActionType.Update or ActionType.Move or ActionType.Repair => InstallState.Installed,
+                ActionType.Install or ActionType.Update or ActionType.Move or ActionType.Repair => InstallState
+                    .Installed,
                 ActionType.Uninstall => InstallState.NotInstalled,
                 _ => throw new ArgumentOutOfRangeException(),
             };
@@ -575,18 +580,18 @@ public class DownloadTask
     public ChunkInfo ChunkInfo { get; set; }
 }
 
-public class IOTask
+public class IoTask
 {
     public string SourceFilePath { get; set; }
     public string DestinationFilePath { get; set; }
     public long Size { get; set; }
     public long Offset { get; set; }
     public long FileOffset { get; set; }
-    public IOTaskType TaskType { get; set; }
+    public IoTaskType TaskType { get; set; }
     public string GuidStr { get; set; }
 }
 
-public enum IOTaskType
+public enum IoTaskType
 {
     Copy,
     Create,

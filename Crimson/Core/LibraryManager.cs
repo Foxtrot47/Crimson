@@ -32,6 +32,7 @@ public class LibraryManager
         _storage = storage;
         _authManager = authManager;
     }
+
     /// <summary>
     /// Public method to get library data, call UpdateLibraryData it's been more than 20 minutes since last update
     /// </summary>
@@ -40,7 +41,8 @@ public class LibraryManager
     public async Task<IEnumerable<Game>> GetLibraryData(bool forceUpdate = false)
     {
         // Only update library data if it's been more than 20 minutes since last update
-        var dataNeedsUpdate = forceUpdate || (_lastUpdateDateTime == DateTime.MinValue) || (DateTime.Now - _lastUpdateDateTime > TimeSpan.FromMinutes(20));
+        var dataNeedsUpdate = forceUpdate || (_lastUpdateDateTime == DateTime.MinValue) ||
+                              (DateTime.Now - _lastUpdateDateTime > TimeSpan.FromMinutes(20));
 
         if (!dataNeedsUpdate)
             return _storage.GameMetaDataDictionary.Values.ToList();
@@ -52,6 +54,7 @@ public class LibraryManager
 
         return _storage.GameMetaDataDictionary.Values.ToList();
     }
+
     /// <summary>
     /// Get list of installed games
     /// </summary>
@@ -87,7 +90,6 @@ public class LibraryManager
 
             if (_storage.InstalledGamesDictionary.TryGetValue(appName, out var gameInfo))
             {
-
                 await UpdateLibraryData(false, true);
                 var metaData = _storage.GetGameMetaData(appName);
                 if (metaData == null)
@@ -170,6 +172,7 @@ public class LibraryManager
             {
                 _log.Information("UpdateLibraryData: No cached game assets found");
             }
+
             var gameAssetsList = gameAssets?.ToList() ?? new List<Asset>();
             if (forceUpdate || gameAssetsList.Count < 1)
             {
@@ -181,6 +184,7 @@ public class LibraryManager
                     _log.Error("GetLibraryData: Error while fetching game assets");
                     return;
                 }
+
                 gameAssetsList = assets.ToList();
             }
 
@@ -240,7 +244,6 @@ public class LibraryManager
             _log.Error(ex.ToString());
         }
     }
-
 }
 
 internal class FetchListItem
@@ -252,12 +255,9 @@ internal class FetchListItem
 
 public class GameTokenResponse
 {
-    [JsonPropertyName("expiresInSeconds")]
-    public int ExpiresInSeconds { get; set; }
+    [JsonPropertyName("expiresInSeconds")] public int ExpiresInSeconds { get; set; }
 
-    [JsonPropertyName("code")]
-    public string Code { get; set; }
+    [JsonPropertyName("code")] public string Code { get; set; }
 
-    [JsonPropertyName("creatingClientId")]
-    public string CreatingClientId { get; set; }
+    [JsonPropertyName("creatingClientId")] public string CreatingClientId { get; set; }
 }
