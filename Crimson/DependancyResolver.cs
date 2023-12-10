@@ -5,6 +5,7 @@ using Serilog;
 using System;
 using Windows.Storage;
 using Crimson.Utils;
+using System.IO;
 
 namespace Crimson
 {
@@ -17,6 +18,7 @@ namespace Crimson
             var services = new ServiceCollection();
             services.AddSingleton<ILogger>(provider =>
             {
+                _ = Directory.CreateDirectory($@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\logs");
                 var logFilePath = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\logs\{DateTime.Now:yyyy-MM-dd}.txt";
                 return new LoggerConfiguration().WriteTo.File(logFilePath).CreateLogger();
             });
