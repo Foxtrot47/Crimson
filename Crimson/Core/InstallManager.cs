@@ -412,24 +412,26 @@ public class InstallManager
                                 fileStream.Flush();
                             }
                             // Check for references to the chunk and decrement by one
-                            bool referencesEmpty = false;
-                            _chunkPartReferences.AddOrUpdate(
+                            int newCount = _chunkPartReferences.AddOrUpdate(
                                 ioTask.GuidStr,
-                                (key) => { return 0; }, // This won't be called since a decrement implies the key already exists
-                                (key, oldValue) => {
-                                    var newValue = oldValue - 1;
-                                    if (newValue <= 0)
-                                    {
-                                        referencesEmpty = _chunkPartReferences.TryRemove(key, out _);
-                                        return 0; // This return value doesn't matter as we remove the key
-                                    }
-                                    return newValue;
+                                (key) => 0, // Not expected to be called as the key should exist
+                                (key, oldValue) =>
+                                {
+                                    _log.Information("ProcessIoQueue: decrementing reference count of {@guid} by 1. Current value:", ioTask.GuidStr, oldValue);
+                                    return oldValue - 1;
                                 }
                             );
-                            // If there are no more references , delete the chunk file
-                            if (referencesEmpty)
+
+                            // Check if the updated count is 0 or less
+                            if (newCount <= 0)
                             {
-                                File.Delete(ioTask.SourceFilePath);
+                                // Attempt to remove the item from the dictionary
+                                if (_chunkPartReferences.TryRemove(ioTask.GuidStr, out _))
+                                {
+                                    _log.Information("ProcessIoQueue: Deleting chunk file {@file}", ioTask.SourceFilePath);
+                                    // Delete the file if successfully removed
+                                    File.Delete(ioTask.SourceFilePath);
+                                }
                             }
                             break;
                     }
