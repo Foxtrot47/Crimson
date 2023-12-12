@@ -140,7 +140,8 @@ public class LibraryManager
                 {
                     FileName = Path.Join(gameInfo.InstallPath, gameInfo.Executable),
                     Arguments = arguments,
-                    UseShellExecute = false
+                    UseShellExecute = false,
+                    WorkingDirectory = gameInfo.InstallPath
                 };
 
                 // Create and start the process
