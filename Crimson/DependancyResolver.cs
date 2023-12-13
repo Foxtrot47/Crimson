@@ -18,9 +18,20 @@ namespace Crimson
             var services = new ServiceCollection();
             services.AddSingleton<ILogger>(provider =>
             {
-                _ = Directory.CreateDirectory($@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\logs");
-                var logFilePath = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\logs\{DateTime.Now:yyyy-MM-dd}.txt";
-                return new LoggerConfiguration().WriteTo.File(logFilePath).CreateLogger();
+                var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                _ = Directory.CreateDirectory($@"{appDataPath}\Crimson\logs");
+                var logFilePath = $@"{appDataPath}\Crimson\logs\{DateTime.Now:yyyy-MM-dd}.txt";
+
+                return new LoggerConfiguration()
+                    .MinimumLevel.Information()
+                    .WriteTo.File(
+                        logFilePath,
+                        rollingInterval: RollingInterval.Month,
+                        rollOnFileSizeLimit: true,
+                        retainedFileCountLimit: 30,
+                        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}"
+                    )
+                    .CreateLogger();
             });
             services.AddSingleton<Storage>();
             services.AddScoped<IStoreRepository, EpicGamesRepository>();
