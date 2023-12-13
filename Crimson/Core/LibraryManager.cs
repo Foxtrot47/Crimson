@@ -129,9 +129,10 @@ public class LibraryManager
                 parameters.Add("-epicenv=Prod");
 
                 parameters.Add("-EpicPortal");
-                parameters.Add($"-epicusername={userData.DisplayName}");
+                parameters.Add($"-epicusername=\"{userData.DisplayName}\"");
                 parameters.Add($"-epicuserid={userData.AccountId}");
                 parameters.Add($"-epicsandboxid={metaData.AssetInfos.Windows.Namespace}");
+                parameters.Add("-epiclocale=en");
 
                 string arguments = string.Join(" ", parameters);
 
