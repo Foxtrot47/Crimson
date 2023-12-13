@@ -49,6 +49,7 @@ public class InstallManager
     private const int _progressUpdateIntervalInMS = 500;
 
     private Stopwatch _installStopWatch = new();
+    private DateTime _lastUpdateTime = DateTime.MinValue;
 
     public InstallManager(ILogger log, LibraryManager libraryManager, IStoreRepository repository, Storage storage)
     {
@@ -292,8 +293,9 @@ public class InstallManager
                             ? Math.Round(CurrentInstall.DownloadedSize / _installStopWatch.Elapsed.TotalSeconds, 2)
                             : 0;
                         // Limit firing progress update events
-                        if (_installStopWatch.Elapsed.TotalSeconds % _progressUpdateIntervalInMS == 0)
+                        if ((DateTime.Now - _lastUpdateTime).TotalMilliseconds >= _progressUpdateIntervalInMS)
                         {
+                            _lastUpdateTime = DateTime.Now;
                             InstallProgressUpdate?.Invoke(CurrentInstall);
                         }
 
@@ -416,8 +418,9 @@ public class InstallManager
                                 CurrentInstall.ProgressPercentage = Convert.ToInt32((CurrentInstall.WrittenSize / CurrentInstall.TotalWriteSizeMb) * 100);
 
                                 // Limit firing progress update events
-                                if (_installStopWatch.Elapsed.TotalSeconds % _progressUpdateIntervalInMS == 0)
+                                if ((DateTime.Now - _lastUpdateTime).TotalMilliseconds >= _progressUpdateIntervalInMS)
                                 {
+                                    _lastUpdateTime = DateTime.Now;
                                     InstallProgressUpdate?.Invoke(CurrentInstall);
                                 }
                             }
