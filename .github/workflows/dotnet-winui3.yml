@@ -52,6 +52,7 @@ jobs:
         $pfx_cert_byte = [System.Convert]::FromBase64String("${{ secrets.BASE64_ENCODED_PFX }}")
         $certificatePath = "GitHubActionsWorkflow.pfx"
         [IO.File]::WriteAllBytes("$certificatePath", $pfx_cert_byte)
+        dir
 
     # Create the app package by building and packaging the project
     - name: Create the app package
@@ -72,4 +73,4 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: MSIX Package
-        path: ${{ env.Solution_Name }}\\
+        path: Crimson\Packages\
