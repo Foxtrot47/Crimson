@@ -1,6 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using Crimson.Core;
+using Crimson.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -19,6 +21,8 @@ namespace Crimson
 
         private readonly ILogger _log;
         private readonly InstallManager _installManager;
+        private readonly LibraryManager _libraryManager;
+
         public DownloadsPage()
         {
             this.InitializeComponent();
@@ -26,6 +30,7 @@ namespace Crimson
             _log.Information("DownloadsPage: Loading Page");
 
             _installManager = DependencyResolver.Resolve<InstallManager>();
+            _libraryManager = DependencyResolver.Resolve<LibraryManager>();
 
             DataContext = _currentInstallItem;
             if (_installManager.CurrentInstall?.AppName == null)
@@ -63,16 +68,16 @@ namespace Crimson
                     ActiveDownloadSection.Visibility = Visibility.Visible;
                     DownloadProgressBar.IsIndeterminate = true;
 
-                    //var gameInfo = LibraryManager.GetGameInfo(installItem.AppName);
-                    //_log.Information("HandleInstallationStatusChanged: Game Info: {GameInfo}", gameInfo);
-                    //_currentInstallItem = new DownloadManagerItem
-                    //{
-                    //    Name = gameInfo.Name,
-                    //    Title = gameInfo.Title,
-                    //    InstallState = gameInfo.State,
-                    //    Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")
-                    //        ?.Url)
-                    //};
+                    var gameInfo = _libraryManager.GetGameInfo(installItem.AppName);
+                    _log.Debug("HandleInstallationStatusChanged: Game Info: {GameInfo}", gameInfo);
+                    _currentInstallItem = new DownloadManagerItem
+                    {
+                        Name = gameInfo.AppName,
+                        Title = gameInfo.AppTitle,
+                        InstallState = gameInfo.InstallStatus,
+                        Image = Util.GetBitmapImage(gameInfo.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")
+                            ?.Url)
+                    };
                     CurrentDownloadTitle.Text = _currentInstallItem.Title;
                     CurrentDownloadImage.Source = _currentInstallItem.Image;
                 });
@@ -85,7 +90,7 @@ namespace Crimson
                             DownloadProgressBar.IsIndeterminate = false;
                             DownloadProgressBar.Value = Convert.ToDouble(installItem.ProgressPercentage);
                             CurrentDownloadAction.Text = $@"{installItem.Action}ing";
-                            CurrentDownloadedSize.Text = $@"{Util.ConvertMiBToGiBOrMiB(installItem.DownloadedSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalDownloadSizeMb)}";
+                            CurrentDownloadedSize.Text = $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
                             CurrentDownloadSpeed.Text = $@"{installItem.DownloadSpeedRaw} MiB/s";
                         });
                         break;
@@ -124,14 +129,14 @@ namespace Crimson
                 foreach (var queueItemName in queueItemNames)
                 {
 
-                    //var gameInfo = LibraryManager.GetGameInfo(queueItemName);
-                    //if (gameInfo is null) continue;
-                    //itemList.Add(new DownloadManagerItem()
-                    //{
-                    //    Name = queueItemName,
-                    //    Title = gameInfo.Title,
-                    //    Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
-                    //});
+                    var gameInfo = _libraryManager.GetGameInfo(queueItemName);
+                    if (gameInfo is null) continue;
+                    itemList.Add(new DownloadManagerItem()
+                    {
+                        Name = queueItemName,
+                        Title = gameInfo.AppTitle,
+                        Image = Util.GetBitmapImage(gameInfo.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                    });
                 }
                 DispatcherQueue.TryEnqueue(() =>
                 {
@@ -162,14 +167,14 @@ namespace Crimson
                     foreach (var historyItemName in historyItemsNames)
                     {
 
-                        //var gameInfo = LibraryManager.GetGameInfo(historyItemName);
-                        //if (gameInfo is null) continue;
-                        //itemList.Add(new DownloadManagerItem()
-                        //{
-                        //    Name = historyItemName,
-                        //    Title = gameInfo.Title,
-                        //    Image = Util.GetBitmapImage(gameInfo.Images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
-                        //});
+                        var gameInfo = _libraryManager.GetGameInfo(historyItemName);
+                        if (gameInfo is null) continue;
+                        itemList.Add(new DownloadManagerItem()
+                        {
+                            Name = historyItemName,
+                            Title = gameInfo.AppTitle,
+                            Image = Util.GetBitmapImage(gameInfo.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                        });
                     }
                     historyItems = itemList;
                     HistoryItemsList.ItemsSource = historyItems;
@@ -194,7 +199,7 @@ namespace Crimson
                 {
                     DownloadProgressBar.IsIndeterminate = false;
                     DownloadProgressBar.Value = Convert.ToDouble(installItem.ProgressPercentage);
-                    CurrentDownloadedSize.Text = $@"{Util.ConvertMiBToGiBOrMiB(installItem.DownloadedSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalDownloadSizeMb)}";
+                    CurrentDownloadedSize.Text = $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
                     CurrentDownloadSpeed.Text = $@"{installItem.DownloadSpeedRaw} MiB/s";
                 });
             }
@@ -209,6 +214,6 @@ namespace Crimson
         public string Name { get; set; }
         public string Title { get; set; }
         public BitmapImage Image { get; set; }
-        //public Game.InstallState InstallState { get; set; }
+        public InstallState InstallState { get; set; }
     }
 }

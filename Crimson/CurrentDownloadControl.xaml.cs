@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using Crimson.Core;
+using Crimson.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -40,12 +41,12 @@ public sealed partial class CurrentDownloadControl : UserControl
                 return;
             }
 
-            //var gameInfo = LibraryManager.GetGameInfo(installItem.AppName);
-            //if (gameInfo == null) return;
+            var gameInfo = _libraryManager.GetGameInfo(installItem.AppName);
+            if (gameInfo == null) return;
 
             DispatcherQueue.TryEnqueue(() =>
             {
-                UpdateStatus(installItem, game);
+                UpdateStatus(installItem, gameInfo.AppTitle);
             });
         }
         catch (Exception ex)
@@ -54,7 +55,7 @@ public sealed partial class CurrentDownloadControl : UserControl
         }
     }
 
-    private void UpdateStatus(InstallItem installItem, InstallItem game)
+    private void UpdateStatus(InstallItem installItem, string Title)
     {
         DownloadSpeed.Text = "";
         DownloadedSize.Text = "";
@@ -62,16 +63,16 @@ public sealed partial class CurrentDownloadControl : UserControl
         ProgressBar.IsIndeterminate = true;
         EmptyDownloadText.Visibility = Visibility.Collapsed;
         DownloadStatus.Visibility = Visibility.Visible;
-        //GameName.Text = gameInfo.Title;
+        GameName.Text = Title;
 
-        switch (game.Status)
+        switch (installItem.Status)
         {
             case ActionStatus.Processing:
                 ProgressBar.IsIndeterminate = false;
-                ProgressBar.Value = game.ProgressPercentage;
+                ProgressBar.Value = installItem.ProgressPercentage;
                 DownloadedSize.Text =
                     $@"{Util.ConvertMiBToGiBOrMiB(installItem.DownloadedSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalDownloadSizeMb)}";
-                DownloadSpeed.Text = $@"{game.DownloadSpeedRaw} MB/s";
+                DownloadSpeed.Text = $@"{installItem.DownloadSpeedRaw} MB/s";
                 break;
             case ActionStatus.Success:
                 DownloadedSize.Text = "Installation Completed";
@@ -105,7 +106,7 @@ public sealed partial class CurrentDownloadControl : UserControl
             {
                 ProgressBar.Value = installItem.ProgressPercentage;
                 DownloadedSize.Text =
-                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.DownloadedSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalDownloadSizeMb)}";
+                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
                 DownloadSpeed.Text = $@"{installItem.DownloadSpeedRaw} MB/s";
             });
         }
