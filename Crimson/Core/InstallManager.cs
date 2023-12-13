@@ -172,7 +172,7 @@ public class InstallManager
             if (!Directory.Exists(CurrentInstall.Location))
             {
                 Directory.CreateDirectory(CurrentInstall.Location);
-                _log.Information("Folder created at: {@location}", CurrentInstall.Location);
+                _log.Debug("Folder created at: {location}", CurrentInstall.Location);
             }
 
             if (!HasFolderWritePermissions(CurrentInstall.Location))
@@ -211,6 +211,7 @@ public class InstallManager
                         Guid = chunkInfo.GuidStr,
                         ChunkInfo = chunkInfo
                     };
+                    _log.Debug("ProcessNext: Adding new download task {@task}", newTask);
                     chunkDownloadList.Add(chunkInfo);
                     _downloadQueue.Enqueue(newTask);
                 }
@@ -230,6 +231,7 @@ public class InstallManager
         catch (Exception ex)
         {
             _log.Error("ProcessNext: {Exception}", ex);
+            await _cancellationTokenSource.CancelAsync();
             if (CurrentInstall != null)
             {
                 CurrentInstall.Status = ActionStatus.Failed;
@@ -313,6 +315,7 @@ public class InstallManager
             {
                 try
                 {
+                    _log.Debug("ProcessDownloadQueue: Downloading chunk with guid{guid} from {url} to {path}", downloadTask.Guid, downloadTask.Url, downloadTask.TempPath);
                     await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
 
                     // get file manifest from dictionary
@@ -323,6 +326,7 @@ public class InstallManager
                         {
                             if (part.GuidStr != downloadTask.Guid) continue;
 
+                            _log.Debug("ProcessDownloadQueue: New file reference for chunk {guid} filename:{filename}", downloadTask.Guid, fileManifest.Filename);
                             // keep track of files count to which the parts of chunk must be copied to
                             _chunkPartReferences.AddOrUpdate(
                                 part.GuidStr,
@@ -340,13 +344,21 @@ public class InstallManager
                                 FileOffset = part.FileOffset,
                                 GuidStr = part.GuidStr
                             };
+                            _log.Debug("ProcessDownloadQueue: Adding ioTask {task}", task);
                             _ioQueue.Enqueue(task);
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _log.Error(ex.ToString());
+                    _log.Error("ProcessDownloadQueue: Exception: {ex}", ex);
+                    await _cancellationTokenSource.CancelAsync();
+                    if (CurrentInstall != null)
+                    {
+                        CurrentInstall.Status = ActionStatus.Failed;
+                        InstallationStatusChanged?.Invoke(CurrentInstall);
+                        CurrentInstall = null;
+                    }
                 }
             }
             else
@@ -373,7 +385,7 @@ public class InstallManager
 
                             var compressedChunkData = await File.ReadAllBytesAsync(ioTask.SourceFilePath);
                             var chunk = Chunk.ReadBuffer(compressedChunkData);
-                            _log.Information("ProcessIoQueue: Reading chunk buffers from {source} finished", ioTask.SourceFilePath);
+                            _log.Debug("ProcessIoQueue: Reading chunk buffers from {source} finished", ioTask.SourceFilePath);
 
                             var directoryPath = Path.GetDirectoryName(ioTask.DestinationFilePath);
                             if (!string.IsNullOrEmpty(directoryPath))
@@ -385,6 +397,8 @@ public class InstallManager
                             {
                                 using var fileStream = new FileStream(ioTask.DestinationFilePath, FileMode.OpenOrCreate,
                                     FileAccess.Write, FileShare.None);
+
+                                _log.Debug("ProcessIoQueue: Seeking {seek}bytes on file {destination}", ioTask.FileOffset, ioTask.DestinationFilePath);
                                 fileStream.Seek(ioTask.FileOffset, SeekOrigin.Begin);
 
                                 // Since chunk offset is a long we cannot use it directly in File stream write or read
@@ -397,7 +411,7 @@ public class InstallManager
                                 const int bufferSize = 4096;
                                 var buffer = new byte[bufferSize];
 
-                                _log.Information("ProcessIoQueue: Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
+                                _log.Debug("ProcessIoQueue: Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
 
                                 while (remainingBytesToWrite > 0)
                                 {
@@ -409,7 +423,7 @@ public class InstallManager
                                 }
 
                                 fileStream.Flush();
-                                _log.Information("ProcessIoQueue: Finished Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
+                                _log.Debug("ProcessIoQueue: Finished Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
                             }
                             // Check for references to the chunk and decrement by one
                             int newCount = _chunkPartReferences.AddOrUpdate(
@@ -417,7 +431,7 @@ public class InstallManager
                                 (key) => 0, // Not expected to be called as the key should exist
                                 (key, oldValue) =>
                                 {
-                                    _log.Information("ProcessIoQueue: decrementing reference count of {@guid} by 1. Current value:", ioTask.GuidStr, oldValue);
+                                    _log.Debug("ProcessIoQueue: decrementing reference count of {guid} by 1. Current value:{oldValue}", ioTask.GuidStr, oldValue);
                                     return oldValue - 1;
                                 }
                             );
@@ -428,7 +442,7 @@ public class InstallManager
                                 // Attempt to remove the item from the dictionary
                                 if (_chunkPartReferences.TryRemove(ioTask.GuidStr, out _))
                                 {
-                                    _log.Information("ProcessIoQueue: Deleting chunk file {@file}", ioTask.SourceFilePath);
+                                    _log.Debug("ProcessIoQueue: Deleting chunk file {file}", ioTask.SourceFilePath);
                                     // Delete the file if successfully removed
                                     File.Delete(ioTask.SourceFilePath);
                                 }
@@ -438,8 +452,8 @@ public class InstallManager
                 }
                 catch (Exception ex)
                 {
-                    _log.Error("ProcessIoQueue: IO task failed with exception {@ex}", ex.ToString());
-                    _log.Error(ex.StackTrace);
+                    _log.Error("ProcessIoQueue: IO task failed with exception {ex}", ex);
+                    await _cancellationTokenSource.CancelAsync();
                     if (CurrentInstall != null)
                     {
                         CurrentInstall.Status = ActionStatus.Failed;
@@ -498,7 +512,7 @@ public class InstallManager
             var gameData = _libraryManager.GetGameInfo(CurrentInstall.AppName);
             if (gameData == null)
             {
-                _log.Error("UpdateInstalledGameStatus: Found no game data for app name: {@AppName}",
+                _log.Error("UpdateInstalledGameStatus: Found no game data for app name: {AppName}",
                     CurrentInstall.AppName);
                 throw new Exception("Invalid game data");
             }
@@ -565,7 +579,7 @@ public class InstallManager
         }
         catch (Exception ex)
         {
-            _log.Fatal("UpdateInstalledGameStatus: Exception {@ex}", ex);
+            _log.Fatal("UpdateInstalledGameStatus: Exception {ex}", ex);
 
             CurrentInstall.Status = ActionStatus.Failed;
             InstallationStatusChanged?.Invoke(CurrentInstall);
