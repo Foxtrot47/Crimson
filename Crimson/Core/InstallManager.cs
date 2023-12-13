@@ -34,18 +34,15 @@ public class InstallManager
 
     private readonly ConcurrentDictionary<string, int> _chunkPartReferences = new();
 
-    private bool DownloadQueueProcessing = false;
-    private bool IoQueueProcessing = false;
     private bool InstallFinalizing = false;
 
-    private readonly object _finalizeInstallLock = new object();
+    private readonly object _finalizeInstallLock = new();
 
     private ILogger _log;
     private readonly LibraryManager _libraryManager;
     private readonly IStoreRepository _repository;
     private readonly Storage _storage;
 
-    private readonly SemaphoreSlim _semaphoreSlim;
     private readonly int _numberOfThreads;
 
     public InstallManager(ILogger log, LibraryManager libraryManager, IStoreRepository repository, Storage storage)
@@ -58,7 +55,6 @@ public class InstallManager
         _storage = storage;
 
         _numberOfThreads = Environment.ProcessorCount;
-        _semaphoreSlim = new SemaphoreSlim(_numberOfThreads, _numberOfThreads);
     }
 
     public void AddToQueue(InstallItem item)
@@ -180,7 +176,7 @@ public class InstallManager
             CurrentInstall!.Status = ActionStatus.Processing;
             InstallationStatusChanged?.Invoke(CurrentInstall);
 
-            for (int i = 0; i < _numberOfThreads; i++)
+            for (var i = 0; i < _numberOfThreads; i++)
             {
                 Thread thread1 = new(async () => await ProcessDownloadQueue());
                 Thread thread2 = new(async () => await ProcessIoQueue());
