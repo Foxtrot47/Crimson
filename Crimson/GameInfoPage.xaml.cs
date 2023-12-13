@@ -1,7 +1,5 @@
 using System;
 using System.Linq;
-using Windows.Storage.AccessCache;
-using Windows.Storage.Pickers;
 using Crimson.Core;
 using Crimson.Models;
 using Microsoft.UI.Xaml;
@@ -9,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using Serilog;
+using Windows.Storage.Pickers;
 using WinRT.Interop;
 
 namespace Crimson

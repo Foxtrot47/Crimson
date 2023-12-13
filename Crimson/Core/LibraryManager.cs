@@ -1,15 +1,15 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Crimson.Models;
-using Serilog;
-using Crimson.Utils;
-using Crimson.Repository;
-using System.Text.Json.Serialization;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
+using Crimson.Models;
+using Crimson.Repository;
+using Crimson.Utils;
+using Serilog;
 
 namespace Crimson.Core;
 

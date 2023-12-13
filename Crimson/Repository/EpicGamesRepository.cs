@@ -3,15 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Text;
-using System.Threading.Tasks;
-using Serilog;
-using Crimson.Core;
-using Crimson.Models;
 using System.Net.Http.Headers;
 using System.Text.Json;
-using System.Reflection.Emit;
-using Windows.Foundation.Metadata;
+using System.Threading.Tasks;
+using Crimson.Core;
+using Crimson.Models;
+using Serilog;
 
 namespace Crimson.Repository
 {
@@ -123,7 +120,7 @@ namespace Crimson.Repository
                     throw new Exception("Cannot fetch manifest data");
                 }
                 if (disableHttps)
-                { 
+                {
                     urlData.ManifestUrls = urlData.ManifestUrls.Select(url => url.Replace("https", "http")).ToList();
                 }
 
@@ -164,7 +161,7 @@ namespace Crimson.Repository
         {
             var accessToken = await _authManager.GetAccessToken();
             //HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-            
+
             using var response = await HttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
 

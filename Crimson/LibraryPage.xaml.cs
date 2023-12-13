@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using Crimson.Core;
@@ -58,7 +57,7 @@ namespace Crimson
                     GamesList = new List<LibraryItem>();
                     foreach (var game in games)
                     {
-                        if(game.IsDlc())continue;
+                        if (game.IsDlc()) continue;
                         var item = new LibraryItem
                         {
                             Name = game.AppName,
@@ -69,7 +68,7 @@ namespace Crimson
                         _log.Information($"UpdateLibrary: Adding {item.Name} to Library");
                         GamesList.Add(item);
                     }
-                    GamesList = GamesList.OrderBy( item => item.Title ).ToList();
+                    GamesList = GamesList.OrderBy(item => item.Title).ToList();
                     ItemsRepeater.ItemsSource = GamesList;
                     LoadingSection.Visibility = Visibility.Collapsed;
                     GamesGrid.Visibility = Visibility.Visible;

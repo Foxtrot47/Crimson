@@ -1,9 +1,9 @@
-﻿using Ionic.Zlib;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using Ionic.Zlib;
 
 namespace Crimson.Models;
 
@@ -211,18 +211,18 @@ public class ManifestMeta
         switch (length)
         {
             case < 0:
-            {
-                length *= -2;
-                var utf16Bytes = reader.ReadBytes(length - 2);
-                reader.BaseStream.Seek(2, SeekOrigin.Current); // UTF-16 strings have two-byte null terminators
-                return Encoding.Unicode.GetString(utf16Bytes);
-            }
+                {
+                    length *= -2;
+                    var utf16Bytes = reader.ReadBytes(length - 2);
+                    reader.BaseStream.Seek(2, SeekOrigin.Current); // UTF-16 strings have two-byte null terminators
+                    return Encoding.Unicode.GetString(utf16Bytes);
+                }
             case > 0:
-            {
-                var asciiBytes = reader.ReadBytes(length - 1);
-                reader.BaseStream.Seek(1, SeekOrigin.Current); // Skip string null terminator
-                return Encoding.ASCII.GetString(asciiBytes);
-            }
+                {
+                    var asciiBytes = reader.ReadBytes(length - 1);
+                    reader.BaseStream.Seek(1, SeekOrigin.Current); // Skip string null terminator
+                    return Encoding.ASCII.GetString(asciiBytes);
+                }
             default:
                 return string.Empty;
         }

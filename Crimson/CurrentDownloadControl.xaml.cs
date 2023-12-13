@@ -19,7 +19,7 @@ public sealed partial class CurrentDownloadControl : UserControl
         HandleInstallationStatusChanged(gameInQueue);
         _installManager.InstallationStatusChanged += HandleInstallationStatusChanged;
         _installManager.InstallProgressUpdate += InstallationProgressUpdate;
-        
+
     }
 
     // Handing Installtion State Change

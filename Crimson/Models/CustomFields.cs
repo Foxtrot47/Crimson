@@ -54,7 +54,7 @@ public class CustomFields
 
         var sizeRead = bio.Position - cfStart;
         if (sizeRead == cf.Size) return cf;
-        
+
         // TODO Log warning here and seek forward
         // downgrade version to prevent issues during serialisation
         cf.Version = 0;

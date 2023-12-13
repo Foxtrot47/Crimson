@@ -1,6 +1,4 @@
-using Crimson.Core;
 using Microsoft.UI.Xaml;
-using Serilog;
 
 namespace Crimson
 {

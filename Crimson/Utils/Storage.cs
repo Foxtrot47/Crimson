@@ -1,11 +1,10 @@
-﻿using Crimson.Models;
-using Serilog;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Windows.Storage;
+using Crimson.Models;
+using Serilog;
 
 namespace Crimson.Utils
 {
@@ -72,11 +71,12 @@ namespace Crimson.Utils
                 {
                     _installedGamesDictionary = new Dictionary<string, InstalledGame>();
                 }
-                else {
+                else
+                {
                     var jsonString = File.ReadAllText(installedGamesFile);
                     if (jsonString != null && jsonString != "")
-                    _installedGamesDictionary =
-                        JsonSerializer.Deserialize<Dictionary<string, InstalledGame>>(jsonString);
+                        _installedGamesDictionary =
+                            JsonSerializer.Deserialize<Dictionary<string, InstalledGame>>(jsonString);
                     else
                         _installedGamesDictionary = new Dictionary<string, InstalledGame>();
                 }
@@ -163,7 +163,7 @@ namespace Crimson.Utils
         public void SaveMetaData(Game game)
         {
             var jsonString = JsonSerializer.Serialize(game);
-            
+
             if (!Directory.Exists(MetaDataDirectory))
                 Directory.CreateDirectory(MetaDataDirectory);
 

@@ -1,11 +1,10 @@
-﻿using Crimson.Core;
+﻿using System;
+using System.IO;
+using Crimson.Core;
 using Crimson.Repository;
+using Crimson.Utils;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
-using System;
-using Windows.Storage;
-using Crimson.Utils;
-using System.IO;
 
 namespace Crimson
 {
@@ -38,7 +37,7 @@ namespace Crimson
             services.AddSingleton<AuthManager>();
             services.AddSingleton<LibraryManager>();
             services.AddSingleton<InstallManager>();
-            
+
 
             _serviceProvider = services.BuildServiceProvider();
         }

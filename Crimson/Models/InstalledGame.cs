@@ -54,5 +54,5 @@ public class InstalledGame
 
     [JsonPropertyName("version")]
     public string Version { get; set; }
-    
+
 }
