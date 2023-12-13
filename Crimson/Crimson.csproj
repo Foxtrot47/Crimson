@@ -9,9 +9,9 @@
 		<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
 		<UseWinUI>true</UseWinUI>
 		<AssemblyName>Crimson</AssemblyName>
-		<EnableMsixTooling>true</EnableMsixTooling>
+		<!--<EnableMsixTooling>true</EnableMsixTooling>
 		<WindowsPackageType>None</WindowsPackageType>
-		<UseRidGraph>true</UseRidGraph>
+		<UseRidGraph>true</UseRidGraph>-->
 	</PropertyGroup>
 	<ItemGroup>
 		<None Remove="CurrentControl.xaml" />
