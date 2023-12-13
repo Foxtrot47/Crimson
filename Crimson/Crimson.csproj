@@ -9,8 +9,10 @@
 		<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
 		<UseWinUI>true</UseWinUI>
 		<AssemblyName>Crimson</AssemblyName>
-		<!--<EnableMsixTooling>true</EnableMsixTooling>
-		<WindowsPackageType>None</WindowsPackageType>
+        <EnableMsixTooling>true</EnableMsixTooling>
+        <PublishProfile>Properties\PublishProfiles\win-$(Platform).pubxml</PublishProfile>
+        
+		<!--<WindowsPackageType>None</WindowsPackageType>
 		<UseRidGraph>true</UseRidGraph>-->
 	</PropertyGroup>
 	<ItemGroup>
@@ -19,6 +21,12 @@
 		<None Remove="GameInfoPage.xaml" />
 		<None Remove="LibraryPage.xaml" />
 		<None Remove="LoginPage.xaml" />
+		<None Remove="Package.appxmanifest" />
+	</ItemGroup>
+	<ItemGroup>
+	  <AppxManifest Include="Package.appxmanifest">
+	    <SubType>Designer</SubType>
+	  </AppxManifest>
 	</ItemGroup>
 
 	<ItemGroup>
