@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.AccessControl;
@@ -37,6 +38,7 @@ public class InstallManager
     private bool InstallFinalizing = false;
 
     private readonly object _finalizeInstallLock = new();
+    private readonly object _installItemLock = new();
 
     private ILogger _log;
     private readonly LibraryManager _libraryManager;
@@ -44,6 +46,9 @@ public class InstallManager
     private readonly Storage _storage;
 
     private readonly int _numberOfThreads;
+    private const int _progressUpdateIntervalInMS = 500;
+
+    private Stopwatch _installStopWatch = new();
 
     public InstallManager(ILogger log, LibraryManager libraryManager, IStoreRepository repository, Storage storage)
     {
@@ -170,11 +175,15 @@ public class InstallManager
                     _log.Debug("ProcessNext: Adding new download task {@task}", newTask);
                     chunkDownloadList.Add(chunkInfo);
                     _downloadQueue.Enqueue(newTask);
+
+                    CurrentInstall.TotalDownloadSizeMb += chunkInfo.FileSize / 1000000.0;
                 }
+                CurrentInstall.TotalWriteSizeMb += fileManifest.FileSize / 1000000.0;
             }
 
             CurrentInstall!.Status = ActionStatus.Processing;
             InstallationStatusChanged?.Invoke(CurrentInstall);
+            _installStopWatch.Start();
 
             for (var i = 0; i < _numberOfThreads; i++)
             {
@@ -273,6 +282,22 @@ public class InstallManager
                 {
                     _log.Debug("ProcessDownloadQueue: Downloading chunk with guid{guid} from {url} to {path}", downloadTask.Guid, downloadTask.Url, downloadTask.TempPath);
                     await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
+
+                    // Use a lock to synchronize writes to current install thread safe
+                    lock (_installItemLock)
+                    {
+                        CurrentInstall.DownloadedSize += downloadTask.ChunkInfo.FileSize / 1000000.0;
+
+                        CurrentInstall.DownloadSpeedRaw = _installStopWatch.IsRunning && _installStopWatch.Elapsed.TotalSeconds > 0
+                            ? Math.Round(CurrentInstall.DownloadedSize / _installStopWatch.Elapsed.TotalSeconds, 2)
+                            : 0;
+                        // Limit firing progress update events
+                        if (_installStopWatch.Elapsed.TotalSeconds % _progressUpdateIntervalInMS == 0)
+                        {
+                            InstallProgressUpdate?.Invoke(CurrentInstall);
+                        }
+
+                    }
 
                     // get file manifest from dictionary
                     var fileManifests = _chunkToFileManifestsDictionary[downloadTask.Guid];
@@ -381,6 +406,22 @@ public class InstallManager
                                 fileStream.Flush();
                                 _log.Debug("ProcessIoQueue: Finished Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
                             }
+
+                            lock (_installItemLock)
+                            {
+                                CurrentInstall.WrittenSize += ioTask.Size / 1000000.0;
+                                CurrentInstall.WriteSpeed = _installStopWatch.IsRunning && _installStopWatch.Elapsed.TotalSeconds > 0
+                                    ? Math.Round(CurrentInstall.WrittenSize / _installStopWatch.Elapsed.TotalSeconds, 2)
+                                    : 0;
+                                CurrentInstall.ProgressPercentage = Convert.ToInt32((CurrentInstall.WrittenSize / CurrentInstall.TotalWriteSizeMb) * 100);
+
+                                // Limit firing progress update events
+                                if (_installStopWatch.Elapsed.TotalSeconds % _progressUpdateIntervalInMS == 0)
+                                {
+                                    InstallProgressUpdate?.Invoke(CurrentInstall);
+                                }
+                            }
+
                             // Check for references to the chunk and decrement by one
                             int newCount = _chunkPartReferences.AddOrUpdate(
                                 ioTask.GuidStr,
@@ -464,6 +505,7 @@ public class InstallManager
 
             // Stop all queues before doing anything
             await _cancellationTokenSource.CancelAsync();
+            _installStopWatch.Reset();
 
             var gameData = _libraryManager.GetGameInfo(CurrentInstall.AppName);
             if (gameData == null)
