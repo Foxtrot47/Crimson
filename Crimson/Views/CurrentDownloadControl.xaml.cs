@@ -4,7 +4,7 @@ using Crimson.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
-namespace Crimson;
+namespace Crimson.Views;
 
 public sealed partial class CurrentDownloadControl : UserControl
 {

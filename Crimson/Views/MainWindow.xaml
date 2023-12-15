@@ -1,11 +1,11 @@
 <Window
-    x:Class="Crimson.MainWindow"
+    x:Class="Crimson.Views.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:Crimson"
+    xmlns:local="using:Crimson.Views"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:crimson="using:Crimson"
+    xmlns:crimson="using:Crimson.Views"
     mc:Ignorable="d">
 
 
@@ -33,7 +33,7 @@
                         ItemInvoked="NavControl_ItemInvoked"
                         Background="{ThemeResource SmokeFillColorDefaultBrush}">
                 <NavigationView.MenuItems>
-                    <NavigationViewItem Icon="Library" Content="Library" Tag="Crimson.LibraryPage" />
+                    <NavigationViewItem Icon="Library" Content="Library" Tag="Crimson.Views.LibraryPage" />
                 </NavigationView.MenuItems>
 
                 <ScrollViewer>
@@ -41,7 +41,7 @@
                 </ScrollViewer>
 
                 <NavigationView.FooterMenuItems>
-                    <NavigationViewItem Tag="Crimson.DownloadsPage">
+                    <NavigationViewItem Tag="Crimson.Views.DownloadsPage">
                         <crimson:CurrentDownloadControl />
                     </NavigationViewItem>
                 </NavigationView.FooterMenuItems>

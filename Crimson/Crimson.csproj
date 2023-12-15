@@ -16,11 +16,11 @@
 		<UseRidGraph>true</UseRidGraph>-->
 	</PropertyGroup>
 	<ItemGroup>
-		<None Remove="CurrentControl.xaml" />
-		<None Remove="DownloadsPage.xaml" />
-		<None Remove="GameInfoPage.xaml" />
-		<None Remove="LibraryPage.xaml" />
-		<None Remove="LoginPage.xaml" />
+		<None Remove="Views\CurrentControl.xaml" />
+		<None Remove="Views\DownloadsPage.xaml" />
+		<None Remove="Views\GameInfoPage.xaml" />
+		<None Remove="Views\LibraryPage.xaml" />
+		<None Remove="Views\LoginPage.xaml" />
 		<None Remove="Package.appxmanifest" />
 	</ItemGroup>
 	<ItemGroup>
@@ -51,33 +51,33 @@
 		<ProjectCapability Include="Msix" />
 	</ItemGroup>
 	<ItemGroup>
-		<Page Update="CurrentDownloadControl.xaml">
+		<Page Update="Views\CurrentDownloadControl.xaml">
 			<Generator>MSBuild:Compile</Generator>
 		</Page>
 	</ItemGroup>
 	<ItemGroup>
-		<Page Update="DownloadsPage.xaml">
+		<Page Update="Views\DownloadsPage.xaml">
 			<Generator>MSBuild:Compile</Generator>
 		</Page>
 	</ItemGroup>
 	<ItemGroup>
-		<Page Update="GameInfoPage.xaml">
+		<Page Update="Views\GameInfoPage.xaml">
 			<Generator>MSBuild:Compile</Generator>
 		</Page>
 	</ItemGroup>
 	<ItemGroup>
-		<Page Update="LibraryPage.xaml">
+		<Page Update="Views\LibraryPage.xaml">
 			<Generator>MSBuild:Compile</Generator>
 		</Page>
 	</ItemGroup>
 	<ItemGroup>
 		<Folder Include="Controls\" />
 	</ItemGroup>
-	<ItemGroup>
-	  <Page Update="LoginPage.xaml">
-	    <Generator>MSBuild:Compile</Generator>
-	  </Page>
-	</ItemGroup>
+    <ItemGroup>
+        <Page Update="Views\LoginPage.xaml">
+            <Generator>MSBuild:Compile</Generator>
+        </Page>
+    </ItemGroup>
 
 	<!-- 
     Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution 

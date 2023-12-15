@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Crimson.Core;
@@ -10,7 +10,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Serilog;
 using WinRT;
 
-namespace Crimson;
+namespace Crimson.Views;
 
 /// <summary>
 ///     Main Window
