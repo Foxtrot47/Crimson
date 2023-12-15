@@ -61,11 +61,11 @@ public sealed partial class MainWindow : Window
 
     private void NavControl_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
-        //if (args.IsSettingsSelected == true)
-        //{
-        //    NavView_Navigate(typeof(SettingsPage), args.RecommendedNavigationTransitionInfo);
-        //}
-        //else
+        if (args.IsSettingsInvoked == true)
+        {
+            NavControl_Navigate(typeof(SettingsPage), args.RecommendedNavigationTransitionInfo);
+        }
+        else
         if (args.InvokedItemContainer != null)
         {
             var navPageType = Type.GetType(args.InvokedItemContainer.Tag.ToString() ?? string.Empty);
