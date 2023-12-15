@@ -28,7 +28,8 @@ public enum ActionType
     Move,
     Repair,
     Update,
-    Uninstall
+    Uninstall,
+    Verify
 }
 
 public enum ActionStatus

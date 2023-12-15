@@ -3,9 +3,9 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
 using System.Security.AccessControl;
-using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
@@ -477,12 +477,6 @@ public class InstallManager
         }
     }
 
-    public static string CalculateSHA1(byte[] data)
-    {
-        using var sha1 = SHA1.Create();
-        var hashBytes = sha1.ComputeHash(data);
-        return BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
-    }
 
     /// <summary>
     /// Creates or updates installed games list after install completed
@@ -525,10 +519,23 @@ public class InstallManager
 
             var manifestDataBytes = await _repository.GetGameManifest(gameData.AssetInfos.Windows.Namespace,
                 gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
+            var manifestData = Manifest.ReadAll(manifestDataBytes.ManifestBytes);
+
+            // Verify all the files
+            CurrentInstall.Action = ActionType.Verify;
+            InstallationStatusChanged?.Invoke(CurrentInstall);
+            var invalidFilesList = await VerifyFiles(CurrentInstall.Location, manifestData.FileManifestList.Elements);
+
+            if (invalidFilesList.Count > 0)
+            {
+                // We will handle this later
+                // For now fail install
+                throw new Exception("UpdateInstalledGameStatus: Verification failed");
+            }
+            _log.Information("UpdateInstalledGameStatus: Verification successful for {appName}", CurrentInstall.AppName);
 
             await File.WriteAllBytesAsync(CurrentInstall.Location + "/.temp/manifest", manifestDataBytes.ManifestBytes);
 
-            var manifestData = Manifest.ReadAll(manifestDataBytes.ManifestBytes);
             var canRunOffLine = gameData.Metadata.CustomAttributes.CanRunOffline.Value == "true";
             var requireOwnerShipToken = gameData.Metadata.CustomAttributes?.OwnershipToken?.Value == "true";
 
@@ -565,7 +572,7 @@ public class InstallManager
 
             gameData.InstallStatus = CurrentInstall.Action switch
             {
-                ActionType.Install or ActionType.Update or ActionType.Move or ActionType.Repair => InstallState
+                ActionType.Install or ActionType.Update or ActionType.Move or ActionType.Repair or ActionType.Verify => InstallState
                     .Installed,
                 ActionType.Uninstall => InstallState.NotInstalled,
                 _ => throw new ArgumentOutOfRangeException(),
@@ -587,6 +594,37 @@ public class InstallManager
             CurrentInstall = null;
             ProcessNext();
         }
+    }
+
+    private async Task<List<FileManifest>> VerifyFiles(string installPath, List<FileManifest> fileManifestLists)
+    {
+        if (!Directory.Exists(CurrentInstall.Location))
+        {
+            throw new Exception("Invalid installPath provided");
+        }
+        var options = new ParallelOptions()
+        {
+            MaxDegreeOfParallelism = Environment.ProcessorCount
+        };
+
+        // Loop through each file in fileManifest
+        var invalidFilesList = new List<FileManifest>();
+        await Parallel.ForEachAsync(fileManifestLists, options, async (manifest, token) =>
+            {
+                // Check if file exists and add to list if it doesn't
+                if (!File.Exists(Path.Join(installPath, manifest.Filename)))
+                {
+                    invalidFilesList.Add(manifest);
+                }
+                var fileSha1 = Util.CalculateSHA1(Path.Join(installPath, manifest.Filename));
+                var expectedHash = BitConverter.ToString(manifest.ShaHash).Replace("-", "").ToLowerInvariant();
+                if (fileSha1 != expectedHash)
+                {
+                    invalidFilesList.Add(manifest);
+                    return;
+                }
+            });
+        return invalidFilesList;
     }
 }
 
