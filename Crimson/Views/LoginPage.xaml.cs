@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Text.Json;
 using Crimson.Core;
 using Microsoft.UI.Xaml.Controls;
@@ -54,6 +55,8 @@ public sealed partial class LoginPage : Page
     public async void InitWebView()
     {
         _log.Information("InitWebView: WebView Initializing}");
+        var userDataFolder = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Crimson");
+        Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", userDataFolder);
         await LoginWebView.EnsureCoreWebView2Async();
         LoginWebView.CoreWebView2.Settings.UserAgent = $"EpicGamesLauncher/{EpicGamesLauncherVersion}";
         LoginWebView.NavigationStarting += WebView_NavigationStarting;
