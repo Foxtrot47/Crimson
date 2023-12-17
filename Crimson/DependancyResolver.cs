@@ -15,6 +15,7 @@ namespace Crimson
         public static void Initialize()
         {
             var services = new ServiceCollection();
+            services.AddSingleton<SettingsManager>();
             services.AddSingleton<ILogger>(provider =>
             {
                 var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);

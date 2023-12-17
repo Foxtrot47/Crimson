@@ -13,6 +13,7 @@ namespace Crimson.Utils
         private static readonly string UserDataFile;
         private static readonly string GameAssetsFile;
         private static readonly string MetaDataDirectory;
+        private static readonly string SettingsDataFile;
 
         private Dictionary<string, Game> _gameMetaDataDictionary;
         private Dictionary<string, InstalledGame> _installedGamesDictionary;
@@ -26,6 +27,7 @@ namespace Crimson.Utils
             UserDataFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\user.json";
             GameAssetsFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\assets.json";
             MetaDataDirectory = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\metadata";
+            SettingsDataFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\settings.json";
         }
 
         public Storage()
@@ -181,6 +183,22 @@ namespace Crimson.Utils
 
             var fileName = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\installed.json";
             File.WriteAllText(fileName, jsonString);
+        }
+
+        public string GetSettingsData()
+        {
+            using var fileStream = File.Open(SettingsDataFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var streamReader = new StreamReader(fileStream);
+            fileStream.Dispose();
+            return streamReader.ReadToEnd();
+        }
+
+        public async Task SaveSettingsData(string data)
+        {
+            await using var fileStream = File.Open(SettingsDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
+            await using var streamWriter = new StreamWriter(fileStream);
+            await streamWriter.WriteAsync(data);
+            streamWriter.Close();
         }
     }
 }
