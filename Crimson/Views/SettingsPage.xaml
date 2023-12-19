@@ -66,13 +66,39 @@
                     <EntranceThemeTransition FromVerticalOffset="50" />
                     <RepositionThemeTransition IsStaggeringEnabled="False" />
                 </StackPanel.ChildrenTransitions>
-                
+
+
+                <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Appearance" />
+
+                <toolkit:SettingsCard 
+                    Header="Enable Mica" 
+                    Description="Enable the mica effects available on Windows 11">
+                    <ToggleSwitch  IsOn="True" />
+                </toolkit:SettingsCard>
+
                 <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Accounts" />
 
-                <toolkit:SettingsCard Header="Logout">
-                    <Button>Logout</Button>
-                </toolkit:SettingsCard>
-                
+                <toolkit:SettingsCard 
+                    Header="Logout" 
+                    Description="This will log you out from current account and restart the launcher"
+                    IsClickEnabled="True" />
+
+                <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Advanced Settings" />
+
+                <toolkit:SettingsExpander x:Name="AdvancedSettingsCard"
+                            Header="Show adavanced Settings"
+                            HeaderIcon="{ui:FontIcon Glyph=&#xE713;}"
+                            IsExpanded="{x:Bind ViewModel.AdvancedSettingsExpanded, Mode=TwoWay}">
+
+                    <toolkit:SettingsExpander.Items>
+                        <toolkit:SettingsCard
+                                Header="Open Logs Directory"
+                                IsClickEnabled="True"
+                                Command="{x:Bind ViewModel.OpenLogsDirectoryCommand}"
+                                />
+                    </toolkit:SettingsExpander.Items>
+                </toolkit:SettingsExpander>
+
             </StackPanel>
 
         </ScrollViewer>
