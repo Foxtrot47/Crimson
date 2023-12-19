@@ -48,7 +48,7 @@ public class SettingsManager
         }
     }
 
-    private async Task SaveSettings()
+    public async Task SaveSettings()
     {
         await _storage.SaveSettingsData(JsonSerializer.Serialize(Settings));
 

@@ -1,4 +1,5 @@
-﻿using Microsoft.UI.Xaml.Controls;
+﻿using Crimson.ViewModels;
+using Microsoft.UI.Xaml.Controls;
 
 namespace Crimson.Views
 {
@@ -7,9 +8,12 @@ namespace Crimson.Views
     /// </summary>
     public sealed partial class SettingsPage : Page
     {
+        public SettingsViewModel ViewModel => (SettingsViewModel)DataContext;
+
         public SettingsPage()
         {
-            this.InitializeComponent();
+            InitializeComponent();
+            DataContext = App.GetService<SettingsViewModel>();
         }
     }
 }
