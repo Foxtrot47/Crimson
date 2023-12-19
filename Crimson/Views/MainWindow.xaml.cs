@@ -18,7 +18,7 @@ namespace Crimson.Views;
 public sealed partial class MainWindow : Window
 {
     public bool IsLoggedIn;
-    private ILogger _log = DependencyResolver.Resolve<ILogger>();
+    private ILogger _log = App.GetService<ILogger>();
     private readonly AuthManager _authManager;
     WindowsSystemDispatcherQueueHelper _mWsdqHelper;
     MicaController _mBackdropController;
@@ -34,8 +34,8 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
-        _authManager = DependencyResolver.Resolve<AuthManager>();
-        _log = DependencyResolver.Resolve<ILogger>();
+        _authManager = App.GetService<AuthManager>();
+        _log = App.GetService<ILogger>();
 
         IsLoggedIn = false;
         Task.Run(async () =>

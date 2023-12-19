@@ -32,7 +32,7 @@ namespace Crimson.Utils
 
         public Storage()
         {
-            _logger = DependencyResolver.Resolve<ILogger>();
+            _logger = App.GetService<ILogger>();
             try
             {
                 if (!Directory.Exists(MetaDataDirectory))

@@ -28,8 +28,8 @@ public sealed partial class LibraryPage : Page
     {
         InitializeComponent();
 
-        _log = DependencyResolver.Resolve<ILogger>();
-        _libraryManager = DependencyResolver.Resolve<LibraryManager>();
+        _log = App.GetService<ILogger>();
+        _libraryManager = App.GetService<LibraryManager>();
         _log.Information("LibraryPage: Loading Page");
 
         LoadingSection.Visibility = Visibility.Visible;

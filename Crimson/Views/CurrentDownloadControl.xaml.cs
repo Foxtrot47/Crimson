@@ -13,8 +13,8 @@ public sealed partial class CurrentDownloadControl : UserControl
     public CurrentDownloadControl()
     {
         InitializeComponent();
-        _installManager = DependencyResolver.Resolve<InstallManager>();
-        _libraryManager = DependencyResolver.Resolve<LibraryManager>();
+        _installManager = App.GetService<InstallManager>();
+        _libraryManager = App.GetService<LibraryManager>();
 
         var gameInQueue = _installManager.CurrentInstall;
         HandleInstallationStatusChanged(gameInQueue);

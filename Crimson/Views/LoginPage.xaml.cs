@@ -16,14 +16,14 @@ namespace Crimson.Views;
 /// </summary>
 public sealed partial class LoginPage : Page
 {
-    private readonly AuthManager _authManager = DependencyResolver.Resolve<AuthManager>();
+    private readonly AuthManager _authManager = App.GetService<AuthManager>();
     private readonly ILogger _log;
     private const string EpicGamesLauncherVersion = "11.0.1-14907503+++Portal+Release-Live";
 
     public LoginPage()
     {
         this.InitializeComponent();
-        _log = DependencyResolver.Resolve<ILogger>();
+        _log = App.GetService<ILogger>();
     }
     async void WebView_NavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
     {

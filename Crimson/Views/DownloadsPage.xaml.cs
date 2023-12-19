@@ -26,11 +26,11 @@ public sealed partial class DownloadsPage : Page
     public DownloadsPage()
     {
         this.InitializeComponent();
-        _log = DependencyResolver.Resolve<ILogger>();
+        _log = App.GetService<ILogger>();
         _log.Information("DownloadsPage: Loading Page");
 
-        _installManager = DependencyResolver.Resolve<InstallManager>();
-        _libraryManager = DependencyResolver.Resolve<LibraryManager>();
+        _installManager = App.GetService<InstallManager>();
+        _libraryManager = App.GetService<LibraryManager>();
 
         DataContext = _currentInstallItem;
         if (_installManager.CurrentInstall?.AppName == null)

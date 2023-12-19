@@ -26,9 +26,9 @@ public sealed partial class GameInfoPage : Page
     public GameInfoPage()
     {
         this.InitializeComponent();
-        _log = DependencyResolver.Resolve<ILogger>();
-        _installer = DependencyResolver.Resolve<InstallManager>();
-        _libraryManager = DependencyResolver.Resolve<LibraryManager>();
+        _log = App.GetService<ILogger>();
+        _installer = App.GetService<InstallManager>();
+        _libraryManager = App.GetService<LibraryManager>();
     }
     private readonly ILogger _log;
     protected override void OnNavigatedTo(NavigationEventArgs e)
