@@ -89,7 +89,7 @@ public class InstallManager
             return;
         }
 
-        if (item.Action != ActionType.Repair && gameData.InstallStatus == InstallState.Broken)
+        if (item.Action != ActionType.Repair && item.Action != ActionType.Uninstall && gameData.InstallStatus == InstallState.Broken)
         {
             _log.Warning($"AddToQueue: {item.AppName} is broken, forcing repair");
             item.Action = ActionType.Repair;
