@@ -2,6 +2,7 @@
 using System.Linq;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Utils;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -21,7 +22,9 @@ public sealed partial class GameInfoPage : Page
     private readonly InstallManager _installer;
 
     private readonly LibraryManager _libraryManager;
+    private readonly Storage _storage;
     public Game Game { get; set; }
+    public bool IsInstalled { get; set; } = false;
 
     public GameInfoPage()
     {
@@ -29,6 +32,7 @@ public sealed partial class GameInfoPage : Page
         _log = App.GetService<ILogger>();
         _installer = App.GetService<InstallManager>();
         _libraryManager = App.GetService<LibraryManager>();
+        _storage = App.GetService<Storage>();
     }
     private readonly ILogger _log;
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -163,22 +167,26 @@ public sealed partial class GameInfoPage : Page
             {
                 PrimaryActionButtonText.Text = "Install";
                 PrimaryActionButtonIcon.Glyph = "\uE896";
+                IsInstalled = false;
             }
             else if (Game.InstallStatus == InstallState.Installed)
             {
                 PrimaryActionButtonText.Text = "Play";
                 PrimaryActionButtonIcon.Glyph = "\uE768";
+                IsInstalled = true;
             }
 
             else if (Game.InstallStatus == InstallState.NeedUpdate)
             {
                 PrimaryActionButtonText.Text = "Update";
                 PrimaryActionButtonIcon.Glyph = "\uE777";
+                IsInstalled = true;
             }
             else if (Game.InstallStatus == InstallState.Broken)
             {
                 PrimaryActionButtonText.Text = "Repair";
                 PrimaryActionButtonIcon.Glyph = "\uE90F";
+                IsInstalled = true;
             }
         });
     }

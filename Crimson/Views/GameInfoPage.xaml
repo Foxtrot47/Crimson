@@ -80,7 +80,7 @@
                         </StackPanel>
                     </Button>
 
-                    <DropDownButton IsEnabled="False">
+                    <DropDownButton x:Name="DropDownSecondaryActions" IsEnabled="{x:Bind IsInstalled}">
                         <DropDownButton.Content>
                             <StackPanel Orientation="Horizontal" Spacing="10" Padding="10,5,10,5">
                                 <FontIcon Glyph="&#xE713;" />

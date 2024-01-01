@@ -109,7 +109,7 @@ public class InstallManager
 
     private async void ProcessNext()
     {
-        try
+        try 
         {
             if (CurrentInstall != null || _installQueue.Count <= 0) return;
 
@@ -130,12 +130,6 @@ public class InstallManager
 
             // TODO Handle stats if game is installed
 
-            // create CurrentInstall.folder if it doesn't exist
-            if (!Directory.Exists(CurrentInstall.Location))
-            {
-                Directory.CreateDirectory(CurrentInstall.Location);
-                _log.Debug("Folder created at: {location}", CurrentInstall.Location);
-            }
 
             if (!HasFolderWritePermissions(CurrentInstall.Location))
             {
@@ -146,40 +140,32 @@ public class InstallManager
                 ProcessNext();
             }
 
-            var chunkDownloadList = new List<ChunkInfo>();
-
-            foreach (var fileManifest in data.FileManifestList.Elements)
+            if (CurrentInstall.Action == ActionType.Install)
             {
-                foreach (var chunkPart in fileManifest.ChunkParts)
+                // create CurrentInstall.folder if it doesn't exist
+                if (!Directory.Exists(CurrentInstall.Location))
                 {
-                    if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidStr, out var fileManifests))
-                    {
-                        fileManifests.Add(fileManifest);
-                        _chunkToFileManifestsDictionary[chunkPart.GuidStr] = fileManifests;
-                    }
-                    else
-                    {
-                        _ = _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidStr,
-                            new List<FileManifest>() { fileManifest });
-                    }
-
-                    if (chunkDownloadList.FirstOrDefault(chunk => chunk.GuidStr == chunkPart.GuidStr) != null) continue;
-
-                    var chunkInfo = data.CDL.GetChunkByGuid(chunkPart.GuidStr);
-                    var newTask = new DownloadTask()
-                    {
-                        Url = manifestData.BaseUrls.FirstOrDefault() + "/" + chunkInfo.Path,
-                        TempPath = Path.Combine(CurrentInstall.Location, ".temp", (chunkInfo.GuidStr + ".chunk")),
-                        Guid = chunkInfo.GuidStr,
-                        ChunkInfo = chunkInfo
-                    };
-                    _log.Debug("ProcessNext: Adding new download task {@task}", newTask);
-                    chunkDownloadList.Add(chunkInfo);
-                    _downloadQueue.Enqueue(newTask);
-
-                    CurrentInstall.TotalDownloadSizeMb += chunkInfo.FileSize / 1000000.0;
+                    Directory.CreateDirectory(CurrentInstall.Location);
+                    _log.Debug("Folder created at: {location}", CurrentInstall.Location);
                 }
-                CurrentInstall.TotalWriteSizeMb += fileManifest.FileSize / 1000000.0;
+
+                GetChunksToDownload(manifestData, data);
+            }
+            else if (CurrentInstall.Action == ActionType.Uninstall)
+            {
+                foreach (var fileManifest in data.FileManifestList.Elements)
+                {
+                    CurrentInstall.TotalWriteSizeMb += fileManifest.FileSize / 1000000.0;
+
+                    var task = new IoTask()
+                    {
+                        DestinationFilePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename),
+                        TaskType = IoTaskType.Delete,
+                        Size = fileManifest.FileSize,
+                    };
+                    _log.Debug("ProcessNext: Adding ioTask: {task}", task);
+                    _ioQueue.Enqueue(task);
+                }
             }
 
             CurrentInstall!.Status = ActionStatus.Processing;
@@ -511,64 +497,76 @@ public class InstallManager
                     CurrentInstall.AppName);
                 throw new Exception("Invalid game data");
             }
+            var installedGamesDictionary = _storage.InstalledGamesDictionary;
+            installedGamesDictionary ??= [];
 
-            if (!_storage.InstalledGamesDictionary.TryGetValue(CurrentInstall.AppName, out InstalledGame installedGame))
+            if (installedGamesDictionary.Count > 0 && CurrentInstall.Action == ActionType.Uninstall)
             {
-                installedGame = new InstalledGame();
+                installedGamesDictionary.Remove(CurrentInstall.AppName);
+                _log.Information("UpdateInstalledGameStatus: Removing entry: {appName} from installed games list", CurrentInstall.AppName);
             }
-
-            var manifestDataBytes = await _repository.GetGameManifest(gameData.AssetInfos.Windows.Namespace,
-                gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
-            var manifestData = Manifest.ReadAll(manifestDataBytes.ManifestBytes);
-
-            // Verify all the files
-            CurrentInstall.Action = ActionType.Verify;
-            InstallationStatusChanged?.Invoke(CurrentInstall);
-            var invalidFilesList = await VerifyFiles(CurrentInstall.Location, manifestData.FileManifestList.Elements);
-
-            if (invalidFilesList.Count > 0)
+            else
             {
-                // We will handle this later
-                // For now fail install
-                throw new Exception("UpdateInstalledGameStatus: Verification failed");
-            }
-            _log.Information("UpdateInstalledGameStatus: Verification successful for {appName}", CurrentInstall.AppName);
-
-            await File.WriteAllBytesAsync(CurrentInstall.Location + "/.temp/manifest", manifestDataBytes.ManifestBytes);
-
-            var canRunOffLine = gameData.Metadata.CustomAttributes.CanRunOffline.Value == "true";
-            var requireOwnerShipToken = gameData.Metadata.CustomAttributes?.OwnershipToken?.Value == "true";
-
-            if (installedGame?.AppName == null)
-            {
-                installedGame = new InstalledGame()
+                if (!installedGamesDictionary.TryGetValue(CurrentInstall.AppName, out var installedGame))
                 {
-                    AppName = CurrentInstall.AppName,
-                    IsDlc = gameData.IsDlc()
-                };
-            }
+                    installedGame = new InstalledGame();
+                }
 
-            installedGame.BaseUrls = gameData.BaseUrls;
-            installedGame.CanRunOffline = canRunOffLine;
-            installedGame.Executable = manifestData.ManifestMeta.LaunchExe;
-            installedGame.InstallPath = CurrentInstall.Location;
-            installedGame.LaunchParameters = manifestData.ManifestMeta.LaunchCommand;
-            installedGame.RequiresOt = requireOwnerShipToken;
-            installedGame.Version = manifestData.ManifestMeta.BuildVersion;
-            installedGame.Title = gameData.AppTitle;
+                var manifestDataBytes = await _repository.GetGameManifest(gameData.AssetInfos.Windows.Namespace,
+                    gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
+                var manifestData = Manifest.ReadAll(manifestDataBytes.ManifestBytes);
 
-            if (manifestData.ManifestMeta.UninstallActionPath != null)
-            {
-                installedGame.Uninstaller = new Dictionary<string, string>
+                // Verify all the files
+                CurrentInstall.Action = ActionType.Verify;
+                InstallationStatusChanged?.Invoke(CurrentInstall);
+                var invalidFilesList = await VerifyFiles(CurrentInstall.Location, manifestData.FileManifestList.Elements);
+
+                if (invalidFilesList.Count > 0)
+                {
+                    // We will handle this later
+                    // For now fail install
+                    throw new Exception("UpdateInstalledGameStatus: Verification failed");
+                }
+                _log.Information("UpdateInstalledGameStatus: Verification successful for {appName}", CurrentInstall.AppName);
+
+                await File.WriteAllBytesAsync(CurrentInstall.Location + "/.temp/manifest", manifestDataBytes.ManifestBytes);
+
+                var canRunOffLine = gameData.Metadata.CustomAttributes.CanRunOffline.Value == "true";
+                var requireOwnerShipToken = gameData.Metadata.CustomAttributes?.OwnershipToken?.Value == "true";
+
+                if (installedGame?.AppName == null)
+                {
+                    installedGame = new InstalledGame()
+                    {
+                        AppName = CurrentInstall.AppName,
+                        IsDlc = gameData.IsDlc()
+                    };
+                }
+
+                installedGame.BaseUrls = gameData.BaseUrls;
+                installedGame.CanRunOffline = canRunOffLine;
+                installedGame.Executable = manifestData.ManifestMeta.LaunchExe;
+                installedGame.InstallPath = CurrentInstall.Location;
+                installedGame.LaunchParameters = manifestData.ManifestMeta.LaunchCommand;
+                installedGame.RequiresOt = requireOwnerShipToken;
+                installedGame.Version = manifestData.ManifestMeta.BuildVersion;
+                installedGame.Title = gameData.AppTitle;
+
+                if (manifestData.ManifestMeta.UninstallActionPath != null)
+                {
+                    installedGame.Uninstaller = new Dictionary<string, string>
                 {
                     { manifestData.ManifestMeta.UninstallActionPath, manifestData.ManifestMeta.UninstallActionArgs }
                 };
+                }
+
+                _log.Information("UpdateInstalledGameStatus: Adding new entry installed games list {@entry}",
+                    installedGame);
+
+                installedGamesDictionary.Add(gameData.AppName, installedGame);
             }
 
-            _log.Information("UpdateInstalledGameStatus: Adding new entry installed games list {@entry}",
-                installedGame);
-
-            _storage.SaveInstalledGamesList(installedGame);
+            _storage.UpdateInstalledGames(installedGamesDictionary);
 
             gameData.InstallStatus = CurrentInstall.Action switch
             {
@@ -625,6 +623,50 @@ public class InstallManager
                 }
             });
         return invalidFilesList;
+    }
+
+    /// <summary>
+    /// Retrieves the chunks to download from the file manifest list
+    /// </summary>
+    /// <param name="manifestData"></param>
+    /// <param name="data"></param>
+    private void GetChunksToDownload(GetGameManifest manifestData, Manifest data)
+    {
+        var chunkDownloadList = new List<ChunkInfo>();
+
+        foreach (var fileManifest in data.FileManifestList.Elements)
+        {
+            foreach (var chunkPart in fileManifest.ChunkParts)
+            {
+                if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidStr, out var fileManifests))
+                {
+                    fileManifests.Add(fileManifest);
+                    _chunkToFileManifestsDictionary[chunkPart.GuidStr] = fileManifests;
+                }
+                else
+                {
+                    _ = _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidStr,
+                        new List<FileManifest>() { fileManifest });
+                }
+
+                if (chunkDownloadList.FirstOrDefault(chunk => chunk.GuidStr == chunkPart.GuidStr) != null) continue;
+
+                var chunkInfo = data.CDL.GetChunkByGuid(chunkPart.GuidStr);
+                var newTask = new DownloadTask()
+                {
+                    Url = manifestData.BaseUrls.FirstOrDefault() + "/" + chunkInfo.Path,
+                    TempPath = Path.Combine(CurrentInstall.Location, ".temp", (chunkInfo.GuidStr + ".chunk")),
+                    Guid = chunkInfo.GuidStr,
+                    ChunkInfo = chunkInfo
+                };
+                _log.Debug("ProcessNext: Adding new download task {@task}", newTask);
+                chunkDownloadList.Add(chunkInfo);
+                _downloadQueue.Enqueue(newTask);
+
+                CurrentInstall.TotalDownloadSizeMb += chunkInfo.FileSize / 1000000.0;
+            }
+            CurrentInstall.TotalWriteSizeMb += fileManifest.FileSize / 1000000.0;
+        }
     }
 }
 
