@@ -175,9 +175,9 @@ namespace Crimson.Utils
             _gameMetaDataDictionary.TryAdd(game.AppName, game);
         }
 
-        public void SaveInstalledGamesList(InstalledGame installedGame)
+        public void UpdateInstalledGames(Dictionary<string, InstalledGame> installedGamesDict)
         {
-            _installedGamesDictionary.TryAdd(installedGame.AppName, installedGame);
+            _installedGamesDictionary = installedGamesDict;
 
             var jsonString = JsonSerializer.Serialize(_installedGamesDictionary);
 

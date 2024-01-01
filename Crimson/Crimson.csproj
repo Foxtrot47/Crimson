@@ -10,7 +10,7 @@
 		<UseWinUI>true</UseWinUI>
 		<AssemblyName>Crimson</AssemblyName>
         <EnableMsixTooling>true</EnableMsixTooling>        
-		<!--<WindowsPackageType>None</WindowsPackageType>-->
+		<WindowsPackageType>None</WindowsPackageType>
 		<UseRidGraph>true</UseRidGraph>
 	</PropertyGroup>
 

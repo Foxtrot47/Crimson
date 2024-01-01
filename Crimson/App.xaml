@@ -16,6 +16,9 @@
             <x:String x:Key="AppTitleName">Crimson</x:String>
             <x:Double x:Key="ContentDialogMaxWidth">1200</x:Double>
             <x:Double x:Key="ContentDialogWidth">1200</x:Double>
+            <Style TargetType="MenuFlyoutItem">
+                <Setter Property="FontSize" Value="17"/>
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
