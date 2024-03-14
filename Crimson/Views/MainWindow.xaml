@@ -70,5 +70,6 @@
             </Grid>
             <local:LoginPage x:Name="LoginPage" Visibility="Collapsed"/>
         </Grid>
+        <crimson:TrayIconView x:Name="TrayIconView" />
     </Grid>
 </Window>

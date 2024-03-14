@@ -5,6 +5,7 @@ using Crimson.Repository;
 using Crimson.Utils;
 using Crimson.ViewModels;
 using Crimson.Views;
+using H.NotifyIcon;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.UI.Xaml;
@@ -26,6 +27,7 @@ namespace Crimson
         {
             get;
         }
+        public static bool HandleClosedEvents { get; set; } = true;
 
         /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
@@ -81,10 +83,13 @@ namespace Crimson
             m_window.Closed += OnExit;
         }
 
-        // Save gamedata to storage on application exit
-        private static async void OnExit(object sender, object e)
+        protected void OnExit(object sender, WindowEventArgs args)
         {
-            //await LibraryManager.UpdateJsonFileAsync();
+            if (HandleClosedEvents)
+            {
+                args.Handled = true;
+                m_window.Hide();
+            }
         }
 
         private Window m_window;
