@@ -73,7 +73,7 @@
                 <toolkit:SettingsCard 
                     Header="Enable Mica" 
                     Description="Enable the mica effects available on Windows 11">
-                   <ToggleSwitch IsOn="True" />
+                   <ToggleSwitch IsOn="{x:Bind ViewModel.MicaEnabled, Mode=TwoWay}" />
                 </toolkit:SettingsCard>
 
                 <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Accounts" />
