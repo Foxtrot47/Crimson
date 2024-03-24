@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -26,7 +26,7 @@ public class InstallManager
 
     private readonly ConcurrentQueue<DownloadTask> _downloadQueue = new();
     private readonly ConcurrentQueue<IoTask> _ioQueue = new();
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
+    private CancellationTokenSource _cancellationTokenSource = new();
 
     private readonly ConcurrentDictionary<string, object> _fileLocksConcurrentDictionary = new();
 
@@ -109,7 +109,7 @@ public class InstallManager
 
     private async void ProcessNext()
     {
-        try 
+        try
         {
             if (CurrentInstall != null || _installQueue.Count <= 0) return;
 
@@ -170,6 +170,9 @@ public class InstallManager
 
             CurrentInstall!.Status = ActionStatus.Processing;
             InstallationStatusChanged?.Invoke(CurrentInstall);
+
+            // Reset cancellation token
+            _cancellationTokenSource = new CancellationTokenSource();
             _installStopWatch.Start();
 
             for (var i = 0; i < _numberOfThreads; i++)
