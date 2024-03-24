@@ -248,4 +248,20 @@ public sealed partial class GameInfoPage : Page
         _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Install, InstallLocationText.Text));
         _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.AppTitle);
     }
+
+    private void UninstallBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (Game == null || Game.InstallStatus == InstallState.NotInstalled) return;
+
+        _storage.InstalledGamesDictionary.TryGetValue(Game.AppName, out var installedGame);
+
+        if (installedGame == null)
+        {
+            _log.Information("ProcessNext: Attempting to uninstall not installed game");
+            return;
+        }
+
+        _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Uninstall, installedGame.InstallPath));
+        _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.AppTitle);
+    }
 }
