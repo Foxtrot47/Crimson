@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -434,6 +434,24 @@ public class InstallManager
                                 }
                             }
                             break;
+                        case IoTaskType.Delete:
+                            File.Delete(ioTask.DestinationFilePath);
+                            lock (_installItemLock)
+                            {
+                                CurrentInstall.WrittenSize += ioTask.Size / 1000000.0;
+                                CurrentInstall.WriteSpeed = _installStopWatch.IsRunning && _installStopWatch.Elapsed.TotalSeconds > 0
+                                    ? Math.Round(CurrentInstall.WrittenSize / _installStopWatch.Elapsed.TotalSeconds, 2)
+                                    : 0;
+                                CurrentInstall.ProgressPercentage = Convert.ToInt32((CurrentInstall.WrittenSize / CurrentInstall.TotalWriteSizeMb) * 100);
+
+                                // Limit firing progress update events
+                                if ((DateTime.Now - _lastUpdateTime).TotalMilliseconds >= _progressUpdateIntervalInMS)
+                                {
+                                    _lastUpdateTime = DateTime.Now;
+                                    InstallProgressUpdate?.Invoke(CurrentInstall);
+                                }
+                            }
+                            break;
                     }
                 }
                 catch (Exception ex)
@@ -446,7 +464,6 @@ public class InstallManager
                         InstallationStatusChanged?.Invoke(CurrentInstall);
                         CurrentInstall = null;
                     }
-
                     ProcessNext();
                 }
             }
