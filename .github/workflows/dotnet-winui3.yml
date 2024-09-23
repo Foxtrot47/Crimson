@@ -10,9 +10,7 @@ on:
     branches: [ master ]
 
 jobs:
-
   build:
-
     strategy:
       matrix:
         configuration: [Release]
