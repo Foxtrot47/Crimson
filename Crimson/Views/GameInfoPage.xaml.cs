@@ -73,10 +73,14 @@ public sealed partial class GameInfoPage : Page
 
             ConfirmInstallTitleText.Text = Game.AppTitle;
             ConfirmInstallImage.Source = Game.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(Game.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
-            InstallLocationText.Text = "C:\\Games\\";
+            InstallLocationText.Text = $"C:\\Games\\{Game.AppTitle}";
             ConfirmInstallDialog.MaxWidth = 4000;
-            var downloadResult = await ConfirmInstallDialog.ShowAsync();
 
+            var (totalDownloadSizeMb, totalWriteSizeMb) = await _installer.GetGameDownloadInstallSizes(Game.AppName);
+            DownloadSize.Text = Util.ConvertMiBToGiBOrMiB(totalDownloadSizeMb);
+            InstallSize.Text = Util.ConvertMiBToGiBOrMiB(totalWriteSizeMb);
+
+            var downloadResult = await ConfirmInstallDialog.ShowAsync();
         }
         catch (Exception ex)
         {
@@ -229,7 +233,7 @@ public sealed partial class GameInfoPage : Page
         var folder = await openPicker.PickSingleFolderAsync();
         if (folder == null) return;
         //StorageApplicationPermissions.FutureAccessList.AddOrReplace("PickedFolderToken", folder);
-        InstallLocationText.Text = folder.Path;
+        InstallLocationText.Text = $"{folder.Path}\\{Game.AppTitle}";
 
     }
 

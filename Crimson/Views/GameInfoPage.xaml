@@ -190,11 +190,18 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" Grid.Column="0">
-                        <FontIcon Glyph="&#xE896;"></FontIcon>
-                        <TextBlock x:Name="DownloadSize" FontSize="18" Text="15GB" />
-                        <TextBlock FontSize="18" Text="disk space required" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <StackPanel Orientation="Vertical" VerticalAlignment="Center" Grid.Column="0">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <FontIcon Glyph="&#xE896;"></FontIcon>
+                            <TextBlock x:Name="DownloadSize" FontSize="18" />
+                            <TextBlock FontSize="18" Text="download size" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </StackPanel>
 
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <FontIcon Glyph="&#xEDA2;"></FontIcon>
+                            <TextBlock x:Name="InstallSize" FontSize="18" />
+                            <TextBlock FontSize="18" Text="install space required" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </StackPanel>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="1" HorizontalAlignment="Right" Margin="20,0,0,0">
                         <Button IsEnabled="False" Content="Import" FontSize="20" />

@@ -581,6 +581,54 @@ public class InstallManager
         }
         ProcessNext();
     }
+
+    public async Task<(double totalDownloadSizeMb, double totalWriteSizeMb)> GetGameDownloadInstallSizes(string appName)
+    {
+        _log.Information($"GetGameDownloadInstallSizes: Getting game manifest of {appName}");
+        var gameData = _libraryManager.GetGameInfo(appName);
+        var manifestData = await _repository.GetGameManifest(gameData.AssetInfos.Windows.Namespace,
+            gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
+
+        gameData.BaseUrls = manifestData.BaseUrls;
+
+        _log.Information($"GetGameDownloadInstallSizes: parsing game manifest of {appName}");
+        var manifest = Manifest.ReadAll(manifestData.ManifestBytes);
+        var chunkDownloadList = new List<ChunkInfo>();
+        var addedChunkGuids = new HashSet<string>();
+
+        double totalDownloadSizeMb = 0;
+        double totalWriteSizeMb = 0;
+
+        foreach (var fileManifest in manifest.FileManifestList.Elements)
+        {
+            foreach (var chunkPart in fileManifest.ChunkParts)
+            {
+                if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidStr, out var fileManifests))
+                {
+                    fileManifests.Add(fileManifest);
+                    _chunkToFileManifestsDictionary[chunkPart.GuidStr] = fileManifests;
+                }
+                else
+                {
+                    _ = _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidStr,
+                        new List<FileManifest>() { fileManifest });
+                }
+
+                if (!addedChunkGuids.Contains(chunkPart.GuidStr))
+                {
+                    var chunkInfo = manifest.CDL.GetChunkByGuid(chunkPart.GuidStr);
+                    chunkDownloadList.Add(chunkInfo);
+                    addedChunkGuids.Add(chunkPart.GuidStr);
+
+                    totalDownloadSizeMb += chunkInfo.FileSize / 1000000.0;
+                }
+            }
+            totalWriteSizeMb += fileManifest.FileSize / 1000000.0;
+        }
+        _log.Information($"GetGameDownloadInstallSizes: parsing total download size as {totalDownloadSizeMb} and write size as {totalWriteSizeMb}");
+        return (totalDownloadSizeMb, totalWriteSizeMb);
+    }
+
 }
 
 internal class InstallItemComparer : IEqualityComparer<InstallItem>
