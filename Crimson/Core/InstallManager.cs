@@ -502,6 +502,7 @@ public class InstallManager
     /// <param name="data"></param>
     private void GetChunksToDownload(GetGameManifest manifestData, Manifest data)
     {
+        var addedChunkGuids = new HashSet<string>();
         var chunkDownloadList = new List<ChunkInfo>();
 
         foreach (var fileManifest in data.FileManifestList.Elements)
@@ -519,8 +520,10 @@ public class InstallManager
                         new List<FileManifest>() { fileManifest });
                 }
 
-                if (chunkDownloadList.FirstOrDefault(chunk => chunk.GuidStr == chunkPart.GuidStr) != null) continue;
+                if (addedChunkGuids.Contains(chunkPart.GuidStr))
+                    continue;
 
+                addedChunkGuids.Add(chunkPart.GuidStr);
                 var chunkInfo = data.CDL.GetChunkByGuid(chunkPart.GuidStr);
                 var newTask = new DownloadTask()
                 {
