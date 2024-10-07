@@ -131,6 +131,16 @@ public class InstallManager
             // TODO Handle stats if game is installed
 
 
+            if (CurrentInstall.Action == ActionType.Install)
+            {
+                // create CurrentInstall.folder if it doesn't exist
+                if (!Directory.Exists(CurrentInstall.Location))
+                {
+                    Directory.CreateDirectory(CurrentInstall.Location);
+                    _log.Debug("Folder created at: {location}", CurrentInstall.Location);
+                }
+            }
+
             if (!HasFolderWritePermissions(CurrentInstall.Location))
             {
                 _log.Error("ProcessNext: No write permissions to {Location}", CurrentInstall.Location);
@@ -142,13 +152,6 @@ public class InstallManager
 
             if (CurrentInstall.Action == ActionType.Install)
             {
-                // create CurrentInstall.folder if it doesn't exist
-                if (!Directory.Exists(CurrentInstall.Location))
-                {
-                    Directory.CreateDirectory(CurrentInstall.Location);
-                    _log.Debug("Folder created at: {location}", CurrentInstall.Location);
-                }
-
                 GetChunksToDownload(manifestData, data);
             }
             else if (CurrentInstall.Action == ActionType.Uninstall)
