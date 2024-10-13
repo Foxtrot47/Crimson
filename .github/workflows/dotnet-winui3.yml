@@ -30,9 +30,9 @@ jobs:
 
     # Install the .NET Core workload
     - name: Install .NET Core
-      uses: actions/setup-dotnet@v1
+      uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 8.0.x
+        dotnet-version: 9.0.x
 
     # Add  MSBuild to the PATH: https://github.com/microsoft/setup-msbuild
     - name: Setup MSBuild.exe
@@ -40,7 +40,7 @@ jobs:
 
     # Create the app package by building and packaging the project
     - name: Create the app package
-      run: dotnet publish -r win-$env:Platform -p:PublishSingleFile=true --self-contained true /p:WindowsAppSDKSelfContained=true /p:PublishReadyToRun=true
+      run: dotnet publish -r win-$env:Platform --self-contained true /p:WindowsAppSDKSelfContained=true /p:PublishReadyToRun=true
       env:
         Appx_Bundle: Never
         Appx_Package_Build_Mode: SideloadOnly
