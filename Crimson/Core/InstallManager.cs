@@ -41,6 +41,8 @@ public class InstallManager
 
     private BlockingCollection<DownloadTask> _downloadQueue = [];
     private BlockingCollection<IoTask> _ioQueue = [];
+    private List<Task> _downloadTasks;
+    private List<Task> _installTasks;
     private CancellationTokenSource _cancellationTokenSource = new();
     private Stopwatch _installStopWatch = new();
     private DateTime _lastUpdateTime = DateTime.MinValue;
@@ -143,7 +145,7 @@ public class InstallManager
 
             if (!HasFolderWritePermissions(CurrentInstall.Location))
             {
-                await HandleInstallationFailure("No write permissions to install location");
+                await HandleInstallationStoppage("No write permissions to install location");
                 return;
             }
 
@@ -177,19 +179,19 @@ public class InstallManager
             _cancellationTokenSource = new CancellationTokenSource();
             _installStopWatch.Start();
 
-            var downloadTasks = Enumerable.Range(0, _numberOfThreads)
+            _downloadTasks = Enumerable.Range(0, _numberOfThreads)
                 .Select(_ => Task.Run(ProcessDownloadQueue, _cancellationTokenSource.Token))
                 .ToList();
 
-            var installTasks = Enumerable.Range(0, _numberOfThreads)
+            _installTasks = Enumerable.Range(0, _numberOfThreads)
                 .Select(_ => Task.Run(ProcessIOQueue, _cancellationTokenSource.Token))
                 .ToList();
 
             _downloadQueue.CompleteAdding();
 
-            await Task.WhenAll(downloadTasks);
+            await Task.WhenAll(_downloadTasks);
             _ioQueue.CompleteAdding();
-            await Task.WhenAll(installTasks);
+            await Task.WhenAll(_installTasks);
 
             await UpdateInstalledGameStatus();
 
@@ -197,7 +199,7 @@ public class InstallManager
         catch (Exception ex)
         {
             _logger.Error("ProcessNext: {Exception}", ex);
-            await HandleInstallationFailure("An error occurred during installation");
+            await HandleInstallationStoppage("An error occurred during installation");
         }
     }
 
@@ -212,21 +214,30 @@ public class InstallManager
 
     private async Task ProcessDownloadQueue()
     {
-        foreach (var downloadTask in _downloadQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
+        try
         {
-            try
+            foreach (var downloadTask in _downloadQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
             {
-                _logger.Debug("ProcessDownloadQueue: Downloading chunk with guid{guid} from {url} to {path}", downloadTask.GuidNum, downloadTask.Url, downloadTask.TempPath);
-                await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
+                try
+                {
+                    _logger.Debug("ProcessDownloadQueue: Downloading chunk with guid{guid} from {url} to {path}", downloadTask.GuidNum, downloadTask.Url, downloadTask.TempPath);
+                    await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
 
-                UpdateDownloadProgress(downloadTask.ChunkInfo.FileSize);
-                CreateIoTasksForChunk(downloadTask);
+                    UpdateDownloadProgress(downloadTask.ChunkInfo.FileSize);
+                    CreateIoTasksForChunk(downloadTask);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("ProcessDownloadQueue: Exception: {ex}", ex);
+                    await HandleInstallationStoppage("Download task failed");
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.Error("ProcessDownloadQueue: Exception: {ex}", ex);
-                await HandleInstallationFailure("Download task failed");
-            }
+        }
+        // only exception happening here wll be the cancellation token being called
+        // just handle it not make application crash
+        catch (Exception)
+        {
+            return;
         }
     }
 
@@ -267,27 +278,36 @@ public class InstallManager
 
     private async Task ProcessIOQueue()
     {
-        foreach (var ioTask in _ioQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
+        try
         {
-            try
+            foreach (var ioTask in _ioQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
             {
-                switch (ioTask.TaskType)
+                try
                 {
-                    case IoTaskType.Copy:
-                        await ProcessCopyTask(ioTask);
-                        break;
-                    case IoTaskType.Delete:
-                        File.Delete(ioTask.DestinationFilePath);
-                        break;
+                    switch (ioTask.TaskType)
+                    {
+                        case IoTaskType.Copy:
+                            await ProcessCopyTask(ioTask);
+                            break;
+                        case IoTaskType.Delete:
+                            File.Delete(ioTask.DestinationFilePath);
+                            break;
+                    }
+                    UpdateInstallWriteProgress(ioTask.Size);
                 }
-                UpdateInstallWriteProgress(ioTask.Size);
-            }
-            catch (Exception ex)
-            {
-                _logger.Error("ProcessIoQueue: IO task failed with exception {ex}", ex);
-                await HandleInstallationFailure("Io Task failed");
-            }
+                catch (Exception ex)
+                {
+                    _logger.Error("ProcessIoQueue: IO task failed with exception {ex}", ex);
+                    await HandleInstallationStoppage("Io Task failed");
+                }
 
+            }
+        }
+        // only exception happening here wll be the cancellation token being called
+        // just handle it not make application crash
+        catch (Exception)
+        {
+            return;
         }
     }
 
@@ -376,7 +396,8 @@ public class InstallManager
     {
         try
         {
-            if (CurrentInstall == null) return;
+            if (!IsInstallationInProgress())
+                return;
 
             // Intentional delay to wait till all files are written
             await Task.Delay(2000);
@@ -580,6 +601,8 @@ public class InstallManager
 
     private void UpdateDownloadProgress(long downloadedSize)
     {
+        if (!IsInstallationInProgress())
+            return;
         lock (_installItemLock)
         {
             CurrentInstall.DownloadedSizeMiB += downloadedSize / 1024.0 / 1024.0;
@@ -593,6 +616,8 @@ public class InstallManager
 
     private void UpdateInstallWriteProgress(long ioTaskSize)
     {
+        if (!IsInstallationInProgress())
+            return;
         lock (_installItemLock)
         {
             CurrentInstall.WrittenSizeMiB += ioTaskSize / 1024.0 / 1024.0;
@@ -612,6 +637,8 @@ public class InstallManager
     }
     private void UpdateProgressIfNeeded()
     {
+        if (!IsInstallationInProgress())
+            return;
         // Limit firing progress update events
         if ((DateTime.Now - _lastUpdateTime).TotalMilliseconds >= _progressUpdateIntervalInMS)
         {
@@ -620,16 +647,41 @@ public class InstallManager
         }
     }
 
-    private async Task HandleInstallationFailure(string errorMessage)
+    private async Task HandleInstallationStoppage(string errorMessage)
     {
-        await _cancellationTokenSource.CancelAsync();
-        if (CurrentInstall != null)
+        _ioQueue = new();
+        _downloadQueue = new();
+
+        if (!_cancellationTokenSource.IsCancellationRequested)
         {
+            // propage cancelling status if not done already
+            await _cancellationTokenSource.CancelAsync();
+            CurrentInstall.Status = ActionStatus.Cancelling;
+            InstallationStatusChanged?.Invoke(CurrentInstall);
+
+            await Task.WhenAll(_downloadTasks);
+            await Task.WhenAll(_installTasks);
+
             CurrentInstall.Status = ActionStatus.Failed;
             InstallationStatusChanged?.Invoke(CurrentInstall);
             _logger.Error("Installation failed: {ErrorMessage}", errorMessage);
-            CurrentInstall = null;
         }
+        else
+        {
+            CurrentInstall.Status = ActionStatus.Cancelling;
+            InstallationStatusChanged?.Invoke(CurrentInstall);
+
+            await Task.WhenAll(_downloadTasks);
+            await Task.WhenAll(_installTasks);
+
+            // clear downloaded files
+            Directory.Delete(CurrentInstall.Location, true);
+
+            CurrentInstall.Status = ActionStatus.Cancelled;
+            InstallationStatusChanged?.Invoke(CurrentInstall);
+            _logger.Error("Installation cancelled");
+        }
+        CurrentInstall = null;
         ProcessNext();
     }
 
@@ -745,9 +797,18 @@ public class InstallManager
         }
     }
 
-    public void StopProcessing()
+    public async Task StopProcessing()
     {
-        _cancellationTokenSource.Cancel();
+        CurrentInstall.Status = ActionStatus.Cancelling;
+        InstallationStatusChanged?.Invoke(CurrentInstall);
+
+        await _cancellationTokenSource.CancelAsync();
+        await HandleInstallationStoppage("Cancel install");
+    }
+
+    private bool IsInstallationInProgress()
+    {
+        return CurrentInstall != null && CurrentInstall.Status != ActionStatus.Cancelling && CurrentInstall.Status != ActionStatus.Failed && CurrentInstall.Status != ActionStatus.Cancelled;
     }
 }
 
