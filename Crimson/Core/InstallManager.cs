@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Linq;
+using System.Numerics;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Threading;
@@ -20,42 +21,36 @@ public class InstallManager
 {
     public event Action<InstallItem> InstallationStatusChanged;
     public event Action<InstallItem> InstallProgressUpdate;
-    public InstallItem CurrentInstall;
-    private readonly Queue<InstallItem> _installQueue;
-    private readonly List<InstallItem> _installHistory = new();
 
-    private readonly ConcurrentQueue<DownloadTask> _downloadQueue = new();
-    private ConcurrentQueue<IoTask> _ioQueue = new();
-    private CancellationTokenSource _cancellationTokenSource = new();
-
-    private readonly ConcurrentDictionary<string, object> _fileLocksConcurrentDictionary = new();
-
-    private readonly ConcurrentDictionary<string, List<FileManifest>> _chunkToFileManifestsDictionary =
-        new();
-
-    private ConcurrentDictionary<string, int> _chunkPartReferences = new();
-
-    private bool InstallFinalizing = false;
-
-    private readonly object _finalizeInstallLock = new();
-    private readonly object _installItemLock = new();
-
-    private ILogger _log;
+    private readonly ILogger _logger;
     private readonly LibraryManager _libraryManager;
     private readonly IStoreRepository _repository;
     private readonly Storage _storage;
 
-    private readonly int _numberOfThreads;
-    private const int _progressUpdateIntervalInMS = 500;
+    private readonly Queue<InstallItem> _installQueue = new();
+    private readonly List<InstallItem> _installHistory = [];
 
+    private readonly ConcurrentDictionary<string, object> _fileLocksConcurrentDictionary = new();
+    private readonly ConcurrentDictionary<BigInteger, List<FileManifest>> _chunkToFileManifestsDictionary = new();
+    private readonly ConcurrentDictionary<BigInteger, int> _chunkPartReferences = new();
+    private readonly HashSet<string> _ioQueueTaskSet = [];
+
+    private readonly object _installItemLock = new();
+    private readonly int _numberOfThreads;
+    private const int _progressUpdateIntervalInMS = 1000;
+
+    private BlockingCollection<DownloadTask> _downloadQueue = [];
+    private BlockingCollection<IoTask> _ioQueue = [];
+    private CancellationTokenSource _cancellationTokenSource = new();
     private Stopwatch _installStopWatch = new();
     private DateTime _lastUpdateTime = DateTime.MinValue;
 
-    public InstallManager(ILogger log, LibraryManager libraryManager, IStoreRepository repository, Storage storage)
+    public InstallItem CurrentInstall { get; private set; }
+
+    public InstallManager(ILogger logger, LibraryManager libraryManager, IStoreRepository repository, Storage storage)
     {
-        _log = log;
+        _logger = logger;
         _libraryManager = libraryManager;
-        _installQueue = new Queue<InstallItem>();
         CurrentInstall = null;
         _repository = repository;
         _storage = storage;
@@ -63,6 +58,11 @@ public class InstallManager
         _numberOfThreads = Environment.ProcessorCount;
     }
 
+    /// <summary>
+    /// Adds game to the install queue.
+    /// Starts processing it immediately if no other game is in the queue
+    /// </summary>
+    /// <param name="item"></param>
     public void AddToQueue(InstallItem item)
     {
         if (item == null)
@@ -71,7 +71,7 @@ public class InstallManager
         // check if the game is already in the queue
         if (_installQueue.Contains(item, new InstallItemComparer()))
         {
-            _log.Warning("AddToQueue: Game {Name} already in queue", item.AppName);
+            _logger.Warning("AddToQueue: Game {Name} already in queue", item.AppName);
             return;
         }
 
@@ -79,29 +79,29 @@ public class InstallManager
         var gameData = _libraryManager.GetGameInfo(item.AppName);
         if (gameData == null)
         {
-            _log.Warning("AddToQueue: Game {Name} not found in library", item.AppName);
+            _logger.Warning("AddToQueue: Game {Name} not found in library", item.AppName);
             return;
         }
 
         if (item.Action != ActionType.Install && gameData.InstallStatus == InstallState.NotInstalled)
         {
-            _log.Warning($"AddToQueue: {item.AppName} is not installed, cannot {item.Action.ToString()}");
+            _logger.Warning($"AddToQueue: {item.AppName} is not installed, cannot {item.Action.ToString()}");
             return;
         }
 
         if (item.Action != ActionType.Repair && item.Action != ActionType.Uninstall && gameData.InstallStatus == InstallState.Broken)
         {
-            _log.Warning($"AddToQueue: {item.AppName} is broken, forcing repair");
+            _logger.Warning($"AddToQueue: {item.AppName} is broken, forcing repair");
             item.Action = ActionType.Repair;
         }
 
         if (gameData.IsDlc())
         {
-            _log.Warning($"AddToQueue: {item.AppName} is a DLC. DLC Handling is disabled right now");
+            _logger.Warning($"AddToQueue: {item.AppName} is a DLC. DLC Handling is disabled right now");
             return;
         }
 
-        _log.Information("AddToQueue: Adding new Install to queue {Name} Action {Action}", item.AppName, item.Action);
+        _logger.Information("AddToQueue: Adding new Install to queue {Name} Action {Action}", item.AppName, item.Action);
         _installQueue.Enqueue(item);
         if (CurrentInstall == null)
             ProcessNext();
@@ -115,7 +115,7 @@ public class InstallManager
 
             CurrentInstall = _installQueue.Dequeue();
             if (CurrentInstall == null) return;
-            _log.Information("ProcessNext: Processing {Action} of {AppName}. Game Location {Location} ",
+            _logger.Information("ProcessNext: Processing {Action} of {AppName}. Game Location {Location} ",
                 CurrentInstall.Action, CurrentInstall.AppName, CurrentInstall.Location);
 
             var gameData = _libraryManager.GetGameInfo(CurrentInstall.AppName);
@@ -125,7 +125,7 @@ public class InstallManager
             gameData.BaseUrls = manifestData.BaseUrls;
             _storage.SaveMetaData(gameData);
 
-            _log.Information("ProcessNext: Parsing game manifest");
+            _logger.Information("ProcessNext: Parsing game manifest");
             var data = Manifest.ReadAll(manifestData.ManifestBytes);
 
             // TODO Handle stats if game is installed
@@ -137,18 +137,17 @@ public class InstallManager
                 if (!Directory.Exists(CurrentInstall.Location))
                 {
                     Directory.CreateDirectory(CurrentInstall.Location);
-                    _log.Debug("Folder created at: {location}", CurrentInstall.Location);
+                    _logger.Debug("Folder created at: {location}", CurrentInstall.Location);
                 }
             }
 
             if (!HasFolderWritePermissions(CurrentInstall.Location))
             {
-                _log.Error("ProcessNext: No write permissions to {Location}", CurrentInstall.Location);
-                CurrentInstall.Status = ActionStatus.Failed;
-                InstallationStatusChanged?.Invoke(CurrentInstall);
-                CurrentInstall = null;
-                ProcessNext();
+                await HandleInstallationFailure("No write permissions to install location");
+                return;
             }
+
+            ResetQueues();
 
             if (CurrentInstall.Action == ActionType.Install)
             {
@@ -158,7 +157,7 @@ public class InstallManager
             {
                 foreach (var fileManifest in data.FileManifestList.Elements)
                 {
-                    CurrentInstall.TotalWriteSizeMb += fileManifest.FileSize / 1000000.0;
+                    CurrentInstall.TotalWriteSizeMb += fileManifest.FileSize / 1024.0 / 1024.0;
 
                     var task = new IoTask()
                     {
@@ -166,8 +165,8 @@ public class InstallManager
                         TaskType = IoTaskType.Delete,
                         Size = fileManifest.FileSize,
                     };
-                    _log.Debug("ProcessNext: Adding ioTask: {task}", task);
-                    _ioQueue.Enqueue(task);
+                    _logger.Debug("ProcessNext: Adding ioTask: {task}", task);
+                    _ioQueue.Add(task);
                 }
             }
 
@@ -178,162 +177,192 @@ public class InstallManager
             _cancellationTokenSource = new CancellationTokenSource();
             _installStopWatch.Start();
 
-            for (var i = 0; i < _numberOfThreads; i++)
-            {
-                Thread thread1 = new(async () => await ProcessDownloadQueue());
-                Thread thread2 = new(() => new IoWorker(_log, ref _cancellationTokenSource, ref _ioQueue, this, ref _chunkPartReferences));
-                thread1.Start();
-                thread2.Start();
-            }
+            var downloadTasks = Enumerable.Range(0, _numberOfThreads)
+                .Select(_ => Task.Run(ProcessDownloadQueue, _cancellationTokenSource.Token))
+                .ToList();
+
+            var installTasks = Enumerable.Range(0, _numberOfThreads)
+                .Select(_ => Task.Run(ProcessIOQueue, _cancellationTokenSource.Token))
+                .ToList();
+
+            _downloadQueue.CompleteAdding();
+
+            await Task.WhenAll(downloadTasks);
+            _ioQueue.CompleteAdding();
+            await Task.WhenAll(installTasks);
+
+            await UpdateInstalledGameStatus();
+
         }
         catch (Exception ex)
         {
-            _log.Error("ProcessNext: {Exception}", ex);
-            await _cancellationTokenSource.CancelAsync();
-            if (CurrentInstall != null)
-            {
-                CurrentInstall.Status = ActionStatus.Failed;
-                InstallationStatusChanged?.Invoke(CurrentInstall);
-            }
-
-            CurrentInstall = null;
-            ProcessNext();
+            _logger.Error("ProcessNext: {Exception}", ex);
+            await HandleInstallationFailure("An error occurred during installation");
         }
     }
 
-    public InstallItem GameGameInQueue(string gameName)
+    private void ResetQueues()
     {
-        InstallItem item;
-        if (CurrentInstall != null && CurrentInstall.AppName == gameName)
-            item = CurrentInstall;
-        else
-            item = _installQueue.FirstOrDefault(r => r.AppName == gameName);
-        return item;
-    }
-
-    public void CancelInstall(string gameName)
-    {
-    }
-
-    public List<string> GetQueueItemNames()
-    {
-        return _installQueue.Select(item => item.AppName).ToList();
-    }
-
-    public List<string> GetHistoryItemsNames()
-    {
-        return _installHistory.Select(item => item.AppName).ToList();
-    }
-
-    private bool HasFolderWritePermissions(string folderPath)
-    {
-        try
-        {
-            // Create a DirectoryInfo object representing the specified directory.
-            var directoryInfo = new DirectoryInfo(folderPath);
-
-            // Get the access control list for the folder
-            var directorySecurity = directoryInfo.GetAccessControl();
-
-            // Get the access rules for the current user and their groups
-            var currentUser = WindowsIdentity.GetCurrent();
-            var principal = new WindowsPrincipal(currentUser);
-
-            var hasWritePermissions = directorySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
-                .Cast<FileSystemAccessRule>()
-                .Any(rule =>
-                    (currentUser.User.Equals(rule.IdentityReference) ||
-                     principal.IsInRole((SecurityIdentifier)rule.IdentityReference)) &&
-                    rule.AccessControlType == AccessControlType.Allow &&
-                    (rule.FileSystemRights & FileSystemRights.Write) == FileSystemRights.Write);
-
-            return hasWritePermissions;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _log.Error($"An error occurred: {ex.Message}");
-            return false;
-        }
-    }
-
-    public void StopProcessing()
-    {
-        _cancellationTokenSource.Cancel();
+        _downloadQueue.Dispose();
+        _ioQueue.Dispose();
+        _downloadQueue = [];
+        _ioQueue = [];
+        _ioQueueTaskSet.Clear();
     }
 
     private async Task ProcessDownloadQueue()
     {
-        while (!_cancellationTokenSource.IsCancellationRequested)
+        foreach (var downloadTask in _downloadQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
         {
-            if (_downloadQueue.TryDequeue(out var downloadTask))
+            try
             {
-                try
-                {
-                    _log.Debug("ProcessDownloadQueue: Downloading chunk with guid{guid} from {url} to {path}", downloadTask.Guid, downloadTask.Url, downloadTask.TempPath);
-                    await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
+                _logger.Debug("ProcessDownloadQueue: Downloading chunk with guid{guid} from {url} to {path}", downloadTask.GuidNum, downloadTask.Url, downloadTask.TempPath);
+                await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
 
-                    // Use a lock to synchronize writes to current install thread safe
-                    lock (_installItemLock)
-                    {
-                        CurrentInstall.DownloadedSize += downloadTask.ChunkInfo.FileSize / 1000000.0;
-
-                        CurrentInstall.DownloadSpeedRaw = _installStopWatch.IsRunning && _installStopWatch.Elapsed.TotalSeconds > 0
-                            ? Math.Round(CurrentInstall.DownloadedSize / _installStopWatch.Elapsed.TotalSeconds, 2)
-                            : 0;
-                        // Limit firing progress update events
-                        if ((DateTime.Now - _lastUpdateTime).TotalMilliseconds >= _progressUpdateIntervalInMS)
-                        {
-                            _lastUpdateTime = DateTime.Now;
-                            InstallProgressUpdate?.Invoke(CurrentInstall);
-                        }
-
-                    }
-
-                    // get file manifest from dictionary
-                    var fileManifests = _chunkToFileManifestsDictionary[downloadTask.Guid];
-                    foreach (var fileManifest in fileManifests)
-                    {
-                        foreach (var part in fileManifest.ChunkParts)
-                        {
-                            if (part.GuidStr != downloadTask.Guid) continue;
-
-                            _log.Debug("ProcessDownloadQueue: New file reference for chunk {guid} filename:{filename}", downloadTask.Guid, fileManifest.Filename);
-                            // keep track of files count to which the parts of chunk must be copied to
-                            _chunkPartReferences.AddOrUpdate(
-                                part.GuidStr,
-                                1, // Add with a count of 1 if not present
-                                (key, oldValue) => oldValue + 1 // Update: increment the count
-                            );
-
-                            var task = new IoTask()
-                            {
-                                SourceFilePath = downloadTask.TempPath,
-                                DestinationFilePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename),
-                                TaskType = IoTaskType.Copy,
-                                Size = part.Size,
-                                Offset = part.Offset,
-                                FileOffset = part.FileOffset,
-                                GuidStr = part.GuidStr
-                            };
-                            _log.Debug("ProcessDownloadQueue: Adding ioTask {task}", task);
-                            _ioQueue.Enqueue(task);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _log.Error("ProcessDownloadQueue: Exception: {ex}", ex);
-                    await FailInstall();
-                }
+                CreateIoTasksForChunk(downloadTask);
             }
-            else
+            catch (Exception ex)
             {
-                await Task.Delay(500);
+                _logger.Error("ProcessDownloadQueue: Exception: {ex}", ex);
+                await HandleInstallationFailure("Download task failed");
             }
+        }
+    }
+
+    private void CreateIoTasksForChunk(DownloadTask downloadTask)
+    {
+        // get file manifest from dictionary
+        var fileManifests = _chunkToFileManifestsDictionary[downloadTask.GuidNum];
+        foreach (var fileManifest in fileManifests)
+        {
+            foreach (var part in fileManifest.ChunkParts)
+            {
+                if (part.GuidNum != downloadTask.GuidNum) continue;
+
+                // mandatory check to prevent duplicate io tasks
+                var ioTaskHashString = $"{fileManifest.Filename}.{part.GuidNum}.{part.FileOffset}";
+                if (_ioQueueTaskSet.Contains(ioTaskHashString))
+                {
+                    continue;
+                }
+                _ioQueueTaskSet.Add(ioTaskHashString);
+
+                var task = new IoTask()
+                {
+                    SourceFilePath = downloadTask.TempPath,
+                    DestinationFilePath = Path.Combine(CurrentInstall.Location, fileManifest.
+                    Filename),
+                    TaskType = IoTaskType.Copy,
+                    Size = part.Size,
+                    Offset = part.Offset,
+                    FileOffset = part.FileOffset,
+                    GuidNum = part.GuidNum
+                };
+                _logger.Debug("ProcessDownloadQueue: Adding ioTask {task}", task);
+                _ioQueue.Add(task);
+            }
+        }
+    }
+
+    private async Task ProcessIOQueue()
+    {
+        foreach (var ioTask in _ioQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
+        {
+            try
+            {
+                switch (ioTask.TaskType)
+                {
+                    case IoTaskType.Copy:
+                        await ProcessCopyTask(ioTask);
+                        break;
+                    case IoTaskType.Delete:
+                        File.Delete(ioTask.DestinationFilePath);
+                        break;
+                }
+                UpdateInstallWriteProgress(ioTask.Size);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error("ProcessIoQueue: IO task failed with exception {ex}", ex);
+                await HandleInstallationFailure("Io Task failed");
+            }
+
+        }
+    }
+
+    private async Task ProcessCopyTask(IoTask ioTask)
+    {
+
+        EnsureDirectoryExists(ioTask.DestinationFilePath);
+
+        // Ensure there is a lock object for each destination file
+        var fileLock =
+            _fileLocksConcurrentDictionary.GetOrAdd(ioTask.DestinationFilePath, new object());
+
+        var compressedChunkData = await File.ReadAllBytesAsync(ioTask.SourceFilePath);
+        var chunk = Chunk.ReadBuffer(compressedChunkData);
+        _logger.Debug("ProcessIoQueue: Reading chunk buffers from {source} finished", ioTask.SourceFilePath);
+
+        lock (fileLock)
+        {
+            using var fileStream = new FileStream(ioTask.DestinationFilePath, FileMode.OpenOrCreate,
+            FileAccess.Write, FileShare.None);
+
+            _logger.Debug("ProcessIoQueue: Seeking {seek}bytes on file {destination}", ioTask.FileOffset, ioTask.DestinationFilePath);
+            fileStream.Seek(ioTask.FileOffset, SeekOrigin.Begin);
+
+            // Since chunk offset is a long we cannot use it directly in File stream write or read
+            // Use a memory stream to seek to the chunk offset
+            using var memoryStream = new MemoryStream(chunk.Data);
+            memoryStream.Seek(ioTask.Offset, SeekOrigin.Begin);
+
+            var remainingBytesToWrite = ioTask.Size;
+            // Buffer size is irrelevant as write is continuous
+            const int bufferSize = 4096;
+            var buffer = new byte[bufferSize];
+
+            _logger.Debug("ProcessIoQueue: Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
+
+            while (remainingBytesToWrite > 0)
+            {
+                var bytesToRead = (int)Math.Min(bufferSize, remainingBytesToWrite);
+                var bytesRead = memoryStream.Read(buffer, 0, bytesToRead);
+                fileStream.Write(buffer, 0, bytesRead);
+
+                remainingBytesToWrite -= bytesRead;
+            }
+
+            fileStream.Flush();
+            _logger.Debug("ProcessIoQueue: Finished Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
+        }
+
+        // Check for references to the chunk and decrement by one
+        int newCount = _chunkPartReferences.AddOrUpdate(
+            ioTask.GuidNum,
+            (key) => 0, // Not expected to be called as the key should exist
+            (key, oldValue) =>
+            {
+                _logger.Debug("ProcessIoQueue: decrementing reference count of {GuidNum} by 1. Current value:{oldValue}", ioTask.GuidNum, oldValue);
+                return oldValue - 1;
+            }
+        );
+
+        // Check if the updated count is 0 or less
+        if (newCount <= 0 && _chunkPartReferences.TryRemove(ioTask.GuidNum, out _))
+        {
+            _logger.Debug("ProcessIoQueue: Deleting chunk file {file}", ioTask.SourceFilePath);
+            // Delete the file if successfully removed
+            File.Delete(ioTask.SourceFilePath);
+        }
+    }
+
+    private void EnsureDirectoryExists(string filePath)
+    {
+
+        var directoryPath = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(directoryPath))
+        {
+            Directory.CreateDirectory(directoryPath);
         }
     }
 
@@ -346,14 +375,6 @@ public class InstallManager
     {
         try
         {
-            // Ensure we only fire this function once.
-            // Since we cannot use lock over entire function , lock access to a variable and check it allow access
-            lock (_finalizeInstallLock)
-            {
-                if (InstallFinalizing) return;
-                InstallFinalizing = true;
-            }
-
             if (CurrentInstall == null) return;
 
             // Intentional delay to wait till all files are written
@@ -366,7 +387,7 @@ public class InstallManager
             var gameData = _libraryManager.GetGameInfo(CurrentInstall.AppName);
             if (gameData == null)
             {
-                _log.Error("UpdateInstalledGameStatus: Found no game data for app name: {AppName}",
+                _logger.Error("UpdateInstalledGameStatus: Found no game data for app name: {AppName}",
                     CurrentInstall.AppName);
                 throw new Exception("Invalid game data");
             }
@@ -376,7 +397,7 @@ public class InstallManager
             if (installedGamesDictionary.Count > 0 && CurrentInstall.Action == ActionType.Uninstall)
             {
                 installedGamesDictionary.Remove(CurrentInstall.AppName);
-                _log.Information("UpdateInstalledGameStatus: Removing entry: {appName} from installed games list", CurrentInstall.AppName);
+                _logger.Information("UpdateInstalledGameStatus: Removing entry: {appName} from installed games list", CurrentInstall.AppName);
             }
             else
             {
@@ -400,7 +421,7 @@ public class InstallManager
                     // For now fail install
                     throw new Exception("UpdateInstalledGameStatus: Verification failed");
                 }
-                _log.Information("UpdateInstalledGameStatus: Verification successful for {appName}", CurrentInstall.AppName);
+                _logger.Information("UpdateInstalledGameStatus: Verification successful for {appName}", CurrentInstall.AppName);
 
                 await File.WriteAllBytesAsync(CurrentInstall.Location + "/.temp/manifest", manifestDataBytes.ManifestBytes);
 
@@ -433,7 +454,7 @@ public class InstallManager
                 };
                 }
 
-                _log.Information("UpdateInstalledGameStatus: Adding new entry installed games list {@entry}",
+                _logger.Information("UpdateInstalledGameStatus: Adding new entry installed games list {@entry}",
                     installedGame);
 
                 installedGamesDictionary.Add(gameData.AppName, installedGame);
@@ -449,7 +470,6 @@ public class InstallManager
                 _ => throw new ArgumentOutOfRangeException(),
             };
             _libraryManager.UpdateGameInfo(gameData);
-            InstallFinalizing = false;
 
             CurrentInstall.Status = ActionStatus.Success;
             InstallationStatusChanged?.Invoke(CurrentInstall);
@@ -458,7 +478,7 @@ public class InstallManager
         }
         catch (Exception ex)
         {
-            _log.Fatal("UpdateInstalledGameStatus: Exception {ex}", ex);
+            _logger.Fatal("UpdateInstalledGameStatus: Exception {ex}", ex);
 
             CurrentInstall.Status = ActionStatus.Failed;
             InstallationStatusChanged?.Invoke(CurrentInstall);
@@ -505,55 +525,78 @@ public class InstallManager
     /// <param name="data"></param>
     private void GetChunksToDownload(GetGameManifest manifestData, Manifest data)
     {
-        var addedChunkGuids = new HashSet<string>();
+        var addedChunkGuids = new HashSet<BigInteger>();
         var chunkDownloadList = new List<ChunkInfo>();
 
         foreach (var fileManifest in data.FileManifestList.Elements)
         {
             foreach (var chunkPart in fileManifest.ChunkParts)
             {
-                if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidStr, out var fileManifests))
+                if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidNum, out var fileManifests))
                 {
                     fileManifests.Add(fileManifest);
-                    _chunkToFileManifestsDictionary[chunkPart.GuidStr] = fileManifests;
+                    _chunkToFileManifestsDictionary[chunkPart.GuidNum] = fileManifests;
                 }
                 else
                 {
-                    _ = _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidStr,
+                    _ = _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidNum,
                         new List<FileManifest>() { fileManifest });
                 }
 
-                if (addedChunkGuids.Contains(chunkPart.GuidStr))
-                    continue;
+                _logger.Debug("ProcessDownloadQueue: New file reference for chunk {GuidNum} filename:{filename}", chunkPart.GuidNum, fileManifest.Filename);
+                // keep track of files count to which the parts of chunk must be copied to
+                _chunkPartReferences.AddOrUpdate(
+                    chunkPart.GuidNum,
+                    1, // Add with a count of 1 if not present
+                    (key, oldValue) => oldValue + 1 // Update: increment the count
+                );
 
-                addedChunkGuids.Add(chunkPart.GuidStr);
-                var chunkInfo = data.CDL.GetChunkByGuid(chunkPart.GuidStr);
+                if (addedChunkGuids.Contains(chunkPart.GuidNum))
+                {
+                    continue;
+                }
+
+                addedChunkGuids.Add(chunkPart.GuidNum);
+                var chunkInfo = data.CDL.GetChunkByGuidNum(chunkPart.GuidNum);
                 var newTask = new DownloadTask()
                 {
                     Url = manifestData.BaseUrls.FirstOrDefault() + "/" + chunkInfo.Path,
-                    TempPath = Path.Combine(CurrentInstall.Location, ".temp", (chunkInfo.GuidStr + ".chunk")),
-                    Guid = chunkInfo.GuidStr,
+                    TempPath = Path.Combine(CurrentInstall.Location, ".temp", (chunkInfo.GuidNum + ".chunk")),
+                    GuidNum = chunkInfo.GuidNum,
                     ChunkInfo = chunkInfo
                 };
-                _log.Debug("ProcessNext: Adding new download task {@task}", newTask);
+                _logger.Debug("ProcessNext: Adding new download task {@task}", newTask);
                 chunkDownloadList.Add(chunkInfo);
-                _downloadQueue.Enqueue(newTask);
+                _downloadQueue.Add(newTask);
 
-                CurrentInstall.TotalDownloadSizeMb += chunkInfo.FileSize / 1000000.0;
+                CurrentInstall.TotalDownloadSizeBytes += chunkInfo.FileSize;
             }
-            CurrentInstall.TotalWriteSizeMb += fileManifest.FileSize / 1000000.0;
+            CurrentInstall.TotalWriteSizeBytes += fileManifest.FileSize;
         }
+        CurrentInstall.TotalDownloadSizeMiB = CurrentInstall.TotalDownloadSizeBytes / 1024.0 / 1024.0;
+        CurrentInstall.TotalWriteSizeMb = CurrentInstall.TotalWriteSizeBytes / 1024.0 / 1024.0;
     }
 
-    public void UpdateInstallProgress(long ioTaskSize)
+    /// <summary>
+    /// Sends updated written size and write speed as event
+    /// </summary>
+    /// <param name="ioTaskSize"></param>
+    private void UpdateInstallWriteProgress(long ioTaskSize)
     {
         lock (_installItemLock)
         {
-            CurrentInstall.WrittenSize += ioTaskSize / 1000000.0;
-            CurrentInstall.WriteSpeed = _installStopWatch.IsRunning && _installStopWatch.Elapsed.TotalSeconds > 0
-                ? Math.Round(CurrentInstall.WrittenSize / _installStopWatch.Elapsed.TotalSeconds, 2)
+            CurrentInstall.WrittenSizeMiB += ioTaskSize / 1024.0 / 1024.0;
+
+            if (CurrentInstall.TotalWriteSizeMb < CurrentInstall.WrittenSizeMiB)
+            {
+                // Bruh Moment
+                _logger.Warning("shit went wrong");
+            }
+
+            CurrentInstall.WriteSpeedMiB = _installStopWatch.IsRunning && _installStopWatch.Elapsed.TotalSeconds > 0
+                ? Math.Round(CurrentInstall.WrittenSizeMiB / _installStopWatch.Elapsed.TotalSeconds, 2)
                 : 0;
-            CurrentInstall.ProgressPercentage = Convert.ToInt32((CurrentInstall.WrittenSize / CurrentInstall.TotalWriteSizeMb) * 100);
+            CurrentInstall.ProgressPercentage = Convert.ToInt32((CurrentInstall.WrittenSizeMiB / CurrentInstall.TotalWriteSizeMb) * 100);
 
             // Limit firing progress update events
             if ((DateTime.Now - _lastUpdateTime).TotalMilliseconds >= _progressUpdateIntervalInMS)
@@ -564,74 +607,135 @@ public class InstallManager
         }
     }
 
-    public void TryCheckInstallFinished()
-    {
-        if (_chunkPartReferences.Count <= 0 && _downloadQueue.IsEmpty && CurrentInstall != null)
-        {
-            _log.Information("ProcessIoQueue: Both queues are empty. Starting finalize stage");
-            _ = UpdateInstalledGameStatus();
-        }
-    }
-
-    public async Task FailInstall()
+    private async Task HandleInstallationFailure(string errorMessage)
     {
         await _cancellationTokenSource.CancelAsync();
         if (CurrentInstall != null)
         {
             CurrentInstall.Status = ActionStatus.Failed;
             InstallationStatusChanged?.Invoke(CurrentInstall);
+            _logger.Error("Installation failed: {ErrorMessage}", errorMessage);
             CurrentInstall = null;
         }
         ProcessNext();
     }
 
+    /// <summary>
+    ///  Retrieve the Total Size to download and as well as space for install
+    /// </summary>
+    /// <param name="appName"></param>
+    /// <returns></returns>
     public async Task<(double totalDownloadSizeMb, double totalWriteSizeMb)> GetGameDownloadInstallSizes(string appName)
     {
-        _log.Information($"GetGameDownloadInstallSizes: Getting game manifest of {appName}");
+        _logger.Information($"GetGameDownloadInstallSizes: Getting game manifest of {appName}");
         var gameData = _libraryManager.GetGameInfo(appName);
         var manifestData = await _repository.GetGameManifest(gameData.AssetInfos.Windows.Namespace,
             gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
 
         gameData.BaseUrls = manifestData.BaseUrls;
 
-        _log.Information($"GetGameDownloadInstallSizes: parsing game manifest of {appName}");
+        _logger.Information($"GetGameDownloadInstallSizes: parsing game manifest of {appName}");
         var manifest = Manifest.ReadAll(manifestData.ManifestBytes);
         var chunkDownloadList = new List<ChunkInfo>();
-        var addedChunkGuids = new HashSet<string>();
+        var addedChunkGuids = new HashSet<BigInteger>();
 
-        double totalDownloadSizeMb = 0;
-        double totalWriteSizeMb = 0;
+        double totalDownloadSizeBytes = 0;
+        double totalWriteSizeBytes = 0;
 
         foreach (var fileManifest in manifest.FileManifestList.Elements)
         {
             foreach (var chunkPart in fileManifest.ChunkParts)
             {
-                if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidStr, out var fileManifests))
+                if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidNum, out var fileManifests))
                 {
                     fileManifests.Add(fileManifest);
-                    _chunkToFileManifestsDictionary[chunkPart.GuidStr] = fileManifests;
+                    _chunkToFileManifestsDictionary[chunkPart.GuidNum] = fileManifests;
                 }
                 else
                 {
-                    _ = _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidStr,
+                    _ = _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidNum,
                         new List<FileManifest>() { fileManifest });
                 }
 
-                if (!addedChunkGuids.Contains(chunkPart.GuidStr))
+                if (!addedChunkGuids.Contains(chunkPart.GuidNum))
                 {
-                    var chunkInfo = manifest.CDL.GetChunkByGuid(chunkPart.GuidStr);
+                    var chunkInfo = manifest.CDL.GetChunkByGuidNum(chunkPart.GuidNum);
                     chunkDownloadList.Add(chunkInfo);
-                    addedChunkGuids.Add(chunkPart.GuidStr);
+                    addedChunkGuids.Add(chunkPart.GuidNum);
 
-                    totalDownloadSizeMb += chunkInfo.FileSize / 1000000.0;
+                    totalDownloadSizeBytes += chunkInfo.FileSize;
                 }
             }
-            totalWriteSizeMb += fileManifest.FileSize / 1000000.0;
+            totalWriteSizeBytes += fileManifest.FileSize;
         }
-        _log.Information($"GetGameDownloadInstallSizes: parsing total download size as {totalDownloadSizeMb} and write size as {totalWriteSizeMb}");
-        return (totalDownloadSizeMb, totalWriteSizeMb);
+        _logger.Information($"GetGameDownloadInstallSizes: parsing total download size as {totalDownloadSizeBytes} Bytes and write size as {totalWriteSizeBytes} Bytes");
+        return (totalDownloadSizeBytes / 1024.0 / 1024.0, totalWriteSizeBytes / 1024.0 / 1024.0);
     }
 
+    public InstallItem GameGameInQueue(string gameName)
+    {
+        InstallItem item;
+        if (CurrentInstall != null && CurrentInstall.AppName == gameName)
+            item = CurrentInstall;
+        else
+            item = _installQueue.FirstOrDefault(r => r.AppName == gameName);
+        return item;
+    }
+
+    public void CancelInstall(string gameName)
+    {
+        StopProcessing();
+    }
+
+    public List<string> GetQueueItemNames()
+    {
+        return _installQueue.Select(item => item.AppName).ToList();
+    }
+
+    public List<string> GetHistoryItemsNames()
+    {
+        return _installHistory.Select(item => item.AppName).ToList();
+    }
+
+    private bool HasFolderWritePermissions(string folderPath)
+    {
+        try
+        {
+            // Create a DirectoryInfo object representing the specified directory.
+            var directoryInfo = new DirectoryInfo(folderPath);
+
+            // Get the access control list for the folder
+            var directorySecurity = directoryInfo.GetAccessControl();
+
+            // Get the access rules for the current user and their groups
+            var currentUser = WindowsIdentity.GetCurrent();
+            var principal = new WindowsPrincipal(currentUser);
+
+            var hasWritePermissions = directorySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>()
+                .Any(rule =>
+                    (currentUser.User.Equals(rule.IdentityReference) ||
+                     principal.IsInRole((SecurityIdentifier)rule.IdentityReference)) &&
+                    rule.AccessControlType == AccessControlType.Allow &&
+                    (rule.FileSystemRights & FileSystemRights.Write) == FileSystemRights.Write);
+
+            return hasWritePermissions;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"An error occurred: {ex.Message}");
+            return false;
+        }
+    }
+
+    public void StopProcessing()
+    {
+        _cancellationTokenSource.Cancel();
+    }
 }
 
 internal class InstallItemComparer : IEqualityComparer<InstallItem>
@@ -651,9 +755,29 @@ public class DownloadTask
 {
     public string Url { get; set; }
 
-    public string Guid { get; set; }
+    public BigInteger GuidNum { get; set; }
 
     public string TempPath { get; set; }
 
     public ChunkInfo ChunkInfo { get; set; }
+}
+
+
+public class IoTask
+{
+    public string SourceFilePath { get; set; }
+    public string DestinationFilePath { get; set; }
+    public long Size { get; set; }
+    public long Offset { get; set; }
+    public long FileOffset { get; set; }
+    public IoTaskType TaskType { get; set; }
+    public BigInteger GuidNum { get; set; }
+}
+
+public enum IoTaskType
+{
+    Copy,
+    Create,
+    Delete,
+    Read
 }

@@ -10,14 +10,16 @@ public class InstallItem(string appName, ActionType action, string location)
     public int ProgressPercentage { get; set; }
     public TimeSpan RunningTime { get; set; }
     public TimeSpan Eta { get; set; }
-    public double TotalDownloadSizeMb { get; set; }
-    public double DownloadedSize { get; set; }
+    public double TotalDownloadSizeMiB { get; set; }
+    public double TotalDownloadSizeBytes { get; set; }
+    public double DownloadedSizeMiB { get; set; }
+    public double TotalWriteSizeBytes { get; set; }
     public double TotalWriteSizeMb { get; set; }
-    public double WrittenSize { get; set; }
-    public double DownloadSpeedRaw { get; set; }
-    public double DownloadSpeedDecompressed { get; set; }
-    public double ReadSpeed { get; set; }
-    public double WriteSpeed { get; set; }
+    public double WrittenSizeMiB { get; set; }
+    public double DownloadSpeedRawMiB { get; set; }
+    public double DownloadSpeedDecompressedMiB { get; set; }
+    public double ReadSpeedMiB { get; set; }
+    public double WriteSpeedMiB { get; set; }
     public DateTime CreatedTime { get; set; }
     public ActionStatus Status { get; set; } = ActionStatus.Pending;
 }

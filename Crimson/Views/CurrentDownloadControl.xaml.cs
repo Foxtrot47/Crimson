@@ -71,8 +71,8 @@ public sealed partial class CurrentDownloadControl : UserControl
                 ProgressBar.IsIndeterminate = false;
                 ProgressBar.Value = installItem.ProgressPercentage;
                 DownloadedSize.Text =
-                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.DownloadedSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalDownloadSizeMb)}";
-                DownloadSpeed.Text = $@"{installItem.DownloadSpeedRaw} MB/s";
+                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
+                DownloadSpeed.Text = $@"{installItem.DownloadSpeedRawMiB} MB/s";
                 break;
             case ActionStatus.Success:
                 DownloadedSize.Text = "Installation Completed";
@@ -106,8 +106,8 @@ public sealed partial class CurrentDownloadControl : UserControl
             {
                 ProgressBar.Value = installItem.ProgressPercentage;
                 DownloadedSize.Text =
-                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
-                DownloadSpeed.Text = $@"{installItem.DownloadSpeedRaw} MB/s";
+                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
+                DownloadSpeed.Text = $@"{installItem.DownloadSpeedRawMiB} MB /s";
             });
         }
         catch (Exception ex)

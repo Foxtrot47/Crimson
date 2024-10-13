@@ -90,8 +90,8 @@ public sealed partial class DownloadsPage : Page
                         DownloadProgressBar.IsIndeterminate = false;
                         DownloadProgressBar.Value = Convert.ToDouble(installItem.ProgressPercentage);
                         CurrentDownloadAction.Text = $@"{installItem.Action}ing";
-                        CurrentDownloadedSize.Text = $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
-                        CurrentDownloadSpeed.Text = $@"{installItem.DownloadSpeedRaw} MiB/s";
+                        CurrentDownloadedSize.Text = $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
+                        CurrentDownloadSpeed.Text = $"{installItem.DownloadSpeedRawMiB} MiB /s";
                     });
                     break;
                 case ActionStatus.Success:
@@ -199,8 +199,8 @@ public sealed partial class DownloadsPage : Page
             {
                 DownloadProgressBar.IsIndeterminate = false;
                 DownloadProgressBar.Value = Convert.ToDouble(installItem.ProgressPercentage);
-                CurrentDownloadedSize.Text = $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSize)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
-                CurrentDownloadSpeed.Text = $@"{installItem.DownloadSpeedRaw} MiB/s";
+                CurrentDownloadedSize.Text = $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
+                CurrentDownloadSpeed.Text = $@"{installItem.DownloadSpeedRawMiB} MiB/s";
             });
         }
         catch (Exception ex)
