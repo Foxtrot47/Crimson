@@ -219,6 +219,7 @@ public class InstallManager
                 _logger.Debug("ProcessDownloadQueue: Downloading chunk with guid{guid} from {url} to {path}", downloadTask.GuidNum, downloadTask.Url, downloadTask.TempPath);
                 await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
 
+                UpdateDownloadProgress(downloadTask.ChunkInfo.FileSize);
                 CreateIoTasksForChunk(downloadTask);
             }
             catch (Exception ex)
@@ -577,33 +578,45 @@ public class InstallManager
         CurrentInstall.TotalWriteSizeMb = CurrentInstall.TotalWriteSizeBytes / 1024.0 / 1024.0;
     }
 
-    /// <summary>
-    /// Sends updated written size and write speed as event
-    /// </summary>
-    /// <param name="ioTaskSize"></param>
+    private void UpdateDownloadProgress(long downloadedSize)
+    {
+        lock (_installItemLock)
+        {
+            CurrentInstall.DownloadedSizeMiB += downloadedSize / 1024.0 / 1024.0;
+            CurrentInstall.DownloadSpeedRawMiB = _installStopWatch.IsRunning && _installStopWatch.Elapsed.TotalSeconds > 0
+                ? Math.Round(CurrentInstall.DownloadedSizeMiB / _installStopWatch.Elapsed.TotalSeconds, 2)
+                : 0;
+
+            UpdateProgressIfNeeded();
+        }
+    }
+
     private void UpdateInstallWriteProgress(long ioTaskSize)
     {
         lock (_installItemLock)
         {
             CurrentInstall.WrittenSizeMiB += ioTaskSize / 1024.0 / 1024.0;
 
+            // bad very bad, should not happen
             if (CurrentInstall.TotalWriteSizeMb < CurrentInstall.WrittenSizeMiB)
             {
-                // Bruh Moment
-                _logger.Warning("shit went wrong");
+                return;
             }
 
             CurrentInstall.WriteSpeedMiB = _installStopWatch.IsRunning && _installStopWatch.Elapsed.TotalSeconds > 0
                 ? Math.Round(CurrentInstall.WrittenSizeMiB / _installStopWatch.Elapsed.TotalSeconds, 2)
                 : 0;
             CurrentInstall.ProgressPercentage = Convert.ToInt32((CurrentInstall.WrittenSizeMiB / CurrentInstall.TotalWriteSizeMb) * 100);
-
-            // Limit firing progress update events
-            if ((DateTime.Now - _lastUpdateTime).TotalMilliseconds >= _progressUpdateIntervalInMS)
-            {
-                _lastUpdateTime = DateTime.Now;
-                InstallProgressUpdate?.Invoke(CurrentInstall);
-            }
+            UpdateProgressIfNeeded();
+        }
+    }
+    private void UpdateProgressIfNeeded()
+    {
+        // Limit firing progress update events
+        if ((DateTime.Now - _lastUpdateTime).TotalMilliseconds >= _progressUpdateIntervalInMS)
+        {
+            _lastUpdateTime = DateTime.Now;
+            InstallProgressUpdate?.Invoke(CurrentInstall);
         }
     }
 
