@@ -102,7 +102,7 @@ public sealed partial class GameInfoPage : Page
     {
         try
         {
-            if (installItem == null) return;
+            if (installItem == null || installItem.AppName != Game.AppName) return;
             DispatcherQueue.TryEnqueue(() =>
             {
                 _log.Information("GameInfoPage: Installation Status Changed for {Game}", installItem.AppName);
