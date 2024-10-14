@@ -120,26 +120,27 @@ public sealed partial class DownloadsPage : Page
     {
         try
         {
+            DispatcherQueue.TryEnqueue(() => queueItems.Clear());
             var queueItemNames = _installManager.GetQueueItemNames();
             if (queueItemNames == null || queueItemNames.Count < 1) return;
 
-            DispatcherQueue.TryEnqueue(() => queueItems.Clear());
-
-            ObservableCollection<DownloadManagerItem> itemList = new();
-            foreach (var queueItemName in queueItemNames)
-            {
-
-                var gameInfo = _libraryManager.GetGameInfo(queueItemName);
-                if (gameInfo is null) continue;
-                itemList.Add(new DownloadManagerItem()
-                {
-                    Name = queueItemName,
-                    Title = gameInfo.AppTitle,
-                    Image = Util.GetBitmapImage(gameInfo.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
-                });
-            }
             DispatcherQueue.TryEnqueue(() =>
             {
+
+                ObservableCollection<DownloadManagerItem> itemList = new();
+                foreach (var queueItemName in queueItemNames)
+                {
+
+                    var gameInfo = _libraryManager.GetGameInfo(queueItemName);
+                    if (gameInfo is null) continue;
+                    itemList.Add(new DownloadManagerItem()
+                    {
+                        Name = queueItemName,
+                        Title = gameInfo.AppTitle,
+                        Image = Util.GetBitmapImage(gameInfo.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                    });
+
+                }
                 queueItems = itemList;
                 InstallQueueListView.ItemsSource = queueItems;
             });

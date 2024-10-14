@@ -27,7 +27,7 @@ public class InstallManager
     private readonly IStoreRepository _repository;
     private readonly Storage _storage;
 
-    private readonly Queue<InstallItem> _installQueue = new();
+    private readonly List<InstallItem> _installQueue = [];
     private readonly List<InstallItem> _installHistory = [];
 
     private readonly ConcurrentDictionary<string, object> _fileLocksConcurrentDictionary = new();
@@ -104,7 +104,7 @@ public class InstallManager
         }
 
         _logger.Information("AddToQueue: Adding new Install to queue {Name} Action {Action}", item.AppName, item.Action);
-        _installQueue.Enqueue(item);
+        _installQueue.Add(item);
         if (CurrentInstall == null)
             ProcessNext();
     }
@@ -115,7 +115,8 @@ public class InstallManager
         {
             if (CurrentInstall != null || _installQueue.Count <= 0) return;
 
-            CurrentInstall = _installQueue.Dequeue();
+            CurrentInstall = _installQueue[0];
+            _installQueue.RemoveAt(0);
             if (CurrentInstall == null) return;
             _logger.Information("ProcessNext: Processing {Action} of {AppName}. Game Location {Location} ",
                 CurrentInstall.Action, CurrentInstall.AppName, CurrentInstall.Location);
@@ -747,9 +748,23 @@ public class InstallManager
         return item;
     }
 
-    public void CancelInstall(string gameName)
+    public void CancelInstall(string appName)
     {
-        StopProcessing();
+        if (string.IsNullOrEmpty(appName))
+        {
+            _logger.Warning("RemoveFromQueue: Invalid app name provided");
+        }
+
+        if (CurrentInstall?.AppName == appName)
+        {
+            Task.Run(() => StopProcessing());
+        }
+
+        var removedItem = _installQueue.RemoveAll(item => item.AppName == appName);
+        if (removedItem > 0)
+        {
+            _logger.Information("RemoveFromQueue: Removed {AppName} from the install queue", appName);
+        }
     }
 
     public List<string> GetQueueItemNames()
