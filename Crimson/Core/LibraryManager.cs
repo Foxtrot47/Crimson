@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Crimson.Models;
 using Crimson.Repository;
@@ -195,7 +196,14 @@ public class LibraryManager
 
             foreach (var asset in gameAssetsList)
             {
-                if (asset.Namespace.Contains("ue")) continue;
+                // skip adding unreal engine assets
+                var pattern = @".*UE.*Windows";
+
+                // Check if the asset namespace or build version contains the pattern
+                if (asset.Namespace.Contains("ue") || Regex.IsMatch(asset.BuildVersion, pattern))
+                {
+                    continue;
+                }
 
                 var game = _storage.GetGameMetaData(asset.AppName);
                 var assetUpdated = false;
