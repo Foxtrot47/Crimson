@@ -39,8 +39,8 @@ jobs:
       uses: microsoft/setup-msbuild@v1.0.2
 
     # Create the app package by building and packaging the project
-    - name: Create the app package
-      run: dotnet publish -r win-$env:Platform --self-contained true /p:WindowsAppSDKSelfContained=true /p:PublishReadyToRun=true
+    - name: Create the app package 
+      run: dotnet publish -r win-$env:Platform --self-contained true
       env:
         Appx_Bundle: Never
         Appx_Package_Build_Mode: SideloadOnly
@@ -48,9 +48,9 @@ jobs:
         Configuration: ${{ matrix.configuration }}
         Platform: ${{ matrix.platform }}
 
-    # Upload the MSIX package: https://github.com/marketplace/actions/upload-a-build-artifact
-    - name: Upload MSIX package
+    # Upload the build output: https://github.com/marketplace/actions/upload-a-build-artifact
+    - name: Upload ZIP
       uses: actions/upload-artifact@v4
       with:
         name: Package
-        path: Crimson\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64\publish\
+        path: Crimson\bin\Release\net8.0-windows10.0.22621.0\win-x64\publish
