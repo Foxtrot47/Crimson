@@ -72,6 +72,13 @@ public sealed partial class CurrentDownloadControl : UserControl
                 ProgressBar.Value = installItem.ProgressPercentage;
                 DownloadedSize.Text =
                     $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
+                DownloadSpeed.Text = "Paused";
+                break;
+            case ActionStatus.Paused:
+                ProgressBar.IsIndeterminate = false;
+                ProgressBar.Value = installItem.ProgressPercentage;
+                DownloadedSize.Text =
+                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
                 DownloadSpeed.Text = $@"{installItem.DownloadSpeedRawMiB} MB/s";
                 break;
             case ActionStatus.Success:

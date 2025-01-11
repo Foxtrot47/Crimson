@@ -8,6 +8,7 @@ using System.Linq;
 using System.Numerics;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Models;
@@ -31,9 +32,10 @@ public class InstallManager
     private readonly List<InstallItem> _installHistory = [];
 
     private readonly ConcurrentDictionary<string, object> _fileLocksConcurrentDictionary = new();
-    private readonly ConcurrentDictionary<BigInteger, List<FileManifest>> _chunkToFileManifestsDictionary = new();
-    private readonly ConcurrentDictionary<BigInteger, int> _chunkPartReferences = new();
+    private ConcurrentDictionary<BigInteger, List<FileManifest>> _chunkToFileManifestsDictionary = new();
+    private ConcurrentDictionary<BigInteger, int> _chunkPartReferences = new();
     private readonly HashSet<string> _ioQueueTaskSet = [];
+    private readonly JsonSerializerOptions _jsonSerializerOptions;
 
     private readonly object _installItemLock = new();
     private readonly int _numberOfThreads;
@@ -41,11 +43,14 @@ public class InstallManager
 
     private BlockingCollection<DownloadTask> _downloadQueue = [];
     private BlockingCollection<IoTask> _ioQueue = [];
+    private BlockingCollection<BigInteger> _completedChunks = []; // Chunks that are downloaded and data written to all dependent files
     private List<Task> _downloadTasks;
     private List<Task> _installTasks;
     private CancellationTokenSource _cancellationTokenSource = new();
     private Stopwatch _installStopWatch = new();
     private DateTime _lastUpdateTime = DateTime.MinValue;
+    private ManualResetEventSlim _pauseEvent = new ManualResetEventSlim(true);
+
 
     public InstallItem CurrentInstall { get; private set; }
 
@@ -57,7 +62,11 @@ public class InstallManager
         _repository = repository;
         _storage = storage;
 
-        _numberOfThreads = Environment.ProcessorCount;
+        _numberOfThreads = 12;
+        _jsonSerializerOptions = new JsonSerializerOptions
+        {
+            Converters = { new BigIntegerJsonConverter() }
+        };
     }
 
     /// <summary>
@@ -109,14 +118,59 @@ public class InstallManager
             ProcessNext();
     }
 
-    private async void ProcessNext()
+    private async void ProcessNext(bool isResuming = false)
     {
         try
         {
-            if (CurrentInstall != null || _installQueue.Count <= 0) return;
+            if (isResuming == false && (CurrentInstall != null || _installQueue.Count <= 0)) return;
 
-            CurrentInstall = _installQueue[0];
-            _installQueue.RemoveAt(0);
+            if (!isResuming)
+            {
+                await PrepareTasks();
+            }
+
+            CurrentInstall!.Status = ActionStatus.Processing;
+            InstallationStatusChanged?.Invoke(CurrentInstall);
+
+            // Reset cancellation token
+            _cancellationTokenSource = new CancellationTokenSource();
+            _installStopWatch.Start();
+            _pauseEvent.Set();
+
+            _downloadTasks = Enumerable.Range(0, _numberOfThreads)
+                .Select(_ => Task.Run(ProcessDownloadQueue, _cancellationTokenSource.Token))
+                .ToList();
+
+            _installTasks = Enumerable.Range(0, 1)
+                .Select(_ => Task.Run(ProcessIOQueue, _cancellationTokenSource.Token))
+                .ToList();
+
+            _downloadQueue.CompleteAdding();
+
+            await Task.WhenAll(_downloadTasks);
+            _ioQueue.CompleteAdding();
+            await Task.WhenAll(_installTasks);
+
+            await UpdateInstalledGameStatus();
+
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("ProcessNext: {Exception}", ex);
+            await HandleInstallationStoppage("An error occurred during installation");
+        }
+    }
+
+    private async Task PrepareTasks(bool isResuming = false, List<BigInteger> downloadedChunks = null)
+    {
+        try
+        {
+            if (!isResuming)
+            {
+                CurrentInstall = _installQueue[0];
+                _installQueue.RemoveAt(0);
+            }
+
             if (CurrentInstall == null) return;
             _logger.Information("ProcessNext: Processing {Action} of {AppName}. Game Location {Location} ",
                 CurrentInstall.Action, CurrentInstall.AppName, CurrentInstall.Location);
@@ -154,7 +208,7 @@ public class InstallManager
 
             if (CurrentInstall.Action == ActionType.Install)
             {
-                GetChunksToDownload(manifestData, data);
+                GetChunksToDownload(manifestData, data, downloadedChunks);
             }
             else if (CurrentInstall.Action == ActionType.Uninstall)
             {
@@ -172,35 +226,10 @@ public class InstallManager
                     _ioQueue.Add(task);
                 }
             }
-
-            CurrentInstall!.Status = ActionStatus.Processing;
-            InstallationStatusChanged?.Invoke(CurrentInstall);
-
-            // Reset cancellation token
-            _cancellationTokenSource = new CancellationTokenSource();
-            _installStopWatch.Start();
-
-            _downloadTasks = Enumerable.Range(0, _numberOfThreads)
-                .Select(_ => Task.Run(ProcessDownloadQueue, _cancellationTokenSource.Token))
-                .ToList();
-
-            _installTasks = Enumerable.Range(0, _numberOfThreads)
-                .Select(_ => Task.Run(ProcessIOQueue, _cancellationTokenSource.Token))
-                .ToList();
-
-            _downloadQueue.CompleteAdding();
-
-            await Task.WhenAll(_downloadTasks);
-            _ioQueue.CompleteAdding();
-            await Task.WhenAll(_installTasks);
-
-            await UpdateInstalledGameStatus();
-
         }
         catch (Exception ex)
         {
-            _logger.Error("ProcessNext: {Exception}", ex);
-            await HandleInstallationStoppage("An error occurred during installation");
+            _logger.Error("Exception occured");
         }
     }
 
@@ -221,6 +250,9 @@ public class InstallManager
             {
                 try
                 {
+
+                    _pauseEvent.Wait(_cancellationTokenSource.Token);
+
                     _logger.Debug("ProcessDownloadQueue: Downloading chunk with guid{guid} from {url} to {path}", downloadTask.GuidNum, downloadTask.Url, downloadTask.TempPath);
                     await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
 
@@ -269,7 +301,8 @@ public class InstallManager
                     Size = part.Size,
                     Offset = part.Offset,
                     FileOffset = part.FileOffset,
-                    GuidNum = part.GuidNum
+                    GuidNum = part.GuidNum,
+                    SourceChunkGuidNum = downloadTask.GuidNum
                 };
                 _logger.Debug("ProcessDownloadQueue: Adding ioTask {task}", task);
                 _ioQueue.Add(task);
@@ -285,6 +318,8 @@ public class InstallManager
             {
                 try
                 {
+                    _pauseEvent.Wait(_cancellationTokenSource.Token);
+
                     switch (ioTask.TaskType)
                     {
                         case IoTaskType.Copy:
@@ -372,6 +407,7 @@ public class InstallManager
         // Check if the updated count is 0 or less
         if (newCount <= 0 && _chunkPartReferences.TryRemove(ioTask.GuidNum, out _))
         {
+            _completedChunks.Add(ioTask.SourceChunkGuidNum);
             _logger.Debug("ProcessIoQueue: Deleting chunk file {file}", ioTask.SourceFilePath);
             // Delete the file if successfully removed
             File.Delete(ioTask.SourceFilePath);
@@ -546,15 +582,23 @@ public class InstallManager
     /// </summary>
     /// <param name="manifestData"></param>
     /// <param name="data"></param>
-    private void GetChunksToDownload(GetGameManifest manifestData, Manifest data)
+    private void GetChunksToDownload(GetGameManifest manifestData, Manifest data, List<BigInteger> chunksToSkip = null)
     {
         var addedChunkGuids = new HashSet<BigInteger>();
         var chunkDownloadList = new List<ChunkInfo>();
+        double totalWrittenSize = 0;
 
         foreach (var fileManifest in data.FileManifestList.Elements)
         {
             foreach (var chunkPart in fileManifest.ChunkParts)
             {
+                if (chunksToSkip != null && chunksToSkip.FirstOrDefault(chunk => chunk == chunkPart.GuidNum) != 0)
+                {
+                    // Add up file sizes of all chunks written to subtract from total
+                    totalWrittenSize += chunkPart.Size;
+                    continue;
+                }
+
                 if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidNum, out var fileManifests))
                 {
                     fileManifests.Add(fileManifest);
@@ -583,7 +627,7 @@ public class InstallManager
                 var chunkInfo = data.CDL.GetChunkByGuidNum(chunkPart.GuidNum);
                 var newTask = new DownloadTask()
                 {
-                    Url = manifestData.BaseUrls.FirstOrDefault() + "/" + chunkInfo.Path,
+                    Url = manifestData.BaseUrls.LastOrDefault() + "/" + chunkInfo.Path,
                     TempPath = Path.Combine(CurrentInstall.Location, ".temp", (chunkInfo.GuidNum + ".chunk")),
                     GuidNum = chunkInfo.GuidNum,
                     ChunkInfo = chunkInfo
@@ -596,6 +640,7 @@ public class InstallManager
             }
             CurrentInstall.TotalWriteSizeBytes += fileManifest.FileSize;
         }
+        CurrentInstall.TotalWriteSizeBytes -= totalWrittenSize;
         CurrentInstall.TotalDownloadSizeMiB = CurrentInstall.TotalDownloadSizeBytes / 1024.0 / 1024.0;
         CurrentInstall.TotalWriteSizeMb = CurrentInstall.TotalWriteSizeBytes / 1024.0 / 1024.0;
     }
@@ -683,6 +728,17 @@ public class InstallManager
             _logger.Error("Installation cancelled");
         }
         CurrentInstall = null;
+
+        var state = new InstallManagerState
+        {
+            CurrentInstall = null,
+            IoQueue = null,
+            CompletedChunks = null
+        };
+
+        var json = JsonSerializer.Serialize(state, _jsonSerializerOptions);
+        _storage.SaveInstallState(json);
+
         ProcessNext();
     }
 
@@ -823,7 +879,87 @@ public class InstallManager
 
     private bool IsInstallationInProgress()
     {
-        return CurrentInstall != null && CurrentInstall.Status != ActionStatus.Cancelling && CurrentInstall.Status != ActionStatus.Failed && CurrentInstall.Status != ActionStatus.Cancelled;
+        return CurrentInstall != null &&
+            CurrentInstall.Status != ActionStatus.Cancelling &&
+            CurrentInstall.Status != ActionStatus.Failed &&
+            CurrentInstall.Status != ActionStatus.Cancelled &&
+            CurrentInstall.Status != ActionStatus.Paused;
+    }
+
+    public void PauseInstall()
+    {
+
+        if (IsInstallationInProgress())
+        {
+            _logger.Debug("Pausing installation of {game}", CurrentInstall.AppName);
+            _pauseEvent.Reset();
+
+            Thread.Sleep(2000);
+
+            _installStopWatch.Stop();
+            CurrentInstall.Status = ActionStatus.Paused;
+            InstallationStatusChanged?.Invoke(CurrentInstall);
+
+            var state = new InstallManagerState
+            {
+                CurrentInstall = CurrentInstall,
+                IoQueue = [.. _ioQueue],
+                CompletedChunks = [.. _completedChunks]
+            };
+
+            var json = JsonSerializer.Serialize(state, _jsonSerializerOptions);
+            _storage.SaveInstallState(json);
+            _logger.Information("Saved installation state");
+            _logger.Debug("Successfully paused installation of {game}", CurrentInstall.AppName);
+        }
+        else
+            _logger.Warning("Installation of {appName} is not in progress {state}", CurrentInstall.AppName, CurrentInstall.Status);
+    }
+
+    public void ResumeInstall()
+    {
+
+        if (CurrentInstall.Status == ActionStatus.Paused)
+        {
+            ProcessNext(true);
+            Thread.Sleep(2000);
+        }
+        else
+            _logger.Warning("Installation of {appName} is not paused {state}", CurrentInstall.AppName, CurrentInstall.Status);
+    }
+
+    public async Task LoadPendingInstalls()
+    {
+        string jsonData;
+        try
+        {
+            jsonData = _storage.GetInstallState();
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(jsonData))
+            return;
+
+        var state = JsonSerializer.Deserialize<InstallManagerState>(jsonData, _jsonSerializerOptions);
+        if (state == null) return;
+
+        if (state.CurrentInstall == null) return;
+
+        CurrentInstall = new InstallItem(state.CurrentInstall.AppName, state.CurrentInstall.Action, state.CurrentInstall.Location);
+
+        state.IoQueue.ForEach(task => _ioQueue.Add(task));
+        state.CompletedChunks.ForEach(chunk => _completedChunks.Add(chunk));
+
+        await PrepareTasks(true, state.CompletedChunks);
+
+        CurrentInstall.Status = ActionStatus.Paused;
+        InstallationStatusChanged?.Invoke(CurrentInstall);
+
+        _pauseEvent.Set();
+        //ProcessNext(true);
     }
 }
 
@@ -861,6 +997,7 @@ public class IoTask
     public long FileOffset { get; set; }
     public IoTaskType TaskType { get; set; }
     public BigInteger GuidNum { get; set; }
+    public BigInteger SourceChunkGuidNum { get; set; }
 }
 
 public enum IoTaskType
@@ -869,4 +1006,11 @@ public enum IoTaskType
     Create,
     Delete,
     Read
+}
+
+public class InstallManagerState
+{
+    public InstallItem CurrentInstall { get; set; }
+    public List<IoTask> IoQueue { get; set; }
+    public List<BigInteger> CompletedChunks { get; set; }
 }

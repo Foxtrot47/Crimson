@@ -5,6 +5,8 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Crimson.Models;
 using Serilog;
+using Windows.Networking.PushNotifications;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Crimson.Utils
 {
@@ -14,6 +16,8 @@ namespace Crimson.Utils
         private static readonly string GameAssetsFile;
         private static readonly string MetaDataDirectory;
         private static readonly string SettingsDataFile;
+        private static readonly string InstallationStateFile;
+        private static readonly string AppDataPath;
 
         private Dictionary<string, Game> _gameMetaDataDictionary;
         private Dictionary<string, InstalledGame> _installedGamesDictionary;
@@ -28,6 +32,8 @@ namespace Crimson.Utils
             GameAssetsFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\assets.json";
             MetaDataDirectory = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\metadata";
             SettingsDataFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\settings.json";
+            InstallationStateFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\install_state.json";
+            AppDataPath = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\";
         }
 
         public Storage()
@@ -189,8 +195,9 @@ namespace Crimson.Utils
         {
             using var fileStream = File.Open(SettingsDataFile, FileMode.Open, FileAccess.Read, FileShare.Read);
             using var streamReader = new StreamReader(fileStream);
+            var data = streamReader.ReadToEnd();
             fileStream.Dispose();
-            return streamReader.ReadToEnd();
+            return data;
         }
 
         public async Task SaveSettingsData(string data)
@@ -199,6 +206,35 @@ namespace Crimson.Utils
             await using var streamWriter = new StreamWriter(fileStream);
             await streamWriter.WriteAsync(data);
             streamWriter.Close();
+        }
+
+        public void SaveInstallState(string data)
+        {
+            using var fileStream = File.Open(InstallationStateFile, FileMode.Create, FileAccess.Write, FileShare.None);
+            using var streamWriter = new StreamWriter(fileStream);
+            streamWriter.Write(data);
+            streamWriter.Close();
+        }
+
+        public string GetInstallState()
+        {
+            using var fileStream = File.Open(InstallationStateFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var streamReader = new StreamReader(fileStream);
+            var data = streamReader.ReadToEnd();
+            fileStream.Close();
+            return data;
+
+        }
+
+        public static async Task SaveAppManifest(byte[] manifestBytes, string appName)
+        {
+            await File.WriteAllBytesAsync(Path.Join(AppDataPath, $"{appName}.manifest"), manifestBytes);
+        }
+
+        public static async Task<byte[]> GetAppManifest(string appName)
+        {
+            var data = await File.ReadAllBytesAsync(Path.Join(AppDataPath, $"{appName}.manifest"));
+            return data;
         }
     }
 }

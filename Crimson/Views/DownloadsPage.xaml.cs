@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Models;
 using Microsoft.UI.Xaml;
@@ -19,6 +20,8 @@ public sealed partial class DownloadsPage : Page
     private ObservableCollection<DownloadManagerItem> queueItems = new();
     private ObservableCollection<DownloadManagerItem> historyItems = new();
 
+    private bool _isInstallPausable = false;
+    private bool _isInstallResumable = false;
     private readonly ILogger _log;
     private readonly InstallManager _installManager;
     private readonly LibraryManager _libraryManager;
@@ -94,6 +97,16 @@ public sealed partial class DownloadsPage : Page
                         CurrentDownloadSpeed.Text = $"{installItem.DownloadSpeedRawMiB} MiB /s";
                     });
                     break;
+                case ActionStatus.Paused:
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        DownloadProgressBar.IsIndeterminate = false;
+                        DownloadProgressBar.Value = Convert.ToDouble(installItem.ProgressPercentage);
+                        CurrentDownloadAction.Text = "Paused";
+                        CurrentDownloadedSize.Text = $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
+                        CurrentDownloadSpeed.Text = $"{installItem.DownloadSpeedRawMiB} MiB /s";
+                    });
+                    break;
                 case ActionStatus.Success:
                 case ActionStatus.Failed:
                 case ActionStatus.Cancelled:
@@ -103,6 +116,28 @@ public sealed partial class DownloadsPage : Page
                     });
                     break;
             }
+            _isInstallPausable = installItem.Status == ActionStatus.Processing;
+            _isInstallResumable = installItem.Status == ActionStatus.Paused;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_isInstallResumable)
+                {
+                    ResumeInstallButton.Visibility = Visibility.Visible;
+                    PauseInstallButton.Visibility = Visibility.Collapsed;
+                }
+                else if (_isInstallPausable)
+                {
+                    ResumeInstallButton.Visibility = Visibility.Collapsed;
+                    PauseInstallButton.Visibility = Visibility.Visible;
+                    PauseInstallButton.IsEnabled = true;
+                }
+                else
+                {
+                    ResumeInstallButton.Visibility = Visibility.Collapsed;
+                    PauseInstallButton.Visibility = Visibility.Visible;
+                    PauseInstallButton.IsEnabled = false;
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -208,6 +243,16 @@ public sealed partial class DownloadsPage : Page
         {
             _log.Error(ex, "InstallationProgressUpdate: Error while updating progress");
         }
+    }
+
+    private void PauseInstallButton_Click(object sender, RoutedEventArgs e)
+    {
+        Task.Run(() => _installManager.PauseInstall());
+    }
+
+    private void ResumeInstallButton_Click(object sender, RoutedEventArgs e)
+    {
+        Task.Run(() => _installManager.ResumeInstall());
     }
 }
 public class DownloadManagerItem

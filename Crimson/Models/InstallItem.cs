@@ -42,5 +42,6 @@ public enum ActionStatus
     Processing,
     Failed,
     Cancelling,
-    Cancelled
+    Cancelled,
+    Paused
 }

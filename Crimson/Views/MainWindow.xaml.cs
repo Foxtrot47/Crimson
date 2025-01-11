@@ -20,6 +20,8 @@ public sealed partial class MainWindow : Window
     public bool IsLoggedIn;
     private ILogger _log = App.GetService<ILogger>();
     private readonly AuthManager _authManager;
+    private readonly InstallManager _installManager;
+
     WindowsSystemDispatcherQueueHelper _mWsdqHelper;
     MicaController _mBackdropController;
     SystemBackdropConfiguration _mConfigurationSource;
@@ -35,6 +37,7 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
 
         _authManager = App.GetService<AuthManager>();
+        _installManager = App.GetService<InstallManager>();
         _log = App.GetService<ILogger>();
 
         IsLoggedIn = false;
@@ -109,10 +112,6 @@ public sealed partial class MainWindow : Window
                 Log.Information("Logged in");
                 LoginModalTitle.Text = "Login Success";
 
-                //LibraryManager.Initialize(_legendaryBinaryPath, Log);
-                //_ = LibraryManager.UpdateLibraryAsync();
-                //InstallManager.Initialize(_legendaryBinaryPath, Log);
-
                 LoginPage.CloseWebView();
 
                 NavControl.Visibility = Visibility.Visible;
@@ -122,6 +121,8 @@ public sealed partial class MainWindow : Window
                 NavControl.SelectedItem = NavControl.MenuItems[0];
                 NavControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
                 Log.Information("Opening Library Page");
+
+                _installManager.LoadPendingInstalls();
                 break;
 
             case AuthenticationStatus.LoginFailed:
