@@ -19,26 +19,24 @@ namespace Crimson.Repository
         private const string OAuthHost = "account-public-service-prod03.ol.epicgames.com";
         private const string UserAgent = "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit";
 
-        private static readonly HttpClient HttpClient;
+        private readonly HttpClient _httpClient;
         private readonly ILogger _log;
         private readonly AuthManager _authManager;
 
-        static EpicGamesRepository()
-        {
-            HttpClient = new HttpClient();
-            HttpClient.DefaultRequestHeaders.Add("User-Agent", UserAgent);
-        }
-        public EpicGamesRepository(AuthManager authManager, ILogger logger)
+        public EpicGamesRepository(AuthManager authManager, ILogger logger, HttpClient httpClient)
         {
             _log = logger;
             _authManager = authManager;
+            _httpClient = httpClient;
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", UserAgent);
         }
+
         public async Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId)
         {
 
             _log.Information("FetchGameMetaData: Fetching game metadata");
             var accessToken = await _authManager.GetAccessToken();
-            HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
             // API requests parameters to be in query instead of body
             var qs = $"?id={catalogItemId}&includeDLCDetails=true&includeMainGameDetails=true&country=US&locale=en";
@@ -46,7 +44,7 @@ namespace Crimson.Repository
             try
             {
                 // Make the API call with the form data
-                var httpResponse = await HttpClient.GetAsync($"https://{CatalogHost}/catalog/api/shared/namespace/{nameSpace}/bulk/items{qs}");
+                var httpResponse = await _httpClient.GetAsync($"https://{CatalogHost}/catalog/api/shared/namespace/{nameSpace}/bulk/items{qs}");
                 // Check if the request was successful (status code 200)
                 if (httpResponse.IsSuccessStatusCode)
                 {
@@ -85,8 +83,8 @@ namespace Crimson.Repository
                 _log.Information("FetchGameAssets: Fetching game assets");
                 var accessToken = await _authManager.GetAccessToken();
 
-                HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-                var httpResponse = await HttpClient.GetAsync($"https://{LauncherHost}/launcher/api/public/assets/{platform}?label={label}");
+                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                var httpResponse = await _httpClient.GetAsync($"https://{LauncherHost}/launcher/api/public/assets/{platform}?label={label}");
 
                 if (httpResponse.IsSuccessStatusCode)
                 {
@@ -130,7 +128,7 @@ namespace Crimson.Repository
 
                     try
                     {
-                        var httpResponse = await HttpClient.GetAsync(url);
+                        var httpResponse = await _httpClient.GetAsync(url);
                         if (!httpResponse.IsSuccessStatusCode)
                         {
                             _log.Error($"Failed to fetch manifests from {url}, trying next url");
@@ -159,21 +157,29 @@ namespace Crimson.Repository
 
         public async Task DownloadFileAsync(string url, string destinationPath)
         {
-            var accessToken = await _authManager.GetAccessToken();
-            //HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-            using var response = await HttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-            response.EnsureSuccessStatusCode();
-
-            // Create the directory if it doesn't exist
-            var directoryPath = Path.GetDirectoryName(destinationPath);
-            if (!string.IsNullOrEmpty(directoryPath))
+            try
             {
-                Directory.CreateDirectory(directoryPath);
+                var accessToken = await _authManager.GetAccessToken();
+                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+                using var response = await _httpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode)
+                    throw new Exception($"File {url} failed to download");
+
+                // Create the directory if it doesn't exist
+                var directoryPath = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrEmpty(directoryPath))
+                {
+                    Directory.CreateDirectory(directoryPath);
+                }
+                await using var stream = await response.Content.ReadAsStreamAsync();
+                await using var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                await stream.CopyToAsync(fileStream);
             }
-            await using var stream = await response.Content.ReadAsStreamAsync();
-            await using var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            await stream.CopyToAsync(fileStream);
+            catch (Exception ex)
+            {
+                _log.Error("Failed to download file}", url);
+            }
         }
 
         public async Task<string> GetGameToken()
@@ -181,8 +187,8 @@ namespace Crimson.Repository
             try
             {
                 var accessToken = await _authManager.GetAccessToken();
-                HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-                using var response = await HttpClient.GetAsync($"https://{OAuthHost}/account/api/oauth/exchange");
+                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                using var response = await _httpClient.GetAsync($"https://{OAuthHost}/account/api/oauth/exchange");
                 response.EnsureSuccessStatusCode();
 
                 await using var stream = await response.Content.ReadAsStreamAsync();
@@ -204,8 +210,8 @@ namespace Crimson.Repository
                 _log.Information("GetGameManifest: Fetching game assets");
                 var accessToken = await _authManager.GetAccessToken();
 
-                HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-                var httpResponse = await HttpClient.GetAsync($"https://{LauncherHost}/launcher/api/public/assets/v2/platform/{platform}/namespace/{nameSpace}/catalogItem/{catalogItem}/app/{appName}/label/{label}");
+                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                var httpResponse = await _httpClient.GetAsync($"https://{LauncherHost}/launcher/api/public/assets/v2/platform/{platform}/namespace/{nameSpace}/catalogItem/{catalogItem}/app/{appName}/label/{label}");
 
                 if (httpResponse.IsSuccessStatusCode)
                 {

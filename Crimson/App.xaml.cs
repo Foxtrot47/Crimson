@@ -8,7 +8,9 @@ using Crimson.Views;
 using H.NotifyIcon;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.UI.Xaml;
+using Polly;
 using Serilog;
 
 namespace Crimson
@@ -65,6 +67,24 @@ namespace Crimson
                 services.AddSingleton<AuthManager>();
                 services.AddSingleton<LibraryManager>();
                 services.AddSingleton<InstallManager>();
+
+                services.AddHttpClient<IStoreRepository, EpicGamesRepository>().AddResilienceHandler(
+                    "CustomPipeline",
+                    static builder =>
+                    {
+                        // See: https://www.pollydocs.org/strategies/retry.html
+                        builder.AddRetry(new HttpRetryStrategyOptions
+                        {
+                            // Customize and configure the retry logic.
+                            BackoffType = DelayBackoffType.Exponential,
+                            MaxRetryAttempts = 5,
+                            UseJitter = true
+                        });
+
+
+                        // See: https://www.pollydocs.org/strategies/timeout.html
+                        builder.AddTimeout(TimeSpan.FromSeconds(5));
+                    });
 
                 services.AddTransient<SettingsViewModel>();
             }).
