@@ -1,15 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Crimson.Core;
-using Crimson.Models;
+﻿using Crimson.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Serilog;
-
 namespace Crimson.Views;
 
 /// <summary>
@@ -17,68 +10,12 @@ namespace Crimson.Views;
 /// </summary>
 public sealed partial class LibraryPage : Page
 {
-    public static List<LibraryItem> GamesList { get; set; }
-    public bool LoadingFinished = false;
-
-    // Get logger instance from MainWindow window class
-    private readonly ILogger _log;
-    private readonly LibraryManager _libraryManager;
+    public LibraryViewModel ViewModel => (LibraryViewModel)DataContext;
 
     public LibraryPage()
     {
         InitializeComponent();
-
-        _log = App.GetService<ILogger>();
-        _libraryManager = App.GetService<LibraryManager>();
-        _log.Information("LibraryPage: Loading Page");
-
-        LoadingSection.Visibility = Visibility.Visible;
-        GamesGrid.Visibility = Visibility.Collapsed;
-
-        Task.Run(async () =>
-        {
-            var games = await _libraryManager.GetLibraryData();
-            UpdateLibrary(games);
-        });
-
-        DataContext = this;
-        _libraryManager.LibraryUpdated += UpdateLibrary;
-        _log.Information("LibraryPage: Loading finished");
-    }
-
-    private void UpdateLibrary(IEnumerable<Game> games)
-    {
-        try
-        {
-            _log.Information("UpdateLibrary: Updating Library Page");
-            if (games == null) return;
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                GamesList = new List<LibraryItem>();
-                foreach (var game in games)
-                {
-                    if (game.IsDlc()) continue;
-                    var item = new LibraryItem
-                    {
-                        Name = game.AppName,
-                        Title = game.AppTitle,
-                        //InstallState = game.State,
-                        Image = Util.GetBitmapImage(game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
-                    };
-                    _log.Information($"UpdateLibrary: Adding {item.Name} to Library");
-                    GamesList.Add(item);
-                }
-                GamesList = GamesList.OrderBy(item => item.Title).ToList();
-                ItemsRepeater.ItemsSource = GamesList;
-                LoadingSection.Visibility = Visibility.Collapsed;
-                GamesGrid.Visibility = Visibility.Visible;
-            });
-            _log.Information("UpdateLibrary: Updated Library Page");
-        }
-        catch (Exception ex)
-        {
-            _log.Error(ex.ToString());
-        }
+        DataContext = App.GetService<LibraryViewModel>();
     }
 
     private void GameButton_Click(object sender, RoutedEventArgs e)
