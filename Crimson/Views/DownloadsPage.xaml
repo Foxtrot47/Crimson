@@ -4,61 +4,74 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:Crimson.Views"
     xmlns:utils="using:Crimson.Utils"
-    xmlns:toolkit="using:CommunityToolkit.WinUI.Converters"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
+
     <Grid Margin="50,20,50,20">
         <StackPanel Orientation="Vertical" Spacing="20">
             <TextBlock Style="{ThemeResource TitleTextBlockStyle}">Download Manger</TextBlock>
             <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Active Downloads</TextBlock>
-            <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" Padding="20" CornerRadius="10" x:Name="ActiveDownloadSection">
+            <Border 
+                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" 
+                Padding="20" 
+                CornerRadius="10" 
+                x:Name="ActiveDownloadSection"
+                Visibility="{x:Bind ViewModel.ShowCurrentDownload, Converter={StaticResource BoolToVisibilityConverter}, Mode=TwoWay}">
                 <StackPanel Orientation="Horizontal" Spacing="20">
                     <Image
-                        x:Name="CurrentDownloadImage"
-                        Height="200"></Image>
+                        Height="200"
+                        Source="{x:Bind ViewModel.CurrentInstallItemImageSource, Mode=TwoWay}"></Image>
                     <StackPanel Orientation="Vertical">
                         <TextBlock 
                             Style="{ThemeResource SubtitleTextBlockStyle}" 
-                            x:Name="CurrentDownloadTitle"
+                            Text="{x:Bind ViewModel.CurrentInstallItemName, Mode=TwoWay}"
                             />
                         <StackPanel Orientation="Horizontal" Spacing="30">
-                            <ProgressBar Height="50" Width="500" x:Name="DownloadProgressBar"></ProgressBar>
+                            <ProgressBar 
+                                Height="50" 
+                                Width="500" 
+                                Value="{x:Bind ViewModel.DownloadProgressBarValue, Mode=TwoWay}"
+                                IsIndeterminate="{x:Bind ViewModel.DownloadProgressBarIndeterminate, Mode=TwoWay}">
+                            </ProgressBar>
                             <Grid>
                                 <Button Height="30" 
                                     Width="30" 
                                     Padding="5" 
-                                    x:Name="PauseInstallButton" 
-                                    Click="PauseInstallButton_Click">
-                                    <FontIcon Glyph="&#xE769;" /> 
+                                    Visibility="{x:Bind ViewModel.ShowPauseButton, Mode=TwoWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    IsEnabled="{x:Bind ViewModel.EnablePauseButton, Mode=TwoWay}"   
+                                    Command="{x:Bind ViewModel.PauseInstallCommand}">
+                                    <FontIcon Glyph="&#xE769;" />
                                 </Button>
 
                                 <Button Height="30" 
                                     Width="30" 
-                                    Padding="5" 
-                                    x:Name="ResumeInstallButton" 
-                                    Click="ResumeInstallButton_Click">
+                                    Padding="5"
+                                    Visibility="{x:Bind ViewModel.ShowPauseButton, Converter={StaticResource BoolToInverseVisibilityConverter}, Mode=TwoWay}"
+                                    Command="{x:Bind ViewModel.ResumeInstallCommand}">
                                     <FontIcon Glyph="&#xE768;" />
                                 </Button>
                             </Grid>
-                            <Button Height="30" Width="30" Padding="5" x:Name="CancelInstallButton" Click="CancelInstallButton_OnClick">
+                            <Button Height="30" Width="30" Padding="5" x:Name="CancelInstallButton" Command="{x:Bind ViewModel.CancelInstallCommand}">
                                 <FontIcon Glyph="&#xE711;" />
                             </Button>
                         </StackPanel>
-                        <TextBlock Style="{ThemeResource BodyStrongTextBlockStyle}" x:Name="CurrentDownloadAction"></TextBlock>
-                        <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" x:Name="CurrentDownloadedSize"></TextBlock>
+                        <TextBlock Style="{ThemeResource BodyStrongTextBlockStyle}" Text="{x:Bind ViewModel.CurrentInstallAction, Mode=TwoWay}"></TextBlock>
+                        <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="{x:Bind ViewModel.CurrentDownloadSize, Mode=TwoWay}"></TextBlock>
                     </StackPanel>
 
                     <StackPanel Margin="30,0,0,0" Orientation="Vertical" Spacing="15">
                         <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" Style="{ThemeResource SubtitleTextBlockStyle}">Download Rate</TextBlock>
-                        <TextBlock x:Name="CurrentDownloadSpeed"></TextBlock>
+                        <TextBlock Text="{x:Bind ViewModel.CurrentDownloadSpeed, Mode=TwoWay}"></TextBlock>
                     </StackPanel>
 
                 </StackPanel>
             </Border>
 
             <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Install Queue</TextBlock>
-            <ListView x:Name="InstallQueueListView" ItemsSource="{x:Bind queueItems}">
+            <ListView x:Name="InstallQueueListView" ItemsSource="{x:Bind ViewModel.QueueItems, Mode=TwoWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:DownloadManagerItem">
                         <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
@@ -87,7 +100,7 @@
             </ListView>
 
             <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Previous Installs</TextBlock>
-            <ListView x:Name="HistoryItemsList" ItemsSource="{x:Bind historyItems}">
+            <ListView x:Name="HistoryItemsList" ItemsSource="{x:Bind ViewModel.HistoryItems, Mode=TwoWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:DownloadManagerItem">
                         <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
@@ -119,7 +132,7 @@
     </Grid>
 
     <Page.Resources>
-        <toolkit:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <utils:BoolToInverseVisibilityConverter x:Key="BoolToInverseVisibilityConverter"/>
     </Page.Resources>
 </Page>
