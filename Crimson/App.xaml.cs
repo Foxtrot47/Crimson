@@ -89,6 +89,7 @@ namespace Crimson
                 services.AddTransient<SettingsViewModel>();
                 services.AddTransient<DownloadsViewModel>();
                 services.AddTransient<LibraryViewModel>();
+                services.AddTransient<GameInfoViewModel>();
             }).
             Build();
         }

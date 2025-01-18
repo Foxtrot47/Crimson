@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:Crimson"
+    xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -20,7 +21,8 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Spacing="20">
-                <TextBlock Text="{x:Bind Game.AppTitle}" Style="{StaticResource TitleLargeTextBlockStyle}" />
+                <TextBlock Text="{x:Bind ViewModel.Game.AppTitle, Mode=OneWay}" 
+                         Style="{StaticResource TitleLargeTextBlockStyle}" />
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <FontIcon Glyph="&#xE735;" FontSize="15"/>
                     <FontIcon Glyph="&#xE735;" FontSize="15"/>
@@ -59,28 +61,26 @@
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Spacing="20">
-                    <Button
-                        x:Name="PrimaryActionButton"
-                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                        Background="{ThemeResource AccentFillColorDefaultBrush}"
-                        Padding="20,10,20,10"
-                        Click="DownloadButtonClick">
+                    <Button Command="{x:Bind ViewModel.PrimaryActionCommand}"
+                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                            Padding="20,10,20,10"
+                            IsEnabled="{x:Bind ViewModel.IsPrimaryActionEnabled, Mode=OneWay}">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <ProgressRing 
-                                x:Name="DownloadProgressRing" 
-                                Visibility="Collapsed"/>
+                                IsActive="True"
+                                Visibility="{x:Bind ViewModel.IsProgressRingVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                IsIndeterminate="{x:Bind ViewModel.IsProgressRingIndeterminate, Mode=OneWay}"
+                                Value="{x:Bind ViewModel.ProgressValue, Mode=OneWay}"/>
                             <FontIcon
-                                x:Name="PrimaryActionButtonIcon"
-                                Glyph="&#xE896;" />
+                                Glyph="{x:Bind ViewModel.PrimaryActionButtonGlyph, Mode=OneWay}" />
                             <TextBlock 
-                                x:Name="PrimaryActionButtonText"
-                                Style="{StaticResource SubtitleTextBlockStyle}">
-                                Download
-                            </TextBlock>
+                                Style="{StaticResource SubtitleTextBlockStyle}"
+                                Text="{x:Bind ViewModel.PrimaryActionButtonText, Mode=OneWay}"/>
                         </StackPanel>
                     </Button>
 
-                    <DropDownButton x:Name="DropDownSecondaryActions" IsEnabled="{x:Bind IsInstalled}">
+                    <DropDownButton IsEnabled="{x:Bind ViewModel.IsInstalled, Mode=OneWay}">
                         <DropDownButton.Content>
                             <StackPanel Orientation="Horizontal" Spacing="10" Padding="10,5,10,5">
                                 <FontIcon Glyph="&#xE713;" />
@@ -97,7 +97,7 @@
                                     </Style>
                                 </MenuFlyout.MenuFlyoutPresenterStyle>
                                 <MenuFlyout.Items>
-                                    <MenuFlyoutItem Text="Uninstall" Click="UninstallBtn_Click">
+                                    <MenuFlyoutItem Text="Uninstall" Command="{x:Bind ViewModel.UninstallCommand}">
                                         <MenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE74D;" />
                                         </MenuFlyoutItem.Icon>
@@ -106,14 +106,13 @@
                             </MenuFlyout>
                         </DropDownButton.Flyout>
                     </DropDownButton>
-
                 </StackPanel>
 
             </StackPanel>
 
             <StackPanel Grid.Column="1">
                 <Border BorderBrush="Black" BorderThickness="1" CornerRadius="10" Width="700" Height="400">
-                    <Image x:Name="TitleImage" Stretch="UniformToFill" />
+                    <Image Source="{x:Bind ViewModel.TitleImage, Mode=OneWay}" Stretch="UniformToFill" />
                 </Border>
             </StackPanel>
         </Grid>
@@ -128,10 +127,10 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Orientation="Horizontal" Spacing="10"  Grid.Column="0">
-                        <Image x:Name="ConfirmInstallImage" Width="64" Height="64" />
+                        <Image Source="{x:Bind ViewModel.ConfirmInstallAppImage, Mode=OneWay}" Width="64" Height="64" />
                         <StackPanel Orientation="Vertical">
                             <TextBlock 
-                                x:Name="ConfirmInstallTitleText" 
+                                Text="{x:Bind ViewModel.ConfirmInstallAppName, Mode=OneWay}"
                                 MaxWidth="500"
                                 Style="{StaticResource TitleTextBlockStyle}" 
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -142,13 +141,12 @@
                     </StackPanel>
 
                     <Button
+                        Grid.Column="2"
                         Margin="12,0,0,0"
                         Width="48"
                         Height="34"
                         VerticalAlignment="Top"
-                        x:Name="ConfirmInstallCloseButton"
-                        Click="ConfirmInstallCloseButton_OnClick"  Grid.Column="2">
-
+                        Command="{x:Bind ViewModel.CloseInstallDialogCommand}">
                         <FontIcon Glyph="&#xE711;" />
                     </Button>
                 </Grid>
@@ -165,21 +163,18 @@
                     <FontIcon Grid.Column="0" Glyph="&#xE8B7;" Margin="0,0,10,0" />
                     <TextBlock 
                         Grid.Column="1" 
-                        x:Name="InstallLocationText" 
+                        Text="{x:Bind ViewModel.InstallLocation, Mode=OneWay}"
                         Style="{StaticResource SubtitleTextBlockStyle}" 
-                        VerticalAlignment="Center"></TextBlock>
+                        VerticalAlignment="Center"/>
+
 
                     <Button
                         Grid.Column="2"
-                        x:Name="InstallLocationChangeButton"
+                        Command="{x:Bind ViewModel.ChangeInstallLocationCommand}"
                         Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
                         Background="{ThemeResource AccentFillColorDefaultBrush}"
-                        Padding="10,5,10,5"
-                        Click="InstallLocationChangeButton_OnClick">
-
-                        <FontIcon
-                                x:Name="InstallLocationChangeButtonIcon"
-                                Glyph="&#xE70F;" />
+                        Padding="10,5,10,5">
+                        <FontIcon Glyph="&#xE70F;" />
                     </Button>
 
                 </Grid>
@@ -193,19 +188,23 @@
                     <StackPanel Orientation="Vertical" VerticalAlignment="Center" Grid.Column="0">
                         <StackPanel Orientation="Horizontal" Spacing="5">
                             <FontIcon Glyph="&#xE896;"></FontIcon>
-                            <TextBlock x:Name="DownloadSize" FontSize="18" />
+                            <TextBlock Text="{x:Bind ViewModel.ConfirmInstallDownloadSizeText, Mode=OneWay}" FontSize="18" />
                             <TextBlock FontSize="18" Text="download size" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Spacing="5">
                             <FontIcon Glyph="&#xEDA2;"></FontIcon>
-                            <TextBlock x:Name="InstallSize" FontSize="18" />
+                            <TextBlock Text="{x:Bind ViewModel.ConfirmInstallSizeText, Mode=OneWay}" FontSize="18" />
                             <TextBlock FontSize="18" Text="install space required" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="1" HorizontalAlignment="Right" Margin="20,0,0,0">
                         <Button IsEnabled="False" Content="Import" FontSize="20" />
-                        <Button x:Name="PrimaryButton"  Style="{ThemeResource AccentButtonStyle}" FontSize="20" Content="Download" Click="PrimaryButton_Click" />
+                        <Button 
+                            Command="{x:Bind ViewModel.ConfirmInstallCommand}"
+                            Style="{ThemeResource AccentButtonStyle}" 
+                            FontSize="20" 
+                            Content="Download" />
                     </StackPanel>
                 </Grid>
             </StackPanel>
@@ -213,4 +212,7 @@
         </ContentDialog>
 
     </Grid>
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </Page.Resources>
 </Page>
