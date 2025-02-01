@@ -5,19 +5,18 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Crimson.Models;
 using Serilog;
-using Windows.Networking.PushNotifications;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Crimson.Utils
 {
     public class Storage
     {
+        private static readonly string AppDataPath = $@"{Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)}\Crimson";
         private static readonly string UserDataFile;
         private static readonly string GameAssetsFile;
         private static readonly string MetaDataDirectory;
         private static readonly string SettingsDataFile;
         private static readonly string InstallationStateFile;
-        private static readonly string AppDataPath;
+        private static readonly string InstalledGamesFile;
 
         private Dictionary<string, Game> _gameMetaDataDictionary;
         private Dictionary<string, InstalledGame> _installedGamesDictionary;
@@ -28,12 +27,12 @@ namespace Crimson.Utils
 
         static Storage()
         {
-            UserDataFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\user.json";
-            GameAssetsFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\assets.json";
-            MetaDataDirectory = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\metadata";
-            SettingsDataFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\settings.json";
-            InstallationStateFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\install_state.json";
-            AppDataPath = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\";
+            UserDataFile = $@"{AppDataPath}\user.json";
+            GameAssetsFile = $@"{AppDataPath}\assets.json";
+            MetaDataDirectory = $@"{AppDataPath}\metadata";
+            SettingsDataFile = $@"{AppDataPath}\settings.json";
+            InstallationStateFile = $@"{AppDataPath}\install_state.json";
+            InstalledGamesFile = $@"{AppDataPath}\installed.json";
         }
 
         public Storage()
@@ -74,14 +73,13 @@ namespace Crimson.Utils
                 _gameMetaDataDictionary = metaDataDictionary;
 
                 // Load installed games list
-                var installedGamesFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\installed.json";
-                if (!File.Exists(installedGamesFile))
+                if (!File.Exists(InstalledGamesFile))
                 {
                     _installedGamesDictionary = new Dictionary<string, InstalledGame>();
                 }
                 else
                 {
-                    var jsonString = File.ReadAllText(installedGamesFile);
+                    var jsonString = File.ReadAllText(InstalledGamesFile);
                     if (jsonString != null && jsonString != "")
                         _installedGamesDictionary =
                             JsonSerializer.Deserialize<Dictionary<string, InstalledGame>>(jsonString);
