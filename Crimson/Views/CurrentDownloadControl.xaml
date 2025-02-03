@@ -11,30 +11,36 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-            <TextBlock x:Name="EmptyDownloadText"
-                       Text="No Downloads in Queue"
-                       Visibility="Visible"
-                       Style="{ThemeResource BodyTextBlockStyle}"/>
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock
+                x:Name="EmptyDownloadText"
+                Style="{ThemeResource BodyTextBlockStyle}"
+                Text="No Downloads in Queue"
+                Visibility="Visible" />
         </StackPanel>
 
-        <Grid Margin="5" x:Name="DownloadStatus" Visibility="Collapsed">
+        <Grid
+            x:Name="DownloadStatus"
+            Margin="5"
+            Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="25" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <TextBlock 
-                Grid.Row="0" 
-                x:Name="GameName" 
-                Style="{ThemeResource SubtitleTextBlockStyle}"
-                TextWrapping="NoWrap"
+            <TextBlock
+                x:Name="GameName"
+                Grid.Row="0"
                 Width="300"
                 HorizontalAlignment="Left"
+                Style="{ThemeResource SubtitleTextBlockStyle}"
                 TextTrimming="WordEllipsis"
-                />
-            <ProgressBar x:Name="ProgressBar" Height="10" Grid.Row="1" />
+                TextWrapping="NoWrap" />
+            <ProgressBar
+                x:Name="ProgressBar"
+                Grid.Row="1"
+                Height="10" />
 
             <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
@@ -42,8 +48,15 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="DownloadedSize" Grid.Column="0" FontSize="16" Margin="0,0,10,0" />
-                <TextBlock x:Name="DownloadSpeed" Grid.Column="1" FontSize="16" />
+                <TextBlock
+                    x:Name="DownloadedSize"
+                    Grid.Column="0"
+                    Margin="0,0,10,0"
+                    FontSize="16" />
+                <TextBlock
+                    x:Name="DownloadSpeed"
+                    Grid.Column="1"
+                    FontSize="16" />
             </Grid>
         </Grid>
     </Grid>

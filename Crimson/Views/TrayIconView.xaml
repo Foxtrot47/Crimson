@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <UserControl
     x:Class="Crimson.Views.TrayIconView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -14,25 +14,15 @@
         ContextMenuMode="SecondWindow"
         LeftClickCommand="{x:Bind ShowHideWindowCommand}"
         NoLeftClickDelay="True"
-        ToolTipText="ToolTip"
-        >
+        ToolTipText="ToolTip">
         <tb:TaskbarIcon.IconSource>
-            <tb:GeneratedIconSource
-            Text="C"
-            Foreground="Red"
-            />
+            <tb:GeneratedIconSource Foreground="Red" Text="C" />
         </tb:TaskbarIcon.IconSource>
         <tb:TaskbarIcon.ContextFlyout>
             <MenuFlyout AreOpenCloseAnimationsEnabled="False">
-                <MenuFlyoutItem
-                    Command="{x:Bind ShowHideWindowCommand}"
-                    Text="Show/Hide Window"
-                    />
+                <MenuFlyoutItem Command="{x:Bind ShowHideWindowCommand}" Text="Show/Hide Window" />
                 <MenuFlyoutSeparator />
-                <MenuFlyoutItem
-                    Command="{x:Bind ExitApplicationCommand}"
-                    Text="Exit"
-                    />
+                <MenuFlyoutItem Command="{x:Bind ExitApplicationCommand}" Text="Exit" />
             </MenuFlyout>
         </tb:TaskbarIcon.ContextFlyout>
     </tb:TaskbarIcon>

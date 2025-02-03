@@ -2,69 +2,73 @@
     x:Class="Crimson.Views.DownloadsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:Crimson.Views"
-    xmlns:utils="using:Crimson.Utils"
-    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:Crimson.Views"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:utils="using:Crimson.Utils"
     mc:Ignorable="d">
 
     <Grid Margin="50,20,50,20">
         <StackPanel Orientation="Vertical" Spacing="20">
             <TextBlock Style="{ThemeResource TitleTextBlockStyle}">Download Manger</TextBlock>
             <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Active Downloads</TextBlock>
-            <Border 
-                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" 
-                Padding="20" 
-                CornerRadius="10" 
+            <Border
                 x:Name="ActiveDownloadSection"
+                Padding="20"
+                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                CornerRadius="10"
                 Visibility="{x:Bind ViewModel.ShowCurrentDownload, Converter={StaticResource BoolToVisibilityConverter}, Mode=TwoWay}">
                 <StackPanel Orientation="Horizontal" Spacing="20">
-                    <Image
-                        Height="200"
-                        Source="{x:Bind ViewModel.CurrentInstallItemImageSource, Mode=TwoWay}"></Image>
+                    <Image Height="200" Source="{x:Bind ViewModel.CurrentInstallItemImageSource, Mode=TwoWay}" />
                     <StackPanel Orientation="Vertical">
-                        <TextBlock 
-                            Style="{ThemeResource SubtitleTextBlockStyle}" 
-                            Text="{x:Bind ViewModel.CurrentInstallItemName, Mode=TwoWay}"
-                            />
+                        <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.CurrentInstallItemName, Mode=TwoWay}" />
                         <StackPanel Orientation="Horizontal" Spacing="30">
-                            <ProgressBar 
-                                Height="50" 
-                                Width="500" 
-                                Value="{x:Bind ViewModel.DownloadProgressBarValue, Mode=TwoWay}"
-                                IsIndeterminate="{x:Bind ViewModel.DownloadProgressBarIndeterminate, Mode=TwoWay}">
-                            </ProgressBar>
+                            <ProgressBar
+                                Width="500"
+                                Height="50"
+                                IsIndeterminate="{x:Bind ViewModel.DownloadProgressBarIndeterminate, Mode=TwoWay}"
+                                Value="{x:Bind ViewModel.DownloadProgressBarValue, Mode=TwoWay}" />
                             <Grid>
-                                <Button Height="30" 
-                                    Width="30" 
-                                    Padding="5" 
-                                    Visibility="{x:Bind ViewModel.ShowPauseButton, Mode=TwoWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                    IsEnabled="{x:Bind ViewModel.EnablePauseButton, Mode=TwoWay}"   
-                                    Command="{x:Bind ViewModel.PauseInstallCommand}">
+                                <Button
+                                    Width="30"
+                                    Height="30"
+                                    Padding="5"
+                                    Command="{x:Bind ViewModel.PauseInstallCommand}"
+                                    IsEnabled="{x:Bind ViewModel.EnablePauseButton, Mode=TwoWay}"
+                                    Visibility="{x:Bind ViewModel.ShowPauseButton, Mode=TwoWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <FontIcon Glyph="&#xE769;" />
                                 </Button>
 
-                                <Button Height="30" 
-                                    Width="30" 
+                                <Button
+                                    Width="30"
+                                    Height="30"
                                     Padding="5"
-                                    Visibility="{x:Bind ViewModel.ShowPauseButton, Converter={StaticResource BoolToInverseVisibilityConverter}, Mode=TwoWay}"
-                                    Command="{x:Bind ViewModel.ResumeInstallCommand}">
+                                    Command="{x:Bind ViewModel.ResumeInstallCommand}"
+                                    Visibility="{x:Bind ViewModel.ShowPauseButton, Converter={StaticResource BoolToInverseVisibilityConverter}, Mode=TwoWay}">
                                     <FontIcon Glyph="&#xE768;" />
                                 </Button>
                             </Grid>
-                            <Button Height="30" Width="30" Padding="5" x:Name="CancelInstallButton" Command="{x:Bind ViewModel.CancelInstallCommand}">
+                            <Button
+                                x:Name="CancelInstallButton"
+                                Width="30"
+                                Height="30"
+                                Padding="5"
+                                Command="{x:Bind ViewModel.CancelInstallCommand}">
                                 <FontIcon Glyph="&#xE711;" />
                             </Button>
                         </StackPanel>
-                        <TextBlock Style="{ThemeResource BodyStrongTextBlockStyle}" Text="{x:Bind ViewModel.CurrentInstallAction, Mode=TwoWay}"></TextBlock>
-                        <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="{x:Bind ViewModel.CurrentDownloadSize, Mode=TwoWay}"></TextBlock>
+                        <TextBlock Style="{ThemeResource BodyStrongTextBlockStyle}" Text="{x:Bind ViewModel.CurrentInstallAction, Mode=TwoWay}" />
+                        <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="{x:Bind ViewModel.CurrentDownloadSize, Mode=TwoWay}" />
                     </StackPanel>
 
-                    <StackPanel Margin="30,0,0,0" Orientation="Vertical" Spacing="15">
+                    <StackPanel
+                        Margin="30,0,0,0"
+                        Orientation="Vertical"
+                        Spacing="15">
                         <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" Style="{ThemeResource SubtitleTextBlockStyle}">Download Rate</TextBlock>
-                        <TextBlock Text="{x:Bind ViewModel.CurrentDownloadSpeed, Mode=TwoWay}"></TextBlock>
+                        <TextBlock Text="{x:Bind ViewModel.CurrentDownloadSpeed, Mode=TwoWay}" />
                     </StackPanel>
 
                 </StackPanel>
@@ -74,18 +78,21 @@
             <ListView x:Name="InstallQueueListView" ItemsSource="{x:Bind ViewModel.QueueItems, Mode=TwoWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:DownloadManagerItem">
-                        <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                Padding="0"
-                                Margin="0"
-                                CornerRadius="10"
-                                BorderThickness="0">
+                        <Border
+                            Margin="0"
+                            Padding="0"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            BorderThickness="0"
+                            CornerRadius="10">
                             <StackPanel Orientation="Horizontal" Spacing="20">
-                                <Image Source="{x:Bind Image}"
-                                       Stretch="UniformToFill"
-                                       Height="150" />
-                                <TextBlock Text="{x:Bind Title}" 
-                                           Style="{ThemeResource SubtitleTextBlockStyle}" 
-                                           VerticalAlignment="Center" />
+                                <Image
+                                    Height="150"
+                                    Source="{x:Bind Image}"
+                                    Stretch="UniformToFill" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Style="{ThemeResource SubtitleTextBlockStyle}"
+                                    Text="{x:Bind Title}" />
                             </StackPanel>
                         </Border>
                     </DataTemplate>
@@ -103,18 +110,21 @@
             <ListView x:Name="HistoryItemsList" ItemsSource="{x:Bind ViewModel.HistoryItems, Mode=TwoWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:DownloadManagerItem">
-                        <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                Padding="0"
-                                Margin="0"
-                                CornerRadius="10"
-                                BorderThickness="0">
+                        <Border
+                            Margin="0"
+                            Padding="0"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            BorderThickness="0"
+                            CornerRadius="10">
                             <StackPanel Orientation="Horizontal" Spacing="20">
-                                <Image Source="{x:Bind Image}"
-                                       Stretch="UniformToFill"
-                                       Height="150" />
-                                <TextBlock Text="{x:Bind Title}" 
-                                           Style="{ThemeResource SubtitleTextBlockStyle}" 
-                                           VerticalAlignment="Center" />
+                                <Image
+                                    Height="150"
+                                    Source="{x:Bind Image}"
+                                    Stretch="UniformToFill" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Style="{ThemeResource SubtitleTextBlockStyle}"
+                                    Text="{x:Bind Title}" />
                             </StackPanel>
                         </Border>
                     </DataTemplate>
@@ -132,7 +142,7 @@
     </Grid>
 
     <Page.Resources>
-        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-        <utils:BoolToInverseVisibilityConverter x:Key="BoolToInverseVisibilityConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <utils:BoolToInverseVisibilityConverter x:Key="BoolToInverseVisibilityConverter" />
     </Page.Resources>
 </Page>

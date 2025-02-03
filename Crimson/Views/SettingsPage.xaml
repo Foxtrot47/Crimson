@@ -1,13 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <Page
     x:Class="Crimson.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:ui="using:CommunityToolkit.WinUI"
     xmlns:local="using:Crimson.Views"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:ui="using:CommunityToolkit.WinUI"
     mc:Ignorable="d">
 
     <Page.Resources>
@@ -52,32 +52,30 @@
 
                 <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Appearance" />
 
-                <toolkit:SettingsCard 
-                    Header="Enable Mica" 
-                    Description="Enable the mica effects available on Windows 11">
-                   <ToggleSwitch IsOn="{x:Bind ViewModel.MicaEnabled, Mode=TwoWay}" />
+                <toolkit:SettingsCard Description="Enable the mica effects available on Windows 11" Header="Enable Mica">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.MicaEnabled, Mode=TwoWay}" />
                 </toolkit:SettingsCard>
 
                 <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Accounts" />
 
-                <toolkit:SettingsCard 
-                    Header="Logout" 
+                <toolkit:SettingsCard
                     Description="This will log you out from current account and restart the launcher"
+                    Header="Logout"
                     IsClickEnabled="True" />
 
                 <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Advanced Settings" />
 
-                <toolkit:SettingsExpander x:Name="AdvancedSettingsCard"
-                            Header="Show adavanced Settings"
-                            HeaderIcon="{ui:FontIcon Glyph=&#xE713;}"
-                            IsExpanded="{x:Bind ViewModel.AdvancedSettingsExpanded, Mode=TwoWay}">
+                <toolkit:SettingsExpander
+                    x:Name="AdvancedSettingsCard"
+                    Header="Show adavanced Settings"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE713;}"
+                    IsExpanded="{x:Bind ViewModel.AdvancedSettingsExpanded, Mode=TwoWay}">
 
                     <toolkit:SettingsExpander.Items>
                         <toolkit:SettingsCard
-                                Header="Open Logs Directory"
-                                IsClickEnabled="True"
-                                Command="{x:Bind ViewModel.OpenLogsDirectoryCommand}"
-                                />
+                            Command="{x:Bind ViewModel.OpenLogsDirectoryCommand}"
+                            Header="Open Logs Directory"
+                            IsClickEnabled="True" />
                     </toolkit:SettingsExpander.Items>
                 </toolkit:SettingsExpander>
 
