@@ -25,6 +25,8 @@ namespace Crimson.Utils
         public Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
         public Dictionary<string, InstalledGame> InstalledGamesDictionary => _installedGamesDictionary;
 
+        public string DefaultInstallPath => Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+
         static Storage()
         {
             UserDataFile = $@"{AppDataPath}\user.json";
@@ -233,6 +235,29 @@ namespace Crimson.Utils
         {
             var data = await File.ReadAllBytesAsync(Path.Join(AppDataPath, $"{appName}.manifest"));
             return data;
+        }
+
+        public async Task<System.IO.DriveInfo> GetDriveInfo(string path)
+        {
+            try
+            {
+                return await Task.Run(() =>
+                {
+                    var driveInfo = new System.IO.DriveInfo(Path.GetPathRoot(path));
+
+                    if (!driveInfo.IsReady)
+                    {
+                        throw new Exception($"Drive {driveInfo.Name} is not ready");
+                    }
+
+                    return driveInfo;
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to get drive info for path: {Path}", path);
+                throw;
+            }
         }
     }
 }

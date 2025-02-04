@@ -51,24 +51,6 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     [ObservableProperty]
     private BitmapImage _titleImage;
 
-    [ObservableProperty]
-    private string _confirmInstallAppName;
-
-    [ObservableProperty]
-    private BitmapImage _confirmInstallAppImage;
-
-    [ObservableProperty]
-    private string _installLocation;
-
-    [ObservableProperty]
-    private int _confirmInstallDialogWidth;
-
-    [ObservableProperty]
-    private string _confirmInstallDownloadSizeText;
-
-    [ObservableProperty]
-    private string _confirmInstallSizeText;
-
     // Event for showing install dialog
     public event Func<Task> ShowInstallDialogRequested;
     public event Action CloseInstallDialogRequested;
@@ -131,15 +113,6 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
                 await _libraryManager.LaunchApp(Game.AppName);
                 return;
             }
-            IsPrimaryActionEnabled = false;
-            ConfirmInstallAppName = Game.AppTitle;
-            ConfirmInstallAppImage = Game.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(Game.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
-            InstallLocation = $"C:\\Games\\{Game.AppTitle}";
-            ConfirmInstallDialogWidth = 4000;
-
-            var (totalDownloadSizeMb, totalWriteSizeMb) = await _installer.GetGameDownloadInstallSizes(Game.AppName);
-            ConfirmInstallDownloadSizeText = Util.ConvertMiBToGiBOrMiB(totalDownloadSizeMb);
-            ConfirmInstallSizeText = Util.ConvertMiBToGiBOrMiB(totalWriteSizeMb);
 
             if (ShowInstallDialogRequested != null)
             {
@@ -151,19 +124,6 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
             _log.Error(ex.ToString());
             IsProgressRingVisible = false;
             IsPrimaryActionEnabled = true;
-        }
-    }
-
-    [RelayCommand]
-    private async Task ChangeInstallLocation()
-    {
-        if (FolderPickerRequested != null)
-        {
-            var selectedPath = await FolderPickerRequested.Invoke();
-            if (!string.IsNullOrEmpty(selectedPath))
-            {
-                InstallLocation = $"{selectedPath}\\{Game.AppTitle}";
-            }
         }
     }
 
@@ -254,26 +214,6 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     {
         UnregisterEventHandlers();
 
-    }
-
-    [RelayCommand]
-    private void CloseInstallDialog()
-    {
-        CloseInstallDialogRequested?.Invoke();
-    }
-
-
-    [RelayCommand]
-    private void ConfirmInstall()
-    {
-        CloseInstallDialogRequested?.Invoke();
-        IsPrimaryActionEnabled = false;
-        PrimaryActionButtonText = "Pending...";
-        IsProgressRingVisible = true;
-        IsProgressRingIndeterminate = true;
-        PrimaryActionButtonGlyph = "";
-        _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Install, InstallLocation));
-        _log.Information("GameInfoViewModel: Added {Game} to Installation Queue", Game.AppTitle);
     }
 
     [RelayCommand]

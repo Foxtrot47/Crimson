@@ -791,7 +791,7 @@ public class InstallManager
             totalWriteSizeBytes += fileManifest.FileSize;
         }
         _logger.Information($"GetGameDownloadInstallSizes: parsing total download size as {totalDownloadSizeBytes} Bytes and write size as {totalWriteSizeBytes} Bytes");
-        return (totalDownloadSizeBytes / 1024.0 / 1024.0, totalWriteSizeBytes / 1024.0 / 1024.0);
+        return (totalDownloadSizeBytes, totalWriteSizeBytes);
     }
 
     public InstallItem GameGameInQueue(string gameName)

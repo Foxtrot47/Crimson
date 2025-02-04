@@ -52,6 +52,11 @@
     <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
         <ProjectCapability Include="Msix" />
     </ItemGroup>
+    <ItemGroup>
+      <Page Update="Controls\AppInstallDialog.xaml">
+        <Generator>MSBuild:Compile</Generator>
+      </Page>
+    </ItemGroup>
 
     <!-- 
     Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution 
