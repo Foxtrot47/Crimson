@@ -32,7 +32,7 @@ public sealed partial class MainWindow : Window
 
         // Disable setting mica as default
         // We will config later when we do configuration manager
-        //TrySetSystemBackdrop();
+        TrySetSystemBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 

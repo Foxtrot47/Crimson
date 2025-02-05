@@ -67,6 +67,7 @@ namespace Crimson
                 services.AddSingleton<AuthManager>();
                 services.AddSingleton<LibraryManager>();
                 services.AddSingleton<InstallManager>();
+                services.AddSingleton<DownloadManager>();
 
                 services.AddHttpClient<IStoreRepository, EpicGamesRepository>().AddResilienceHandler(
                     "CustomPipeline",
@@ -130,6 +131,12 @@ namespace Crimson
             }
 
             return service;
+        }
+
+        private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+        {
+            // TODO: Log and handle exceptions as appropriate.
+            // https://docs.microsoft.com/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.application.unhandledexception.
         }
     }
 }

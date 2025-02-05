@@ -25,6 +25,7 @@ public class InstallManager
 
     private readonly ILogger _logger;
     private readonly LibraryManager _libraryManager;
+    private readonly DownloadManager _downloadManager;
     private readonly IStoreRepository _repository;
     private readonly Storage _storage;
 
@@ -54,10 +55,12 @@ public class InstallManager
 
     public InstallItem CurrentInstall { get; private set; }
 
-    public InstallManager(ILogger logger, LibraryManager libraryManager, IStoreRepository repository, Storage storage)
+    public InstallManager(ILogger logger, LibraryManager libraryManager, IStoreRepository repository, Storage storage,
+        DownloadManager downloadManager)
     {
         _logger = logger;
         _libraryManager = libraryManager;
+        _downloadManager = downloadManager;
         CurrentInstall = null;
         _repository = repository;
         _storage = storage;
@@ -141,7 +144,7 @@ public class InstallManager
                 .Select(_ => Task.Run(ProcessDownloadQueue, _cancellationTokenSource.Token))
                 .ToList();
 
-            _installTasks = Enumerable.Range(0, 1)
+            _installTasks = Enumerable.Range(0, _numberOfThreads)
                 .Select(_ => Task.Run(ProcessIOQueue, _cancellationTokenSource.Token))
                 .ToList();
 
@@ -208,6 +211,7 @@ public class InstallManager
 
             if (CurrentInstall.Action == ActionType.Install)
             {
+                await _downloadManager.InitializeMirrors(manifestData.BaseUrls);
                 GetChunksToDownload(manifestData, data, downloadedChunks);
             }
             else if (CurrentInstall.Action == ActionType.Uninstall)
@@ -254,7 +258,7 @@ public class InstallManager
                     _pauseEvent.Wait(_cancellationTokenSource.Token);
 
                     _logger.Debug("ProcessDownloadQueue: Downloading chunk with guid{guid} from {url} to {path}", downloadTask.GuidNum, downloadTask.Url, downloadTask.TempPath);
-                    await _repository.DownloadFileAsync(downloadTask.Url, downloadTask.TempPath);
+                    await _downloadManager.DownloadFileWithFallback(downloadTask.Url, downloadTask.TempPath);
 
                     UpdateDownloadProgress(downloadTask.ChunkInfo.FileSize);
                     CreateIoTasksForChunk(downloadTask);
@@ -627,8 +631,8 @@ public class InstallManager
                 var chunkInfo = data.CDL.GetChunkByGuidNum(chunkPart.GuidNum);
                 var newTask = new DownloadTask()
                 {
-                    Url = manifestData.BaseUrls.LastOrDefault() + "/" + chunkInfo.Path,
-                    TempPath = Path.Combine(CurrentInstall.Location, ".temp", (chunkInfo.GuidNum + ".chunk")),
+                    Url = chunkInfo.Path,
+                    TempPath = Path.Combine(CurrentInstall.Location, ".Crimson", (chunkInfo.GuidNum + ".chunk")),
                     GuidNum = chunkInfo.GuidNum,
                     ChunkInfo = chunkInfo
                 };
