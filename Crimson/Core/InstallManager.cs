@@ -179,14 +179,26 @@ public class InstallManager
                 CurrentInstall.Action, CurrentInstall.AppName, CurrentInstall.Location);
 
             var gameData = _libraryManager.GetGameInfo(CurrentInstall.AppName);
-            var manifestData = await _repository.GetGameManifest(gameData.AssetInfos.Windows.Namespace,
+
+            var manifestData = await _storage.GetCachedManifestBytes(CurrentInstall.AppName);
+            var urlData = await _repository.GetManifestUrls(gameData.AssetInfos.Windows.Namespace,
                 gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
 
-            gameData.BaseUrls = manifestData.BaseUrls;
+            if (urlData == null)
+            {
+                _logger.Error($"GetGameManifest: Failed to get manifest urls for {CurrentInstall.AppName}");
+                throw new Exception("Cannot fetch manifest data");
+            }
+
+            if (manifestData == null || manifestData.Length < 1)
+            {
+                manifestData = await _repository.GetGameManifest(urlData);
+                await _storage.CacheManifestBytes(CurrentInstall.AppName, manifestData);
+            }
             _storage.SaveMetaData(gameData);
 
             _logger.Information("ProcessNext: Parsing game manifest");
-            var data = Manifest.ReadAll(manifestData.ManifestBytes);
+            var data = Manifest.ReadAll(manifestData);
 
             // TODO Handle stats if game is installed
 
@@ -211,8 +223,8 @@ public class InstallManager
 
             if (CurrentInstall.Action == ActionType.Install)
             {
-                await _downloadManager.InitializeMirrors(manifestData.BaseUrls);
-                GetChunksToDownload(manifestData, data, downloadedChunks);
+                await _downloadManager.InitializeMirrors(gameData.BaseUrls);
+                GetChunksToDownload(data, downloadedChunks);
             }
             else if (CurrentInstall.Action == ActionType.Uninstall)
             {
@@ -469,9 +481,23 @@ public class InstallManager
                     installedGame = new InstalledGame();
                 }
 
-                var manifestDataBytes = await _repository.GetGameManifest(gameData.AssetInfos.Windows.Namespace,
+                var manifestBytes = await _storage.GetCachedManifestBytes(CurrentInstall.AppName);
+                var urlData = await _repository.GetManifestUrls(gameData.AssetInfos.Windows.Namespace,
                     gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
-                var manifestData = Manifest.ReadAll(manifestDataBytes.ManifestBytes);
+
+                if (urlData == null)
+                {
+                    _logger.Error($"GetGameManifest: Failed to get manifest urls for {CurrentInstall.AppName}");
+                    throw new Exception("Cannot fetch manifest data");
+                }
+
+                if (manifestBytes == null || manifestBytes.Length < 1)
+                {
+                    manifestBytes = await _repository.GetGameManifest(urlData);
+                    await _storage.CacheManifestBytes(CurrentInstall.AppName, manifestBytes);
+                }
+                _storage.SaveMetaData(gameData);
+                var manifestData = Manifest.ReadAll(manifestBytes);
 
                 // Verify all the files
                 CurrentInstall.Action = ActionType.Verify;
@@ -486,7 +512,7 @@ public class InstallManager
                 }
                 _logger.Information("UpdateInstalledGameStatus: Verification successful for {appName}", CurrentInstall.AppName);
 
-                await File.WriteAllBytesAsync(CurrentInstall.Location + "/.temp/manifest", manifestDataBytes.ManifestBytes);
+                await File.WriteAllBytesAsync(CurrentInstall.Location + "/.temp/manifest", manifestBytes);
 
                 var canRunOffLine = gameData.Metadata.CustomAttributes.CanRunOffline.Value == "true";
                 var requireOwnerShipToken = gameData.Metadata.CustomAttributes?.OwnershipToken?.Value == "true";
@@ -586,7 +612,7 @@ public class InstallManager
     /// </summary>
     /// <param name="manifestData"></param>
     /// <param name="data"></param>
-    private void GetChunksToDownload(GetGameManifest manifestData, Manifest data, List<BigInteger> chunksToSkip = null)
+    private void GetChunksToDownload(Manifest data, List<BigInteger> chunksToSkip = null)
     {
         var addedChunkGuids = new HashSet<BigInteger>();
         var chunkDownloadList = new List<ChunkInfo>();
@@ -755,13 +781,25 @@ public class InstallManager
     {
         _logger.Information($"GetGameDownloadInstallSizes: Getting game manifest of {appName}");
         var gameData = _libraryManager.GetGameInfo(appName);
-        var manifestData = await _repository.GetGameManifest(gameData.AssetInfos.Windows.Namespace,
+
+        var manifestData = await _storage.GetCachedManifestBytes(appName);
+        var urlData = await _repository.GetManifestUrls(gameData.AssetInfos.Windows.Namespace,
             gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
 
-        gameData.BaseUrls = manifestData.BaseUrls;
+        if (urlData == null)
+        {
+            _logger.Error($"GetGameManifest: Failed to get manifest urls for {appName}");
+            throw new Exception("Cannot fetch manifest data");
+        }
+
+        if (manifestData == null || manifestData.Length < 1)
+        {
+            manifestData = await _repository.GetGameManifest(urlData);
+            await _storage.CacheManifestBytes(appName, manifestData);
+        }
 
         _logger.Information($"GetGameDownloadInstallSizes: parsing game manifest of {appName}");
-        var manifest = Manifest.ReadAll(manifestData.ManifestBytes);
+        var manifest = Manifest.ReadAll(manifestData);
         var chunkDownloadList = new List<ChunkInfo>();
         var addedChunkGuids = new HashSet<BigInteger>();
 

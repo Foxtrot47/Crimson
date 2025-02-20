@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Crimson.Models;
+using Crimson.Repository;
 using Serilog;
 
 namespace Crimson.Utils
@@ -17,6 +18,7 @@ namespace Crimson.Utils
         private static readonly string SettingsDataFile;
         private static readonly string InstallationStateFile;
         private static readonly string InstalledGamesFile;
+        private static readonly string ManifestPath;
 
         private Dictionary<string, Game> _gameMetaDataDictionary;
         private Dictionary<string, InstalledGame> _installedGamesDictionary;
@@ -35,6 +37,7 @@ namespace Crimson.Utils
             SettingsDataFile = $@"{AppDataPath}\settings.json";
             InstallationStateFile = $@"{AppDataPath}\install_state.json";
             InstalledGamesFile = $@"{AppDataPath}\installed.json";
+            ManifestPath = $@"{AppDataPath}\manifests";
         }
 
         public Storage()
@@ -44,6 +47,9 @@ namespace Crimson.Utils
             {
                 if (!Directory.Exists(MetaDataDirectory))
                     Directory.CreateDirectory(MetaDataDirectory);
+
+                if (!Directory.Exists(ManifestPath))
+                    Directory.CreateDirectory(ManifestPath);
 
                 var metaDataDictionary = new Dictionary<string, Game>();
 
@@ -257,6 +263,40 @@ namespace Crimson.Utils
             {
                 _logger.Error(ex, "Failed to get drive info for path: {Path}", path);
                 throw;
+            }
+        }
+
+        public async Task<byte[]> GetCachedManifestBytes(string appName)
+        {
+            try
+            {
+                var manifestPath = Path.Join(ManifestPath, $"{appName}.manifest");
+
+                if (!File.Exists(manifestPath))
+                {
+                    return null;
+                }
+
+                return await File.ReadAllBytesAsync(manifestPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to get cached manifest bytes for app: {AppName}", appName);
+                return null;
+            }
+
+        }
+
+        public async Task CacheManifestBytes(string appName, byte[] manifestBytes)
+        {
+            try
+            {
+                var manifestPath = Path.Join(ManifestPath, $"{appName}.manifest");
+                await File.WriteAllBytesAsync(manifestPath, manifestBytes);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to cache manifest bytes for app: {AppName}", appName);
             }
         }
     }
