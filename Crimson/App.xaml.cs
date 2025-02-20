@@ -47,7 +47,7 @@ namespace Crimson
                 services.AddSingleton<SettingsManager>();
                 services.AddSingleton<ILogger>(provider =>
                 {
-                    var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                     _ = Directory.CreateDirectory($@"{appDataPath}\Crimson\logs");
                     var logFilePath = $@"{appDataPath}\Crimson\logs\{DateTime.Now:yyyy-MM-dd}.txt";
 

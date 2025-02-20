@@ -106,53 +106,30 @@ namespace Crimson.Repository
 
         }
 
-        public async Task<GetGameManifest> GetGameManifest(string nameSpace, string catalogItem, string appName, bool disableHttps = false)
+        public async Task<byte[]> GetGameManifest(GetManifestUrlData urlData)
         {
-            try
+
+            foreach (var url in urlData.ManifestUrls)
             {
-                _log.Information($"GetGameManifest: Fetching manifest for {appName}");
-                var urlData = await GetManifestUrls(nameSpace, catalogItem, appName);
-                if (urlData == null)
-                {
-                    _log.Error($"GetGameManifest: Failed to get manifest urls for {appName}");
-                    throw new Exception("Cannot fetch manifest data");
-                }
-                if (disableHttps)
-                {
-                    urlData.ManifestUrls = urlData.ManifestUrls.Select(url => url.Replace("https", "http")).ToList();
-                }
+                _log.Information($"GetGameManifest: Trying to load manifests from {url}");
 
-                foreach (var url in urlData.ManifestUrls)
+                try
                 {
-                    _log.Information($"GetGameManifest: Trying to load manifests from {url}");
-
-                    try
-                    {
-                        var httpResponse = await _httpClient.GetAsync(url);
-                        if (!httpResponse.IsSuccessStatusCode)
-                        {
-                            _log.Error($"Failed to fetch manifests from {url}, trying next url");
-                            continue;
-                        }
-                        var result = await httpResponse.Content.ReadAsByteArrayAsync();
-                        return new GetGameManifest()
-                        {
-                            ManifestBytes = result,
-                            BaseUrls = urlData.BaseUrls,
-                        };
-                    }
-                    catch (Exception e)
+                    var httpResponse = await _httpClient.GetAsync(url);
+                    if (!httpResponse.IsSuccessStatusCode)
                     {
                         _log.Error($"Failed to fetch manifests from {url}, trying next url");
+                        continue;
                     }
+                    var result = await httpResponse.Content.ReadAsByteArrayAsync();
+                    return result;
                 }
-                return null;
+                catch (Exception e)
+                {
+                    _log.Error($"Failed to fetch manifests from {url}, trying next url");
+                }
             }
-            catch (Exception e)
-            {
-                _log.Error(e.ToString());
-                throw;
-            }
+            return null;
         }
 
         public async Task DownloadFileAsync(string url, string destinationPath)
@@ -203,7 +180,7 @@ namespace Crimson.Repository
             }
         }
 
-        private async Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live")
+        public async Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live")
         {
             try
             {
@@ -272,17 +249,11 @@ namespace Crimson.Repository
         }
     }
 
-    internal class GetManifestUrlData
+    public class GetManifestUrlData
     {
         public List<string> BaseUrls { get; set; }
         public List<string> ManifestUrls { get; set; }
         public string ManifestHash { get; set; }
-    }
-
-    public class GetGameManifest
-    {
-        public byte[] ManifestBytes { get; set; }
-        public List<string> BaseUrls { get; set; }
     }
 
     public static class StringExtensions

@@ -221,7 +221,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     {
         if (Game == null || Game.InstallStatus == InstallState.NotInstalled) return;
 
-        _storage.InstalledGamesDictionary.TryGetValue(Game.AppName, out var installedGame);
+        _storage.LocalAppStateDictionary.TryGetValue(Game.AppName, out var installedGame);
 
         if (installedGame == null)
         {

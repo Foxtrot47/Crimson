@@ -56,15 +56,6 @@ public class LibraryManager
         return _storage.GameMetaDataDictionary.Values.ToList();
     }
 
-    /// <summary>
-    /// Get list of installed games
-    /// </summary>
-    /// <returns></returns>
-    public IEnumerable<InstalledGame> GetInstalledGames()
-    {
-        return _storage.InstalledGamesDictionary.Values.ToList();
-    }
-
     public Game GetGameInfo(string name)
     {
         return _storage.GetGameMetaData(name);
@@ -89,7 +80,7 @@ public class LibraryManager
 
             _log.Information("LaunchApp: Trying to launch app: {@appName}", appName);
 
-            if (_storage.InstalledGamesDictionary.TryGetValue(appName, out var gameInfo))
+            if (_storage.LocalAppStateDictionary.TryGetValue(appName, out var gameInfo))
             {
                 await UpdateLibraryData(false, true);
                 var metaData = _storage.GetGameMetaData(appName);
@@ -187,7 +178,7 @@ public class LibraryManager
                     _log.Error("GetLibraryData: Error while fetching game assets");
                     return;
                 }
-
+                await _storage.SaveGameAssetsData(assets);
                 gameAssetsList = assets.ToList();
             }
 
