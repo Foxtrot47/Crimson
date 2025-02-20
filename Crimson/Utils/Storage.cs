@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Crimson.Models;
+using Crimson.Repository;
 using Serilog;
 
 namespace Crimson.Utils
@@ -16,14 +18,15 @@ namespace Crimson.Utils
         private static readonly string MetaDataDirectory;
         private static readonly string SettingsDataFile;
         private static readonly string InstallationStateFile;
-        private static readonly string InstalledGamesFile;
+        private static readonly string LocalAppStateFile;
+        private static readonly string ManifestPath;
 
         private Dictionary<string, Game> _gameMetaDataDictionary;
-        private Dictionary<string, InstalledGame> _installedGamesDictionary;
+        private Dictionary<string, LocalAppState> _installedGamesDictionary;
         private ILogger _logger;
 
         public Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
-        public Dictionary<string, InstalledGame> InstalledGamesDictionary => _installedGamesDictionary;
+        public Dictionary<string, LocalAppState> InstalledGamesDictionary => _installedGamesDictionary;
 
         public string DefaultInstallPath => Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
 
@@ -34,7 +37,8 @@ namespace Crimson.Utils
             MetaDataDirectory = $@"{AppDataPath}\metadata";
             SettingsDataFile = $@"{AppDataPath}\settings.json";
             InstallationStateFile = $@"{AppDataPath}\install_state.json";
-            InstalledGamesFile = $@"{AppDataPath}\installed.json";
+            LocalAppStateFile = $@"{AppDataPath}\localstate.json";
+            ManifestPath = $@"{AppDataPath}\manifests";
         }
 
         public Storage()
@@ -44,6 +48,9 @@ namespace Crimson.Utils
             {
                 if (!Directory.Exists(MetaDataDirectory))
                     Directory.CreateDirectory(MetaDataDirectory);
+
+                if (!Directory.Exists(ManifestPath))
+                    Directory.CreateDirectory(ManifestPath);
 
                 var metaDataDictionary = new Dictionary<string, Game>();
 
@@ -75,18 +82,18 @@ namespace Crimson.Utils
                 _gameMetaDataDictionary = metaDataDictionary;
 
                 // Load installed games list
-                if (!File.Exists(InstalledGamesFile))
+                if (!File.Exists(LocalAppStateFile))
                 {
-                    _installedGamesDictionary = new Dictionary<string, InstalledGame>();
+                    _installedGamesDictionary = new Dictionary<string, LocalAppState>();
                 }
                 else
                 {
-                    var jsonString = File.ReadAllText(InstalledGamesFile);
+                    var jsonString = File.ReadAllText(LocalAppStateFile);
                     if (jsonString != null && jsonString != "")
                         _installedGamesDictionary =
-                            JsonSerializer.Deserialize<Dictionary<string, InstalledGame>>(jsonString);
+                            JsonSerializer.Deserialize<Dictionary<string, LocalAppState>>(jsonString);
                     else
-                        _installedGamesDictionary = new Dictionary<string, InstalledGame>();
+                        _installedGamesDictionary = new Dictionary<string, LocalAppState>();
                 }
             }
             catch (Exception ex)
@@ -181,14 +188,22 @@ namespace Crimson.Utils
             _gameMetaDataDictionary.TryAdd(game.AppName, game);
         }
 
-        public void UpdateInstalledGames(Dictionary<string, InstalledGame> installedGamesDict)
+        public void UpdateInstalledGames(Dictionary<string, LocalAppState> installedGamesDict)
         {
             _installedGamesDictionary = installedGamesDict;
 
             var jsonString = JsonSerializer.Serialize(_installedGamesDictionary);
 
-            var fileName = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\installed.json";
-            File.WriteAllText(fileName, jsonString);
+            File.WriteAllText(LocalAppStateFile, jsonString);
+        }
+
+        public void AddToLocalAppState(string appName, LocalAppState appState)
+        {
+            _installedGamesDictionary[appName] = appState;
+
+            var jsonString = JsonSerializer.Serialize(_installedGamesDictionary);
+
+            File.WriteAllText(LocalAppStateFile, jsonString);
         }
 
         public string GetSettingsData()
@@ -257,6 +272,40 @@ namespace Crimson.Utils
             {
                 _logger.Error(ex, "Failed to get drive info for path: {Path}", path);
                 throw;
+            }
+        }
+
+        public async Task<byte[]> GetCachedManifestBytes(string appName)
+        {
+            try
+            {
+                var manifestPath = Path.Join(ManifestPath, $"{appName}.manifest");
+
+                if (!File.Exists(manifestPath))
+                {
+                    return null;
+                }
+
+                return await File.ReadAllBytesAsync(manifestPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to get cached manifest bytes for app: {AppName}", appName);
+                return null;
+            }
+
+        }
+
+        public async Task CacheManifestBytes(string appName, byte[] manifestBytes)
+        {
+            try
+            {
+                var manifestPath = Path.Join(ManifestPath, $"{appName}.manifest");
+                await File.WriteAllBytesAsync(manifestPath, manifestBytes);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to cache manifest bytes for app: {AppName}", appName);
             }
         }
     }

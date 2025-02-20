@@ -60,7 +60,7 @@ public class LibraryManager
     /// Get list of installed games
     /// </summary>
     /// <returns></returns>
-    public IEnumerable<InstalledGame> GetInstalledGames()
+    public IEnumerable<LocalAppState> GetInstalledGames()
     {
         return _storage.InstalledGamesDictionary.Values.ToList();
     }
@@ -187,7 +187,7 @@ public class LibraryManager
                     _log.Error("GetLibraryData: Error while fetching game assets");
                     return;
                 }
-
+                await _storage.SaveGameAssetsData(assets);
                 gameAssetsList = assets.ToList();
             }
 

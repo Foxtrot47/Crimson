@@ -2,10 +2,16 @@
 using System.Text.Json.Serialization;
 
 namespace Crimson.Models;
-public class InstalledGame
+public class LocalAppState
 {
     [JsonPropertyName("app_name")]
     public string AppName { get; set; }
+
+    [JsonPropertyName("install_status")]
+    public InstallState InstallStatus { get; set; } = InstallState.NotInstalled;
+
+    [JsonPropertyName("cached_manifest_version")]
+    public string CachedManifestVersion { get; set; }
 
     [JsonPropertyName("base_urls")]
     public List<string> BaseUrls { get; set; }
