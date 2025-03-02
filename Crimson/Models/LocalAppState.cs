@@ -62,3 +62,17 @@ public class LocalAppState
     public string Version { get; set; }
 
 }
+
+public enum InstallState
+{
+    NotInstalled,
+    Installing,
+    InstallationPaused,
+    Installed,
+    Playing,
+    Broken,
+    Repairing,
+    NeedUpdate,
+    Updating,
+    UpdatingPaused
+}

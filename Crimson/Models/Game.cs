@@ -7,22 +7,22 @@ namespace Crimson.Models;
 public class Game
 {
     [JsonPropertyName("app_name")]
-    public string AppName { get; set; }
+    public required string AppName { get; set; }
 
     [JsonPropertyName("app_title")]
-    public string AppTitle { get; set; }
+    public required string AppTitle { get; set; }
 
     [JsonPropertyName("asset_infos")]
-    public AssetInfos AssetInfos { get; set; }
+    public required AssetInfos AssetInfos { get; set; }
 
     [JsonPropertyName("base_urls")]
-    public List<string> BaseUrls { get; set; }
+    public List<string>? BaseUrls { get; set; }
 
     [JsonPropertyName("metadata")]
-    public Metadata Metadata { get; set; }
+    public required Metadata Metadata { get; set; }
 
-    [JsonPropertyName("install_status")]
-    public InstallState InstallStatus { get; set; } = InstallState.NotInstalled;
+    [JsonIgnore]
+    public LocalAppState? LocalAppState { get; set; }
 
     public bool IsDlc()
     {
@@ -33,25 +33,25 @@ public class Game
 public class AdditionalCommandLine
 {
     [JsonPropertyName("type")]
-    public string Type { get; set; }
+    public string? Type { get; set; }
 
     [JsonPropertyName("value")]
-    public string Value { get; set; }
+    public string? Value { get; set; }
 }
 
 public class AgeGatings
 {
     [JsonPropertyName("ESRB")]
-    public ESRB ESRB { get; set; }
+    public ESRB? ESRB { get; set; }
 }
 
 public class AllowMultipleInstances
 {
     [JsonPropertyName("type")]
-    public string Type { get; set; }
+    public string? Type { get; set; }
 
     [JsonPropertyName("value")]
-    public string Value { get; set; }
+    public string? Value { get; set; }
 }
 
 public class AppAccessType
@@ -66,7 +66,7 @@ public class AppAccessType
 public class AssetInfos
 {
     [JsonPropertyName("Windows")]
-    public Asset Windows { get; set; }
+    public required Asset Windows { get; set; }
 }
 
 public class AvailableDate
@@ -669,37 +669,23 @@ public class UseAccessControl
 public class Asset
 {
     [JsonPropertyName("appName")]
-    public string AppName { get; set; }
+    public required string AppName { get; set; }
 
     [JsonPropertyName("assetId")]
     public string AssetId { get; set; }
 
     [JsonPropertyName("buildVersion")]
-    public string BuildVersion { get; set; }
+    public required string BuildVersion { get; set; }
 
     [JsonPropertyName("catalogItemId")]
-    public string CatalogItemId { get; set; }
+    public required string CatalogItemId { get; set; }
 
     [JsonPropertyName("labelName")]
     public string LabelName { get; set; }
 
     [JsonPropertyName("metadata")]
-    public Metadata Metadata { get; set; }
+    public required Metadata Metadata { get; set; }
 
     [JsonPropertyName("namespace")]
-    public string Namespace { get; set; }
-}
-
-public enum InstallState
-{
-    NotInstalled,
-    Installing,
-    InstallationPaused,
-    Installed,
-    Playing,
-    Broken,
-    Repairing,
-    NeedUpdate,
-    Updating,
-    UpdatingPaused
+    public required string Namespace { get; set; }
 }

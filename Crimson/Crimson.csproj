@@ -13,6 +13,7 @@
         <EnableMsixTooling>true</EnableMsixTooling>        
 		<WindowsPackageType>None</WindowsPackageType>
 		<UseRidGraph>true</UseRidGraph>
+        <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <ItemGroup>

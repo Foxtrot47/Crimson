@@ -1,14 +1,14 @@
-﻿using Crimson.Core;
+﻿using System;
+using System.Linq;
+using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Crimson.Core;
 using Crimson.Interfaces;
 using Crimson.Models;
 using Crimson.Utils;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Serilog;
-using System;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Crimson.ViewModels;
 
@@ -22,10 +22,10 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     private readonly InstallManager _installer;
     private readonly LibraryManager _libraryManager;
     private readonly Storage _storage;
-    private readonly ILogger _log;
+    private readonly ILogger<GameInfoViewModel> _log;
 
     [ObservableProperty]
-    private Game _game;
+    private Game? _game;
 
     [ObservableProperty]
     private bool _isInstalled;
@@ -58,7 +58,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     // Event for requesting folder picker from view
     public event Func<Task<string>> FolderPickerRequested;
 
-    public GameInfoViewModel(ILogger logger,
+    public GameInfoViewModel(ILogger<GameInfoViewModel> logger,
             InstallManager installer,
             LibraryManager libraryManager,
             Storage storage)
@@ -105,11 +105,11 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     {
         try
         {
-            _log.Information("GameInfoPage: Primary Action Button Clicked for {Game}", Game.AppTitle);
+            _log.LogInformation("GameInfoPage: Primary Action Button Clicked for {Game}", Game.AppTitle);
             if (Game == null) return;
-            if (Game.InstallStatus == InstallState.Installed)
+            if (Game.LocalAppState?.InstallStatus == InstallState.Installed)
             {
-                _log.Information("GameInfoPage: Starting Game {Game}", Game.AppTitle);
+                _log.LogInformation("GameInfoPage: Starting Game {Game}", Game.AppTitle);
                 await _libraryManager.LaunchApp(Game.AppName);
                 return;
             }
@@ -121,7 +121,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         }
         catch (Exception ex)
         {
-            _log.Error(ex.ToString());
+            _log.LogError(ex, "PrimaryActionAsync: Exception");
             IsProgressRingVisible = false;
             IsPrimaryActionEnabled = true;
         }
@@ -142,7 +142,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
             if (installItem == null || installItem.AppName != Game.AppName) return;
             _dispatcherQueue.TryEnqueue(() =>
             {
-                _log.Information("GameInfoPage: Installation Status Changed for {Game}", installItem.AppName);
+                _log.LogInformation("GameInfoPage: Installation Status Changed for {Game}", installItem.AppName);
                 switch (installItem.Status)
                 {
                     case ActionStatus.Processing:
@@ -168,14 +168,14 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         }
         catch (Exception ex)
         {
-            _log.Error(ex.ToString());
+            _log.LogError(ex.ToString());
         }
     }
 
     private void CheckGameStatus(Game updatedGame)
     {
         if (updatedGame == null || updatedGame.AppName != Game.AppName) return;
-        _log.Information("GameInfoPage: Game Status Changed for {Game}", updatedGame.AppTitle);
+        _log.LogInformation("GameInfoPage: Game Status Changed for {Game}", updatedGame.AppTitle);
         Game = updatedGame;
 
         _dispatcherQueue.TryEnqueue(() =>
@@ -184,13 +184,16 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
             IsProgressRingVisible = false;
             IsPrimaryActionEnabled = true;
 
-            switch (Game.InstallStatus)
+            if (Game.LocalAppState == null || Game.LocalAppState?.InstallStatus == InstallState.NotInstalled)
             {
-                case InstallState.NotInstalled:
-                    PrimaryActionButtonText = "Install";
-                    PrimaryActionButtonGlyph = "\uE896";
-                    IsInstalled = false;
-                    break;
+                PrimaryActionButtonText = "Install";
+                PrimaryActionButtonGlyph = "\uE896";
+                IsInstalled = false;
+                return;
+            }
+
+            switch (Game.LocalAppState?.InstallStatus)
+            {
                 case InstallState.Installed:
                     PrimaryActionButtonText = "Play";
                     PrimaryActionButtonGlyph = "\uE768";
@@ -219,18 +222,18 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     [RelayCommand]
     private void Uninstall()
     {
-        if (Game == null || Game.InstallStatus == InstallState.NotInstalled) return;
+        if (Game?.LocalAppState == null || Game.LocalAppState.InstallStatus == InstallState.NotInstalled) return;
 
         _storage.LocalAppStateDictionary.TryGetValue(Game.AppName, out var installedGame);
 
         if (installedGame == null)
         {
-            _log.Information("ProcessNext: Attempting to uninstall not installed game");
+            _log.LogInformation("ProcessNext: Attempting to uninstall not installed game");
             return;
         }
 
         _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Uninstall, installedGame.InstallPath));
-        _log.Information("GameInfoPage: Added {Game} to Installation Queue", Game.AppTitle);
+        _log.LogInformation("GameInfoPage: Added {Game} to Installation Queue", Game.AppTitle);
     }
 
     public void Cleanup()

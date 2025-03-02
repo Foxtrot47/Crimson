@@ -53,7 +53,7 @@ public class InstallManager
     private ManualResetEventSlim _pauseEvent = new ManualResetEventSlim(true);
 
 
-    public InstallItem CurrentInstall { get; private set; }
+    public InstallItem? CurrentInstall { get; private set; }
 
     public InstallManager(ILogger logger, LibraryManager libraryManager, IStoreRepository repository, Storage storage,
         DownloadManager downloadManager)
@@ -97,13 +97,13 @@ public class InstallManager
             return;
         }
 
-        if (item.Action != ActionType.Install && gameData.InstallStatus == InstallState.NotInstalled)
+        if (item.Action != ActionType.Install && (gameData.LocalAppState == null || gameData.LocalAppState?.InstallStatus == InstallState.NotInstalled))
         {
             _logger.Warning($"AddToQueue: {item.AppName} is not installed, cannot {item.Action.ToString()}");
             return;
         }
 
-        if (item.Action != ActionType.Repair && item.Action != ActionType.Uninstall && gameData.InstallStatus == InstallState.Broken)
+        if (item.Action != ActionType.Repair && item.Action != ActionType.Uninstall && gameData.LocalAppState?.InstallStatus == InstallState.Broken)
         {
             _logger.Warning($"AddToQueue: {item.AppName} is broken, forcing repair");
             item.Action = ActionType.Repair;
@@ -432,6 +432,12 @@ public class InstallManager
     /// <exception cref="ArgumentOutOfRangeException"></exception>
     private async Task UpdateInstalledGameStatus()
     {
+        if (CurrentInstall == null)
+        {
+            _logger.Fatal("UpdateInstalledGameStatus: Current Install is null. Shits bad");
+            return;
+        }
+
         try
         {
             if (!IsInstallationInProgress())
@@ -452,7 +458,7 @@ public class InstallManager
                 throw new Exception("Invalid game data");
             }
 
-            if (!_storage.LocalAppStateDictionary.TryGetValue(CurrentInstall.AppName, out var installedGame))
+            if (!_storage.LocalAppStateDictionary.TryGetValue(CurrentInstall.AppName, out var localAppState))
             {
                 // should never occur
                 _logger.Fatal("UpdateInstalledGameStatus: Found no installed game data for app name: {AppName}",
@@ -494,30 +500,32 @@ public class InstallManager
             var canRunOffLine = gameData.Metadata.CustomAttributes.CanRunOffline.Value == "true";
             var requireOwnerShipToken = gameData.Metadata.CustomAttributes?.OwnershipToken?.Value == "true";
 
-            installedGame.InstallStatus = InstallState.Installed;
-            installedGame.BaseUrls = gameData.BaseUrls;
-            installedGame.CanRunOffline = canRunOffLine;
-            installedGame.Executable = manifestData.ManifestMeta.LaunchExe;
-            installedGame.InstallPath = CurrentInstall.Location;
-            installedGame.LaunchParameters = manifestData.ManifestMeta.LaunchCommand;
-            installedGame.RequiresOt = requireOwnerShipToken;
-            installedGame.Version = manifestData.ManifestMeta.BuildVersion;
-            installedGame.Title = gameData.AppTitle;
+            localAppState.InstallStatus = InstallState.Installed;
+            localAppState.BaseUrls = gameData.BaseUrls;
+            localAppState.CanRunOffline = canRunOffLine;
+            localAppState.Executable = manifestData.ManifestMeta.LaunchExe;
+            localAppState.InstallPath = CurrentInstall.Location;
+            localAppState.LaunchParameters = manifestData.ManifestMeta.LaunchCommand;
+            localAppState.RequiresOt = requireOwnerShipToken;
+            localAppState.Version = manifestData.ManifestMeta.BuildVersion;
+            localAppState.Title = gameData.AppTitle;
 
             if (manifestData.ManifestMeta.UninstallActionPath != null)
             {
-                installedGame.Uninstaller = new Dictionary<string, string>
+                localAppState.Uninstaller = new Dictionary<string, string>
                 {
                     { manifestData.ManifestMeta.UninstallActionPath, manifestData.ManifestMeta.UninstallActionArgs }
                 };
             }
 
+            gameData.LocalAppState = localAppState;
+
             _logger.Information("UpdateInstalledGameStatus: Adding new entry installed games list {@entry}",
-                installedGame);
+                localAppState);
 
-            _storage.AddToLocalAppState(gameData.AppName, installedGame);
+            _storage.AddToLocalAppState(gameData.AppName, localAppState);
 
-            gameData.InstallStatus = CurrentInstall.Action switch
+            gameData.LocalAppState.InstallStatus = CurrentInstall.Action switch
             {
                 ActionType.Install or ActionType.Update or ActionType.Move or ActionType.Repair or ActionType.Verify => InstallState
                     .Installed,
@@ -535,8 +543,11 @@ public class InstallManager
         {
             _logger.Fatal("UpdateInstalledGameStatus: Exception {ex}", ex);
 
-            CurrentInstall.Status = ActionStatus.Failed;
-            InstallationStatusChanged?.Invoke(CurrentInstall);
+            if (CurrentInstall != null)
+            {
+                CurrentInstall.Status = ActionStatus.Failed;
+                InstallationStatusChanged?.Invoke(CurrentInstall);
+            }
             CurrentInstall = null;
             ProcessNext();
         }
