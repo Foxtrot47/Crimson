@@ -62,6 +62,22 @@ public class LibraryManager
     }
 
     /// <summary>
+    /// Get all DLC Game objects that belong to a base game
+    /// </summary>
+    public List<Game> GetDlcsForGame(string appName)
+    {
+        var baseGame = _storage.GetGameMetaData(appName);
+        if (baseGame == null || baseGame.IsDlc()) return [];
+
+        var baseGameCatalogId = baseGame.Metadata?.Id;
+        if (string.IsNullOrEmpty(baseGameCatalogId)) return [];
+
+        return _storage.GameMetaDataDictionary.Values
+            .Where(g => g.IsDlc() && g.Metadata?.MainGameItem?.Id == baseGameCatalogId)
+            .ToList();
+    }
+
+    /// <summary>
     /// Updates stored game data and fired GameStatusUpdated event
     /// Only thing that would call this function would be InstallManager
     /// </summary>

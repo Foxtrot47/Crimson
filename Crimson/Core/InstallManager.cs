@@ -109,12 +109,6 @@ public class InstallManager
             item.Action = ActionType.Repair;
         }
 
-        if (gameData.IsDlc())
-        {
-            _logger.Warning($"AddToQueue: {item.AppName} is a DLC. DLC Handling is disabled right now");
-            return;
-        }
-
         _logger.Information("AddToQueue: Adding new Install to queue {Name} Action {Action}", item.AppName, item.Action);
         _installQueue.Add(item);
         if (CurrentInstall == null)

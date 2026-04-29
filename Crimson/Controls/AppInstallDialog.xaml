@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Crimson.Controls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:Crimson.Models"
     mc:Ignorable="d">
 
     <ContentDialog x:Name="InstallContentDialog" MinWidth="800">
@@ -117,27 +118,27 @@
                 </Grid>
 
                 <!--  DLC/Add-ons List  -->
-                <!--<ItemsRepeater ItemsSource="{x:Bind ViewModel.AvailableAddons, Mode=OneWay}">
+                <ItemsRepeater
+                    Margin="0,4,0,0"
+                    ItemsSource="{x:Bind ViewModel.AvailableDlcs, Mode=OneWay}"
+                    Visibility="{x:Bind ViewModel.HasDlcs, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <ItemsRepeater.ItemTemplate>
-                        <DataTemplate>
-                            <Grid Margin="0,8,0,0">
+                        <DataTemplate x:DataType="models:DlcOption">
+                            <Grid Margin="0,4,0,0" MaxWidth="400" HorizontalAlignment="Left">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="24" />
+                                    <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-
-                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"/>
-                                <TextBlock Grid.Column="1"
-                                         Text="{Binding Name}"
-                                         VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="2"
-                                         Text="{Binding Size}"
-                                         VerticalAlignment="Center"/>
+                                <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Text="{x:Bind Title}" />
                             </Grid>
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
-                </ItemsRepeater>-->
+                </ItemsRepeater>
             </StackPanel>
 
             <!--  Loading State  -->
@@ -192,6 +193,7 @@
         </StackPanel>
     </ContentDialog>
     <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:BoolToInverseVisibilityConverter x:Key="BoolToInverseVisibilityConverter" />
         <converters:DriveSpaceColorConverter x:Key="DriveSpaceColorConverter" />
     </UserControl.Resources>

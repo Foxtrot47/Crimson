@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -17,6 +19,7 @@ namespace Crimson.ViewModels;
 public partial class AppInstallDialogViewModel : ObservableObject
 {
     private readonly InstallManager _installManager;
+    private readonly LibraryManager _libraryManager;
     private readonly Storage _storageService;
     private readonly ILogger _logger;
     private readonly Windows.System.DispatcherQueue _dispatcherQueue;
@@ -62,14 +65,20 @@ public partial class AppInstallDialogViewModel : ObservableObject
     [ObservableProperty]
     private bool _canInstall;
 
+    [ObservableProperty]
+    private bool _hasDlcs;
+
+    public ObservableCollection<DlcOption> AvailableDlcs { get; } = new();
+
     public event Action RequestClose;
     public event Func<Task<string>> FolderPickerRequested;
 
     public AppInstallDialogViewModel(
-        ILogger logger, InstallManager installManager)
+        ILogger logger, InstallManager installManager, LibraryManager libraryManager)
     {
         _logger = logger;
         _installManager = installManager;
+        _libraryManager = libraryManager;
         _storageService = new Storage();
         _dispatcherQueue = Windows.System.DispatcherQueue.GetForCurrentThread();
     }
@@ -83,6 +92,20 @@ public partial class AppInstallDialogViewModel : ObservableObject
             GameTitle = gameInfo.AppTitle;
             GameImage = gameInfo.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(gameInfo.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
             InstallLocation = Path.Combine(_storageService.DefaultInstallPath, gameInfo.AppTitle);
+
+            // Load available DLCs
+            AvailableDlcs.Clear();
+            var dlcs = _libraryManager.GetDlcsForGame(gameInfo.AppName);
+            HasDlcs = dlcs.Count > 0;
+            foreach (var dlc in dlcs)
+            {
+                AvailableDlcs.Add(new DlcOption
+                {
+                    AppName = dlc.AppName,
+                    Title = dlc.AppTitle,
+                    IsSelected = true
+                });
+            }
 
             IsLoadingContent = true;
             _ = Task.Run(async () =>
@@ -103,6 +126,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
         IsLoadingContent = true;
         CanInstall = false;
         IsDriveSpaceVisible = false;
+        HasDlcs = false;
+        AvailableDlcs.Clear();
         TotalDownloadSize = "0 B";
         TotalInstallSize = "0 B";
         TotalInstallSizeRaw = 0;
@@ -168,10 +193,18 @@ public partial class AppInstallDialogViewModel : ObservableObject
     [RelayCommand]
     private void ConfirmInstall()
     {
-
         RequestClose?.Invoke();
+
+        // Queue base game install
         _installManager.AddToQueue(new InstallItem(_gameAppName, ActionType.Install, InstallLocation));
         _logger.Information("GameInfoViewModel: Added {Game} to Installation Queue", GameTitle);
+
+        // Queue selected DLCs (install to same base path)
+        foreach (var dlc in AvailableDlcs.Where(d => d.IsSelected))
+        {
+            _installManager.AddToQueue(new InstallItem(dlc.AppName, ActionType.Install, InstallLocation));
+            _logger.Information("GameInfoViewModel: Added DLC {Dlc} to Installation Queue", dlc.Title);
+        }
     }
 
     private string FormatSize(double bytes)

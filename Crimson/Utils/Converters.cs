@@ -51,6 +51,15 @@ public class BigIntegerJsonConverter : JsonConverter<BigInteger>
     }
 }
 
+public class BoolToVisibilityConverter : BoolToObjectConverter
+{
+    public BoolToVisibilityConverter()
+    {
+        TrueValue = Visibility.Visible;
+        FalseValue = Visibility.Collapsed;
+    }
+}
+
 public class BoolToInverseVisibilityConverter : BoolToObjectConverter
 {
     /// <summary>
