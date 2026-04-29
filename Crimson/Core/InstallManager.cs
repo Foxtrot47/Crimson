@@ -535,6 +535,7 @@ public class InstallManager
             _libraryManager.UpdateGameInfo(gameData);
 
             CurrentInstall.Status = ActionStatus.Success;
+            _installHistory.Add(CurrentInstall);
             InstallationStatusChanged?.Invoke(CurrentInstall);
             CurrentInstall = null;
             ProcessNext();
@@ -546,6 +547,7 @@ public class InstallManager
             if (CurrentInstall != null)
             {
                 CurrentInstall.Status = ActionStatus.Failed;
+                _installHistory.Add(CurrentInstall);
                 InstallationStatusChanged?.Invoke(CurrentInstall);
             }
             CurrentInstall = null;
@@ -565,23 +567,34 @@ public class InstallManager
         };
 
         // Loop through each file in fileManifest
-        var invalidFilesList = new List<FileManifest>();
+        var invalidFilesBag = new ConcurrentBag<FileManifest>();
         await Parallel.ForEachAsync(fileManifestLists, options, async (manifest, token) =>
             {
-                // Check if file exists and add to list if it doesn't
-                if (!File.Exists(Path.Join(installPath, manifest.Filename)))
+                try
                 {
-                    invalidFilesList.Add(manifest);
+                    var filePath = Path.Join(installPath, manifest.Filename);
+
+                    // Check if file exists and add to list if it doesn't
+                    if (!File.Exists(filePath))
+                    {
+                        invalidFilesBag.Add(manifest);
+                        return;
+                    }
+
+                    var fileSha1 = Util.CalculateSHA1(filePath);
+                    var expectedHash = BitConverter.ToString(manifest.ShaHash).Replace("-", "").ToLowerInvariant();
+                    if (fileSha1 != expectedHash)
+                    {
+                        invalidFilesBag.Add(manifest);
+                    }
                 }
-                var fileSha1 = Util.CalculateSHA1(Path.Join(installPath, manifest.Filename));
-                var expectedHash = BitConverter.ToString(manifest.ShaHash).Replace("-", "").ToLowerInvariant();
-                if (fileSha1 != expectedHash)
+                catch (Exception ex)
                 {
-                    invalidFilesList.Add(manifest);
-                    return;
+                    _logger.Error(ex, "VerifyFiles: Error verifying file {Filename}", manifest.Filename);
+                    invalidFilesBag.Add(manifest);
                 }
             });
-        return invalidFilesList;
+        return invalidFilesBag.ToList();
     }
 
     /// <summary>
@@ -716,6 +729,7 @@ public class InstallManager
             await Task.WhenAll(_installTasks);
 
             CurrentInstall.Status = ActionStatus.Failed;
+            _installHistory.Add(CurrentInstall);
             InstallationStatusChanged?.Invoke(CurrentInstall);
             _logger.Error("Installation failed: {ErrorMessage}", errorMessage);
         }
@@ -727,10 +741,20 @@ public class InstallManager
             await Task.WhenAll(_downloadTasks);
             await Task.WhenAll(_installTasks);
 
-            // clear downloaded files
-            Directory.Delete(CurrentInstall.Location, true);
+            // Clean up only the temp chunk directory, not the entire game folder
+            var tempChunkDir = Path.Combine(CurrentInstall.Location, ".Crimson");
+            try
+            {
+                if (Directory.Exists(tempChunkDir))
+                    Directory.Delete(tempChunkDir, true);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to clean up temp directory {Dir}", tempChunkDir);
+            }
 
             CurrentInstall.Status = ActionStatus.Cancelled;
+            _installHistory.Add(CurrentInstall);
             InstallationStatusChanged?.Invoke(CurrentInstall);
             _logger.Error("Installation cancelled");
         }
