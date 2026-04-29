@@ -183,7 +183,29 @@ namespace Crimson.Utils
 
         public Game GetGameMetaData(string gameName)
         {
-            return _gameMetaDataDictionary.TryGetValue(gameName, out var gameMetaData) ? gameMetaData : null;
+            if (!_gameMetaDataDictionary.TryGetValue(gameName, out var game)) return null;
+            HydrateLocalAppState(game);
+            return game;
+        }
+
+        /// <summary>
+        /// Hydrate Game.LocalAppState from the LocalAppStateDictionary if not already set
+        /// </summary>
+        private void HydrateLocalAppState(Game game)
+        {
+            if (game.LocalAppState == null && _localAppStateDictionary.TryGetValue(game.AppName, out var localState))
+                game.LocalAppState = localState;
+        }
+
+        /// <summary>
+        /// Hydrate LocalAppState for all games in the metadata dictionary
+        /// </summary>
+        public void HydrateAllLocalAppStates()
+        {
+            foreach (var game in _gameMetaDataDictionary.Values)
+            {
+                HydrateLocalAppState(game);
+            }
         }
 
         public void SaveMetaData(Game game)
@@ -196,7 +218,8 @@ namespace Crimson.Utils
             var fileName = $@"{MetaDataDirectory}\{game.AppName}.json";
             File.WriteAllText(fileName, jsonString);
 
-            _gameMetaDataDictionary.TryAdd(game.AppName, game);
+            // Overwrite existing entry so in-memory state stays current
+            _gameMetaDataDictionary[game.AppName] = game;
         }
 
         public void UpdateLocalAppState(Dictionary<string, LocalAppState> installedGamesDict)

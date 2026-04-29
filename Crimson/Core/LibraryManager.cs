@@ -82,7 +82,6 @@ public class LibraryManager
 
             if (_storage.LocalAppStateDictionary.TryGetValue(appName, out var gameInfo))
             {
-                await UpdateLibraryData(false, true);
                 var metaData = _storage.GetGameMetaData(appName);
                 if (metaData == null)
                 {
@@ -90,7 +89,8 @@ public class LibraryManager
                     return;
                 }
 
-                if (metaData.LocalAppState?.InstallStatus != InstallState.Installed)
+                if (metaData.LocalAppState?.InstallStatus != InstallState.Installed &&
+                    metaData.LocalAppState?.InstallStatus != InstallState.NeedUpdate)
                 {
                     Log.Warning("LaunchApp: Trying to launch game not installed");
                     return;
@@ -100,14 +100,6 @@ public class LibraryManager
                 {
                     _log.Warning("LaunchApp: launching DLC's is not yet supported");
                     return;
-                }
-
-                if (metaData.AssetInfos.Windows.BuildVersion != gameInfo.Version)
-                {
-                    _log.Warning("LaunchApp: Trying to launch out dated game");
-
-                    // Don't disallow launching out of date games until we implement updating mechanism
-                    // return;
                 }
 
                 var responseData = await _storeRepository.GetGameToken();
@@ -239,6 +231,10 @@ public class LibraryManager
                 _storage.SaveMetaData(gameMetaData);
             });
 
+            // Hydrate LocalAppState for all games and check for updates
+            _storage.HydrateAllLocalAppStates();
+            CheckForGameUpdates(gameAssetsList);
+
             gameMetaDataDictionary = _storage.GameMetaDataDictionary;
 
             // Sort _gameData by name
@@ -248,6 +244,34 @@ public class LibraryManager
         catch (Exception ex)
         {
             _log.Error(ex.ToString());
+        }
+    }
+
+    /// <summary>
+    /// Compare installed game versions against latest asset versions
+    /// and mark games that need updating
+    /// </summary>
+    private void CheckForGameUpdates(List<Asset> gameAssetsList)
+    {
+        foreach (var (appName, localAppState) in _storage.LocalAppStateDictionary)
+        {
+            if (localAppState.InstallStatus != InstallState.Installed)
+                continue;
+
+            var asset = gameAssetsList.FirstOrDefault(a => a.AppName == appName);
+            if (asset == null) continue;
+
+            if (!string.IsNullOrEmpty(localAppState.Version) &&
+                localAppState.Version != asset.BuildVersion)
+            {
+                _log.Information("CheckForGameUpdates: {AppName} needs update ({OldVersion} -> {NewVersion})",
+                    appName, localAppState.Version, asset.BuildVersion);
+                localAppState.InstallStatus = InstallState.NeedUpdate;
+
+                var game = _storage.GetGameMetaData(appName);
+                if (game != null)
+                    game.LocalAppState = localAppState;
+            }
         }
     }
 }

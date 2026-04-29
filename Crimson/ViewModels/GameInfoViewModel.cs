@@ -107,10 +107,25 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         {
             _log.LogInformation("GameInfoPage: Primary Action Button Clicked for {Game}", Game.AppTitle);
             if (Game == null) return;
+
             if (Game.LocalAppState?.InstallStatus == InstallState.Installed)
             {
                 _log.LogInformation("GameInfoPage: Starting Game {Game}", Game.AppTitle);
                 await _libraryManager.LaunchApp(Game.AppName);
+                return;
+            }
+
+            if (Game.LocalAppState?.InstallStatus == InstallState.NeedUpdate)
+            {
+                _log.LogInformation("GameInfoPage: Updating Game {Game}", Game.AppTitle);
+                _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Update, Game.LocalAppState.InstallPath));
+                return;
+            }
+
+            if (Game.LocalAppState?.InstallStatus == InstallState.Broken)
+            {
+                _log.LogInformation("GameInfoPage: Repairing Game {Game}", Game.AppTitle);
+                _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Repair, Game.LocalAppState.InstallPath));
                 return;
             }
 

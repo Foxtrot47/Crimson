@@ -210,6 +210,10 @@ public class InstallManager
                 await _downloadManager.InitializeMirrors(gameData.BaseUrls);
                 GetChunksToDownload(data, downloadedChunks);
             }
+            else if (CurrentInstall.Action == ActionType.Update)
+            {
+                await PrepareUpdateTasks(gameData, data);
+            }
             else if (CurrentInstall.Action == ActionType.Uninstall)
             {
                 foreach (var fileManifest in data.FileManifestList.Elements)
@@ -241,6 +245,11 @@ public class InstallManager
         _downloadQueue = [];
         _ioQueue = [];
         _ioQueueTaskSet.Clear();
+        _chunkToFileManifestsDictionary = new();
+        _chunkPartReferences = new();
+        _completedChunks.Dispose();
+        _completedChunks = [];
+        _fileLocksConcurrentDictionary.Clear();
     }
 
     private async Task ProcessDownloadQueue()
@@ -497,8 +506,8 @@ public class InstallManager
             }
             _logger.Information("UpdateInstalledGameStatus: Verification successful for {appName}", CurrentInstall.AppName);
 
-            var canRunOffLine = gameData.Metadata.CustomAttributes.CanRunOffline.Value == "true";
-            var requireOwnerShipToken = gameData.Metadata.CustomAttributes?.OwnershipToken?.Value == "true";
+            var canRunOffLine = gameData.Metadata?.CustomAttributes?.CanRunOffline?.Value == "true";
+            var requireOwnerShipToken = gameData.Metadata?.CustomAttributes?.OwnershipToken?.Value == "true";
 
             localAppState.InstallStatus = InstallState.Installed;
             localAppState.BaseUrls = gameData.BaseUrls;
@@ -661,6 +670,159 @@ public class InstallManager
             CurrentInstall.TotalWriteSizeBytes += fileManifest.FileSize;
         }
         CurrentInstall.TotalWriteSizeBytes -= totalWrittenSize;
+        CurrentInstall.TotalDownloadSizeMiB = CurrentInstall.TotalDownloadSizeBytes / 1024.0 / 1024.0;
+        CurrentInstall.TotalWriteSizeMb = CurrentInstall.TotalWriteSizeBytes / 1024.0 / 1024.0;
+    }
+
+    /// <summary>
+    /// Prepare update tasks by comparing old and new manifests.
+    /// Downloads only chunks for changed/added files and deletes removed files.
+    /// Falls back to full reinstall if old manifest is unavailable.
+    /// </summary>
+    private async Task PrepareUpdateTasks(Game gameData, Manifest newManifest)
+    {
+        // Try to load the old manifest for the currently installed version
+        var localAppState = _storage.LocalAppStateDictionary
+            .FirstOrDefault(g => g.Key == CurrentInstall.AppName).Value;
+
+        if (localAppState == null || string.IsNullOrEmpty(localAppState.Version))
+        {
+            _logger.Warning("PrepareUpdateTasks: No installed version info, falling back to full install");
+            CurrentInstall.Action = ActionType.Install;
+            await _downloadManager.InitializeMirrors(gameData.BaseUrls);
+            GetChunksToDownload(newManifest);
+            return;
+        }
+
+        var oldManifestBytes = await _storage.GetCachedManifestBytes(
+            CurrentInstall.AppName, localAppState.Version);
+
+        if (oldManifestBytes == null || oldManifestBytes.Length < 1)
+        {
+            _logger.Warning("PrepareUpdateTasks: Old manifest not cached, falling back to full install");
+            CurrentInstall.Action = ActionType.Install;
+            await _downloadManager.InitializeMirrors(gameData.BaseUrls);
+            GetChunksToDownload(newManifest);
+            return;
+        }
+
+        var oldManifest = Manifest.ReadAll(oldManifestBytes);
+        _logger.Information("PrepareUpdateTasks: Comparing manifests for {AppName}", CurrentInstall.AppName);
+
+        // Build lookup of old file hashes by filename
+        var oldFileHashes = new Dictionary<string, byte[]>();
+        foreach (var oldFile in oldManifest.FileManifestList.Elements)
+        {
+            oldFileHashes[oldFile.Filename] = oldFile.ShaHash;
+        }
+
+        // Categorize files: unchanged, changed, added, removed
+        var changedFiles = new List<FileManifest>();
+        var addedFiles = new List<FileManifest>();
+        var unchangedCount = 0;
+
+        foreach (var newFile in newManifest.FileManifestList.Elements)
+        {
+            if (oldFileHashes.TryGetValue(newFile.Filename, out var oldHash))
+            {
+                oldFileHashes.Remove(newFile.Filename);
+                var newHash = BitConverter.ToString(newFile.ShaHash);
+                var oldHashStr = BitConverter.ToString(oldHash);
+                if (newHash == oldHashStr)
+                {
+                    unchangedCount++;
+                }
+                else
+                {
+                    changedFiles.Add(newFile);
+                }
+            }
+            else
+            {
+                addedFiles.Add(newFile);
+            }
+        }
+
+        // Remaining old files are removed in the new version
+        var removedFiles = oldFileHashes.Keys.ToList();
+
+        _logger.Information(
+            "PrepareUpdateTasks: {Unchanged} unchanged, {Changed} changed, {Added} added, {Removed} removed files",
+            unchangedCount, changedFiles.Count, addedFiles.Count, removedFiles.Count);
+
+        // Queue delete tasks for removed files
+        foreach (var removedFile in removedFiles)
+        {
+            var filePath = Path.Combine(CurrentInstall.Location, removedFile);
+            if (File.Exists(filePath))
+            {
+                _ioQueue.Add(new IoTask()
+                {
+                    DestinationFilePath = filePath,
+                    TaskType = IoTaskType.Delete,
+                    Size = 0,
+                });
+            }
+        }
+
+        // Build filtered file manifest list containing only changed + added files
+        var filesToDownload = new List<FileManifest>();
+        filesToDownload.AddRange(changedFiles);
+        filesToDownload.AddRange(addedFiles);
+
+        if (filesToDownload.Count == 0)
+        {
+            _logger.Information("PrepareUpdateTasks: No files need updating");
+            return;
+        }
+
+        await _downloadManager.InitializeMirrors(gameData.BaseUrls);
+        GetChunksToDownloadFiltered(newManifest, filesToDownload);
+    }
+
+    /// <summary>
+    /// Queue chunks to download for only a filtered set of file manifests (used by updates)
+    /// </summary>
+    private void GetChunksToDownloadFiltered(Manifest data, List<FileManifest> fileManifests)
+    {
+        var addedChunkGuids = new HashSet<BigInteger>();
+        var chunkDownloadList = new List<ChunkInfo>();
+
+        foreach (var fileManifest in fileManifests)
+        {
+            foreach (var chunkPart in fileManifest.ChunkParts)
+            {
+                if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidNum, out var existingManifests))
+                {
+                    existingManifests.Add(fileManifest);
+                    _chunkToFileManifestsDictionary[chunkPart.GuidNum] = existingManifests;
+                }
+                else
+                {
+                    _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidNum,
+                        new List<FileManifest>() { fileManifest });
+                }
+
+                _chunkPartReferences.AddOrUpdate(chunkPart.GuidNum, 1, (key, oldValue) => oldValue + 1);
+
+                if (addedChunkGuids.Contains(chunkPart.GuidNum))
+                    continue;
+
+                addedChunkGuids.Add(chunkPart.GuidNum);
+                var chunkInfo = data.CDL.GetChunkByGuidNum(chunkPart.GuidNum);
+                _downloadQueue.Add(new DownloadTask()
+                {
+                    Url = chunkInfo.Path,
+                    TempPath = Path.Combine(CurrentInstall.Location, ".Crimson", (chunkInfo.GuidNum + ".chunk")),
+                    GuidNum = chunkInfo.GuidNum,
+                    ChunkInfo = chunkInfo
+                });
+                chunkDownloadList.Add(chunkInfo);
+                CurrentInstall.TotalDownloadSizeBytes += chunkInfo.FileSize;
+            }
+            CurrentInstall.TotalWriteSizeBytes += fileManifest.FileSize;
+        }
+
         CurrentInstall.TotalDownloadSizeMiB = CurrentInstall.TotalDownloadSizeBytes / 1024.0 / 1024.0;
         CurrentInstall.TotalWriteSizeMb = CurrentInstall.TotalWriteSizeBytes / 1024.0 / 1024.0;
     }
