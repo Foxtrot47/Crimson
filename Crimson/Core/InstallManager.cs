@@ -214,6 +214,10 @@ public class InstallManager
             {
                 await PrepareUpdateTasks(gameData, data);
             }
+            else if (CurrentInstall.Action == ActionType.Repair)
+            {
+                await PrepareRepairTasks(gameData, data);
+            }
             else if (CurrentInstall.Action == ActionType.Uninstall)
             {
                 foreach (var fileManifest in data.FileManifestList.Elements)
@@ -778,6 +782,27 @@ public class InstallManager
 
         await _downloadManager.InitializeMirrors(gameData.BaseUrls);
         GetChunksToDownloadFiltered(newManifest, filesToDownload);
+    }
+
+    /// <summary>
+    /// Verify installed files and re-download only broken/missing ones
+    /// </summary>
+    private async Task PrepareRepairTasks(Game gameData, Manifest manifest)
+    {
+        _logger.Information("PrepareRepairTasks: Verifying files for {AppName}", CurrentInstall.AppName);
+
+        var invalidFiles = await VerifyFiles(CurrentInstall.Location, manifest.FileManifestList.Elements);
+
+        if (invalidFiles.Count == 0)
+        {
+            _logger.Information("PrepareRepairTasks: All files valid, nothing to repair");
+            return;
+        }
+
+        _logger.Information("PrepareRepairTasks: {Count} files need repair", invalidFiles.Count);
+
+        await _downloadManager.InitializeMirrors(gameData.BaseUrls);
+        GetChunksToDownloadFiltered(manifest, invalidFiles);
     }
 
     /// <summary>

@@ -97,6 +97,11 @@
                                     </Style>
                                 </MenuFlyout.MenuFlyoutPresenterStyle>
                                 <MenuFlyout.Items>
+                                    <MenuFlyoutItem Command="{x:Bind ViewModel.VerifyRepairCommand}" Text="Verify / Repair">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE90F;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutItem Command="{x:Bind ViewModel.UninstallCommand}" Text="Uninstall">
                                         <MenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE74D;" />

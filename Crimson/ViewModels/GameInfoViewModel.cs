@@ -251,6 +251,23 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _log.LogInformation("GameInfoPage: Added {Game} to Installation Queue", Game.AppTitle);
     }
 
+    [RelayCommand]
+    private void VerifyRepair()
+    {
+        if (Game?.LocalAppState == null || Game.LocalAppState.InstallStatus == InstallState.NotInstalled) return;
+
+        _storage.LocalAppStateDictionary.TryGetValue(Game.AppName, out var installedGame);
+
+        if (installedGame == null)
+        {
+            _log.LogInformation("VerifyRepair: Game not installed");
+            return;
+        }
+
+        _log.LogInformation("GameInfoPage: Queueing verify/repair for {Game}", Game.AppTitle);
+        _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Repair, installedGame.InstallPath));
+    }
+
     public void Cleanup()
     {
         _libraryManager.GameStatusUpdated -= CheckGameStatus;
