@@ -684,7 +684,7 @@ public class Asset
     public string LabelName { get; set; }
 
     [JsonPropertyName("metadata")]
-    public required Metadata Metadata { get; set; }
+    public object Metadata { get; set; }
 
     [JsonPropertyName("namespace")]
     public required string Namespace { get; set; }
