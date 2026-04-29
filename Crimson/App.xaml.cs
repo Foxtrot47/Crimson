@@ -38,6 +38,7 @@ namespace Crimson
         public App()
         {
             InitializeComponent();
+            this.UnhandledException += App_UnhandledException;
 
             Host = Microsoft.Extensions.Hosting.Host.
             CreateDefaultBuilder().
@@ -135,8 +136,8 @@ namespace Crimson
 
         private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
         {
-            // TODO: Log and handle exceptions as appropriate.
-            // https://docs.microsoft.com/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.application.unhandledexception.
+            var logger = Host?.Services?.GetService(typeof(ILogger)) as ILogger;
+            logger?.Fatal(e.Exception, "Unhandled exception occurred");
         }
     }
 }
