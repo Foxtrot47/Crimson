@@ -50,7 +50,7 @@ public sealed partial class LoginPage : Page
         var message = e.TryGetWebMessageAsString();
         _log.Information("WebView_WebMessageReceived: Message {@message}", message);
         var response = JsonSerializer.Deserialize<EpicLoginResponse>(message);
-        _authManager.DoExchangeLogin(response.Code);
+        await _authManager.DoExchangeLogin(response.Code);
     }
     public async void InitWebView()
     {

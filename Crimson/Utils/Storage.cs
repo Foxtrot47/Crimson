@@ -127,6 +127,19 @@ namespace Crimson.Utils
             streamWriter.Close();
         }
 
+        public async Task ClearUserData()
+        {
+            try
+            {
+                if (File.Exists(UserDataFile))
+                    File.Delete(UserDataFile);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to clear user data file");
+            }
+        }
+
         public async Task<IEnumerable<Asset>> GetGameAssetsData()
         {
             try
