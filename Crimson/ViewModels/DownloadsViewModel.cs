@@ -168,7 +168,7 @@ public partial class DownloadsViewModel : ObservableObject
                 {
                     Name = gameInfo.AppName,
                     Title = gameInfo.AppTitle,
-                    InstallState = gameInfo.InstallStatus,
+                    InstallState = gameInfo.LocalAppState?.InstallStatus ?? InstallState.NotInstalled,
                     Image = Util.GetBitmapImage(gameInfo.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")
                         ?.Url)
                 };

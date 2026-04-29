@@ -90,9 +90,10 @@ public class LibraryManager
                     return;
                 }
 
-                if (metaData.InstallStatus != InstallState.Installed)
+                if (metaData.LocalAppState?.InstallStatus != InstallState.Installed)
                 {
                     Log.Warning("LaunchApp: Trying to launch game not installed");
+                    return;
                 }
 
                 if (metaData.IsDlc())
