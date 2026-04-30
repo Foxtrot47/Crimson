@@ -105,13 +105,15 @@ public class DownloadManager
             using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
             if (!response.IsSuccessStatusCode)
             {
+                _log.Warning("MeasureDownloadSpeed: HTTP {StatusCode} for {Url}", (int)response.StatusCode, url);
                 return false;
             }
 
             var fileSize = response.Content.Headers.ContentLength ?? 0;
             await using var stream = await response.Content.ReadAsStreamAsync();
             stopwatch.Stop();
-            var speedMbps = (fileSize / 1024.0 / 1024.0) / (stopwatch.ElapsedMilliseconds / 1000.0);
+            var elapsedSeconds = Math.Max(stopwatch.ElapsedMilliseconds / 1000.0, 0.001);
+            var speedMbps = (fileSize / 1024.0 / 1024.0) / elapsedSeconds;
             await UpdateMirrorStats(mirror.BaseUrl, true, speedMbps);
 
             var directoryPath = Path.GetDirectoryName(destinationPath);
@@ -125,9 +127,10 @@ public class DownloadManager
 
             return true;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             stopwatch.Stop();
+            _log.Error(ex, "MeasureDownloadSpeed: Exception downloading {Url} to {Dest}", url, destinationPath);
             throw;
         }
     }

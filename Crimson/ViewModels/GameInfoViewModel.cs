@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -29,6 +30,9 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
     [ObservableProperty]
     private bool _isInstalled;
+
+    [ObservableProperty]
+    private bool _isImportVisible;
 
     [ObservableProperty]
     private string _primaryActionButtonText;
@@ -204,9 +208,11 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
                 PrimaryActionButtonText = "Install";
                 PrimaryActionButtonGlyph = "\uE896";
                 IsInstalled = false;
+                IsImportVisible = true;
                 return;
             }
 
+            IsImportVisible = false;
             switch (Game.LocalAppState?.InstallStatus)
             {
                 case InstallState.Installed:
@@ -266,6 +272,49 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
         _log.LogInformation("GameInfoPage: Queueing verify/repair for {Game}", Game.AppTitle);
         _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Repair, installedGame.InstallPath));
+    }
+
+    [RelayCommand]
+    private async Task ImportGameAsync()
+    {
+        if (Game == null) return;
+
+        if (FolderPickerRequested == null)
+        {
+            _log.LogWarning("ImportGame: No folder picker handler registered");
+            return;
+        }
+
+        var folderPath = await FolderPickerRequested.Invoke();
+        if (string.IsNullOrEmpty(folderPath)) return;
+
+        _log.LogInformation("GameInfoPage: Importing {Game} from {Path}", Game.AppTitle, folderPath);
+        _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Import, folderPath));
+    }
+
+    [RelayCommand]
+    private async Task MoveGameAsync()
+    {
+        if (Game?.LocalAppState == null || Game.LocalAppState.InstallStatus == InstallState.NotInstalled) return;
+
+        if (FolderPickerRequested == null)
+        {
+            _log.LogWarning("MoveGame: No folder picker handler registered");
+            return;
+        }
+
+        var folderPath = await FolderPickerRequested.Invoke();
+        if (string.IsNullOrEmpty(folderPath)) return;
+
+        var currentPath = Game.LocalAppState.InstallPath;
+        var destPath = Path.Combine(folderPath, Game.AppName);
+
+        _log.LogInformation("GameInfoPage: Moving {Game} from {Src} to {Dest}", Game.AppTitle, currentPath, destPath);
+        var item = new InstallItem(Game.AppName, ActionType.Move, currentPath)
+        {
+            MoveLocation = destPath
+        };
+        _installer.AddToQueue(item);
     }
 
     public void Cleanup()

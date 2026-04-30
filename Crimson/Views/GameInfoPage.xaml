@@ -77,6 +77,16 @@
                         </StackPanel>
                     </Button>
 
+                    <Button
+                        Padding="20,10,20,10"
+                        Command="{x:Bind ViewModel.ImportGameCommand}"
+                        Visibility="{x:Bind ViewModel.IsImportVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xE8B5;" />
+                            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}">Import</TextBlock>
+                        </StackPanel>
+                    </Button>
+
                     <DropDownButton IsEnabled="{x:Bind ViewModel.IsInstalled, Mode=OneWay}">
                         <DropDownButton.Content>
                             <StackPanel
@@ -100,6 +110,11 @@
                                     <MenuFlyoutItem Command="{x:Bind ViewModel.VerifyRepairCommand}" Text="Verify / Repair">
                                         <MenuFlyoutItem.Icon>
                                             <FontIcon Glyph="&#xE90F;" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Command="{x:Bind ViewModel.MoveGameCommand}" Text="Move">
+                                        <MenuFlyoutItem.Icon>
+                                            <FontIcon Glyph="&#xE8DE;" />
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                     <MenuFlyoutItem Command="{x:Bind ViewModel.UninstallCommand}" Text="Uninstall">

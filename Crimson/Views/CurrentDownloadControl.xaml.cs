@@ -83,13 +83,13 @@ public sealed partial class CurrentDownloadControl : UserControl
                 break;
             case ActionStatus.Success:
                 DownloadedSize.Text = GetActionLabel(installItem.Action) + " Completed";
-                DownloadSpeed.Text = string.Empty;
+                DownloadSpeed.Text = installItem.StatusMessage ?? string.Empty;
                 ProgressBar.IsIndeterminate = false;
                 ProgressBar.Value = 100;
                 break;
             case ActionStatus.Failed:
                 DownloadedSize.Text = GetActionLabel(installItem.Action) + " Failed";
-                DownloadSpeed.Text = string.Empty;
+                DownloadSpeed.Text = installItem.StatusMessage ?? string.Empty;
                 ProgressBar.IsIndeterminate = false;
                 ProgressBar.Value = 100;
                 break;

@@ -128,8 +128,16 @@ public class InstallManager
                 await PrepareTasks();
             }
 
-            CurrentInstall!.Status = ActionStatus.Processing;
+            // PrepareTasks may call HandleInstallationStoppage (e.g. import folder empty),
+            // which sets CurrentInstall = null. Bail out if that happened.
+            if (CurrentInstall == null) return;
+
+            CurrentInstall.Status = ActionStatus.Processing;
             InstallationStatusChanged?.Invoke(CurrentInstall);
+
+            // Reset cancellation token early so HandleInstallationStoppage
+            // correctly distinguishes failure vs user cancellation
+            _cancellationTokenSource = new CancellationTokenSource();
 
             // Import and Move don't need download/IO workers
             if (CurrentInstall.Action == ActionType.Import || CurrentInstall.Action == ActionType.Move)
@@ -138,8 +146,6 @@ public class InstallManager
                 return;
             }
 
-            // Reset cancellation token
-            _cancellationTokenSource = new CancellationTokenSource();
             _installStopWatch.Start();
             _pauseEvent.Set();
 
@@ -265,17 +271,11 @@ public class InstallManager
                     _logger.Information("Import: All {Total} files found for {AppName}",
                         data.FileManifestList.Elements.Count, CurrentInstall.AppName);
                 }
-                else if (missingFiles.Count < data.FileManifestList.Elements.Count)
-                {
-                    _logger.Warning("Import: {Missing}/{Total} files missing for {AppName}",
-                        missingFiles.Count, data.FileManifestList.Elements.Count, CurrentInstall.AppName);
-                }
                 else
                 {
-                    _logger.Error("Import: No game files found at {Location} for {AppName}",
-                        CurrentInstall.Location, CurrentInstall.AppName);
-                    await HandleInstallationStoppage("No game files found at selected location");
-                    return;
+                    // Always salvage what we can — import as Broken so user can Repair
+                    _logger.Warning("Import: {Missing}/{Total} files missing for {AppName}. Will import as Broken.",
+                        missingFiles.Count, data.FileManifestList.Elements.Count, CurrentInstall.AppName);
                 }
             }
             else if (CurrentInstall.Action == ActionType.Move)
@@ -626,6 +626,10 @@ public class InstallManager
                     gameData.LocalAppState = localAppState;
                     _storage.AddToLocalAppState(gameData.AppName, localAppState);
                     _libraryManager.UpdateGameInfo(gameData);
+
+                    var totalFiles = manifestData.FileManifestList.Elements.Count;
+                    var missingCount = _importVerificationResult?.Count ?? 0;
+                    CurrentInstall.StatusMessage = $"Verified {totalFiles} files: {totalFiles - missingCount} found, {missingCount} missing";
 
                     _importVerificationResult = null;
                     _logger.Information("UpdateInstalledGameStatus: Import complete for {AppName}, status: {Status}",
@@ -1082,6 +1086,13 @@ public class InstallManager
     {
         _ioQueue = new();
         _downloadQueue = new();
+
+        if (CurrentInstall == null)
+        {
+            _logger.Error("HandleInstallationStoppage called with no active install: {ErrorMessage}", errorMessage);
+            ProcessNext();
+            return;
+        }
 
         if (!_cancellationTokenSource.IsCancellationRequested)
         {

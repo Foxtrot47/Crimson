@@ -7,6 +7,7 @@ public class InstallItem(string appName, ActionType action, string location)
     public string AppName { get; set; } = appName;
     public ActionType Action { get; set; } = action;
     public string Location { get; set; } = location;
+    public string MoveLocation { get; set; }
     public int ProgressPercentage { get; set; }
     public TimeSpan RunningTime { get; set; }
     public TimeSpan Eta { get; set; }
@@ -22,11 +23,13 @@ public class InstallItem(string appName, ActionType action, string location)
     public double WriteSpeedMiB { get; set; }
     public DateTime CreatedTime { get; set; }
     public ActionStatus Status { get; set; } = ActionStatus.Pending;
+    public string StatusMessage { get; set; }
 }
 
 public enum ActionType
 {
     Install,
+    Import,
     Move,
     Repair,
     Update,
