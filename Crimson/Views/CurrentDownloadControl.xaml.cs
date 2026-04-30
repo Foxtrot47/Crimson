@@ -82,19 +82,19 @@ public sealed partial class CurrentDownloadControl : UserControl
                 DownloadSpeed.Text = $@"{installItem.DownloadSpeedRawMiB} MB/s";
                 break;
             case ActionStatus.Success:
-                DownloadedSize.Text = "Installation Completed";
+                DownloadedSize.Text = GetActionLabel(installItem.Action) + " Completed";
                 DownloadSpeed.Text = string.Empty;
                 ProgressBar.IsIndeterminate = false;
                 ProgressBar.Value = 100;
                 break;
             case ActionStatus.Failed:
-                DownloadedSize.Text = "Installation Failed";
+                DownloadedSize.Text = GetActionLabel(installItem.Action) + " Failed";
                 DownloadSpeed.Text = string.Empty;
                 ProgressBar.IsIndeterminate = false;
                 ProgressBar.Value = 100;
                 break;
             case ActionStatus.Cancelled:
-                DownloadedSize.Text = "Installation Cancelled";
+                DownloadedSize.Text = GetActionLabel(installItem.Action) + " Cancelled";
                 DownloadSpeed.Text = string.Empty;
                 ProgressBar.IsIndeterminate = false;
                 ProgressBar.Value = 100;
@@ -122,4 +122,15 @@ public sealed partial class CurrentDownloadControl : UserControl
             Console.WriteLine(ex.ToString());
         }
     }
+
+    private static string GetActionLabel(ActionType action) => action switch
+    {
+        ActionType.Install => "Installation",
+        ActionType.Update => "Update",
+        ActionType.Repair or ActionType.Verify => "Verification",
+        ActionType.Uninstall => "Uninstall",
+        ActionType.Move => "Move",
+        ActionType.Import => "Import",
+        _ => "Operation"
+    };
 }
