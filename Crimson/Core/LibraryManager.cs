@@ -140,7 +140,7 @@ public class LibraryManager
                 // Create a new process start info
                 var startInfo = new ProcessStartInfo
                 {
-                    FileName = Path.Join(gameInfo.InstallPath, gameInfo.Executable),
+                    FileName = ManifestPath.ResolveUnderRoot(gameInfo.InstallPath, gameInfo.Executable),
                     Arguments = arguments,
                     UseShellExecute = false,
                     WorkingDirectory = gameInfo.InstallPath
