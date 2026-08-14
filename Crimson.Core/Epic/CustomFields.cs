@@ -1,77 +1,55 @@
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
-
 namespace Crimson.Models;
 
-public class CustomFields
+public sealed class CustomFields
 {
-    public int Size { get; set; }
-    public byte Version { get; set; }
-    public int Count { get; set; }
+    public int Size { get; private set; }
+    public byte Version { get; private set; }
+    public int Count { get; private set; }
 
-    private Dictionary<string, string> _dict;
+    private readonly Dictionary<string, string> _values = new(StringComparer.Ordinal);
 
-    public CustomFields()
+    public string? this[string key]
     {
-        Size = 0;
-        Version = 0;
-        Count = 0;
-        _dict = new Dictionary<string, string>();
-    }
-
-    public string this[string key]
-    {
-        get => _dict.TryGetValue(key, out var value) ? value : null;
-        set => _dict[key] = value;
-    }
-
-    public override string ToString()
-    {
-        return string.Join(", ", _dict);
-    }
-
-    public IEnumerable<KeyValuePair<string, string>> Items() => _dict;
-    public IEnumerable<string> Keys() => _dict.Keys;
-    public IEnumerable<string> Values() => _dict.Values;
-
-    public static CustomFields Read(Stream bio)
-    {
-        var cf = new CustomFields();
-        var reader = new BinaryReader(bio);
-
-        var cfStart = bio.Position;
-        cf.Size = reader.ReadInt32();
-        cf.Version = reader.ReadByte();
-        cf.Count = reader.ReadInt32();
-
-        for (var i = 0; i < cf.Count; i++)
+        get => _values.GetValueOrDefault(key);
+        set
         {
-            var key = ReadFString(reader);
-            var value = ReadFString(reader);
-            cf[key] = value;
+            if (value is null)
+                _values.Remove(key);
+            else
+                _values[key] = value;
+        }
+    }
+
+    public override string ToString() => string.Join(", ", _values);
+
+    public IEnumerable<KeyValuePair<string, string>> Items() => _values;
+    public IEnumerable<string> Keys() => _values.Keys;
+    public IEnumerable<string> Values() => _values.Values;
+
+    public static CustomFields Read(Stream stream) => Read(new EpicBinaryReader(stream));
+
+    internal static CustomFields Read(EpicBinaryReader reader)
+    {
+        var start = reader.Position;
+        var end = reader.BeginSection("Custom fields");
+        var fields = new CustomFields
+        {
+            Size = checked((int)(end - start)),
+            Version = reader.ReadByte(),
+            Count = reader.ReadCount(EpicProtocolLimits.MaximumCustomFields, "Custom field")
+        };
+        if (fields.Version != 0)
+            throw new InvalidDataException($"Custom field version {fields.Version} is unsupported.");
+
+        for (var index = 0; index < fields.Count; index++)
+        {
+            var key = reader.ReadUtf8String();
+            var value = reader.ReadUtf8String();
+            if (string.IsNullOrEmpty(key) || !fields._values.TryAdd(key, value))
+                throw new InvalidDataException($"Duplicate or empty custom field key: {key}.");
         }
 
-        var sizeRead = bio.Position - cfStart;
-        if (sizeRead == cf.Size) return cf;
-
-        // TODO Log warning here and seek forward
-        // downgrade version to prevent issues during serialisation
-        cf.Version = 0;
-        bio.Seek(cf.Size - sizeRead, SeekOrigin.Current);
-
-        return cf;
-    }
-
-    private static string ReadFString(BinaryReader reader)
-    {
-        var length = reader.ReadInt32();
-        if (length == 0)
-        {
-            return string.Empty;
-        }
-
-        var bytes = reader.ReadBytes(length);
-        return Encoding.UTF8.GetString(bytes).TrimEnd('\0');
+        reader.EndSection(end, "Custom fields");
+        return fields;
     }
 }

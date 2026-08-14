@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using Crimson.Models;
+using Crimson.Utils;
 
 namespace Crimson.Tests;
 
@@ -12,9 +13,9 @@ public sealed class ManifestParsingTests
     {
         var data = new byte[41];
 
-        var error = Assert.Throws<InvalidOperationException>(() => Manifest.Read(data));
+        var error = Assert.Throws<InvalidDataException>(() => Manifest.Read(data));
 
-        Assert.Equal("No header magic!", error.Message);
+        Assert.Equal("Manifest header magic is invalid.", error.Message);
     }
 
     [Fact]
@@ -49,9 +50,9 @@ public sealed class ManifestParsingTests
         var data = BuildManifest(payload, compressed: true);
         data[16] ^= 0xFF;
 
-        var error = Assert.Throws<InvalidOperationException>(() => Manifest.Read(data));
+        var error = Assert.Throws<InvalidDataException>(() => Manifest.Read(data));
 
-        Assert.Equal("Hash does not match!", error.Message);
+        Assert.Equal("Manifest payload hash does not match.", error.Message);
     }
 
     [Fact]
@@ -173,7 +174,7 @@ public sealed class ManifestParsingTests
         writer.Write(2u);
         writer.Write(3u);
         writer.Write(4u);
-        writer.Write(0UL);
+        writer.Write(RollingHash.ComputeHash(payload));
         writer.Write((byte)(compressed ? 1 : 0));
         writer.Write(SHA1.HashData(payload));
         writer.Write((byte)2);

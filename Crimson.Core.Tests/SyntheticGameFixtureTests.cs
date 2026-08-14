@@ -94,6 +94,7 @@ public sealed class SyntheticGameFixtureTests
             var chunkBytes = await File.ReadAllBytesAsync(
                 Path.Combine(FixtureRoot, chunkInfo.Path.Replace('/', Path.DirectorySeparatorChar)));
             var chunk = Chunk.ReadBuffer(chunkBytes);
+            chunk.ValidateAgainst(chunkInfo);
             var payload = chunk.Data;
 
             Assert.Equal(chunkInfo.GuidNum, chunk.GuidNum);

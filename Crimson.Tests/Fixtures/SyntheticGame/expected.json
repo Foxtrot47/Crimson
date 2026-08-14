@@ -3,7 +3,7 @@
   "launchExecutable": "LaunchStub.cmd",
   "old": {
     "buildVersion": "1.0.0",
-    "manifestSha256": "f4a2ea5a72d288c4f7ed7a6a5f544e47656fa92a8f256211e20f5254d5f0fbe7",
+    "manifestSha256": "f8b4b6c4466fa6a1a02acb1f55e541b015a80e207e0a1f4b996243e6cdb70247",
     "downloadSize": 289,
     "installSize": 74,
     "files": {
@@ -31,7 +31,7 @@
   },
   "new": {
     "buildVersion": "2.0.0",
-    "manifestSha256": "0c81b492ef140b08b3fa6a6810f8b7e88c6f867403a9f89801d9762b3a6bf2a6",
+    "manifestSha256": "d81d6a12b85b9909a924de02f360f2da749cc1576d6320e015fc6f9dc9f58ebf",
     "downloadSize": 286,
     "installSize": 83,
     "files": {
@@ -75,25 +75,25 @@
   },
   "chunks": {
     "shared": {
-      "relativePath": "ChunksV4/01/0000000000001001_00000101000001020000010300000104.chunk",
+      "relativePath": "ChunksV4/01/76B1B9F5D779841F_00000101000001020000010300000104.chunk",
       "payloadSize": 41,
       "fileSize": 107,
       "sha1": "d88bcee632670f16c381502ccee30d3120082377"
     },
     "old-data": {
-      "relativePath": "ChunksV4/02/0000000000002001_00000201000002020000020300000204.chunk",
+      "relativePath": "ChunksV4/02/A4EF50E3F2AF3B13_00000201000002020000020300000204.chunk",
       "payloadSize": 28,
       "fileSize": 94,
       "sha1": "f28e28d32cbe0b12c08cfe8f7c51a17176dba8b2"
     },
     "new-data": {
-      "relativePath": "ChunksV4/03/0000000000003001_00000301000003020000030300000304.chunk",
+      "relativePath": "ChunksV4/03/05AB9F7340F8CB9B_00000301000003020000030300000304.chunk",
       "payloadSize": 25,
       "fileSize": 91,
       "sha1": "7afb651eb8a353a314d75d44f79686a5f49ad189"
     },
     "launcher": {
-      "relativePath": "ChunksV4/04/0000000000004001_00000401000004020000040300000404.chunk",
+      "relativePath": "ChunksV4/04/42811C1F1ADC0A02_00000401000004020000040300000404.chunk",
       "payloadSize": 22,
       "fileSize": 88,
       "sha1": "396d0f3af8336b278572f36076187edf1c320cba"

@@ -368,6 +368,11 @@ public class InstallManager
                 if (!success)
                     throw new IOException($"Failed to download chunk {downloadTask.GuidNum} from all mirrors");
 
+                var downloadedChunkBytes = await File.ReadAllBytesAsync(
+                    downloadTask.TempPath,
+                    _cancellationTokenSource.Token);
+                var downloadedChunk = Chunk.ReadBuffer(downloadedChunkBytes);
+                downloadedChunk.ValidateAgainst(downloadTask.ChunkInfo);
 
                 UpdateDownloadProgress(downloadTask.ChunkInfo.FileSize);
                 CreateIoTasksForChunk(downloadTask);
@@ -1231,7 +1236,10 @@ public class InstallManager
         }
 
         if (manifestData is { Length: > 0 })
+        {
+            _ = Manifest.Read(manifestData);
             return manifestData;
+        }
 
         var urlResult = await _repository.GetManifestUrls(
             gameData.AssetInfos.Windows.Namespace,
@@ -1252,6 +1260,8 @@ public class InstallManager
                 $"Manifest request failed: {manifestResult.Failure!.Kind}.");
 
         manifestData = manifestResult.Value;
+        ManifestIntegrity.VerifyDigest(manifestData, urlResult.Value.ManifestHash);
+        _ = Manifest.Read(manifestData);
         await _storage.CacheManifestBytes(
             appName,
             gameData.AssetInfos.Windows.BuildVersion,
