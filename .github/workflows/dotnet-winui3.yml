@@ -21,37 +21,40 @@ jobs:
 
     env:
       Solution_Name: Crimson.sln
+      Configuration: ${{ matrix.configuration }}
+      Platform: ${{ matrix.platform }}
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    # Install the .NET Core workload
-    - name: Install .NET Core
+    - name: Install .NET SDK
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 9.0.x
+        dotnet-version: 10.0.x
 
-    # Add  MSBuild to the PATH: https://github.com/microsoft/setup-msbuild
     - name: Setup MSBuild.exe
-      uses: microsoft/setup-msbuild@v1.0.2
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Restore
+      run: dotnet restore Crimson.sln -r win-$env:Platform -p:Platform=$env:Platform -p:PublishReadyToRun=true
+
+    - name: Test
+      run: dotnet test Crimson.Tests\Crimson.Tests.csproj --no-restore --configuration $env:Configuration -p:Platform=$env:Platform
 
     # Create the app package by building and packaging the project
-    - name: Create the app package 
-      run: dotnet publish -r win-$env:Platform --self-contained true
+    - name: Create the app package
+      run: dotnet publish Crimson\Crimson.csproj -r win-$env:Platform --configuration $env:Configuration -p:Platform=$env:Platform --self-contained true --no-restore
       env:
         Appx_Bundle: Never
         Appx_Package_Build_Mode: SideloadOnly
         Appx_Package_Dir: Packages/
-        Configuration: ${{ matrix.configuration }}
-        Platform: ${{ matrix.platform }}
 
     # Upload the build output: https://github.com/marketplace/actions/upload-a-build-artifact
     - name: Upload ZIP
       uses: actions/upload-artifact@v4
       with:
         name: Package
-        path: Crimson\bin\Release\net8.0-windows10.0.22621.0\win-x64\publish
-        
+        path: Crimson\bin\Release\net10.0-windows10.0.22621.0\win-x64\publish
