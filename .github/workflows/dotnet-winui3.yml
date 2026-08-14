@@ -10,6 +10,20 @@ on:
     branches: [ master ]
 
 jobs:
+  portable-core:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Test portable Core
+      run: dotnet test Crimson.Core.Tests/Crimson.Core.Tests.csproj --configuration Release
+
   build:
     strategy:
       matrix:

@@ -32,7 +32,6 @@
         <PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.2.251219" />
         <PackageReference Include="Google.Protobuf" Version="3.29.2" />
         <PackageReference Include="H.NotifyIcon.WinUI" Version="2.4.1" />
-        <PackageReference Include="Ionic.Zlib.Core" Version="1.0.0" />
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
         <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.11" />
         <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
@@ -45,6 +44,9 @@
 		<Manifest Include="$(ApplicationManifest)" />
 	</ItemGroup>
 
+    <ItemGroup>
+        <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
+    </ItemGroup>
 
     <!-- 
     Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging

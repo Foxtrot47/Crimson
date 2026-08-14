@@ -19,7 +19,6 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Ionic.Zlib.Core" Version="1.0.0" />
     <PackageReference Include="Serilog" Version="4.4.0" />
   </ItemGroup>
 
@@ -30,16 +29,13 @@
     <Compile Include="..\Crimson\Core\DownloadManager.cs" Link="Production\Core\DownloadManager.cs" />
     <Compile Include="..\Crimson\Core\InstallManager.cs" Link="Production\Core\InstallManager.cs" />
     <Compile Include="..\Crimson\Core\LibraryManager.cs" Link="Production\Core\LibraryManager.cs" />
-    <Compile Include="..\Crimson\Core\ManifestUpdatePlanner.cs" Link="Production\Core\ManifestUpdatePlanner.cs" />
-    <Compile Include="..\Crimson\Core\SecurityPolicy.cs" Link="Production\Core\SecurityPolicy.cs" />
     <Compile Include="..\Crimson\Models\*.cs" Exclude="..\Crimson\Models\DlcOption.cs" Link="Production\Models\%(Filename)%(Extension)" />
     <Compile Include="..\Crimson\Repository\IStoreRepository.cs" Link="Production\Repository\IStoreRepository.cs" />
     <Compile Include="..\Crimson\Repository\GetManifestUrlData.cs" Link="Production\Repository\GetManifestUrlData.cs" />
-    <Compile Include="..\Crimson\Utils\BigIntegerJsonConverter.cs" Link="Production\Utils\BigIntegerJsonConverter.cs" />
-    <Compile Include="..\Crimson\Utils\InstallDirectoryCleanup.cs" Link="Production\Utils\InstallDirectoryCleanup.cs" />
-    <Compile Include="..\Crimson\Utils\ManifestPath.cs" Link="Production\Utils\ManifestPath.cs" />
-    <Compile Include="..\Crimson\Utils\RollingHash.cs" Link="Production\Utils\RollingHash.cs" />
     <Compile Include="..\Crimson\Utils\Storage.cs" Link="Production\Utils\Storage.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
+  </ItemGroup>
 </Project>

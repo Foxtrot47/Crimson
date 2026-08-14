@@ -33,6 +33,7 @@ public class Chunk
     {
         _guid = GenerateGuid();
         ShaHash = new byte[20];
+        _guidNum = -1;
         _bio = new MemoryStream();
     }
 
