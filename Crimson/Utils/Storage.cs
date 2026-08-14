@@ -11,20 +11,17 @@ namespace Crimson.Utils
 {
     public class Storage
     {
-        private static readonly string AppDataPath = Path.GetFullPath(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Crimson"));
-        private static readonly string UserDataFile = ResolveAppDataPath("user.json");
-        private static readonly string GameAssetsFile = ResolveAppDataPath("assets.json");
-        private static readonly string MetaDataDirectory = ResolveAppDataPath("metadata");
-        private static readonly string SettingsDataFile = ResolveAppDataPath("settings.json");
-        private static readonly string InstallationStateFile = ResolveAppDataPath("install_state.json");
-        private static readonly string LocalAppStateFile = ResolveAppDataPath("localstate.json");
-        private static readonly string ManifestPath = ResolveAppDataPath("manifests");
-
+        private readonly string _appDataPath;
+        private readonly string _userDataFile;
+        private readonly string _gameAssetsFile;
+        private readonly string _metaDataDirectory;
+        private readonly string _settingsDataFile;
+        private readonly string _installationStateFile;
+        private readonly string _localAppStateFile;
+        private readonly string _manifestPath;
         private Dictionary<string, Game> _gameMetaDataDictionary;
         private Dictionary<string, LocalAppState> _localAppStateDictionary;
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
         public Dictionary<string, LocalAppState> LocalAppStateDictionary => _localAppStateDictionary;
@@ -32,75 +29,70 @@ namespace Crimson.Utils
         public string DefaultInstallPath => Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
 
 
-        public Storage()
+        public Storage() : this(App.GetService<ILogger>())
         {
-            _logger = App.GetService<ILogger>();
-            try
+        }
+
+        public Storage(ILogger logger, string? appDataPath = null)
+        {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _appDataPath = Path.GetFullPath(appDataPath ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Crimson"));
+            _userDataFile = ResolveAppDataPath("user.json");
+            _gameAssetsFile = ResolveAppDataPath("assets.json");
+            _metaDataDirectory = ResolveAppDataPath("metadata");
+            _settingsDataFile = ResolveAppDataPath("settings.json");
+            _installationStateFile = ResolveAppDataPath("install_state.json");
+            _localAppStateFile = ResolveAppDataPath("localstate.json");
+            _manifestPath = ResolveAppDataPath("manifests");
+
+            Directory.CreateDirectory(_metaDataDirectory);
+            Directory.CreateDirectory(_manifestPath);
+            _gameMetaDataDictionary = new Dictionary<string, Game>(StringComparer.Ordinal);
+            foreach (var file in Directory.EnumerateFiles(_metaDataDirectory, "*.json"))
             {
-                if (!Directory.Exists(MetaDataDirectory))
-                    Directory.CreateDirectory(MetaDataDirectory);
-
-                if (!Directory.Exists(ManifestPath))
-                    Directory.CreateDirectory(ManifestPath);
-
-                var metaDataDictionary = new Dictionary<string, Game>();
-
-                Parallel.ForEach(Directory.EnumerateFiles(MetaDataDirectory),
-                    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, (file) =>
-                    {
-                        try
-                        {
-                            var jsonString = File.ReadAllText(file);
-                            var gameMetaData = JsonSerializer.Deserialize<Game>(jsonString);
-                            if (gameMetaData == null)
-                                throw new InvalidDataException("Metadata file did not contain a game record.");
-
-                            _ = StorageKeyCodec.Encode(gameMetaData.AppName);
-                            lock (metaDataDictionary)
-                            {
-                                metaDataDictionary.Add(gameMetaData.AppName, gameMetaData);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            // Log detailed exception information
-                            Log.Error($"Error processing file {file}. Exception: {ex}");
-                        }
-                    });
-
-                // Outside the parallel loop, assign the dictionary to the shared field
-                _gameMetaDataDictionary = metaDataDictionary;
-
-                // Load installed games list
-                if (!File.Exists(LocalAppStateFile))
+                try
                 {
-                    _localAppStateDictionary = new Dictionary<string, LocalAppState>();
+                    var game = JsonSerializer.Deserialize<Game>(File.ReadAllText(file));
+                    if (game == null)
+                        throw new InvalidDataException("Metadata file did not contain a game record.");
+
+                    _ = StorageKeyCodec.Encode(game.AppName);
+                    _gameMetaDataDictionary.Add(game.AppName, game);
                 }
-                else
+                catch (Exception exception)
                 {
-                    var jsonString = File.ReadAllText(LocalAppStateFile);
-                    if (jsonString != null && jsonString != "")
-                        _localAppStateDictionary =
-                            JsonSerializer.Deserialize<Dictionary<string, LocalAppState>>(jsonString);
-                    else
-                        _localAppStateDictionary = new Dictionary<string, LocalAppState>();
+                    _logger.Error(
+                        "Failed to load metadata file {FileName} with {ErrorType}",
+                        Path.GetFileName(file),
+                        exception.GetType().Name);
                 }
             }
-            catch (Exception ex)
+
+            if (!File.Exists(_localAppStateFile))
             {
-                Log.Error(ex.ToString());
+                _localAppStateDictionary = new Dictionary<string, LocalAppState>(StringComparer.Ordinal);
+            }
+            else
+            {
+                var json = File.ReadAllText(_localAppStateFile);
+                _localAppStateDictionary = string.IsNullOrWhiteSpace(json)
+                    ? new Dictionary<string, LocalAppState>(StringComparer.Ordinal)
+                    : JsonSerializer.Deserialize<Dictionary<string, LocalAppState>>(json)
+                      ?? new Dictionary<string, LocalAppState>(StringComparer.Ordinal);
             }
         }
 
         public async Task<UserData> GetUserData()
         {
-            if (!File.Exists(UserDataFile))
+            if (!File.Exists(_userDataFile))
             {
                 await SaveUserData(null);
                 return null;
             }
 
-            await using var fileStream = File.Open(UserDataFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+            await using var fileStream = File.Open(_userDataFile, FileMode.Open, FileAccess.Read, FileShare.Read);
             using var streamReader = new StreamReader(fileStream);
             var jsonString = await streamReader.ReadToEndAsync();
             var userData = JsonSerializer.Deserialize<UserData>(jsonString);
@@ -113,7 +105,7 @@ namespace Crimson.Utils
         {
             var jsonString = JsonSerializer.Serialize(data);
 
-            await using var fileStream = File.Open(UserDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
+            await using var fileStream = File.Open(_userDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
             await using var streamWriter = new StreamWriter(fileStream);
             await streamWriter.WriteAsync(jsonString);
             streamWriter.Close();
@@ -123,8 +115,8 @@ namespace Crimson.Utils
         {
             try
             {
-                if (File.Exists(UserDataFile))
-                    File.Delete(UserDataFile);
+                if (File.Exists(_userDataFile))
+                    File.Delete(_userDataFile);
             }
             catch (Exception ex)
             {
@@ -136,13 +128,13 @@ namespace Crimson.Utils
         {
             try
             {
-                if (!File.Exists(GameAssetsFile))
+                if (!File.Exists(_gameAssetsFile))
                 {
                     await SaveGameAssetsData(null);
                     return null;
                 }
 
-                await using var fileStream = File.Open(GameAssetsFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+                await using var fileStream = File.Open(_gameAssetsFile, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using var streamReader = new StreamReader(fileStream);
                 var jsonString = await streamReader.ReadToEndAsync();
                 streamReader.Close();
@@ -162,7 +154,7 @@ namespace Crimson.Utils
                 var jsonString = JsonSerializer.Serialize(data);
 
                 await using var fileStream =
-                    File.Open(GameAssetsFile, FileMode.Create, FileAccess.Write, FileShare.Read);
+                    File.Open(_gameAssetsFile, FileMode.Create, FileAccess.Write, FileShare.Read);
                 await using var streamWriter = new StreamWriter(fileStream);
                 await streamWriter.WriteAsync(jsonString);
                 await streamWriter.FlushAsync();
@@ -204,8 +196,8 @@ namespace Crimson.Utils
         {
             var jsonString = JsonSerializer.Serialize(game);
 
-            if (!Directory.Exists(MetaDataDirectory))
-                Directory.CreateDirectory(MetaDataDirectory);
+            if (!Directory.Exists(_metaDataDirectory))
+                Directory.CreateDirectory(_metaDataDirectory);
 
             var fileName = ResolveAppDataPath("metadata", $"{StorageKeyCodec.Encode(game.AppName)}.json");
             File.WriteAllText(fileName, jsonString);
@@ -220,7 +212,7 @@ namespace Crimson.Utils
 
             var jsonString = JsonSerializer.Serialize(_localAppStateDictionary);
 
-            File.WriteAllText(LocalAppStateFile, jsonString);
+            File.WriteAllText(_localAppStateFile, jsonString);
         }
 
         public void AddToLocalAppState(string appName, LocalAppState appState)
@@ -229,12 +221,12 @@ namespace Crimson.Utils
 
             var jsonString = JsonSerializer.Serialize(_localAppStateDictionary);
 
-            File.WriteAllText(LocalAppStateFile, jsonString);
+            File.WriteAllText(_localAppStateFile, jsonString);
         }
 
         public string GetSettingsData()
         {
-            using var fileStream = File.Open(SettingsDataFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var fileStream = File.Open(_settingsDataFile, FileMode.Open, FileAccess.Read, FileShare.Read);
             using var streamReader = new StreamReader(fileStream);
             var data = streamReader.ReadToEnd();
             fileStream.Dispose();
@@ -243,7 +235,7 @@ namespace Crimson.Utils
 
         public async Task SaveSettingsData(string data)
         {
-            await using var fileStream = File.Open(SettingsDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
+            await using var fileStream = File.Open(_settingsDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
             await using var streamWriter = new StreamWriter(fileStream);
             await streamWriter.WriteAsync(data);
             streamWriter.Close();
@@ -251,7 +243,7 @@ namespace Crimson.Utils
 
         public void SaveInstallState(string data)
         {
-            using var fileStream = File.Open(InstallationStateFile, FileMode.Create, FileAccess.Write, FileShare.None);
+            using var fileStream = File.Open(_installationStateFile, FileMode.Create, FileAccess.Write, FileShare.None);
             using var streamWriter = new StreamWriter(fileStream);
             streamWriter.Write(data);
             streamWriter.Close();
@@ -259,7 +251,7 @@ namespace Crimson.Utils
 
         public string GetInstallState()
         {
-            using var fileStream = File.Open(InstallationStateFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var fileStream = File.Open(_installationStateFile, FileMode.Open, FileAccess.Read, FileShare.Read);
             using var streamReader = new StreamReader(fileStream);
             var data = streamReader.ReadToEnd();
             fileStream.Close();
@@ -267,13 +259,13 @@ namespace Crimson.Utils
 
         }
 
-        public static async Task SaveAppManifest(byte[] manifestBytes, string appName)
+        public async Task SaveAppManifest(byte[] manifestBytes, string appName)
         {
             var path = ResolveAppDataPath($"{StorageKeyCodec.Encode(appName)}.manifest");
             await File.WriteAllBytesAsync(path, manifestBytes);
         }
 
-        public static Task<byte[]> GetAppManifest(string appName)
+        public Task<byte[]> GetAppManifest(string appName)
         {
             var path = ResolveAppDataPath($"{StorageKeyCodec.Encode(appName)}.manifest");
             return File.ReadAllBytesAsync(path);
@@ -336,17 +328,17 @@ namespace Crimson.Utils
             }
         }
 
-        private static string GetManifestCachePath(string appName, string version) => ResolveAppDataPath(
+        private string GetManifestCachePath(string appName, string version) => ResolveAppDataPath(
             "manifests",
             $"{StorageKeyCodec.Encode(appName)}.{StorageKeyCodec.Encode(version)}.manifest");
 
-        private static string ResolveAppDataPath(params string[] segments)
+        private string ResolveAppDataPath(params string[] segments)
         {
             var pathParts = new string[segments.Length + 1];
-            pathParts[0] = AppDataPath;
+            pathParts[0] = _appDataPath;
             Array.Copy(segments, 0, pathParts, 1, segments.Length);
             var candidate = Path.GetFullPath(Path.Combine(pathParts));
-            var relative = Path.GetRelativePath(AppDataPath, candidate);
+            var relative = Path.GetRelativePath(_appDataPath, candidate);
             if (relative == ".." ||
                 relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
                 Path.IsPathRooted(relative))
