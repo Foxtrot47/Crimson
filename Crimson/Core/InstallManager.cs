@@ -8,6 +8,7 @@ using System.Linq;
 using System.Numerics;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1153,7 +1154,18 @@ public class InstallManager
         var journalPath = UpdateTransactionState.GetJournalPath(transaction.InstallRoot);
         Directory.CreateDirectory(Path.GetDirectoryName(journalPath)!);
         var temporaryPath = journalPath + ".tmp";
-        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(transaction));
+        var contents = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(transaction));
+        using (var stream = new FileStream(
+            temporaryPath,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 4_096,
+            FileOptions.WriteThrough))
+        {
+            stream.Write(contents);
+            stream.Flush(flushToDisk: true);
+        }
         File.Move(temporaryPath, journalPath, overwrite: true);
     }
 
