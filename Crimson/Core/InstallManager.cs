@@ -58,6 +58,9 @@ public class InstallManager
     private bool _acceptCancellation;
     private TaskCompletionSource _operationCompletion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private UpdateTransactionState? _updateTransaction;
+
+    internal Action<string>? UpdatePublicationFaultInjector { get; set; }
 
 
     public InstallItem? CurrentInstall { get; private set; }
@@ -77,6 +80,12 @@ public class InstallManager
         {
             Converters = { new BigIntegerJsonConverter() }
         };
+
+        foreach (var installation in _storage.LocalAppStateDictionary.Values)
+        {
+            if (!string.IsNullOrWhiteSpace(installation.InstallPath))
+                RecoverPendingUpdate(installation.InstallPath);
+        }
     }
 
     /// <summary>
@@ -178,6 +187,8 @@ public class InstallManager
             await Task.WhenAll(_installTasks);
 
             BeginFinalization();
+            if (CurrentInstall.Action == ActionType.Update && _updateTransaction != null)
+                await CommitPreparedUpdate();
             await UpdateInstalledGameStatus();
 
         }
@@ -342,6 +353,7 @@ public class InstallManager
         _downloadQueue = [];
         _ioQueue = [];
         _ioQueueTaskSet.Clear();
+        _updateTransaction = null;
         _uninstallManifestPaths.Clear();
         _chunkToFileManifestsDictionary = new();
         _chunkPartReferences = new();
@@ -393,6 +405,7 @@ public class InstallManager
     private void CreateIoTasksForChunk(DownloadTask downloadTask)
     {
         // get file manifest from dictionary
+        var writeRoot = _updateTransaction?.StagingRoot ?? CurrentInstall.Location;
         var fileManifests = _chunkToFileManifestsDictionary[downloadTask.GuidNum];
         foreach (var fileManifest in fileManifests)
         {
@@ -408,7 +421,7 @@ public class InstallManager
                 var task = new IoTask()
                 {
                     SourceFilePath = downloadTask.TempPath,
-                    DestinationFilePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, fileManifest.Filename),
+                    DestinationFilePath = ManifestPath.ResolveUnderRoot(writeRoot, fileManifest.Filename),
                     TaskType = IoTaskType.Copy,
                     Size = part.Size,
                     DestinationFileSize = fileManifest.FileSize,
@@ -685,6 +698,8 @@ public class InstallManager
                     var canRunOffLine = gameData.Metadata?.CustomAttributes?.CanRunOffline?.Value == "true";
                     var requireOwnerShipToken = gameData.Metadata?.CustomAttributes?.OwnershipToken?.Value == "true";
 
+                    if (invalidFilesList.Count > 0 && CurrentInstall.Action == ActionType.Update)
+                        throw new InvalidDataException("Published update failed whole-installation verification.");
                     BeginFinalization();
                     if (invalidFilesList.Count > 0)
                     {
@@ -722,6 +737,12 @@ public class InstallManager
                 }
             }
 
+            if (CurrentInstall.Action == ActionType.Update && _updateTransaction != null)
+            {
+                MarkUpdateMetadataCommitted();
+                CompletePreparedUpdate();
+            }
+
             CurrentInstall.Status = ActionStatus.Success;
             _installHistory.Add(CurrentInstall);
             InstallationStatusChanged?.Invoke(CurrentInstall);
@@ -735,6 +756,18 @@ public class InstallManager
         catch (Exception ex)
         {
             _logger.Fatal("UpdateInstalledGameStatus: Exception {ex}", ex);
+
+            if (_updateTransaction != null)
+            {
+                try
+                {
+                    RollbackPreparedUpdate();
+                }
+                catch (Exception rollbackException)
+                {
+                    _logger.Fatal(rollbackException, "Update rollback failed; startup recovery is required");
+                }
+            }
 
             if (CurrentInstall != null)
             {
@@ -752,10 +785,8 @@ public class InstallManager
         List<FileManifest> fileManifestLists,
         CancellationToken cancellationToken = default)
     {
-        if (!Directory.Exists(CurrentInstall.Location))
-        {
-            throw new Exception("Invalid installPath provided");
-        }
+        if (!Directory.Exists(installPath))
+            throw new DirectoryNotFoundException($"Verification root does not exist: {installPath}");
         var options = new ParallelOptions()
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount,
@@ -933,36 +964,206 @@ public class InstallManager
             updatePlan.AddedFiles.Count,
             updatePlan.RemovedFiles.Count);
 
-        // Queue delete tasks for removed files
-        foreach (var removedFile in updatePlan.RemovedFiles)
+        var filesToDownload = updatePlan.ChangedFiles
+            .Concat(updatePlan.AddedFiles)
+            .ToList();
+        foreach (var addedFile in updatePlan.AddedFiles)
         {
-            var filePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, removedFile);
-            if (File.Exists(filePath))
-            {
-                _ioQueue.Add(new IoTask()
-                {
-                    DestinationFilePath = filePath,
-                    TaskType = IoTaskType.Delete,
-                    Size = 0,
-                });
-            }
+            var livePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, addedFile.Filename);
+            if (File.Exists(livePath) || Directory.Exists(livePath))
+                throw new IOException($"Update would overwrite an untracked path: {addedFile.Filename}");
         }
 
-        // Build filtered file manifest list containing only changed + added files
-        var filesToDownload = new List<FileManifest>();
-        filesToDownload.AddRange(updatePlan.ChangedFiles);
-        filesToDownload.AddRange(updatePlan.AddedFiles);
+        _updateTransaction = UpdateTransactionState.Create(
+            CurrentInstall.Location,
+            updatePlan.ChangedFiles.Select(file => file.Filename),
+            updatePlan.AddedFiles.Select(file => file.Filename),
+            updatePlan.RemovedFiles,
+            filesToDownload,
+            JsonSerializer.Serialize(localAppState));
+        PrepareUpdateDirectories(_updateTransaction);
+        PersistUpdateTransaction(_updateTransaction);
 
         if (filesToDownload.Count == 0)
         {
-            _logger.Information("PrepareUpdateTasks: No files need updating");
+            _logger.Information("PrepareUpdateTasks: Update only removes owned files");
             return;
         }
 
         await _downloadManager.InitializeMirrors(
             gameData.BaseUrls,
             _cancellationTokenSource.Token);
-        GetChunksToDownloadFiltered(newManifest, filesToDownload);
+        GetChunksToDownloadFiltered(newManifest, filesToDownload, _updateTransaction.StagingRoot);
+    }
+
+    private static void PrepareUpdateDirectories(UpdateTransactionState transaction)
+    {
+        if (Directory.Exists(transaction.StagingRoot))
+            Directory.Delete(transaction.StagingRoot, recursive: true);
+        if (Directory.Exists(transaction.BackupRoot))
+            Directory.Delete(transaction.BackupRoot, recursive: true);
+        Directory.CreateDirectory(transaction.StagingRoot);
+        Directory.CreateDirectory(transaction.BackupRoot);
+    }
+
+    private async Task CommitPreparedUpdate()
+    {
+        var transaction = _updateTransaction
+            ?? throw new InvalidOperationException("No update transaction is prepared.");
+        var invalidFiles = await VerifyFiles(
+            transaction.StagingRoot,
+            transaction.FilesToVerify,
+            _cancellationTokenSource.Token);
+        if (invalidFiles.Count > 0)
+            throw new InvalidDataException("Staged update files failed verification.");
+
+        transaction.Phase = UpdateTransactionPhase.Committing;
+        PersistUpdateTransaction(transaction);
+        foreach (var relativePath in transaction.ChangedPaths.Concat(transaction.RemovedPaths))
+            BackupLiveFile(transaction, relativePath);
+
+        foreach (var relativePath in transaction.ChangedPaths.Concat(transaction.AddedPaths))
+        {
+            UpdatePublicationFaultInjector?.Invoke(relativePath);
+            var stagedPath = ManifestPath.ResolveUnderRoot(transaction.StagingRoot, relativePath);
+            var livePath = ManifestPath.ResolveUnderRoot(transaction.InstallRoot, relativePath);
+            if (!File.Exists(stagedPath))
+                throw new InvalidDataException($"Staged update file is missing: {relativePath}");
+            if (File.Exists(livePath) || Directory.Exists(livePath))
+                throw new IOException($"Update publication target is occupied: {relativePath}");
+
+            EnsureDirectoryExists(livePath);
+            File.Move(stagedPath, livePath);
+        }
+
+        transaction.Phase = UpdateTransactionPhase.Published;
+        PersistUpdateTransaction(transaction);
+    }
+
+    private static void BackupLiveFile(UpdateTransactionState transaction, string relativePath)
+    {
+        var livePath = ManifestPath.ResolveUnderRoot(transaction.InstallRoot, relativePath);
+        if (Directory.Exists(livePath))
+            throw new IOException($"Owned update path is a directory: {relativePath}");
+        if (!File.Exists(livePath))
+            return;
+
+        var backupPath = ManifestPath.ResolveUnderRoot(transaction.BackupRoot, relativePath);
+        var backupDirectory = Path.GetDirectoryName(backupPath);
+        if (!string.IsNullOrEmpty(backupDirectory))
+            Directory.CreateDirectory(backupDirectory);
+        File.Move(livePath, backupPath);
+    }
+
+    private void MarkUpdateMetadataCommitted()
+    {
+        if (_updateTransaction == null)
+            return;
+
+        _updateTransaction.Phase = UpdateTransactionPhase.MetadataCommitted;
+        PersistUpdateTransaction(_updateTransaction);
+    }
+
+    private void CompletePreparedUpdate()
+    {
+        if (_updateTransaction == null)
+            return;
+
+        CleanupUpdateTransaction(_updateTransaction);
+        _updateTransaction = null;
+    }
+
+    private void RollbackPreparedUpdate()
+    {
+        if (_updateTransaction == null)
+            return;
+
+        RollbackUpdateFiles(_updateTransaction);
+        RestoreOldInstallationState(_updateTransaction);
+        CleanupUpdateTransaction(_updateTransaction);
+        _updateTransaction = null;
+    }
+
+    private void RecoverPendingUpdate(string installRoot)
+    {
+        var journalPath = UpdateTransactionState.GetJournalPath(installRoot);
+        if (!File.Exists(journalPath))
+            return;
+
+        var transaction = JsonSerializer.Deserialize<UpdateTransactionState>(File.ReadAllText(journalPath))
+            ?? throw new InvalidDataException("Update transaction journal is invalid.");
+        if (!string.Equals(
+                Path.GetFullPath(transaction.InstallRoot),
+                Path.GetFullPath(installRoot),
+                StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Update transaction journal root does not match the installation.");
+
+        if (transaction.Phase != UpdateTransactionPhase.MetadataCommitted)
+        {
+            RollbackUpdateFiles(transaction);
+            RestoreOldInstallationState(transaction);
+            _logger.Warning("Recovered incomplete update for {InstallRoot} by restoring the old version", installRoot);
+        }
+
+        CleanupUpdateTransaction(transaction);
+    }
+
+    private void RestoreOldInstallationState(UpdateTransactionState transaction)
+    {
+        var oldState = JsonSerializer.Deserialize<LocalAppState>(transaction.OldLocalStateJson)
+            ?? throw new InvalidDataException("Update transaction contains invalid prior installation state.");
+        _storage.AddToLocalAppState(oldState.AppName, oldState);
+        var game = _libraryManager.GetGameInfo(oldState.AppName);
+        if (game != null)
+        {
+            game.LocalAppState = oldState;
+            _libraryManager.UpdateGameInfo(game);
+        }
+    }
+
+    private static void RollbackUpdateFiles(UpdateTransactionState transaction)
+    {
+        foreach (var relativePath in transaction.AddedPaths)
+        {
+            var livePath = ManifestPath.ResolveUnderRoot(transaction.InstallRoot, relativePath);
+            if (File.Exists(livePath))
+                File.Delete(livePath);
+        }
+
+        foreach (var relativePath in transaction.ChangedPaths.Concat(transaction.RemovedPaths))
+        {
+            var backupPath = ManifestPath.ResolveUnderRoot(transaction.BackupRoot, relativePath);
+            if (!File.Exists(backupPath))
+                continue;
+
+            var livePath = ManifestPath.ResolveUnderRoot(transaction.InstallRoot, relativePath);
+            if (Directory.Exists(livePath))
+                throw new IOException($"Cannot restore update backup over directory: {relativePath}");
+            if (File.Exists(livePath))
+                File.Delete(livePath);
+            var liveDirectory = Path.GetDirectoryName(livePath);
+            if (!string.IsNullOrEmpty(liveDirectory))
+                Directory.CreateDirectory(liveDirectory);
+            File.Move(backupPath, livePath);
+        }
+    }
+
+    private static void PersistUpdateTransaction(UpdateTransactionState transaction)
+    {
+        var journalPath = UpdateTransactionState.GetJournalPath(transaction.InstallRoot);
+        Directory.CreateDirectory(Path.GetDirectoryName(journalPath)!);
+        var temporaryPath = journalPath + ".tmp";
+        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(transaction));
+        File.Move(temporaryPath, journalPath, overwrite: true);
+    }
+
+    private static void CleanupUpdateTransaction(UpdateTransactionState transaction)
+    {
+        if (Directory.Exists(transaction.StagingRoot))
+            Directory.Delete(transaction.StagingRoot, recursive: true);
+        if (Directory.Exists(transaction.BackupRoot))
+            Directory.Delete(transaction.BackupRoot, recursive: true);
+        File.Delete(UpdateTransactionState.GetJournalPath(transaction.InstallRoot));
     }
 
     /// <summary>
@@ -994,8 +1195,12 @@ public class InstallManager
     /// <summary>
     /// Queue chunks to download for only a filtered set of file manifests (used by updates)
     /// </summary>
-    private void GetChunksToDownloadFiltered(Manifest data, List<FileManifest> fileManifests)
+    private void GetChunksToDownloadFiltered(
+        Manifest data,
+        List<FileManifest> fileManifests,
+        string? destinationRoot = null)
     {
+        destinationRoot ??= CurrentInstall.Location;
         var addedChunkGuids = new HashSet<BigInteger>();
         var chunkDownloadList = new List<ChunkInfo>();
 
@@ -1045,7 +1250,7 @@ public class InstallManager
         {
             if (fileManifest.ChunkParts.Count == 0)
             {
-                var filePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, fileManifest.Filename);
+                var filePath = ManifestPath.ResolveUnderRoot(destinationRoot, fileManifest.Filename);
                 EnsureDirectoryExists(filePath);
                 File.Create(filePath).Dispose();
                 _logger.Debug("GetChunksToDownloadFiltered: Created empty file {Path}", filePath);
@@ -1125,10 +1330,24 @@ public class InstallManager
             catch (Exception) { }
         }
 
+        var cleanupAllowed = true;
+        if (_updateTransaction != null)
+        {
+            try
+            {
+                RollbackPreparedUpdate();
+            }
+            catch (Exception rollbackException)
+            {
+                cleanupAllowed = false;
+                _logger.Fatal(rollbackException, "Update rollback failed; preserving recovery journal");
+            }
+        }
+
         var tempChunkDir = Path.Combine(CurrentInstall.Location, ".Crimson");
         try
         {
-            if (Directory.Exists(tempChunkDir))
+            if (cleanupAllowed && Directory.Exists(tempChunkDir))
                 Directory.Delete(tempChunkDir, true);
         }
         catch (Exception ex)
@@ -1502,6 +1721,55 @@ public class InstallManager
         _pauseEvent.Set();
         //ProcessNext(true);
     }
+}
+
+internal enum UpdateTransactionPhase
+{
+    Prepared,
+    Committing,
+    Published,
+    MetadataCommitted
+}
+
+internal sealed class UpdateTransactionState
+{
+    public string InstallRoot { get; set; } = string.Empty;
+    public string StagingRoot { get; set; } = string.Empty;
+    public string BackupRoot { get; set; } = string.Empty;
+    public List<string> ChangedPaths { get; set; } = [];
+    public List<string> AddedPaths { get; set; } = [];
+    public List<string> RemovedPaths { get; set; } = [];
+    public string OldLocalStateJson { get; set; } = string.Empty;
+    public UpdateTransactionPhase Phase { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public List<FileManifest> FilesToVerify { get; set; } = [];
+
+    public static UpdateTransactionState Create(
+        string installRoot,
+        IEnumerable<string> changedPaths,
+        IEnumerable<string> addedPaths,
+        IEnumerable<string> removedPaths,
+        IEnumerable<FileManifest> filesToVerify,
+        string oldLocalStateJson)
+    {
+        var transactionRoot = Path.Combine(installRoot, ".Crimson");
+        return new UpdateTransactionState
+        {
+            InstallRoot = Path.GetFullPath(installRoot),
+            StagingRoot = Path.Combine(transactionRoot, "update-staging"),
+            BackupRoot = Path.Combine(transactionRoot, "update-backup"),
+            ChangedPaths = changedPaths.ToList(),
+            AddedPaths = addedPaths.ToList(),
+            RemovedPaths = removedPaths.ToList(),
+            FilesToVerify = filesToVerify.ToList(),
+            OldLocalStateJson = oldLocalStateJson,
+            Phase = UpdateTransactionPhase.Prepared
+        };
+    }
+
+    public static string GetJournalPath(string installRoot) =>
+        Path.Combine(installRoot, ".Crimson", "update-transaction.json");
 }
 
 internal class InstallItemComparer : IEqualityComparer<InstallItem>

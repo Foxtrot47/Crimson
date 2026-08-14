@@ -40,17 +40,35 @@ public sealed class SyntheticUpdateLifecycleTests
             var userFile = Path.Combine(installRoot, "Data", "user-save.dat");
             await File.WriteAllTextAsync(userFile, "preserve me");
 
+            SimulateInterruptedPublication(versionOne.Storage, installRoot);
             var versionTwo = CreateHarness(logger, stateRoot, "new.manifest");
+            await AssertInstalledFilesAsync("old", installRoot);
+            Assert.False(File.Exists(Path.Combine(installRoot, "Data", "added.txt")));
+            Assert.False(File.Exists(UpdateTransactionState.GetJournalPath(installRoot)));
             var updatedGame = versionTwo.Library.GetGameInfo("CrimsonSyntheticGame");
             Assert.NotNull(updatedGame);
             updatedGame.AssetInfos.Windows.BuildVersion = "2.0.0";
             versionTwo.Storage.SaveMetaData(updatedGame);
 
-            var updateResult = await RunOperationAsync(
+            versionTwo.Manager.UpdatePublicationFaultInjector = relativePath =>
+            {
+                if (relativePath == "Data/added.txt")
+                    throw new IOException("Injected publication failure.");
+            };
+            var failedUpdate = await RunOperationAsync(
                 versionTwo.Manager,
                 new InstallItem("CrimsonSyntheticGame", ActionType.Update, installRoot));
-            Assert.Equal(ActionStatus.Success, updateResult.Status);
+            Assert.Equal(ActionStatus.Failed, failedUpdate.Status);
+            await AssertInstalledFilesAsync("old", installRoot);
+            Assert.True(File.Exists(Path.Combine(installRoot, "Data", "removed.txt")));
+            Assert.False(File.Exists(Path.Combine(installRoot, "Data", "added.txt")));
+            Assert.Equal("preserve me", await File.ReadAllTextAsync(userFile));
 
+            var retry = CreateHarness(logger, stateRoot, "new.manifest");
+            var updateResult = await RunOperationAsync(
+                retry.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Update, installRoot));
+            Assert.Equal(ActionStatus.Success, updateResult.Status);
             await AssertInstalledFilesAsync("new", installRoot);
             Assert.False(File.Exists(Path.Combine(installRoot, "Data", "removed.txt")));
             Assert.True(File.Exists(Path.Combine(installRoot, "Data", "added.txt")));
@@ -131,6 +149,36 @@ public sealed class SyntheticUpdateLifecycleTests
             manager.InstallationStatusChanged -= OnStatusChanged;
         }
     }
+    private static void SimulateInterruptedPublication(Storage storage, string installRoot)
+    {
+        var oldState = storage.LocalAppStateDictionary["CrimsonSyntheticGame"];
+        var transaction = UpdateTransactionState.Create(
+            installRoot,
+            ["Data/changed.txt"],
+            ["Data/added.txt"],
+            ["Data/removed.txt"],
+            [],
+            JsonSerializer.Serialize(oldState));
+        transaction.Phase = UpdateTransactionPhase.Published;
+        Directory.CreateDirectory(transaction.StagingRoot);
+        foreach (var relativePath in transaction.ChangedPaths.Concat(transaction.RemovedPaths))
+        {
+            var livePath = Path.Combine(installRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var backupPath = Path.Combine(
+                transaction.BackupRoot,
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
+            File.Move(livePath, backupPath);
+        }
+
+        var changedPath = Path.Combine(installRoot, "Data", "changed.txt");
+        File.WriteAllText(changedPath, "partially published");
+        File.WriteAllText(Path.Combine(installRoot, "Data", "added.txt"), "partially added");
+        var journalPath = UpdateTransactionState.GetJournalPath(installRoot);
+        Directory.CreateDirectory(Path.GetDirectoryName(journalPath)!);
+        File.WriteAllText(journalPath, JsonSerializer.Serialize(transaction));
+    }
+
 
     private static async Task WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
     {
