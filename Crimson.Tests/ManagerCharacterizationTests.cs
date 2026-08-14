@@ -140,25 +140,34 @@ public sealed class ManagerCharacterizationTests
 
     private sealed class UnusedStoreRepository : IStoreRepository
     {
-        public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId) =>
-            throw new NotSupportedException();
+        public Task<RepositoryResult<Metadata>> FetchGameMetaData(
+            string nameSpace,
+            string catalogItemId,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live") =>
-            throw new NotSupportedException();
+        public Task<RepositoryResult<IReadOnlyList<Asset>>> FetchGameAssets(
+            EpicPayloadPlatform platform,
+            string label = "Live",
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<byte[]> GetGameManifest(GetManifestUrlData urlData) =>
-            throw new NotSupportedException();
+        public Task<RepositoryResult<byte[]>> GetGameManifest(
+            GetManifestUrlData urlData,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task DownloadFileAsync(string url, string destinationPath) =>
-            throw new NotSupportedException();
+        public Task<RepositoryResult<long>> DownloadFileAsync(
+            string url,
+            string destinationPath,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<string> GetGameToken() => throw new NotSupportedException();
+        public Task<RepositoryResult<string>> GetGameToken(
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<GetManifestUrlData> GetManifestUrls(
+        public Task<RepositoryResult<GetManifestUrlData>> GetManifestUrls(
             string nameSpace,
             string catalogItem,
             string appName,
-            string platform = "Windows",
-            string label = "Live") => throw new NotSupportedException();
+            EpicPayloadPlatform platform,
+            string label = "Live",
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Models;
 
@@ -6,15 +7,32 @@ namespace Crimson.Repository;
 
 public interface IStoreRepository
 {
-    public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId);
+    Task<RepositoryResult<Metadata>> FetchGameMetaData(
+        string nameSpace,
+        string catalogItemId,
+        CancellationToken cancellationToken = default);
 
-    public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live");
+    Task<RepositoryResult<IReadOnlyList<Asset>>> FetchGameAssets(
+        EpicPayloadPlatform platform,
+        string label = "Live",
+        CancellationToken cancellationToken = default);
 
-    public Task<byte[]> GetGameManifest(GetManifestUrlData urlData);
+    Task<RepositoryResult<byte[]>> GetGameManifest(
+        GetManifestUrlData urlData,
+        CancellationToken cancellationToken = default);
 
-    public Task DownloadFileAsync(string url, string destinationPath);
+    Task<RepositoryResult<long>> DownloadFileAsync(
+        string url,
+        string destinationPath,
+        CancellationToken cancellationToken = default);
 
-    public Task<string> GetGameToken();
+    Task<RepositoryResult<string>> GetGameToken(CancellationToken cancellationToken = default);
 
-    public Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live");
+    Task<RepositoryResult<GetManifestUrlData>> GetManifestUrls(
+        string nameSpace,
+        string catalogItem,
+        string appName,
+        EpicPayloadPlatform platform,
+        string label = "Live",
+        CancellationToken cancellationToken = default);
 }

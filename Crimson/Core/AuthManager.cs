@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Crimson.Repository;
 using Crimson.Models;
 using Crimson.Utils;
 using Serilog;
@@ -24,7 +25,6 @@ public class AuthManager
     private const string BasicAuthUsername = "34a02cf8f4414e29b15921876da36f9a";
     private const string BasicAuthPassword = "daafbccc737745039dffe53d94fc76cf";
     private const string OAuthHost = "https://account-public-service-prod03.ol.epicgames.com";
-    private const string UserAgent = "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit";
     private static readonly TimeSpan TokenRefreshBuffer = TimeSpan.FromMinutes(5);
 
     private readonly HttpClient _httpClient;
@@ -47,7 +47,7 @@ public class AuthManager
     // <summary>
     // Check if the user is logged in or not
     // </summary>
-    public async Task<AuthenticationStatus> CheckAuthStatus()
+    public async Task<AuthenticationStatus> CheckAuthStatus(CancellationToken cancellationToken = default)
     {
         try
         {
@@ -86,7 +86,11 @@ public class AuthManager
             if (expiryDate < DateTimeOffset.UtcNow + TokenRefreshBuffer)
             {
                 _log.Information("CheckAuthStatus: Access token expired or expiring soon, refreshing");
-                var newData = await RequestTokens("refresh_token", "refresh_token", userData.RefreshToken);
+                var newData = await RequestTokens(
+                    "refresh_token",
+                    "refresh_token",
+                    userData.RefreshToken,
+                    cancellationToken);
                 if (newData == null || newData.AccessToken == null)
                 {
                     _log.Error("CheckAuthStatus: Token refresh failed, logging out");
@@ -101,7 +105,7 @@ public class AuthManager
                 newData.RefreshToken = KeyManager.EncryptString(newData.RefreshToken);
                 await _storage.SaveUserData(newData);
 
-                if (!await VerifyAccessToken(plainAccessToken))
+                if (!await VerifyAccessToken(plainAccessToken, cancellationToken))
                 {
                     _log.Warning("CheckAuthStatus: Refreshed access token is invalid, logging out");
                     _authenticationStatus = AuthenticationStatus.LoggedOut;
@@ -113,7 +117,7 @@ public class AuthManager
             {
                 _log.Information("CheckAuthStatus: Access token is still valid");
 
-                if (!await VerifyAccessToken(userData.AccessToken))
+                if (!await VerifyAccessToken(userData.AccessToken, cancellationToken))
                 {
                     _log.Warning("CheckAuthStatus: Access token is invalid, logging out");
                     _authenticationStatus = AuthenticationStatus.LoggedOut;
@@ -125,6 +129,10 @@ public class AuthManager
             _authenticationStatus = AuthenticationStatus.LoggedIn;
             OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
             return _authenticationStatus;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -138,11 +146,17 @@ public class AuthManager
     /// <summary>
     /// Fetch user data from the exchange code
     /// </summary>
-    public async Task DoExchangeLogin(string exchangeCode)
+    public async Task DoExchangeLogin(
+        string exchangeCode,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var userData = await RequestTokens("exchange_code", "exchange_code", exchangeCode);
+            var userData = await RequestTokens(
+                "exchange_code",
+                "exchange_code",
+                exchangeCode,
+                cancellationToken);
 
             if (userData == null || userData.AccessToken == null)
             {
@@ -161,6 +175,10 @@ public class AuthManager
             _authenticationStatus = AuthenticationStatus.LoggedIn;
             OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedIn));
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _log.Error("DoExchangeLogin failed with {ErrorType}", ex.GetType().Name);
@@ -169,7 +187,7 @@ public class AuthManager
         }
     }
 
-    public async Task<string> GetAccessToken()
+    public async Task<string> GetAccessToken(CancellationToken cancellationToken = default)
     {
         if (_authenticationStatus != AuthenticationStatus.LoggedIn)
         {
@@ -177,7 +195,7 @@ public class AuthManager
             return null;
         }
 
-        await _refreshLock.WaitAsync();
+        await _refreshLock.WaitAsync(cancellationToken);
         try
         {
             var userData = await _storage.GetUserData();
@@ -200,7 +218,11 @@ public class AuthManager
                     return null;
                 }
 
-                var newData = await RequestTokens("refresh_token", "refresh_token", plainRefreshToken);
+                var newData = await RequestTokens(
+                    "refresh_token",
+                    "refresh_token",
+                    plainRefreshToken,
+                    cancellationToken);
                 if (newData == null || newData.AccessToken == null)
                 {
                     _log.Error("GetAccessToken: Token refresh failed, logging out");
@@ -216,6 +238,10 @@ public class AuthManager
             }
 
             return plainAccessToken;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -246,8 +272,13 @@ public class AuthManager
         OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
     }
 
-    private async Task<UserData> RequestTokens(string grantType, string codeName, string codeValue)
+    private async Task<UserData> RequestTokens(
+        string grantType,
+        string codeName,
+        string codeValue,
+        CancellationToken cancellationToken)
     {
+        const long maximumAuthenticationResponseBytes = 1024 * 1024;
         var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{BasicAuthUsername}:{BasicAuthPassword}"));
         using var formData = new FormUrlEncodedContent(new[]
         {
@@ -265,7 +296,10 @@ public class AuthManager
 
         try
         {
-            using var response = await _httpClient.SendAsync(request);
+            using var response = await _httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 _log.Error(
@@ -275,8 +309,11 @@ public class AuthManager
                 return null;
             }
 
-            var result = await response.Content.ReadAsStringAsync();
-            var userData = JsonSerializer.Deserialize<UserData>(result);
+            var bytes = await BoundedHttpContent.ReadBytesAsync(
+                response.Content,
+                maximumAuthenticationResponseBytes,
+                cancellationToken);
+            var userData = JsonSerializer.Deserialize<UserData>(bytes);
             if (userData?.AccessToken == null)
             {
                 _log.Error("RequestTokens returned an invalid authentication response");
@@ -284,6 +321,10 @@ public class AuthManager
             }
 
             return userData;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -295,7 +336,9 @@ public class AuthManager
     // <summary>
     // Verify the access token is still valid
     // </summary>
-    private async Task<bool> VerifyAccessToken(string accessToken)
+    private async Task<bool> VerifyAccessToken(
+        string accessToken,
+        CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
@@ -304,8 +347,15 @@ public class AuthManager
 
         try
         {
-            using var response = await _httpClient.SendAsync(request);
+            using var response = await _httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
             return response.IsSuccessStatusCode;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

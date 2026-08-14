@@ -62,12 +62,15 @@ namespace Crimson
                         )
                         .CreateLogger();
                 });
-                services.AddHttpClient("EpicOAuth", ConfigureEpicClient)
-                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
-                services.AddHttpClient("EpicApi", ConfigureEpicClient)
-                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
-                services.AddHttpClient("EpicContent", ConfigureEpicClient)
-                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
+                services.AddHttpClient("EpicOAuth", client =>
+                        ConfigureEpicClient(client, TimeSpan.FromSeconds(15)))
+                    .ConfigurePrimaryHttpMessageHandler(() => CreateSecureHttpHandler(TimeSpan.FromSeconds(5)));
+                services.AddHttpClient("EpicApi", client =>
+                        ConfigureEpicClient(client, TimeSpan.FromSeconds(30)))
+                    .ConfigurePrimaryHttpMessageHandler(() => CreateSecureHttpHandler(TimeSpan.FromSeconds(10)));
+                services.AddHttpClient("EpicContent", client =>
+                        ConfigureEpicClient(client, TimeSpan.FromMinutes(10)))
+                    .ConfigurePrimaryHttpMessageHandler(() => CreateSecureHttpHandler(TimeSpan.FromSeconds(15)));
 
                 services.AddSingleton<Storage>();
                 services.AddSingleton<AuthManager>(provider => new AuthManager(
@@ -94,18 +97,19 @@ namespace Crimson
             Build();
         }
 
-        private static void ConfigureEpicClient(HttpClient client)
+        private static void ConfigureEpicClient(HttpClient client, TimeSpan requestTimeout)
         {
             client.DefaultRequestHeaders.UserAgent.ParseAdd(
                 "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit");
-            client.Timeout = TimeSpan.FromSeconds(30);
+            client.Timeout = requestTimeout;
         }
 
-        private static HttpMessageHandler CreateSecureHttpHandler() => new HttpClientHandler
+        private static HttpMessageHandler CreateSecureHttpHandler(TimeSpan connectTimeout) => new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
             UseCookies = false,
-            MaxConnectionsPerServer = 16
+            MaxConnectionsPerServer = 16,
+            ConnectTimeout = connectTimeout
         };
 
         /// <summary>

@@ -32,6 +32,9 @@
     <Compile Include="..\Crimson\Models\*.cs" Exclude="..\Crimson\Models\DlcOption.cs" Link="Production\Models\%(Filename)%(Extension)" />
     <Compile Include="..\Crimson\Repository\IStoreRepository.cs" Link="Production\Repository\IStoreRepository.cs" />
     <Compile Include="..\Crimson\Repository\GetManifestUrlData.cs" Link="Production\Repository\GetManifestUrlData.cs" />
+    <Compile Include="..\Crimson\Repository\BoundedHttpContent.cs" Link="Production\Repository\BoundedHttpContent.cs" />
+    <Compile Include="..\Crimson\Repository\EpicGamesRepository.cs" Link="Production\Repository\EpicGamesRepository.cs" />
+    <Compile Include="..\Crimson\Repository\RepositoryResult.cs" Link="Production\Repository\RepositoryResult.cs" />
     <Compile Include="..\Crimson\Utils\Storage.cs" Link="Production\Utils\Storage.cs" />
   </ItemGroup>
 

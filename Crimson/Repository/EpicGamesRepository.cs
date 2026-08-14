@@ -1,275 +1,411 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Models;
 using Serilog;
 
-namespace Crimson.Repository
+namespace Crimson.Repository;
+
+internal sealed class EpicGamesRepository : IStoreRepository
 {
-    internal class EpicGamesRepository : IStoreRepository
+    private const string LauncherHost = "launcher-public-service-prod06.ol.epicgames.com";
+    private const string CatalogHost = "catalog-public-service-prod06.ol.epicgames.com";
+    private const string OAuthHost = "account-public-service-prod03.ol.epicgames.com";
+    private const long MaximumJsonBytes = 16 * 1024 * 1024;
+    private const long MaximumManifestBytes = 512 * 1024 * 1024;
+    private const long MaximumFileBytes = 8L * 1024 * 1024 * 1024;
+    private const int MaximumGetAttempts = 3;
+    private static readonly TimeSpan MaximumRetryDelay = TimeSpan.FromSeconds(30);
+
+    private readonly HttpClient _apiClient;
+    private readonly HttpClient _contentClient;
+    private readonly ILogger _log;
+    private readonly AuthManager _authManager;
+
+    public EpicGamesRepository(
+        AuthManager authManager,
+        ILogger logger,
+        HttpClient apiClient,
+        HttpClient contentClient)
     {
-        private const string LauncherHost = "launcher-public-service-prod06.ol.epicgames.com";
-        private const string CatalogHost = "catalog-public-service-prod06.ol.epicgames.com";
-        private const string OAuthHost = "account-public-service-prod03.ol.epicgames.com";
+        _log = logger;
+        _authManager = authManager;
+        _apiClient = apiClient;
+        _contentClient = contentClient;
+    }
 
-        private readonly HttpClient _apiClient;
-        private readonly HttpClient _contentClient;
-        private readonly ILogger _log;
-        private readonly AuthManager _authManager;
+    public async Task<RepositoryResult<Metadata>> FetchGameMetaData(
+        string nameSpace,
+        string catalogItemId,
+        CancellationToken cancellationToken = default)
+    {
+        var authorization = await GetAuthorizationAsync(cancellationToken);
+        if (authorization is null)
+            return AuthenticationFailure<Metadata>();
 
-        public EpicGamesRepository(
-            AuthManager authManager,
-            ILogger logger,
-            HttpClient apiClient,
-            HttpClient contentClient)
+        var uri = EpicEndpointPolicy.RequireApiUri(
+            $"https://{CatalogHost}/catalog/api/shared/namespace/{Uri.EscapeDataString(nameSpace)}/bulk/items?id={Uri.EscapeDataString(catalogItemId)}&includeDLCDetails=true&includeMainGameDetails=true&country=US&locale=en");
+
+        try
         {
-            _log = logger;
-            _authManager = authManager;
-            _apiClient = apiClient;
-            _contentClient = contentClient;
+            using var response = await SendGetWithRetryAsync(_apiClient, uri, authorization, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return HttpFailure<Metadata>(response);
+
+            var bytes = await BoundedHttpContent.ReadBytesAsync(
+                response.Content,
+                MaximumJsonBytes,
+                cancellationToken);
+            using var document = JsonDocument.Parse(bytes);
+            var firstProperty = document.RootElement.EnumerateObject().FirstOrDefault();
+            if (firstProperty.Value.ValueKind == JsonValueKind.Undefined)
+                return InvalidResponse<Metadata>("Metadata response did not contain a game record.");
+
+            var metadata = firstProperty.Value.Deserialize<Metadata>();
+            return metadata is null
+                ? InvalidResponse<Metadata>("Metadata response could not be parsed.")
+                : RepositoryResult<Metadata>.Success(metadata);
         }
-
-        public async Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _log.Information("FetchGameMetaData: Fetching game metadata");
-            var accessToken = await _authManager.GetAccessToken();
-            var uri = $"https://{CatalogHost}/catalog/api/shared/namespace/{Uri.EscapeDataString(nameSpace)}/bulk/items?id={Uri.EscapeDataString(catalogItemId)}&includeDLCDetails=true&includeMainGameDetails=true&country=US&locale=en";
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return FailureFromException<Metadata>(exception, "Metadata request failed.");
+        }
+    }
 
+    public async Task<RepositoryResult<IReadOnlyList<Asset>>> FetchGameAssets(
+        EpicPayloadPlatform platform,
+        string label = "Live",
+        CancellationToken cancellationToken = default)
+    {
+        var authorization = await GetAuthorizationAsync(cancellationToken);
+        if (authorization is null)
+            return AuthenticationFailure<IReadOnlyList<Asset>>();
+
+        var uri = EpicEndpointPolicy.RequireApiUri(
+            $"https://{LauncherHost}/launcher/api/public/assets/{Uri.EscapeDataString(platform.ToApiValue())}?label={Uri.EscapeDataString(label)}");
+
+        try
+        {
+            using var response = await SendGetWithRetryAsync(_apiClient, uri, authorization, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return HttpFailure<IReadOnlyList<Asset>>(response);
+
+            var bytes = await BoundedHttpContent.ReadBytesAsync(
+                response.Content,
+                MaximumJsonBytes,
+                cancellationToken);
+            var assets = JsonSerializer.Deserialize<List<Asset>>(bytes);
+            return assets is null
+                ? InvalidResponse<IReadOnlyList<Asset>>("Asset response could not be parsed.")
+                : RepositoryResult<IReadOnlyList<Asset>>.Success(assets);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return FailureFromException<IReadOnlyList<Asset>>(exception, "Asset request failed.");
+        }
+    }
+
+    public async Task<RepositoryResult<byte[]>> GetGameManifest(
+        GetManifestUrlData urlData,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(urlData);
+        RepositoryFailure? lastFailure = null;
+        foreach (var value in urlData.ManifestUrls)
+        {
             try
             {
-                using var request = CreateAuthenticatedRequest(HttpMethod.Get, uri, accessToken);
-                using var response = await _apiClient.SendAsync(request);
+                var uri = EpicEndpointPolicy.RequireContentUri(value);
+                _log.Information(
+                    "GetGameManifest: Trying content endpoint {ManifestUri}",
+                    SensitiveDataRedactor.UriWithoutQuery(uri.AbsoluteUri));
+                using var response = await SendGetWithRetryAsync(
+                    _contentClient,
+                    uri,
+                    authorization: null,
+                    cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
-                    _log.Warning(
-                        "FetchGameMetaData failed with HTTP {StatusCode} {ReasonPhrase}",
-                        (int)response.StatusCode,
-                        response.ReasonPhrase);
-                    return null;
+                    lastFailure = CreateHttpFailure(response);
+                    continue;
                 }
 
-                var result = await response.Content.ReadAsStringAsync();
-                using var document = JsonDocument.Parse(result);
-                var firstProperty = document.RootElement.EnumerateObject().FirstOrDefault();
-                return firstProperty.Value.ValueKind == JsonValueKind.Undefined
-                    ? null
-                    : JsonSerializer.Deserialize<Metadata>(firstProperty.Value.GetRawText());
+                var bytes = await BoundedHttpContent.ReadBytesAsync(
+                    response.Content,
+                    MaximumManifestBytes,
+                    cancellationToken);
+                return RepositoryResult<byte[]>.Success(bytes);
             }
-            catch (Exception ex)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                _log.Error("FetchGameMetaData failed with {ErrorType}", ex.GetType().Name);
-                return null;
-            }
-        }
-
-        public async Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live")
-        {
-            _log.Information("FetchGameAssets: Fetching game assets");
-            var accessToken = await _authManager.GetAccessToken();
-            var uri = $"https://{LauncherHost}/launcher/api/public/assets/{Uri.EscapeDataString(platform)}?label={Uri.EscapeDataString(label)}";
-
-            try
-            {
-                using var request = CreateAuthenticatedRequest(HttpMethod.Get, uri, accessToken);
-                using var response = await _apiClient.SendAsync(request);
-                if (!response.IsSuccessStatusCode)
-                {
-                    _log.Error(
-                        "FetchGameAssets failed with HTTP {StatusCode} {ReasonPhrase}",
-                        (int)response.StatusCode,
-                        response.ReasonPhrase);
-                    return null;
-                }
-
-                var result = await response.Content.ReadAsStringAsync();
-                return JsonSerializer.Deserialize<IEnumerable<Asset>>(result);
-            }
-            catch (Exception ex)
-            {
-                _log.Error("FetchGameAssets failed with {ErrorType}", ex.GetType().Name);
                 throw;
             }
+            catch (Exception exception)
+            {
+                lastFailure = CreateFailureFromException(exception, "Manifest request failed.");
+            }
         }
 
-        public async Task<byte[]> GetGameManifest(GetManifestUrlData urlData)
+        return RepositoryResult<byte[]>.Failed(lastFailure ?? new RepositoryFailure(
+            RepositoryFailureKind.InvalidResponse,
+            "No manifest endpoint was available."));
+    }
+
+    public async Task<RepositoryResult<long>> DownloadFileAsync(
+        string url,
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        var partialPath = destinationPath + ".partial";
+        try
         {
-            foreach (var value in urlData.ManifestUrls)
-            {
-                try
-                {
-                    var uri = EpicEndpointPolicy.RequireContentUri(value);
-                    _log.Information(
-                        "GetGameManifest: Trying content endpoint {ManifestUri}",
-                        SensitiveDataRedactor.UriWithoutQuery(uri.AbsoluteUri));
-                    using var response = await _contentClient.GetAsync(uri);
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        _log.Error(
-                            "GetGameManifest failed with HTTP {StatusCode}; trying next endpoint",
-                            (int)response.StatusCode);
-                        continue;
-                    }
+            var uri = EpicEndpointPolicy.RequireContentUri(url);
+            using var response = await SendGetWithRetryAsync(
+                _contentClient,
+                uri,
+                authorization: null,
+                cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return HttpFailure<long>(response);
 
-                    return await response.Content.ReadAsByteArrayAsync();
-                }
-                catch (Exception ex)
-                {
-                    _log.Error(
-                        "GetGameManifest endpoint failed with {ErrorType}; trying next endpoint",
-                        ex.GetType().Name);
-                }
-            }
+            var directoryPath = Path.GetDirectoryName(destinationPath);
+            if (!string.IsNullOrEmpty(directoryPath))
+                Directory.CreateDirectory(directoryPath);
 
-            return null;
+            File.Delete(partialPath);
+            var bytesWritten = await BoundedHttpContent.CopyToFileAsync(
+                response.Content,
+                partialPath,
+                MaximumFileBytes,
+                cancellationToken);
+            File.Move(partialPath, destinationPath, overwrite: true);
+            return RepositoryResult<long>.Success(bytesWritten);
         }
-
-        public async Task DownloadFileAsync(string url, string destinationPath)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            try
-            {
-                var uri = EpicEndpointPolicy.RequireContentUri(url);
-                using var response = await _contentClient.GetAsync(uri);
-                response.EnsureSuccessStatusCode();
-
-                var directoryPath = Path.GetDirectoryName(destinationPath);
-                if (!string.IsNullOrEmpty(directoryPath))
-                    Directory.CreateDirectory(directoryPath);
-
-                await using var stream = await response.Content.ReadAsStreamAsync();
-                await using var fileStream = new FileStream(
-                    destinationPath,
-                    FileMode.Create,
-                    FileAccess.Write,
-                    FileShare.None);
-                await stream.CopyToAsync(fileStream);
-            }
-            catch (Exception ex)
-            {
-                _log.Error("DownloadFile failed with {ErrorType}", ex.GetType().Name);
-            }
+            throw;
         }
-
-        public async Task<string> GetGameToken()
+        catch (Exception exception)
+        {
+            return FailureFromException<long>(exception, "File download failed.");
+        }
+        finally
         {
             try
             {
-                var accessToken = await _authManager.GetAccessToken();
-                using var request = CreateAuthenticatedRequest(
-                    HttpMethod.Get,
-                    $"https://{OAuthHost}/account/api/oauth/exchange",
-                    accessToken);
-                using var response = await _apiClient.SendAsync(request);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadAsStringAsync();
+                File.Delete(partialPath);
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                _log.Error("GetGameToken failed with {ErrorType}", ex.GetType().Name);
-                return null;
+                _log.Warning(
+                    "Failed to remove a partial repository download with {ErrorType}",
+                    exception.GetType().Name);
             }
         }
+    }
 
-        public async Task<GetManifestUrlData> GetManifestUrls(
-            string nameSpace,
-            string catalogItem,
-            string appName,
-            string platform = "Windows",
-            string label = "Live")
+    public async Task<RepositoryResult<string>> GetGameToken(
+        CancellationToken cancellationToken = default)
+    {
+        var authorization = await GetAuthorizationAsync(cancellationToken);
+        if (authorization is null)
+            return AuthenticationFailure<string>();
+
+        var uri = EpicEndpointPolicy.RequireApiUri($"https://{OAuthHost}/account/api/oauth/exchange");
+        try
         {
-            try
+            using var response = await SendGetWithRetryAsync(_apiClient, uri, authorization, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return HttpFailure<string>(response);
+
+            var value = await BoundedHttpContent.ReadUtf8Async(
+                response.Content,
+                MaximumJsonBytes,
+                cancellationToken);
+            return RepositoryResult<string>.Success(value);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return FailureFromException<string>(exception, "Game token request failed.");
+        }
+    }
+
+    public async Task<RepositoryResult<GetManifestUrlData>> GetManifestUrls(
+        string nameSpace,
+        string catalogItem,
+        string appName,
+        EpicPayloadPlatform platform,
+        string label = "Live",
+        CancellationToken cancellationToken = default)
+    {
+        var authorization = await GetAuthorizationAsync(cancellationToken);
+        if (authorization is null)
+            return AuthenticationFailure<GetManifestUrlData>();
+
+        var uri = EpicEndpointPolicy.RequireApiUri(
+            $"https://{LauncherHost}/launcher/api/public/assets/v2/platform/{Uri.EscapeDataString(platform.ToApiValue())}/namespace/{Uri.EscapeDataString(nameSpace)}/catalogItem/{Uri.EscapeDataString(catalogItem)}/app/{Uri.EscapeDataString(appName)}/label/{Uri.EscapeDataString(label)}");
+        try
+        {
+            using var response = await SendGetWithRetryAsync(_apiClient, uri, authorization, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return HttpFailure<GetManifestUrlData>(response);
+
+            var bytes = await BoundedHttpContent.ReadBytesAsync(
+                response.Content,
+                MaximumJsonBytes,
+                cancellationToken);
+            var data = JsonSerializer.Deserialize<ManifestUrlData>(bytes);
+            if (data?.Elements is not { Count: > 0 } || data.Elements[0].Manifests is null)
+                return InvalidResponse<GetManifestUrlData>("Manifest metadata response was invalid.");
+
+            var manifestUrls = new List<string>();
+            var baseUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in data.Elements[0].Manifests)
             {
-                _log.Information("GetGameManifest: Fetching manifest metadata");
-                var accessToken = await _authManager.GetAccessToken();
-                var uri = $"https://{LauncherHost}/launcher/api/public/assets/v2/platform/{Uri.EscapeDataString(platform)}/namespace/{Uri.EscapeDataString(nameSpace)}/catalogItem/{Uri.EscapeDataString(catalogItem)}/app/{Uri.EscapeDataString(appName)}/label/{Uri.EscapeDataString(label)}";
-                using var request = CreateAuthenticatedRequest(HttpMethod.Get, uri, accessToken);
-                using var response = await _apiClient.SendAsync(request);
-                if (!response.IsSuccessStatusCode)
+                var contentUri = EpicEndpointPolicy.RequireContentUri(entry.Uri);
+                var builder = new UriBuilder(contentUri);
+                if (entry.QueryParams is { Count: > 0 })
                 {
-                    _log.Error(
-                        "GetGameManifest metadata failed with HTTP {StatusCode} {ReasonPhrase}",
-                        (int)response.StatusCode,
-                        response.ReasonPhrase);
-                    return null;
+                    builder.Query = string.Join(
+                        "&",
+                        entry.QueryParams.Select(parameter =>
+                            $"{Uri.EscapeDataString(parameter.Name)}={Uri.EscapeDataString(parameter.Value)}"));
                 }
 
-                var result = await response.Content.ReadAsStringAsync();
-                var data = JsonSerializer.Deserialize<ManifestUrlData>(result);
-                if (data?.Elements == null || data.Elements.Count == 0 || data.Elements[0].Manifests == null)
+                var manifestUri = EpicEndpointPolicy.RequireContentUri(builder.Uri.AbsoluteUri);
+                manifestUrls.Add(manifestUri.AbsoluteUri);
+                var lastSlash = contentUri.AbsolutePath.LastIndexOf('/');
+                if (lastSlash <= 0)
+                    continue;
+
+                var baseBuilder = new UriBuilder(contentUri)
                 {
-                    _log.Error("GetGameManifest returned invalid manifest metadata");
-                    return null;
-                }
-
-                if (data.Elements.Count > 1)
-                    _log.Warning("GetGameManifest returned multiple manifest entries for {AppName}", appName);
-
-                var manifestUrls = new List<string>();
-                var baseUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var entry in data.Elements[0].Manifests)
-                {
-                    var contentUri = EpicEndpointPolicy.RequireContentUri(entry.Uri);
-                    var builder = new UriBuilder(contentUri);
-                    if (entry.QueryParams is { Count: > 0 })
-                    {
-                        builder.Query = string.Join(
-                            "&",
-                            entry.QueryParams.Select(parameter =>
-                                $"{Uri.EscapeDataString(parameter.Name)}={Uri.EscapeDataString(parameter.Value)}"));
-                    }
-
-                    var manifestUri = EpicEndpointPolicy.RequireContentUri(builder.Uri.AbsoluteUri);
-                    manifestUrls.Add(manifestUri.AbsoluteUri);
-                    var lastSlash = contentUri.AbsolutePath.LastIndexOf('/');
-                    if (lastSlash > 0)
-                    {
-                        var baseBuilder = new UriBuilder(contentUri)
-                        {
-                            Path = contentUri.AbsolutePath[..lastSlash],
-                            Query = string.Empty,
-                            Fragment = string.Empty
-                        };
-                        baseUrls.Add(baseBuilder.Uri.AbsoluteUri.TrimEnd('/'));
-                    }
-                }
-
-                return new GetManifestUrlData
-                {
-                    BaseUrls = baseUrls.ToList(),
-                    ManifestUrls = manifestUrls,
-                    ManifestHash = data.Elements[0].Hash
+                    Path = contentUri.AbsolutePath[..lastSlash],
+                    Query = string.Empty,
+                    Fragment = string.Empty
                 };
+                baseUrls.Add(baseBuilder.Uri.AbsoluteUri.TrimEnd('/'));
             }
-            catch (Exception ex)
+
+            if (manifestUrls.Count == 0)
+                return InvalidResponse<GetManifestUrlData>("Manifest metadata contained no usable endpoints.");
+
+            return RepositoryResult<GetManifestUrlData>.Success(new GetManifestUrlData
             {
-                _log.Error("GetManifestUrls failed with {ErrorType}", ex.GetType().Name);
-                throw;
-            }
+                BaseUrls = baseUrls.ToList(),
+                ManifestUrls = manifestUrls,
+                ManifestHash = data.Elements[0].Hash
+            });
         }
-
-        private static HttpRequestMessage CreateAuthenticatedRequest(
-            HttpMethod method,
-            string value,
-            string accessToken)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            var request = new HttpRequestMessage(method, EpicEndpointPolicy.RequireApiUri(value));
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-            return request;
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return FailureFromException<GetManifestUrlData>(exception, "Manifest metadata request failed.");
         }
     }
 
-
-    public static class StringExtensions
+    private async Task<AuthenticationHeaderValue?> GetAuthorizationAsync(CancellationToken cancellationToken)
     {
-        public static string SubstringBeforeLast(this string source, string delimiter)
+        var accessToken = await _authManager.GetAccessToken(cancellationToken);
+        return string.IsNullOrWhiteSpace(accessToken)
+            ? null
+            : new AuthenticationHeaderValue("Bearer", accessToken);
+    }
+
+    private static async Task<HttpResponseMessage> SendGetWithRetryAsync(
+        HttpClient client,
+        Uri uri,
+        AuthenticationHeaderValue? authorization,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
         {
-            var lastIndexOfDelimiter = source.LastIndexOf(delimiter, StringComparison.Ordinal);
-            return lastIndexOfDelimiter == -1 ? source : source.Substring(0, lastIndexOfDelimiter);
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            request.Headers.Authorization = authorization;
+            var response = await client.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            if (attempt >= MaximumGetAttempts || !IsRetryable(response.StatusCode))
+                return response;
+
+            var delay = GetRetryDelay(response, attempt);
+            response.Dispose();
+            await Task.Delay(delay, cancellationToken);
         }
     }
+
+    private static bool IsRetryable(HttpStatusCode statusCode) => statusCode is
+        HttpStatusCode.RequestTimeout or
+        HttpStatusCode.TooManyRequests or
+        HttpStatusCode.BadGateway or
+        HttpStatusCode.ServiceUnavailable or
+        HttpStatusCode.GatewayTimeout;
+
+    private static TimeSpan GetRetryDelay(HttpResponseMessage response, int attempt)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        var delay = retryAfter?.Delta;
+        if (!delay.HasValue && retryAfter?.Date is { } date)
+            delay = date - DateTimeOffset.UtcNow;
+
+        if (!delay.HasValue || delay <= TimeSpan.Zero)
+            delay = TimeSpan.FromMilliseconds(250 * Math.Pow(2, attempt - 1));
+
+        return delay > MaximumRetryDelay ? MaximumRetryDelay : delay.Value;
+    }
+
+    private static RepositoryResult<T> AuthenticationFailure<T>() => RepositoryResult<T>.Failed(
+        new RepositoryFailure(
+            RepositoryFailureKind.Authentication,
+            "No authenticated Epic session is available."));
+
+    private static RepositoryResult<T> HttpFailure<T>(HttpResponseMessage response) =>
+        RepositoryResult<T>.Failed(CreateHttpFailure(response));
+
+    private static RepositoryFailure CreateHttpFailure(HttpResponseMessage response) => new(
+        RepositoryFailureKind.Http,
+        $"Epic endpoint returned HTTP {(int)response.StatusCode}.",
+        response.StatusCode);
+
+    private static RepositoryResult<T> InvalidResponse<T>(string message) =>
+        RepositoryResult<T>.Failed(new RepositoryFailure(RepositoryFailureKind.InvalidResponse, message));
+
+    private static RepositoryResult<T> FailureFromException<T>(Exception exception, string message) =>
+        RepositoryResult<T>.Failed(CreateFailureFromException(exception, message));
+
+    private static RepositoryFailure CreateFailureFromException(Exception exception, string message) => exception switch
+    {
+        ResponseBodyTooLargeException => new RepositoryFailure(RepositoryFailureKind.SizeLimit, message),
+        JsonException or InvalidDataException => new RepositoryFailure(RepositoryFailureKind.InvalidResponse, message),
+        HttpRequestException httpException => new RepositoryFailure(
+            RepositoryFailureKind.Network,
+            message,
+            httpException.StatusCode),
+        InvalidOperationException => new RepositoryFailure(RepositoryFailureKind.Policy, message),
+        _ => new RepositoryFailure(RepositoryFailureKind.Network, message)
+    };
 }

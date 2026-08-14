@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Serilog;
 using Crimson.Models;
+using Crimson.Repository;
 
 namespace Crimson.Core;
 
@@ -17,6 +18,8 @@ public class DownloadManager
     private readonly ILogger _log;
     private readonly HttpClient _httpClient;
     private readonly SemaphoreSlim _statLock = new(1);
+    private const long MaximumChunkDownloadBytes = 64 * 1024 * 1024;
+    private static readonly TimeSpan MaximumRetryDelay = TimeSpan.FromSeconds(30);
 
 
     public DownloadManager(ILogger log, HttpClient httpClient)
@@ -25,9 +28,11 @@ public class DownloadManager
         _httpClient = httpClient;
     }
 
-    public async Task InitializeMirrors(List<string> baseUrls)
+    public async Task InitializeMirrors(
+        List<string> baseUrls,
+        CancellationToken cancellationToken = default)
     {
-        await _statLock.WaitAsync();
+        await _statLock.WaitAsync(cancellationToken);
         try
         {
             _mirrorStats.Clear();
@@ -61,6 +66,8 @@ public class DownloadManager
         long? expectedSize = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxRetries, 1);
+        if (expectedSize is > MaximumChunkDownloadBytes)
+            throw new ArgumentOutOfRangeException(nameof(expectedSize), "Chunk exceeds the supported size limit.");
 
         for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
@@ -143,6 +150,10 @@ public class DownloadManager
                     "MeasureDownloadSpeed: HTTP {StatusCode} for {Url}",
                     (int)response.StatusCode,
                     SensitiveDataRedactor.UriWithoutQuery(uri.AbsoluteUri));
+                var retryDelay = GetRetryDelay(response);
+                if (retryDelay.HasValue)
+                    await Task.Delay(retryDelay.Value, cancellationToken);
+
                 return false;
             }
 
@@ -151,16 +162,12 @@ public class DownloadManager
                 Directory.CreateDirectory(directoryPath);
 
             File.Delete(partialPath);
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            await using (var fileStream = new FileStream(
-                partialPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                bufferSize: 81920, useAsync: true))
-            {
-                await stream.CopyToAsync(fileStream, cancellationToken);
-                await fileStream.FlushAsync(cancellationToken);
-            }
-
-            var downloadedSize = new FileInfo(partialPath).Length;
+            var maximumBytes = expectedSize ?? MaximumChunkDownloadBytes;
+            var downloadedSize = await BoundedHttpContent.CopyToFileAsync(
+                response.Content,
+                partialPath,
+                maximumBytes,
+                cancellationToken);
             var contentLength = response.Content.Headers.ContentLength;
             if ((contentLength.HasValue && downloadedSize != contentLength.Value) ||
                 (expectedSize.HasValue && downloadedSize != expectedSize.Value))
@@ -203,9 +210,32 @@ public class DownloadManager
             }
             catch (Exception ex)
             {
-                _log.Warning(ex, "MeasureDownloadSpeed: Failed to remove partial download {Path}", partialPath);
+                _log.Warning(
+                    "MeasureDownloadSpeed: Failed to remove partial download with {ErrorType}",
+                    ex.GetType().Name);
             }
         }
+    }
+
+    private static TimeSpan? GetRetryDelay(HttpResponseMessage response)
+    {
+        if (response.StatusCode is not (
+                System.Net.HttpStatusCode.RequestTimeout or
+                System.Net.HttpStatusCode.TooManyRequests or
+                System.Net.HttpStatusCode.BadGateway or
+                System.Net.HttpStatusCode.ServiceUnavailable or
+                System.Net.HttpStatusCode.GatewayTimeout))
+            return null;
+
+        var retryAfter = response.Headers.RetryAfter;
+        var delay = retryAfter?.Delta;
+        if (!delay.HasValue && retryAfter?.Date is { } date)
+            delay = date - DateTimeOffset.UtcNow;
+
+        if (!delay.HasValue || delay <= TimeSpan.Zero)
+            return TimeSpan.FromMilliseconds(250);
+
+        return delay > MaximumRetryDelay ? MaximumRetryDelay : delay;
     }
 
     private async Task UpdateMirrorStats(

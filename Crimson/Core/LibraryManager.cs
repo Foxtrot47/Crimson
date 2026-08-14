@@ -118,9 +118,19 @@ public class LibraryManager
                     return;
                 }
 
-                var responseData = await _storeRepository.GetGameToken();
-                var responseObject = JsonSerializer.Deserialize<GameTokenResponse>(responseData);
+                var tokenResult = await _storeRepository.GetGameToken();
+                if (!tokenResult.IsSuccess)
+                {
+                    _log.Error(
+                        "LaunchApp: Game token request failed with {FailureKind}",
+                        tokenResult.Failure!.Kind);
+                    return;
+                }
+
+                var responseObject = JsonSerializer.Deserialize<GameTokenResponse>(tokenResult.Value);
                 var userData = await _authManager.GetUserData();
+                if (responseObject?.Code == null || userData == null)
+                    return;
 
                 var parameters = new List<string>();
                 parameters.Add($"-AUTH_LOGIN=unused");
@@ -181,14 +191,17 @@ public class LibraryManager
             {
                 _log.Error("UpdateLibraryData: No existing game assets data, updating");
 
-                var assets = (await _storeRepository.FetchGameAssets()).ToList();
-                if (assets.Count < 1)
+                var assetsResult = await _storeRepository.FetchGameAssets(EpicPayloadPlatform.Windows);
+                if (!assetsResult.IsSuccess || assetsResult.Value.Count == 0)
                 {
-                    _log.Error("GetLibraryData: Error while fetching game assets");
+                    _log.Error(
+                        "GetLibraryData: Asset request failed with {FailureKind}",
+                        assetsResult.Failure?.Kind);
                     return;
                 }
-                await _storage.SaveGameAssetsData(assets);
-                gameAssetsList = assets.ToList();
+
+                await _storage.SaveGameAssetsData(assetsResult.Value);
+                gameAssetsList = assetsResult.Value.ToList();
             }
 
             var fetchList = new List<FetchListItem>();
@@ -230,19 +243,28 @@ public class LibraryManager
             // Only update metadata if there are any updates or if forced
             await Parallel.ForEachAsync(fetchList, options, async (item, token) =>
             {
-                var egFetchGameMetaData = await _storeRepository.FetchGameMetaData(item.NameSpace, item.CatalogItemId);
+                var metadataResult = await _storeRepository.FetchGameMetaData(
+                    item.NameSpace,
+                    item.CatalogItemId,
+                    token);
+                if (!metadataResult.IsSuccess)
+                {
+                    _log.Warning(
+                        "Metadata request for {AppName} failed with {FailureKind}",
+                        item.AppName,
+                        metadataResult.Failure!.Kind);
+                    return;
+                }
 
-                // ignore if no metadata can be fetched
-                if (egFetchGameMetaData == null) return;
-                var gameMetaData = new Models.Game()
+                var gameMetaData = new Models.Game
                 {
                     AppName = item.AppName,
-                    AppTitle = egFetchGameMetaData.Title,
-                    AssetInfos = new AssetInfos()
+                    AppTitle = metadataResult.Value.Title,
+                    AssetInfos = new AssetInfos
                     {
-                        Windows = gameAssetsList.FirstOrDefault(asset => asset.AppName == item.AppName),
+                        Windows = gameAssetsList.First(asset => asset.AppName == item.AppName)
                     },
-                    Metadata = egFetchGameMetaData
+                    Metadata = metadataResult.Value
                 };
                 _storage.SaveMetaData(gameMetaData);
             });
