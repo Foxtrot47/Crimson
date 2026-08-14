@@ -9,10 +9,8 @@ using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Utils;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
-using Windows.System;
 
 namespace Crimson.ViewModels;
 
@@ -22,7 +20,6 @@ public partial class AppInstallDialogViewModel : ObservableObject
     private readonly LibraryManager _libraryManager;
     private readonly Storage _storageService;
     private readonly ILogger _logger;
-    private readonly Windows.System.DispatcherQueue _dispatcherQueue;
 
     private string _gameAppName;
 
@@ -74,13 +71,15 @@ public partial class AppInstallDialogViewModel : ObservableObject
     public event Func<Task<string>> FolderPickerRequested;
 
     public AppInstallDialogViewModel(
-        ILogger logger, InstallManager installManager, LibraryManager libraryManager)
+        ILogger logger,
+        InstallManager installManager,
+        LibraryManager libraryManager,
+        Storage storage)
     {
         _logger = logger;
         _installManager = installManager;
         _libraryManager = libraryManager;
-        _storageService = new Storage();
-        _dispatcherQueue = Windows.System.DispatcherQueue.GetForCurrentThread();
+        _storageService = storage;
     }
 
     public async Task InitializeAsync(Game gameInfo)
@@ -108,11 +107,9 @@ public partial class AppInstallDialogViewModel : ObservableObject
             }
 
             IsLoadingContent = true;
-            _ = Task.Run(async () =>
-            {
-                await LoadGameContent(gameInfo.AppName);
-                await UpdateDriveSpace();
-            });
+            await UpdateDriveSpace(completeLoading: false);
+            await LoadGameContent(gameInfo.AppName);
+            await UpdateDriveSpace();
         }
         catch (Exception ex)
         {
@@ -139,34 +136,32 @@ public partial class AppInstallDialogViewModel : ObservableObject
     private async Task LoadGameContent(string appName)
     {
         var (downloadSize, installSize) = await _installManager.GetGameDownloadInstallSizes(appName);
-        _dispatcherQueue.TryEnqueue(() =>
-        {
-            TotalDownloadSize = FormatSize(downloadSize);
-            TotalInstallSize = FormatSize(installSize);
-            TotalInstallSizeRaw = installSize;
-        });
+        TotalDownloadSize = FormatSize(downloadSize);
+        TotalInstallSize = FormatSize(installSize);
+        TotalInstallSizeRaw = installSize;
     }
 
-    private async Task UpdateDriveSpace()
+    private async Task UpdateDriveSpace(bool completeLoading = true)
     {
         try
         {
             var driveInfo = await _storageService.GetDriveInfo(InstallLocation);
-            _dispatcherQueue.TryEnqueue(() =>
-            {
-                IsDriveSpaceVisible = true;
-                var usedSpace = driveInfo.TotalSize - driveInfo.AvailableFreeSpace;
-                DriveSpaceUsagePercent = ((double)usedSpace / driveInfo.TotalSize) * 100;
-                DriveSpaceAvailable = FormatSize(driveInfo.AvailableFreeSpace);
-                DriveTotalSpace = FormatSize(driveInfo.TotalSize);
-                CanInstall = driveInfo.AvailableFreeSpace > TotalInstallSizeRaw;
+            IsDriveSpaceVisible = true;
+            var usedSpace = driveInfo.TotalSize - driveInfo.AvailableFreeSpace;
+            DriveSpaceUsagePercent = ((double)usedSpace / driveInfo.TotalSize) * 100;
+            DriveSpaceAvailable = FormatSize(driveInfo.AvailableFreeSpace);
+            DriveTotalSpace = FormatSize(driveInfo.TotalSize);
+            CanInstall = completeLoading && driveInfo.AvailableFreeSpace > TotalInstallSizeRaw;
+            if (completeLoading)
                 IsLoadingContent = false;
-            });
         }
         catch (Exception ex)
         {
             _logger.Warning(ex, "Failed to get drive space info");
             IsDriveSpaceVisible = false;
+            CanInstall = false;
+            if (completeLoading)
+                IsLoadingContent = false;
         }
     }
 

@@ -24,6 +24,11 @@ public static class EpicEndpointPolicy
         "accounts.epicgames.com"
     };
 
+    private static readonly HashSet<string> ContentHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "egdownload.fastly-edge.com"
+    };
+
     private static readonly string[] ContentHostSuffixes =
     [
         ".epicgames.com",
@@ -42,7 +47,8 @@ public static class EpicEndpointPolicy
     public static bool IsAllowedApiUri(Uri uri) => IsHttps(uri) && ApiHosts.Contains(uri.Host);
 
     public static bool IsAllowedContentUri(Uri uri) => IsHttps(uri) &&
-        ContentHostSuffixes.Any(suffix => uri.Host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+        (ContentHosts.Contains(uri.Host) ||
+         ContentHostSuffixes.Any(suffix => uri.Host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)));
 
     private static Uri Require(string value, Func<Uri, bool> predicate, string category)
     {

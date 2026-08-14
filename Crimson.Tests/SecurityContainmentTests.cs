@@ -21,6 +21,14 @@ public sealed class SecurityContainmentTests
         Assert.Throws<InvalidOperationException>(() => EpicEndpointPolicy.RequireContentUri(value));
     }
 
+    [Theory]
+    [InlineData("https://download.epicgames.com/file.chunk")]
+    [InlineData("https://egdownload.fastly-edge.com/build/game.manifest?f_token=secret")]
+    public void ContentPolicy_AcceptsApprovedEpicCdnUris(string value)
+    {
+        Assert.Equal(new Uri(value), EpicEndpointPolicy.RequireContentUri(value));
+    }
+
     [Fact]
     public void LoginMessageGate_ValidatesOriginSchemaBoundsAndReplay()
     {
