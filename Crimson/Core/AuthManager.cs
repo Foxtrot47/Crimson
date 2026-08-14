@@ -18,7 +18,6 @@ public class AuthManager
     private readonly ILogger _log;
     private readonly Storage _storage;
 
-    private string _userDataFile;
     private AuthenticationStatus _authenticationStatus;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
@@ -28,7 +27,7 @@ public class AuthManager
     private const string UserAgent = "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit";
     private static readonly TimeSpan TokenRefreshBuffer = TimeSpan.FromMinutes(5);
 
-    private static readonly HttpClient HttpClient;
+    private readonly HttpClient _httpClient;
 
 
     public delegate void AuthStatusChangedEventHandler(object sender, AuthStatusChangedEventArgs e);
@@ -37,17 +36,12 @@ public class AuthManager
 
     public AuthenticationStatus AuthenticationStatus => _authenticationStatus;
 
-    static AuthManager()
-    {
-        HttpClient = new HttpClient();
-        HttpClient.DefaultRequestHeaders.Add("User-Agent", UserAgent);
-    }
 
-    public AuthManager(ILogger log, Storage storage)
+    public AuthManager(ILogger log, Storage storage, HttpClient httpClient)
     {
         _log = log;
         _storage = storage;
-        _userDataFile = $@"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\Crimson\user.json";
+        _httpClient = httpClient;
     }
 
     // <summary>
@@ -134,7 +128,7 @@ public class AuthManager
         }
         catch (Exception ex)
         {
-            _log.Error($"CheckAuthStatus: {ex}");
+            _log.Error("CheckAuthStatus failed with {ErrorType}", ex.GetType().Name);
             _authenticationStatus = AuthenticationStatus.LoggedOut;
             OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
             return _authenticationStatus;
@@ -169,7 +163,7 @@ public class AuthManager
         }
         catch (Exception ex)
         {
-            _log.Error($"DoExchangeLogin: {ex}");
+            _log.Error("DoExchangeLogin failed with {ErrorType}", ex.GetType().Name);
             _authenticationStatus = AuthenticationStatus.LoginFailed;
             OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
         }
@@ -225,7 +219,7 @@ public class AuthManager
         }
         catch (Exception ex)
         {
-            _log.Error($"GetAccessToken: {ex}");
+            _log.Error("GetAccessToken failed with {ErrorType}", ex.GetType().Name);
             return null;
         }
         finally
@@ -255,47 +249,45 @@ public class AuthManager
     private async Task<UserData> RequestTokens(string grantType, string codeName, string codeValue)
     {
         var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{BasicAuthUsername}:{BasicAuthPassword}"));
-
-        var formData = new FormUrlEncodedContent(new[]
+        using var formData = new FormUrlEncodedContent(new[]
         {
             new KeyValuePair<string, string>(codeName, codeValue),
             new KeyValuePair<string, string>("grant_type", grantType),
             new KeyValuePair<string, string>("token_type", "eg1")
         });
-
-        // Set the Authorization header with the Basic authentication credentials
-        HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            EpicEndpointPolicy.RequireApiUri($"{OAuthHost}/account/api/oauth/token"))
+        {
+            Content = formData
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
 
         try
         {
-            // Make the API call with the form data
-            var httpResponse = await HttpClient.PostAsync($"{OAuthHost}/account/api/oauth/token", formData);
-
-            // Check if the request was successful (status code 200)
-            if (httpResponse.IsSuccessStatusCode)
+            using var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
             {
-                // Parse and use the response content here
-                var result = await httpResponse.Content.ReadAsStringAsync();
-                var userData = JsonSerializer.Deserialize<UserData>(result);
-
-                if (userData.AccessToken == null)
-                {
-                    _log.Error("RequestTokens: Failed to parse user data from string");
-                    throw new Exception("RequestTokens: Failed to parse user data");
-                }
-
-                return userData;
-            }
-            else
-            {
-                var result = await httpResponse.Content.ReadAsStringAsync();
-                _log.Error($"RequestTokens: Failed to fetch tokens: {httpResponse.ReasonPhrase} - {result}");
+                _log.Error(
+                    "RequestTokens failed with HTTP {StatusCode} {ReasonPhrase}",
+                    (int)response.StatusCode,
+                    response.ReasonPhrase);
                 return null;
             }
+
+            var result = await response.Content.ReadAsStringAsync();
+            var userData = JsonSerializer.Deserialize<UserData>(result);
+            if (userData?.AccessToken == null)
+            {
+                _log.Error("RequestTokens returned an invalid authentication response");
+                return null;
+            }
+
+            return userData;
         }
         catch (Exception ex)
         {
-            _log.Error($"RequestTokens: {ex.Message}");
+            _log.Error("RequestTokens failed with {ErrorType}", ex.GetType().Name);
             return null;
         }
     }
@@ -305,23 +297,19 @@ public class AuthManager
     // </summary>
     private async Task<bool> VerifyAccessToken(string accessToken)
     {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            EpicEndpointPolicy.RequireApiUri($"{OAuthHost}/account/api/oauth/verify"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
         try
         {
-            // add bearer token to httpcleint
-            HttpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-            // Make the API call with the form data
-            var htpResponse = await HttpClient.GetAsync($"{OAuthHost}/account/api/oauth/verify");
-
-            // Check if the request was successful (status code 200)
-            if (htpResponse.IsSuccessStatusCode)
-                return true;
-            else
-                return false;
+            using var response = await _httpClient.SendAsync(request);
+            return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
         {
-            _log.Error($"VerifyAccessToken: {ex.Message}");
+            _log.Error("VerifyAccessToken failed with {ErrorType}", ex.GetType().Name);
             return false;
         }
     }

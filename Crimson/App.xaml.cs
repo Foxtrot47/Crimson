@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Net.Http;
 using Crimson.Core;
 using Crimson.Repository;
 using Crimson.Utils;
@@ -8,9 +9,7 @@ using Crimson.Views;
 using H.NotifyIcon;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Http.Resilience;
 using Microsoft.UI.Xaml;
-using Polly;
 using Serilog;
 
 namespace Crimson
@@ -63,30 +62,28 @@ namespace Crimson
                         )
                         .CreateLogger();
                 });
+                services.AddHttpClient("EpicOAuth", ConfigureEpicClient)
+                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
+                services.AddHttpClient("EpicApi", ConfigureEpicClient)
+                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
+                services.AddHttpClient("EpicContent", ConfigureEpicClient)
+                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
+
                 services.AddSingleton<Storage>();
-                services.AddScoped<IStoreRepository, EpicGamesRepository>();
-                services.AddSingleton<AuthManager>();
+                services.AddSingleton<AuthManager>(provider => new AuthManager(
+                    provider.GetRequiredService<ILogger>(),
+                    provider.GetRequiredService<Storage>(),
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicOAuth")));
+                services.AddSingleton<IStoreRepository>(provider => new EpicGamesRepository(
+                    provider.GetRequiredService<AuthManager>(),
+                    provider.GetRequiredService<ILogger>(),
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicApi"),
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
                 services.AddSingleton<LibraryManager>();
                 services.AddSingleton<InstallManager>();
-                services.AddSingleton<DownloadManager>();
-
-                services.AddHttpClient<IStoreRepository, EpicGamesRepository>().AddResilienceHandler(
-                    "CustomPipeline",
-                    static builder =>
-                    {
-                        // See: https://www.pollydocs.org/strategies/retry.html
-                        builder.AddRetry(new HttpRetryStrategyOptions
-                        {
-                            // Customize and configure the retry logic.
-                            BackoffType = DelayBackoffType.Exponential,
-                            MaxRetryAttempts = 5,
-                            UseJitter = true
-                        });
-
-
-                        // See: https://www.pollydocs.org/strategies/timeout.html
-                        builder.AddTimeout(TimeSpan.FromSeconds(5));
-                    });
+                services.AddSingleton<DownloadManager>(provider => new DownloadManager(
+                    provider.GetRequiredService<ILogger>(),
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
 
                 services.AddTransient<SettingsViewModel>();
                 services.AddTransient<DownloadsViewModel>();
@@ -96,6 +93,20 @@ namespace Crimson
             }).
             Build();
         }
+
+        private static void ConfigureEpicClient(HttpClient client)
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        }
+
+        private static HttpMessageHandler CreateSecureHttpHandler() => new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            MaxConnectionsPerServer = 16
+        };
 
         /// <summary>
         /// Invoked when the application is launched normally by the end user.  Other entry points
@@ -137,7 +148,7 @@ namespace Crimson
         private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
         {
             var logger = Host?.Services?.GetService(typeof(ILogger)) as ILogger;
-            logger?.Fatal(e.Exception, "Unhandled exception occurred");
+            logger?.Fatal("Unhandled exception of type {ErrorType}", e.Exception.GetType().Name);
         }
     }
 }

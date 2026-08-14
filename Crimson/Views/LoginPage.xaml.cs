@@ -18,6 +18,7 @@ public sealed partial class LoginPage : Page
 {
     private readonly AuthManager _authManager = App.GetService<AuthManager>();
     private readonly ILogger _log;
+    private readonly EpicLoginMessageGate _loginMessageGate = new();
     private const string EpicGamesLauncherVersion = "11.0.1-14907503+++Portal+Release-Live";
 
     public LoginPage()
@@ -25,37 +26,50 @@ public sealed partial class LoginPage : Page
         this.InitializeComponent();
         _log = App.GetService<ILogger>();
     }
-    async void WebView_NavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
+    private async void WebView_NavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
     {
-        string jsCode = @"
-                window.ue = {
-                    signinprompt: {
-                        requestexchangecodesignin: function(exchangeCode) {
-                            var data = JSON.stringify({ type: 'set_exchange_code', code: exchangeCode });
-                            window.chrome.webview.postMessage(data);
-                        },
+        if (!EpicEndpointPolicy.IsAllowedLoginOrigin(e.Uri))
+        {
+            e.Cancel = true;
+            _log.Warning("Login WebView blocked navigation to an unapproved origin");
+            return;
+        }
+
+        const string jsCode = """
+            window.ue = {
+                signinprompt: {
+                    requestexchangecodesignin: function(exchangeCode) {
+                        const data = JSON.stringify({ type: 'set_exchange_code', code: exchangeCode });
+                        window.chrome.webview.postMessage(data);
                     },
-                    common: {
-                        launchexternalurl: function(url) {
-                            window.open(url, '_blank');
-                        }
+                },
+                common: {
+                    launchexternalurl: function(url) {
+                        window.open(url, '_blank');
                     }
-                };
-            ";
+                }
+            };
+            """;
 
         await LoginWebView.ExecuteScriptAsync(jsCode);
     }
     private async void WebView_WebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         var message = e.TryGetWebMessageAsString();
-        _log.Information("WebView_WebMessageReceived: Message {@message}", message);
-        var response = JsonSerializer.Deserialize<EpicLoginResponse>(message);
-        await _authManager.DoExchangeLogin(response.Code);
+        if (!_loginMessageGate.TryAccept(e.Source, message, out var exchangeCode))
+        {
+            _log.Warning("Login WebView rejected an invalid or replayed message");
+            return;
+        }
+
+        await _authManager.DoExchangeLogin(exchangeCode);
     }
     public async void InitWebView()
     {
         _log.Information("InitWebView: WebView Initializing}");
-        var userDataFolder = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Crimson");
+        var userDataFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Crimson");
         Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", userDataFolder);
         await LoginWebView.EnsureCoreWebView2Async();
         LoginWebView.CoreWebView2.Settings.UserAgent = $"EpicGamesLauncher/{EpicGamesLauncherVersion}";
@@ -67,6 +81,8 @@ public sealed partial class LoginPage : Page
     }
     public void CloseWebView()
     {
+        LoginWebView.NavigationStarting -= WebView_NavigationStarting;
+        LoginWebView.WebMessageReceived -= WebView_WebMessageReceived;
         LoginWebView.Close();
     }
 }
