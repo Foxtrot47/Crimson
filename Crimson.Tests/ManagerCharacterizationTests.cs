@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Repository;
@@ -8,9 +7,10 @@ using Serilog;
 
 namespace Crimson.Tests;
 
-public sealed class ManagerCharacterizationTests
+public sealed class ManagerCharacterizationTests : IDisposable
 {
     private readonly ILogger _logger = new LoggerConfiguration().CreateLogger();
+    private readonly List<string> _storageRoots = [];
 
     [Fact]
     public void LibraryManager_ReturnsOwnedGameAndItsDlcs()
@@ -72,6 +72,31 @@ public sealed class ManagerCharacterizationTests
         Assert.Equal(["beta", "alpha"], manager.GetHistoryItemsNames());
     }
 
+    [Fact]
+    public void LibraryManager_MissingInstallDirectoryMarksGameNotInstalled()
+    {
+        var game = Game("missing-install", InstallState.Installed);
+        game.LocalAppState!.InstallPath = Path.Combine(
+            Path.GetTempPath(),
+            $"crimson-missing-{Guid.NewGuid():N}");
+        var storage = StorageWith(game);
+        var manager = LibraryManagerWith(storage);
+
+        var reconciled = manager.GetGameInfo(game.AppName);
+
+        Assert.NotNull(reconciled);
+        Assert.Equal(InstallState.NotInstalled, reconciled.LocalAppState?.InstallStatus);
+        Assert.Null(reconciled.LocalAppState?.InstallPath);
+        var installManager = new InstallManager(
+            _logger,
+            manager,
+            new UnusedStoreRepository(),
+            storage,
+            new DownloadManager(_logger, new HttpClient()));
+        installManager.AddToQueue(new InstallItem(game.AppName, ActionType.Repair, game.LocalAppState.InstallPath));
+        Assert.Empty(installManager.GetQueueItemNames());
+    }
+
     private LibraryManager LibraryManagerWith(Storage storage)
     {
         var auth = new AuthManager(_logger, storage, new HttpClient());
@@ -88,12 +113,15 @@ public sealed class ManagerCharacterizationTests
 
     private Storage StorageWith(params Game[] games)
     {
-        var storage = (Storage)RuntimeHelpers.GetUninitializedObject(typeof(Storage));
-        SetPrivateField(storage, "_gameMetaDataDictionary", games.ToDictionary(game => game.AppName));
-        SetPrivateField(storage, "_localAppStateDictionary", games
-            .Where(game => game.LocalAppState != null)
-            .ToDictionary(game => game.AppName, game => game.LocalAppState!));
-        SetPrivateField(storage, "_logger", _logger);
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-storage-{Guid.NewGuid():N}");
+        _storageRoots.Add(root);
+        var storage = new Storage(_logger, root);
+        foreach (var game in games)
+        {
+            storage.SaveMetaData(game);
+            if (game.LocalAppState != null)
+                storage.AddToLocalAppState(game.AppName, game.LocalAppState);
+        }
         return storage;
     }
 
@@ -123,9 +151,20 @@ public sealed class ManagerCharacterizationTests
         LocalAppState = new LocalAppState
         {
             AppName = appName,
-            InstallStatus = installState
+            InstallStatus = installState,
+            InstallPath = installState == InstallState.NotInstalled ? null : Path.GetTempPath()
         }
     };
+
+    public void Dispose()
+    {
+        (_logger as IDisposable)?.Dispose();
+        foreach (var root in _storageRoots)
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
 
     private static void SetCurrentInstall(InstallManager manager, InstallItem item) =>
         typeof(InstallManager)

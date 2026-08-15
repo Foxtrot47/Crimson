@@ -41,6 +41,7 @@ public class LibraryManager
     /// <returns></returns>
     public async Task<IEnumerable<Game>> GetLibraryData(bool forceUpdate = false)
     {
+        ReconcileMissingInstallations();
         // Only update library data if it's been more than 20 minutes since last update
         var dataNeedsUpdate = forceUpdate || (_lastUpdateDateTime == DateTime.MinValue) ||
                               (DateTime.Now - _lastUpdateDateTime > TimeSpan.FromMinutes(20));
@@ -58,7 +59,7 @@ public class LibraryManager
 
     public Game GetGameInfo(string name)
     {
-        return _storage.GetGameMetaData(name);
+        return ReconcileMissingInstallation(_storage.GetGameMetaData(name));
     }
 
     /// <summary>
@@ -283,6 +284,34 @@ public class LibraryManager
         {
             _log.Error(ex.ToString());
         }
+    }
+
+    private void ReconcileMissingInstallations()
+    {
+        foreach (var game in _storage.GameMetaDataDictionary.Values)
+            ReconcileMissingInstallation(game);
+    }
+
+    private Game? ReconcileMissingInstallation(Game? game)
+    {
+        var installation = game?.LocalAppState;
+        if (game == null || installation == null || installation.InstallStatus == InstallState.NotInstalled)
+            return game;
+        if (!string.IsNullOrWhiteSpace(installation.InstallPath) && Directory.Exists(installation.InstallPath))
+            return game;
+
+        _log.Warning(
+            "Installed game directory is missing for {AppName}; marking it not installed",
+            game.AppName);
+        installation.InstallStatus = InstallState.NotInstalled;
+        installation.InstallPath = null;
+        installation.Version = null;
+        installation.Executable = null;
+        game.LocalAppState = installation;
+        _storage.AddToLocalAppState(game.AppName, installation);
+        _storage.SaveMetaData(game);
+        GameStatusUpdated?.Invoke(game);
+        return game;
     }
 
     /// <summary>
