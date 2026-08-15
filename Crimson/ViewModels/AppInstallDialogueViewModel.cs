@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -20,6 +21,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
     private readonly LibraryManager _libraryManager;
     private readonly Storage _storageService;
     private readonly ILogger _logger;
+    private readonly Dictionary<string, InstallContentSize> _contentSizes = [];
+    private long _availableDriveBytes;
 
     private string _gameAppName;
 
@@ -98,12 +101,14 @@ public partial class AppInstallDialogViewModel : ObservableObject
             HasDlcs = dlcs.Count > 0;
             foreach (var dlc in dlcs)
             {
-                AvailableDlcs.Add(new DlcOption
+                var option = new DlcOption
                 {
                     AppName = dlc.AppName,
                     Title = dlc.AppTitle,
                     IsSelected = true
-                });
+                };
+                option.PropertyChanged += OnDlcPropertyChanged;
+                AvailableDlcs.Add(option);
             }
 
             IsLoadingContent = true;
@@ -120,11 +125,15 @@ public partial class AppInstallDialogViewModel : ObservableObject
 
     public void Activate()
     {
+        foreach (var dlc in AvailableDlcs)
+            dlc.PropertyChanged -= OnDlcPropertyChanged;
         IsLoadingContent = true;
         CanInstall = false;
         IsDriveSpaceVisible = false;
         HasDlcs = false;
         AvailableDlcs.Clear();
+        _contentSizes.Clear();
+        _availableDriveBytes = 0;
         TotalDownloadSize = "0 B";
         TotalInstallSize = "0 B";
         TotalInstallSizeRaw = 0;
@@ -135,10 +144,36 @@ public partial class AppInstallDialogViewModel : ObservableObject
 
     private async Task LoadGameContent(string appName)
     {
-        var (downloadSize, installSize) = await _installManager.GetGameDownloadInstallSizes(appName);
-        TotalDownloadSize = FormatSize(downloadSize);
-        TotalInstallSize = FormatSize(installSize);
-        TotalInstallSizeRaw = installSize;
+        var baseSize = await _installManager.GetGameDownloadInstallSizes(appName);
+        _contentSizes[appName] = new InstallContentSize(baseSize.totalDownloadSizeMb, baseSize.totalWriteSizeMb);
+        foreach (var dlc in AvailableDlcs)
+        {
+            var dlcSize = await _installManager.GetGameDownloadInstallSizes(dlc.AppName);
+            _contentSizes[dlc.AppName] = new InstallContentSize(
+                dlcSize.totalDownloadSizeMb,
+                dlcSize.totalWriteSizeMb);
+        }
+
+        BaseGameSize = FormatSize(_contentSizes[appName].InstallBytes);
+        RecalculateSelectedContentSizes();
+    }
+
+    private void OnDlcPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == nameof(DlcOption.IsSelected))
+            RecalculateSelectedContentSizes();
+    }
+
+    private void RecalculateSelectedContentSizes()
+    {
+        var total = InstallContentSizeCalculator.Calculate(
+            _gameAppName,
+            _contentSizes,
+            AvailableDlcs.Where(item => item.IsSelected).Select(item => item.AppName));
+        TotalDownloadSize = FormatSize(total.DownloadBytes);
+        TotalInstallSizeRaw = total.InstallBytes;
+        TotalInstallSize = FormatSize(total.InstallBytes);
+        CanInstall = IsDriveSpaceVisible && _availableDriveBytes > total.InstallBytes;
     }
 
     private async Task UpdateDriveSpace(bool completeLoading = true)
@@ -151,7 +186,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
             DriveSpaceUsagePercent = ((double)usedSpace / driveInfo.TotalSize) * 100;
             DriveSpaceAvailable = FormatSize(driveInfo.AvailableFreeSpace);
             DriveTotalSpace = FormatSize(driveInfo.TotalSize);
-            CanInstall = completeLoading && driveInfo.AvailableFreeSpace > TotalInstallSizeRaw;
+            _availableDriveBytes = driveInfo.AvailableFreeSpace;
+            CanInstall = completeLoading && _availableDriveBytes > TotalInstallSizeRaw;
             if (completeLoading)
                 IsLoadingContent = false;
         }
