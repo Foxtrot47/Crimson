@@ -144,6 +144,7 @@ public class InstallManager
                 lock (_operationLifecycleLock)
                 {
                     _userCancellationRequested = false;
+                    _installStopWatch.Reset();
                     _acceptCancellation = true;
                     _operationCompletion = new TaskCompletionSource(
                         TaskCreationOptions.RunContinuationsAsynchronously);
