@@ -60,6 +60,16 @@ public sealed class ParserAdversaryTests
     }
 
     [Fact]
+    public void ChunkReadBuffer_AcceptsLegitimateHighlyCompressiblePayload()
+    {
+        var payload = new byte[1024 * 1024];
+        var serialized = BuildChunk(payload, compressed: true);
+
+        Assert.True(payload.Length > (serialized.Length - 66) * 100);
+        Assert.Equal(payload, Chunk.ReadBuffer(serialized).Data);
+    }
+
+    [Fact]
     public void ChunkValidateAgainst_RejectsManifestIdentityMismatch()
     {
         var payload = Encoding.UTF8.GetBytes("chunk identity");
@@ -74,6 +84,32 @@ public sealed class ParserAdversaryTests
         };
 
         Assert.Throws<InvalidDataException>(() => chunk.ValidateAgainst(expected));
+    }
+
+    [Fact]
+    public void ChunkValidateAgainst_AcceptsUnsignedGuidComponents()
+    {
+        var payload = Encoding.UTF8.GetBytes("unsigned chunk identity");
+        var data = BuildChunk(payload, compressed: false);
+        uint[] guid = [0xFEF822C6, 0x4BE2C4CE, 0x9644BF8D, 0x427F2F13];
+        for (var index = 0; index < guid.Length; index++)
+            BitConverter.GetBytes(guid[index]).CopyTo(data, 16 + index * sizeof(uint));
+
+        var expectedGuid = guid.Select(value => unchecked((int)value)).ToArray();
+        var expected = new ChunkInfo(21)
+        {
+            Guid = expectedGuid,
+            Hash = unchecked((long)RollingHash.ComputeHash(payload)),
+            ShaHash = SHA1.HashData(payload),
+            WindowSize = payload.Length,
+            FileSize = payload.Length + 66
+        };
+        var part = new ChunkPart(expectedGuid, 0, payload.Length);
+        var chunk = Chunk.ReadBuffer(data);
+
+        chunk.ValidateAgainst(expected);
+        Assert.Equal(chunk.GuidNum, expected.GuidNum);
+        Assert.Equal(expected.GuidNum, part.GuidNum);
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Ionic.Zlib;
 
 namespace Crimson.Models;
@@ -20,15 +21,17 @@ public sealed class Manifest
     public int Version { get; private set; } = MaximumSupportedVersion;
     public byte[] Data { get; private set; } = [];
 
-    public ManifestMeta ManifestMeta { get; private set; } = null!;
-    public CDL CDL { get; private set; } = null!;
-    public FileManifestList FileManifestList { get; private set; } = null!;
-    public CustomFields CustomFields { get; private set; } = null!;
+    public ManifestMeta ManifestMeta { get; internal set; } = null!;
+    public CDL CDL { get; internal set; } = null!;
+    public FileManifestList FileManifestList { get; internal set; } = null!;
+    public CustomFields CustomFields { get; internal set; } = null!;
 
     public bool Compressed => (StoredAs & 0x1) != 0;
 
     public static Manifest ReadAll(byte[] data)
     {
+        if (JsonManifestReader.IsJson(data))
+            return JsonManifestReader.Read(data);
         var manifest = Read(data);
         using var stream = new MemoryStream(manifest.Data, writable: false);
         var reader = new EpicBinaryReader(stream);
@@ -44,6 +47,8 @@ public sealed class Manifest
     public static Manifest Read(byte[] data)
     {
         ArgumentNullException.ThrowIfNull(data);
+        if (JsonManifestReader.IsJson(data))
+            return JsonManifestReader.Read(data);
         if (data.Length < ExpectedHeaderSize)
             throw new EndOfStreamException("Manifest header is truncated.");
         if (data.Length > EpicProtocolLimits.MaximumManifestBytes + ExpectedHeaderSize)
@@ -75,7 +80,7 @@ public sealed class Manifest
         if (reader.Remaining != manifest.SizeCompressed)
             throw new InvalidDataException("Manifest compressed size does not match its payload.");
         if (manifest.Compressed && manifest.SizeUncompressed >
-            Math.Max((long)manifest.SizeCompressed, 1) * EpicProtocolLimits.MaximumDecompressionRatio)
+            Math.Max((long)manifest.SizeCompressed, 1) * EpicProtocolLimits.MaximumManifestDecompressionRatio)
             throw new InvalidDataException("Manifest decompression ratio exceeds the supported limit.");
 
         var storedPayload = reader.ReadBytesExact(manifest.SizeCompressed);
@@ -141,21 +146,21 @@ public sealed class Manifest
 
 public sealed class ManifestMeta
 {
-    public int MetaSize { get; private set; }
-    public byte DataVersion { get; private set; }
-    public uint FeatureLevel { get; private set; }
-    public bool IsFileData { get; private set; }
-    public uint AppId { get; private set; }
-    public string AppName { get; private set; } = string.Empty;
-    public string BuildVersion { get; private set; } = string.Empty;
-    public string LaunchExe { get; private set; } = string.Empty;
-    public string LaunchCommand { get; private set; } = string.Empty;
-    public List<string> PrereqIds { get; private set; } = [];
-    public string PrereqName { get; private set; } = string.Empty;
-    public string PrereqPath { get; private set; } = string.Empty;
-    public string PrereqArgs { get; private set; } = string.Empty;
-    public string UninstallActionPath { get; private set; } = string.Empty;
-    public string UninstallActionArgs { get; private set; } = string.Empty;
+    public int MetaSize { get; internal set; }
+    public byte DataVersion { get; internal set; }
+    public uint FeatureLevel { get; internal set; }
+    public bool IsFileData { get; internal set; }
+    public uint AppId { get; internal set; }
+    public string AppName { get; internal set; } = string.Empty;
+    public string BuildVersion { get; internal set; } = string.Empty;
+    public string LaunchExe { get; internal set; } = string.Empty;
+    public string LaunchCommand { get; internal set; } = string.Empty;
+    public List<string> PrereqIds { get; internal set; } = [];
+    public string PrereqName { get; internal set; } = string.Empty;
+    public string PrereqPath { get; internal set; } = string.Empty;
+    public string PrereqArgs { get; internal set; } = string.Empty;
+    public string UninstallActionPath { get; internal set; } = string.Empty;
+    public string UninstallActionArgs { get; internal set; } = string.Empty;
 
     private string? _buildId;
 

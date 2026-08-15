@@ -144,6 +144,74 @@ public sealed class ManifestParsingTests
         Assert.Equal("00000001-00000002-00000003-00000004", chunk.GuidStr);
     }
 
+    [Fact]
+    public void CustomFieldsRead_ReadsVersionThreeKeyAndValueArrays()
+    {
+        using var body = new MemoryStream();
+        using var writer = new BinaryWriter(body, Encoding.UTF8, leaveOpen: true);
+        writer.Write(0);
+        writer.Write((byte)3);
+        writer.Write(2);
+        WriteString(writer, "First");
+        WriteString(writer, "Second");
+        WriteString(writer, "One");
+        WriteString(writer, "Two");
+        writer.Flush();
+        body.Position = 0;
+        writer.Write(checked((int)body.Length));
+        writer.Flush();
+        body.Position = 0;
+
+        var fields = CustomFields.Read(body);
+
+        Assert.Equal("One", fields["First"]);
+        Assert.Equal("Two", fields["Second"]);
+    }
+
+    [Fact]
+    public void ManifestReadAll_ReadsJsonManifest()
+    {
+        var guid = "00000001000000020000000300000004";
+        var json = $$"""
+            {
+              "ManifestFileVersion":"{{EncodeDecimalBytes(BitConverter.GetBytes(13))}}",
+              "bIsFileData":false,
+              "AppID":"{{EncodeDecimalBytes(BitConverter.GetBytes(42))}}",
+              "AppNameString":"json-game",
+              "BuildVersionString":"1.0",
+              "LaunchExeString":"game.exe",
+              "LaunchCommand":"",
+              "PrereqIds":[],
+              "PrereqName":"",
+              "PrereqPath":"",
+              "PrereqArgs":"",
+              "FileManifestList":[{
+                "Filename":"game.exe",
+                "FileHash":"{{EncodeDecimalBytes(new byte[20])}}",
+                "bIsUnixExecutable":true,
+                "FileChunkParts":[{
+                  "Guid":"{{guid}}",
+                  "Offset":"{{EncodeDecimalBytes(BitConverter.GetBytes(0))}}",
+                  "Size":"{{EncodeDecimalBytes(BitConverter.GetBytes(31))}}"
+                }]
+              }],
+              "ChunkHashList":{"{{guid}}":"{{EncodeDecimalBytes(BitConverter.GetBytes(0L))}}"},
+              "ChunkShaList":{"{{guid}}":"{{new string('0', 40)}}"},
+              "DataGroupList":{"{{guid}}":"{{EncodeDecimalBytes([8])}}"},
+              "ChunkFilesizeList":{"{{guid}}":"{{EncodeDecimalBytes(BitConverter.GetBytes(97L))}}"},
+              "CustomFields":{}
+            }
+            """;
+
+        var manifest = Manifest.ReadAll(Encoding.UTF8.GetBytes(json));
+
+        Assert.Equal("json-game", manifest.ManifestMeta.AppName);
+        Assert.Equal("1.0", manifest.ManifestMeta.BuildVersion);
+        Assert.Equal("game.exe", manifest.ManifestMeta.LaunchExe);
+        Assert.Equal(31, Assert.Single(manifest.FileManifestList.Elements).FileSize);
+        Assert.Equal(97, Assert.Single(manifest.CDL.Elements).FileSize);
+    }
+
     private static byte[] BuildManifest(byte[] payload, bool compressed = false)
     {
         var storedPayload = compressed ? Compress(payload) : payload;
@@ -205,4 +273,7 @@ public sealed class ManifestParsingTests
         writer.Write(bytes.Length);
         writer.Write(bytes);
     }
+
+    private static string EncodeDecimalBytes(IEnumerable<byte> bytes) =>
+        string.Concat(bytes.Select(value => value.ToString("D3")));
 }

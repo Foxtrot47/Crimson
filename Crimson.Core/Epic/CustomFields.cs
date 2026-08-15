@@ -2,9 +2,9 @@ namespace Crimson.Models;
 
 public sealed class CustomFields
 {
-    public int Size { get; private set; }
-    public byte Version { get; private set; }
-    public int Count { get; private set; }
+    public int Size { get; internal set; }
+    public byte Version { get; internal set; }
+    public int Count { get; internal set; }
 
     private readonly Dictionary<string, string> _values = new(StringComparer.Ordinal);
 
@@ -38,13 +38,16 @@ public sealed class CustomFields
             Version = reader.ReadByte(),
             Count = reader.ReadCount(EpicProtocolLimits.MaximumCustomFields, "Custom field")
         };
-        if (fields.Version != 0)
+        if (fields.Version > 3)
             throw new InvalidDataException($"Custom field version {fields.Version} is unsupported.");
 
+        var keys = new string[fields.Count];
+        for (var index = 0; index < fields.Count; index++)
+            keys[index] = reader.ReadUnrealString();
         for (var index = 0; index < fields.Count; index++)
         {
-            var key = reader.ReadUtf8String();
-            var value = reader.ReadUtf8String();
+            var key = keys[index];
+            var value = reader.ReadUnrealString();
             if (string.IsNullOrEmpty(key) || !fields._values.TryAdd(key, value))
                 throw new InvalidDataException($"Duplicate or empty custom field key: {key}.");
         }

@@ -143,7 +143,7 @@ public sealed class Chunk
         if (chunk.UncompressedSize > EpicProtocolLimits.MaximumChunkBytes)
             throw new InvalidDataException("Chunk uncompressed size exceeds the supported limit.");
         if (chunk.Compressed && chunk.UncompressedSize >
-            Math.Max((long)chunk.CompressedSize, 1) * EpicProtocolLimits.MaximumDecompressionRatio)
+            Math.Max((long)chunk.CompressedSize, 1) * EpicProtocolLimits.MaximumChunkDecompressionRatio)
             throw new InvalidDataException("Chunk decompression ratio exceeds the supported limit.");
         if (reader.Remaining < chunk.CompressedSize)
             throw new EndOfStreamException("Chunk payload is truncated.");

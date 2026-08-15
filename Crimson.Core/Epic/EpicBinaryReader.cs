@@ -14,7 +14,8 @@ internal static class EpicProtocolLimits
     public const int MaximumChunkPartsPerFile = 1_000_000;
     public const long MaximumCumulativeChunkParts = 10_000_000;
     public const int MaximumCustomFields = 100_000;
-    public const int MaximumDecompressionRatio = 100;
+    public const int MaximumManifestDecompressionRatio = 100;
+    public const int MaximumChunkDecompressionRatio = 4_096;
 }
 
 internal sealed class EpicBinaryReader

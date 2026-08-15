@@ -5,9 +5,9 @@ namespace Crimson.Models;
 
 public sealed class FileManifestList
 {
-    public int Version { get; private set; }
-    public int Size { get; private set; }
-    public int Count { get; private set; }
+    public int Version { get; internal set; }
+    public int Size { get; internal set; }
+    public int Count { get; internal set; }
     public List<FileManifest> Elements { get; } = [];
 
     private Dictionary<string, int>? _pathMap;
@@ -189,10 +189,10 @@ public sealed class ChunkPart
                 if (Guid.Length != 4)
                     throw new InvalidOperationException("Chunk part GUID is not initialized.");
 
-                _guidNum = new BigInteger(Guid[3])
-                           + (new BigInteger(Guid[2]) << 32)
-                           + (new BigInteger(Guid[1]) << 64)
-                           + (new BigInteger(Guid[0]) << 96);
+                _guidNum = new BigInteger(unchecked((uint)Guid[3]))
+                           + (new BigInteger(unchecked((uint)Guid[2])) << 32)
+                           + (new BigInteger(unchecked((uint)Guid[1])) << 64)
+                           + (new BigInteger(unchecked((uint)Guid[0])) << 96);
             }
 
             return _guidNum;
