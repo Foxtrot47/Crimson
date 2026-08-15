@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Crimson.Models;
@@ -29,10 +30,10 @@ public class SettingsManager
         set { Settings.DefaultInstallLocation = value; }
     }
 
-    public string LogsDirectory
-    {
-        get => $"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\\Crimson\\logs";
-    }
+    public string LogsDirectory => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Crimson",
+        "logs");
 
     private Settings LoadSettings()
     {
