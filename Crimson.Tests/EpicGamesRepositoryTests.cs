@@ -1,10 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
-using System.Runtime.CompilerServices;
-using Crimson.Core;
+using Microsoft.Extensions.Logging.Abstractions;
 using Crimson.Repository;
-using Crimson.Utils;
-using Serilog;
 
 namespace Crimson.Tests;
 
@@ -31,8 +28,8 @@ public sealed class EpicGamesRepositoryTests
         }));
         using var apiClient = new HttpClient(new StubHttpMessageHandler((_, _) =>
             throw new InvalidOperationException("API client should not be used.")));
-        using var logger = new LoggerConfiguration().CreateLogger();
-        var repository = CreateRepository(logger, apiClient, contentClient);
+
+        var repository = CreateRepository(apiClient, contentClient);
 
         var result = await repository.GetGameManifest(new GetManifestUrlData
         {
@@ -57,8 +54,8 @@ public sealed class EpicGamesRepositoryTests
         }));
         using var apiClient = new HttpClient(new StubHttpMessageHandler((_, _) =>
             throw new InvalidOperationException("API client should not be used.")));
-        using var logger = new LoggerConfiguration().CreateLogger();
-        var repository = CreateRepository(logger, apiClient, contentClient);
+
+        var repository = CreateRepository(apiClient, contentClient);
 
         var result = await repository.GetGameManifest(new GetManifestUrlData
         {
@@ -83,8 +80,8 @@ public sealed class EpicGamesRepositoryTests
         }));
         using var apiClient = new HttpClient(new StubHttpMessageHandler((_, _) =>
             throw new InvalidOperationException("API client should not be used.")));
-        using var logger = new LoggerConfiguration().CreateLogger();
-        var repository = CreateRepository(logger, apiClient, contentClient);
+
+        var repository = CreateRepository(apiClient, contentClient);
         using var cancellation = new CancellationTokenSource();
 
         var operation = repository.GetGameManifest(
@@ -114,8 +111,8 @@ public sealed class EpicGamesRepositoryTests
         }));
         using var apiClient = new HttpClient(new StubHttpMessageHandler((_, _) =>
             throw new InvalidOperationException("API client should not be used.")));
-        using var logger = new LoggerConfiguration().CreateLogger();
-        var repository = CreateRepository(logger, apiClient, contentClient);
+
+        var repository = CreateRepository(apiClient, contentClient);
 
         var result = await repository.GetGameManifest(new GetManifestUrlData
         {
@@ -131,13 +128,17 @@ public sealed class EpicGamesRepositoryTests
     }
 
     private static EpicGamesRepository CreateRepository(
-        ILogger logger,
         HttpClient apiClient,
-        HttpClient contentClient)
+        HttpClient contentClient) => new(
+            new StubAccessTokenProvider(),
+            NullLogger<EpicGamesRepository>.Instance,
+            apiClient,
+            contentClient);
+
+    private sealed class StubAccessTokenProvider : IAccessTokenProvider
     {
-        var storage = (Storage)RuntimeHelpers.GetUninitializedObject(typeof(Storage));
-        var auth = new AuthManager(logger, storage, apiClient);
-        return new EpicGamesRepository(auth, logger, apiClient, contentClient);
+        public Task<string?> GetAccessToken(CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>("test-token");
     }
 
     private sealed class StubHttpMessageHandler(

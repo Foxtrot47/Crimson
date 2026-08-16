@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace Crimson.Repository;
 
-internal static class BoundedHttpContent
+public static class BoundedHttpContent
 {
     public static async Task<byte[]> ReadBytesAsync(
         HttpContent content,

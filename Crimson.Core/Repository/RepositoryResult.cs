@@ -50,7 +50,7 @@ public enum EpicPayloadPlatform
     Windows
 }
 
-internal static class EpicPayloadPlatformExtensions
+public static class EpicPayloadPlatformExtensions
 {
     public static string ToApiValue(this EpicPayloadPlatform platform) => platform switch
     {

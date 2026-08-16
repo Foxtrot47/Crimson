@@ -1,6 +1,6 @@
 ﻿namespace Crimson.Models;
 
-class Settings
+public class Settings
 {
     public bool MicaEnabled { get; set; }
 

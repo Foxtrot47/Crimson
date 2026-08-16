@@ -14,10 +14,10 @@ using Serilog;
 
 namespace Crimson.Core;
 
-public class AuthManager
+public class AuthManager : IAccessTokenProvider
 {
     private readonly ILogger _log;
-    private readonly Storage _storage;
+    private readonly ICredentialStore _credentialStore;
 
     private AuthenticationStatus _authenticationStatus;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
@@ -37,10 +37,10 @@ public class AuthManager
     public AuthenticationStatus AuthenticationStatus => _authenticationStatus;
 
 
-    public AuthManager(ILogger log, Storage storage, HttpClient httpClient)
+    public AuthManager(ILogger log, ICredentialStore credentialStore, HttpClient httpClient)
     {
         _log = log;
-        _storage = storage;
+        _credentialStore = credentialStore;
         _httpClient = httpClient;
     }
 
@@ -54,7 +54,7 @@ public class AuthManager
             _authenticationStatus = AuthenticationStatus.Checking;
             OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
 
-            var userData = await _storage.GetUserData();
+            var userData = await _credentialStore.GetUserData();
             if (userData == null)
             {
                 _authenticationStatus = AuthenticationStatus.LoggedOut;
@@ -103,7 +103,7 @@ public class AuthManager
                 var plainAccessToken = newData.AccessToken;
                 newData.AccessToken = KeyManager.EncryptString(newData.AccessToken);
                 newData.RefreshToken = KeyManager.EncryptString(newData.RefreshToken);
-                await _storage.SaveUserData(newData);
+                await _credentialStore.SaveUserData(newData);
 
                 if (!await VerifyAccessToken(plainAccessToken, cancellationToken))
                 {
@@ -170,7 +170,7 @@ public class AuthManager
             userData.RefreshToken = KeyManager.EncryptString(userData.RefreshToken);
             _log.Information("RequestTokens: Tokens successfully encrypted");
 
-            await _storage.SaveUserData(userData);
+            await _credentialStore.SaveUserData(userData);
 
             _authenticationStatus = AuthenticationStatus.LoggedIn;
             OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedIn));
@@ -187,7 +187,7 @@ public class AuthManager
         }
     }
 
-    public async Task<string> GetAccessToken(CancellationToken cancellationToken = default)
+    public async Task<string?> GetAccessToken(CancellationToken cancellationToken = default)
     {
         if (_authenticationStatus != AuthenticationStatus.LoggedIn)
         {
@@ -198,7 +198,7 @@ public class AuthManager
         await _refreshLock.WaitAsync(cancellationToken);
         try
         {
-            var userData = await _storage.GetUserData();
+            var userData = await _credentialStore.GetUserData();
             if (userData == null) return null;
 
             var plainAccessToken = KeyManager.DecryptString(userData.AccessToken);
@@ -234,7 +234,7 @@ public class AuthManager
                 plainAccessToken = newData.AccessToken;
                 newData.AccessToken = KeyManager.EncryptString(newData.AccessToken);
                 newData.RefreshToken = KeyManager.EncryptString(newData.RefreshToken);
-                await _storage.SaveUserData(newData);
+                await _credentialStore.SaveUserData(newData);
             }
 
             return plainAccessToken;
@@ -261,14 +261,14 @@ public class AuthManager
             _log.Error("GetUserData: User is not logged in");
             return null;
         }
-        return await _storage.GetUserData();
+        return await _credentialStore.GetUserData();
     }
 
     public async Task Logout()
     {
         _log.Information("Logout: Logging out");
         _authenticationStatus = AuthenticationStatus.LoggedOut;
-        await _storage.ClearUserData();
+        await _credentialStore.ClearUserData();
         OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
     }
 

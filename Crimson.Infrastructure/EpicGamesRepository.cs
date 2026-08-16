@@ -10,11 +10,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Models;
-using Serilog;
+using Microsoft.Extensions.Logging;
 
 namespace Crimson.Repository;
 
-internal sealed class EpicGamesRepository : IStoreRepository
+public sealed class EpicGamesRepository : IStoreRepository
 {
     private const string LauncherHost = "launcher-public-service-prod06.ol.epicgames.com";
     private const string CatalogHost = "catalog-public-service-prod06.ol.epicgames.com";
@@ -27,17 +27,17 @@ internal sealed class EpicGamesRepository : IStoreRepository
 
     private readonly HttpClient _apiClient;
     private readonly HttpClient _contentClient;
-    private readonly ILogger _log;
-    private readonly AuthManager _authManager;
+    private readonly ILogger<EpicGamesRepository> _log;
+    private readonly IAccessTokenProvider _accessTokenProvider;
 
     public EpicGamesRepository(
-        AuthManager authManager,
-        ILogger logger,
+        IAccessTokenProvider accessTokenProvider,
+        ILogger<EpicGamesRepository> logger,
         HttpClient apiClient,
         HttpClient contentClient)
     {
         _log = logger;
-        _authManager = authManager;
+        _accessTokenProvider = accessTokenProvider;
         _apiClient = apiClient;
         _contentClient = contentClient;
     }
@@ -132,9 +132,8 @@ internal sealed class EpicGamesRepository : IStoreRepository
             try
             {
                 var uri = EpicEndpointPolicy.RequireContentUri(value);
-                _log.Information(
-                    "GetGameManifest: Trying content endpoint {ManifestUri}",
-                    SensitiveDataRedactor.UriWithoutQuery(uri.AbsoluteUri));
+                _log.LogInformation("GetGameManifest: Trying content endpoint {ManifestUri}",
+                SensitiveDataRedactor.UriWithoutQuery(uri.AbsoluteUri));
                 using var response = await SendGetWithRetryAsync(
                     _contentClient,
                     uri,
@@ -213,9 +212,8 @@ internal sealed class EpicGamesRepository : IStoreRepository
             }
             catch (Exception exception)
             {
-                _log.Warning(
-                    "Failed to remove a partial repository download with {ErrorType}",
-                    exception.GetType().Name);
+                _log.LogWarning("Failed to remove a partial repository download with {ErrorType}",
+                exception.GetType().Name);
             }
         }
     }
@@ -285,9 +283,8 @@ internal sealed class EpicGamesRepository : IStoreRepository
                 if (!Uri.TryCreate(entry.Uri, UriKind.Absolute, out var contentUri) ||
                     !EpicEndpointPolicy.IsAllowedContentUri(contentUri))
                 {
-                    _log.Warning(
-                        "Rejected unapproved Epic CDN host {Host}",
-                        contentUri?.Host ?? "invalid");
+                    _log.LogWarning("Rejected unapproved Epic CDN host {Host}",
+                    contentUri?.Host ?? "invalid");
                     continue;
                 }
 
@@ -336,7 +333,7 @@ internal sealed class EpicGamesRepository : IStoreRepository
 
     private async Task<AuthenticationHeaderValue?> GetAuthorizationAsync(CancellationToken cancellationToken)
     {
-        var accessToken = await _authManager.GetAccessToken(cancellationToken);
+        var accessToken = await _accessTokenProvider.GetAccessToken(cancellationToken);
         return string.IsNullOrWhiteSpace(accessToken)
             ? null
             : new AuthenticationHeaderValue("Bearer", accessToken);

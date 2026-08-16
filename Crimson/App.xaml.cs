@@ -79,13 +79,13 @@ namespace Crimson
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicOAuth")));
                 services.AddSingleton<IStoreRepository>(provider => new EpicGamesRepository(
                     provider.GetRequiredService<AuthManager>(),
-                    provider.GetRequiredService<ILogger>(),
+                    provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<EpicGamesRepository>>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicApi"),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
                 services.AddSingleton<LibraryManager>();
                 services.AddSingleton<InstallManager>();
                 services.AddSingleton<DownloadManager>(provider => new DownloadManager(
-                    provider.GetRequiredService<ILogger>(),
+                    provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DownloadManager>>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
 
                 services.AddTransient<SettingsViewModel>();

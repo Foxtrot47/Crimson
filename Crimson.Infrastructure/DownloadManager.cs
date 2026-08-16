@@ -6,7 +6,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using Serilog;
+using Microsoft.Extensions.Logging;
 using Crimson.Models;
 using Crimson.Repository;
 
@@ -15,14 +15,14 @@ namespace Crimson.Core;
 public class DownloadManager
 {
     private readonly Dictionary<string, MirrorStats> _mirrorStats = new();
-    private readonly ILogger _log;
+    private readonly ILogger<DownloadManager> _log;
     private readonly HttpClient _httpClient;
     private readonly SemaphoreSlim _statLock = new(1);
     private const long MaximumChunkDownloadBytes = 64 * 1024 * 1024;
     private static readonly TimeSpan MaximumRetryDelay = TimeSpan.FromSeconds(30);
 
 
-    public DownloadManager(ILogger log, HttpClient httpClient)
+    public DownloadManager(ILogger<DownloadManager> log, HttpClient httpClient)
     {
         _log = log;
         _httpClient = httpClient;
@@ -74,7 +74,7 @@ public class DownloadManager
             var orderedMirrors = await GetPrioritizedMirrors(cancellationToken);
             if (orderedMirrors.Count == 0)
             {
-                _log.Error("DownloadFileWithFallback: No download mirrors are available");
+                _log.LogError("DownloadFileWithFallback: No download mirrors are available");
                 return false;
             }
 
@@ -97,12 +97,11 @@ public class DownloadManager
                 }
                 catch (Exception ex)
                 {
-                    _log.Error(
-                        "Attempt {Attempt}/{MaxAttempts} failed for mirror {Mirror} with {ErrorType}",
-                        attempt,
-                        maxRetries,
-                        SensitiveDataRedactor.UriWithoutQuery(mirror.BaseUrl),
-                        ex.GetType().Name);
+                    _log.LogError("Attempt {Attempt}/{MaxAttempts} failed for mirror {Mirror} with {ErrorType}",
+                    attempt,
+                    maxRetries,
+                    SensitiveDataRedactor.UriWithoutQuery(mirror.BaseUrl),
+                    ex.GetType().Name);
                     await UpdateMirrorStats(mirror.BaseUrl, false, 0, cancellationToken);
                 }
             }
@@ -146,10 +145,9 @@ public class DownloadManager
                 uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                _log.Warning(
-                    "MeasureDownloadSpeed: HTTP {StatusCode} for {Url}",
-                    (int)response.StatusCode,
-                    SensitiveDataRedactor.UriWithoutQuery(uri.AbsoluteUri));
+                _log.LogWarning("MeasureDownloadSpeed: HTTP {StatusCode} for {Url}",
+                (int)response.StatusCode,
+                SensitiveDataRedactor.UriWithoutQuery(uri.AbsoluteUri));
                 var retryDelay = GetRetryDelay(response);
                 if (retryDelay.HasValue)
                     await Task.Delay(retryDelay.Value, cancellationToken);
@@ -172,12 +170,11 @@ public class DownloadManager
             if ((contentLength.HasValue && downloadedSize != contentLength.Value) ||
                 (expectedSize.HasValue && downloadedSize != expectedSize.Value))
             {
-                _log.Warning(
-                    "MeasureDownloadSpeed: Size mismatch for {Url}. Downloaded {DownloadedSize}, expected {ExpectedSize}, content length {ContentLength}",
-                    SensitiveDataRedactor.UriWithoutQuery(uri.AbsoluteUri),
-                    downloadedSize,
-                    expectedSize,
-                    contentLength);
+                _log.LogWarning("MeasureDownloadSpeed: Size mismatch for {Url}. Downloaded {DownloadedSize}, expected {ExpectedSize}, content length {ContentLength}",
+                SensitiveDataRedactor.UriWithoutQuery(uri.AbsoluteUri),
+                downloadedSize,
+                expectedSize,
+                contentLength);
                 return false;
             }
 
@@ -196,10 +193,9 @@ public class DownloadManager
         catch (Exception ex)
         {
             stopwatch.Stop();
-            _log.Error(
-                "MeasureDownloadSpeed failed for {Url} with {ErrorType}",
-                SensitiveDataRedactor.UriWithoutQuery(url),
-                ex.GetType().Name);
+            _log.LogError("MeasureDownloadSpeed failed for {Url} with {ErrorType}",
+            SensitiveDataRedactor.UriWithoutQuery(url),
+            ex.GetType().Name);
             throw;
         }
         finally
@@ -210,9 +206,8 @@ public class DownloadManager
             }
             catch (Exception ex)
             {
-                _log.Warning(
-                    "MeasureDownloadSpeed: Failed to remove partial download with {ErrorType}",
-                    ex.GetType().Name);
+                _log.LogWarning("MeasureDownloadSpeed: Failed to remove partial download with {ErrorType}",
+                ex.GetType().Name);
             }
         }
     }

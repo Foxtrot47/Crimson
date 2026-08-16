@@ -1,6 +1,6 @@
 using System.Net;
 using Crimson.Core;
-using Serilog;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Crimson.Tests;
 
@@ -24,8 +24,8 @@ public sealed class DownloadManagerTests
             };
             return Task.FromResult(response);
         }));
-        using var logger = new LoggerConfiguration().CreateLogger();
-        var manager = new DownloadManager(logger, client);
+
+        var manager = new DownloadManager(NullLogger<DownloadManager>.Instance, client);
         await manager.InitializeMirrors(["https://first.epicgamescdn.com/base", "https://second.epicgamescdn.com/base"]);
         var destination = CreateDestination();
 
@@ -55,8 +55,8 @@ public sealed class DownloadManagerTests
             Interlocked.Increment(ref requestCount);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         }));
-        using var logger = new LoggerConfiguration().CreateLogger();
-        var manager = new DownloadManager(logger, client);
+
+        var manager = new DownloadManager(NullLogger<DownloadManager>.Instance, client);
         await manager.InitializeMirrors(["https://first.epicgamescdn.com", "https://second.epicgamescdn.com"]);
         var destination = CreateDestination();
 
@@ -86,8 +86,8 @@ public sealed class DownloadManagerTests
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             return new HttpResponseMessage(HttpStatusCode.OK);
         }));
-        using var logger = new LoggerConfiguration().CreateLogger();
-        var manager = new DownloadManager(logger, client);
+
+        var manager = new DownloadManager(NullLogger<DownloadManager>.Instance, client);
         await manager.InitializeMirrors(["https://first.epicgamescdn.com"]);
         var destination = CreateDestination();
         using var cancellation = new CancellationTokenSource();
@@ -122,8 +122,8 @@ public sealed class DownloadManagerTests
                 Content = new ByteArrayContent(bytes)
             });
         }));
-        using var logger = new LoggerConfiguration().CreateLogger();
-        var manager = new DownloadManager(logger, client);
+
+        var manager = new DownloadManager(NullLogger<DownloadManager>.Instance, client);
         await manager.InitializeMirrors(["https://first.epicgamescdn.com", "https://second.epicgamescdn.com"]);
         var destination = CreateDestination();
 
@@ -150,8 +150,8 @@ public sealed class DownloadManagerTests
             {
                 Content = new ByteArrayContent(new byte[] { 1, 2, 3 })
             })));
-        using var logger = new LoggerConfiguration().CreateLogger();
-        var manager = new DownloadManager(logger, client);
+
+        var manager = new DownloadManager(NullLogger<DownloadManager>.Instance, client);
         await manager.InitializeMirrors(["https://first.epicgamescdn.com"]);
         var destination = CreateDestination();
         var original = new byte[] { 9, 8, 7, 6 };
@@ -179,8 +179,8 @@ public sealed class DownloadManagerTests
     {
         using var client = new HttpClient(new StubHttpMessageHandler((_, _) =>
             throw new InvalidOperationException("No request should be made")));
-        using var logger = new LoggerConfiguration().CreateLogger();
-        var manager = new DownloadManager(logger, client);
+
+        var manager = new DownloadManager(NullLogger<DownloadManager>.Instance, client);
         await manager.InitializeMirrors([]);
         var destination = CreateDestination();
 

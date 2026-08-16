@@ -46,6 +46,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
+        <ProjectReference Include="..\Crimson.Infrastructure\Crimson.Infrastructure.csproj" />
     </ItemGroup>
 
     <!-- 

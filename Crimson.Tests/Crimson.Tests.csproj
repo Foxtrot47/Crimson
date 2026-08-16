@@ -27,22 +27,10 @@
   </ItemGroup>
 
 
-  <!-- Manager sources remain linked until their platform dependencies are extracted. -->
-  <ItemGroup>
-    <Compile Include="..\Crimson\Core\AuthManager.cs" Link="Production\Core\AuthManager.cs" />
-    <Compile Include="..\Crimson\Core\DownloadManager.cs" Link="Production\Core\DownloadManager.cs" />
-    <Compile Include="..\Crimson\Core\InstallManager.cs" Link="Production\Core\InstallManager.cs" />
-    <Compile Include="..\Crimson\Core\LibraryManager.cs" Link="Production\Core\LibraryManager.cs" />
-    <Compile Include="..\Crimson\Models\*.cs" Exclude="..\Crimson\Models\DlcOption.cs" Link="Production\Models\%(Filename)%(Extension)" />
-    <Compile Include="..\Crimson\Repository\IStoreRepository.cs" Link="Production\Repository\IStoreRepository.cs" />
-    <Compile Include="..\Crimson\Repository\GetManifestUrlData.cs" Link="Production\Repository\GetManifestUrlData.cs" />
-    <Compile Include="..\Crimson\Repository\BoundedHttpContent.cs" Link="Production\Repository\BoundedHttpContent.cs" />
-    <Compile Include="..\Crimson\Repository\EpicGamesRepository.cs" Link="Production\Repository\EpicGamesRepository.cs" />
-    <Compile Include="..\Crimson\Repository\RepositoryResult.cs" Link="Production\Repository\RepositoryResult.cs" />
-    <Compile Include="..\Crimson\Utils\Storage.cs" Link="Production\Utils\Storage.cs" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
+    <ProjectReference Include="..\Crimson\Crimson.csproj" />
+    <ProjectReference Include="..\Crimson.Infrastructure\Crimson.Infrastructure.csproj" />
   </ItemGroup>
 </Project>
