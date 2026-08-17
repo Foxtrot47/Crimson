@@ -182,7 +182,8 @@ public sealed class ManagerCharacterizationTests : IDisposable
         var canonical = Game("canonical");
         AtomicJsonFile.Write(
             Path.Combine(metadataRoot, $"{StorageKeyCodec.Encode(canonical.AppName)}.json"),
-            canonical);
+            canonical,
+            JsonStateSchemas.GameMetadata);
         File.WriteAllText(
             Path.Combine(metadataRoot, "legacy.json"),
             JsonSerializer.Serialize(Game("legacy")));
@@ -190,6 +191,53 @@ public sealed class ManagerCharacterizationTests : IDisposable
         var storage = new Storage(_logger, root);
 
         Assert.Equal([canonical.AppName], storage.GameMetaDataDictionary.Keys);
+    }
+
+    [Fact]
+    public void Storage_MigratesHistoricalSettingsAndInstallState()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-storage-{Guid.NewGuid():N}");
+        _storageRoots.Add(root);
+        Directory.CreateDirectory(root);
+        var settingsPath = Path.Combine(root, "settings.json");
+        var installStatePath = Path.Combine(root, "install_state.json");
+        var rawSettings = JsonSerializer.Serialize(new Settings
+        {
+            MicaEnabled = true,
+            DefaultInstallLocation = @"E:\Games"
+        });
+        const string rawInstallState =
+            "{\"CurrentInstall\":null,\"IoQueue\":null,\"CompletedChunks\":null}";
+        File.WriteAllText(settingsPath, rawSettings);
+        File.WriteAllText(installStatePath, rawInstallState);
+        var storage = new Storage(_logger, root);
+
+        var settings = storage.GetSettings();
+        var installState = storage.GetInstallState();
+
+        Assert.True(settings?.MicaEnabled);
+        Assert.Equal(@"E:\Games", settings?.DefaultInstallLocation);
+        Assert.Equal(rawInstallState, installState);
+        using var migratedSettings = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        using var migratedInstallState = JsonDocument.Parse(File.ReadAllText(installStatePath));
+        Assert.Equal(2, migratedSettings.RootElement.GetProperty("Version").GetInt32());
+        Assert.Equal(1, migratedInstallState.RootElement.GetProperty("Version").GetInt32());
+        Assert.Equal(rawSettings, File.ReadAllText(settingsPath + ".bak"));
+        Assert.Equal(rawInstallState, File.ReadAllText(installStatePath + ".bak"));
+    }
+
+    [Fact]
+    public void Storage_RejectsFutureAuthoritativeInstallationSchemaWithoutModification()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-storage-{Guid.NewGuid():N}");
+        _storageRoots.Add(root);
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "localstate.json");
+        const string future = "{\"Version\":2,\"Data\":{}}";
+        File.WriteAllText(path, future);
+
+        Assert.Throws<InvalidDataException>(() => new Storage(_logger, root));
+        Assert.Equal(future, File.ReadAllText(path));
     }
 
     [Fact]

@@ -93,11 +93,22 @@ public sealed class FileLibraryService : ILibraryService, IDisposable
         foreach (var path in Directory.EnumerateFiles(metadataRoot, "*.json"))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!AtomicJsonFile.TryRead<Game>(path, out var game) || game is null)
+            var result = AtomicJsonFile.Read(path, JsonStateSchemas.GameMetadata);
+            if (result.Status == JsonStateReadStatus.UnsupportedVersion)
+                throw new NotSupportedException(
+                    $"Game metadata schema version {result.Version} is not supported.");
+            if (!result.IsSuccess || result.Value is null)
                 continue;
+            var game = result.Value;
             var expectedName = $"{StorageKeyCodec.Encode(game.AppName)}.json";
             if (!string.Equals(Path.GetFileName(path), expectedName, StringComparison.OrdinalIgnoreCase))
                 continue;
+            if (result.Version != JsonStateSchemas.GameMetadata.CurrentVersion ||
+                result.Source == JsonStateSource.Backup)
+            {
+                game = AtomicJsonFile.ReadAndMigrate(path, JsonStateSchemas.GameMetadata).Value
+                    ?? throw new InvalidDataException("Migrated game metadata was empty.");
+            }
             yield return game;
         }
     }
@@ -105,9 +116,17 @@ public sealed class FileLibraryService : ILibraryService, IDisposable
     private IReadOnlyDictionary<string, LocalAppState> ReadLocalStates()
     {
         var path = Path.Combine(_appDataRoot, "localstate.json");
-        return AtomicJsonFile.TryRead<Dictionary<string, LocalAppState>>(path, out var states) && states is not null
-            ? states
-            : new Dictionary<string, LocalAppState>(StringComparer.Ordinal);
+        var result = AtomicJsonFile.ReadAndMigrate(path, JsonStateSchemas.LocalInstallations);
+        return result.Status switch
+        {
+            JsonStateReadStatus.Success => result.Value
+                ?? new Dictionary<string, LocalAppState>(StringComparer.Ordinal),
+            JsonStateReadStatus.Missing => new Dictionary<string, LocalAppState>(StringComparer.Ordinal),
+            JsonStateReadStatus.UnsupportedVersion => throw new NotSupportedException(
+                $"Local installation schema version {result.Version} is not supported."),
+            _ => throw new InvalidDataException(
+                $"Local installation state is corrupt: {result.Error ?? "unknown error"}.")
+        };
     }
 
     private static GameSummary ToSummary(

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Crimson.Models;
 using Crimson.Utils;
@@ -39,8 +38,7 @@ public class SettingsManager
     {
         try
         {
-            return JsonSerializer.Deserialize<Settings>(_storage.GetSettingsData()) ?? new Settings();
-
+            return _storage.GetSettings() ?? new Settings();
         }
         catch (Exception ex)
         {
@@ -49,10 +47,6 @@ public class SettingsManager
         }
     }
 
-    public async Task SaveSettings()
-    {
-        await _storage.SaveSettingsData(JsonSerializer.Serialize(Settings));
-
-    }
+    public Task SaveSettings() => _storage.SaveSettings(Settings);
 
 }

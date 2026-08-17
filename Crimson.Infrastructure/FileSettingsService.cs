@@ -15,13 +15,15 @@ public sealed class FileSettingsService(string appDataRoot) : ISettingsService
     public Task<AppSettings> GetAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (AtomicJsonFile.TryRead<string>(_settingsPath, out var json) &&
-            !string.IsNullOrWhiteSpace(json))
-        {
-            var stored = JsonSerializer.Deserialize<Settings>(json);
-            if (!string.IsNullOrWhiteSpace(stored?.DefaultInstallLocation))
-                return Task.FromResult(new AppSettings(stored.DefaultInstallLocation));
-        }
+        var result = AtomicJsonFile.ReadAndMigrate(_settingsPath, JsonStateSchemas.Settings);
+        if (result.Status == JsonStateReadStatus.UnsupportedVersion)
+            throw new NotSupportedException(
+                $"Settings schema version {result.Version} is not supported.");
+        if (result.Status == JsonStateReadStatus.Corrupt)
+            throw new InvalidDataException($"Settings state is corrupt: {result.Error ?? "unknown error"}.");
+        var stored = result.Value;
+        if (!string.IsNullOrWhiteSpace(stored?.DefaultInstallLocation))
+            return Task.FromResult(new AppSettings(stored.DefaultInstallLocation));
 
         return Task.FromResult(new AppSettings(GetDefaultInstallLocation()));
     }
@@ -33,7 +35,7 @@ public sealed class FileSettingsService(string appDataRoot) : ISettingsService
         if (string.IsNullOrWhiteSpace(settings.DefaultInstallLocation))
             throw new ArgumentException("Default install location is required.", nameof(settings));
         var stored = new Settings { DefaultInstallLocation = settings.DefaultInstallLocation };
-        AtomicJsonFile.Write(_settingsPath, JsonSerializer.Serialize(stored));
+        AtomicJsonFile.Write(_settingsPath, stored, JsonStateSchemas.Settings);
         return Task.CompletedTask;
     }
 

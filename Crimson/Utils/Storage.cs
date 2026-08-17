@@ -61,12 +61,27 @@ namespace Crimson.Utils
             {
                 try
                 {
-                    if (!AtomicJsonFile.TryRead<Game>(file, out var game) || game is null)
+                    var result = AtomicJsonFile.Read(file, JsonStateSchemas.GameMetadata);
+                    if (!result.IsSuccess || result.Value is null)
+                    {
+                        if (result.Status != JsonStateReadStatus.Missing)
+                            _logger.Warning(
+                                "Skipped metadata state with {Status}: {Error}",
+                                result.Status,
+                                result.Error);
                         continue;
+                    }
+                    var game = result.Value;
 
                     var canonicalFileName = $"{StorageKeyCodec.Encode(game.AppName)}.json";
                     if (!string.Equals(Path.GetFileName(file), canonicalFileName, StringComparison.OrdinalIgnoreCase))
                         continue;
+                    if (result.Version != JsonStateSchemas.GameMetadata.CurrentVersion ||
+                        result.Source == JsonStateSource.Backup)
+                    {
+                        game = AtomicJsonFile.ReadAndMigrate(file, JsonStateSchemas.GameMetadata).Value
+                            ?? throw new InvalidDataException("Migrated metadata state was empty.");
+                    }
 
                     _gameMetaDataDictionary[game.AppName] = game;
                 }
@@ -79,23 +94,27 @@ namespace Crimson.Utils
                 }
             }
 
-            _localAppStateDictionary = AtomicJsonFile.TryRead<Dictionary<string, LocalAppState>>(
+            var localStates = ReadState(
                 _localAppStateFile,
-                out var localStates) && localStates is not null
+                JsonStateSchemas.LocalInstallations,
+                authoritative: true);
+            _localAppStateDictionary = localStates is not null
                 ? new ConcurrentDictionary<string, LocalAppState>(localStates, StringComparer.Ordinal)
                 : new ConcurrentDictionary<string, LocalAppState>(StringComparer.Ordinal);
-            _manifestIndex = AtomicJsonFile.TryRead<Dictionary<string, string>>(
+            var manifestIndex = ReadState(
                 _manifestIndexFile,
-                out var manifestIndex) && manifestIndex is not null
+                JsonStateSchemas.ManifestIndex,
+                authoritative: false);
+            _manifestIndex = manifestIndex is not null
                 ? new ConcurrentDictionary<string, string>(manifestIndex, StringComparer.Ordinal)
                 : new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
         }
 
-        public Task<UserData?> GetUserData()
-        {
-            AtomicJsonFile.TryRead<UserData>(_userDataFile, out var userData);
-            return Task.FromResult(userData);
-        }
+        public Task<UserData?> GetUserData() =>
+            Task.FromResult(ReadState(
+                _userDataFile,
+                JsonStateSchemas.Credentials,
+                authoritative: false));
 
         public Task SaveUserData(UserData? data)
         {
@@ -108,7 +127,7 @@ namespace Crimson.Utils
                 }
                 else
                 {
-                    AtomicJsonFile.Write(_userDataFile, data);
+                    AtomicJsonFile.Write(_userDataFile, data, JsonStateSchemas.Credentials);
                 }
             }
 
@@ -133,11 +152,11 @@ namespace Crimson.Utils
             return Task.CompletedTask;
         }
 
-        public Task<IEnumerable<Asset>?> GetGameAssetsData()
-        {
-            AtomicJsonFile.TryRead<List<Asset>>(_gameAssetsFile, out var assets);
-            return Task.FromResult<IEnumerable<Asset>?>(assets);
-        }
+        public Task<IEnumerable<Asset>?> GetGameAssetsData() =>
+            Task.FromResult<IEnumerable<Asset>?>(ReadState(
+                _gameAssetsFile,
+                JsonStateSchemas.GameAssets,
+                authoritative: false));
 
         public Task SaveGameAssetsData(IEnumerable<Asset>? data)
         {
@@ -152,7 +171,7 @@ namespace Crimson.Utils
                     }
                     else
                     {
-                        AtomicJsonFile.Write(_gameAssetsFile, data.ToList());
+                        AtomicJsonFile.Write(_gameAssetsFile, data.ToList(), JsonStateSchemas.GameAssets);
                     }
                 }
             }
@@ -197,7 +216,7 @@ namespace Crimson.Utils
             var fileName = ResolveAppDataPath("metadata", $"{StorageKeyCodec.Encode(game.AppName)}.json");
             lock (_writeLock)
             {
-                AtomicJsonFile.Write(fileName, game);
+                AtomicJsonFile.Write(fileName, game, JsonStateSchemas.GameMetadata);
                 _gameMetaDataDictionary[game.AppName] = game;
             }
         }
@@ -210,7 +229,10 @@ namespace Crimson.Utils
                 _localAppStateDictionary.Clear();
                 foreach (var (appName, appState) in installedGames)
                     _localAppStateDictionary[appName] = appState;
-                AtomicJsonFile.Write(_localAppStateFile, _localAppStateDictionary);
+                AtomicJsonFile.Write(
+                    _localAppStateFile,
+                    _localAppStateDictionary.ToDictionary(pair => pair.Key, pair => pair.Value),
+                    JsonStateSchemas.LocalInstallations);
             }
         }
 
@@ -219,30 +241,51 @@ namespace Crimson.Utils
             lock (_writeLock)
             {
                 _localAppStateDictionary[appName] = appState;
-                AtomicJsonFile.Write(_localAppStateFile, _localAppStateDictionary);
+                AtomicJsonFile.Write(
+                    _localAppStateFile,
+                    _localAppStateDictionary.ToDictionary(pair => pair.Key, pair => pair.Value),
+                    JsonStateSchemas.LocalInstallations);
             }
         }
 
-        public string GetSettingsData() =>
-            AtomicJsonFile.TryRead<string>(_settingsDataFile, out var data) ? data ?? "{}" : "{}";
+        public Settings? GetSettings() =>
+            ReadState(_settingsDataFile, JsonStateSchemas.Settings, authoritative: false);
 
-        public Task SaveSettingsData(string data)
+        public Task SaveSettings(Settings settings)
         {
+            ArgumentNullException.ThrowIfNull(settings);
             lock (_writeLock)
-                AtomicJsonFile.Write(_settingsDataFile, data);
+                AtomicJsonFile.Write(_settingsDataFile, settings, JsonStateSchemas.Settings);
             return Task.CompletedTask;
         }
 
         public void SaveInstallState(string data)
         {
             lock (_writeLock)
-                AtomicJsonFile.Write(_installationStateFile, data);
+                AtomicJsonFile.Write(
+                    _installationStateFile,
+                    data,
+                    JsonStateSchemas.InstallOperationStateJson);
         }
 
-        public string GetInstallState() =>
-            AtomicJsonFile.TryRead<string>(_installationStateFile, out var data)
-                ? data ?? throw new InvalidDataException("Install state was empty.")
-                : throw new FileNotFoundException("No valid install state exists.", _installationStateFile);
+        public string GetInstallState()
+        {
+            var result = AtomicJsonFile.ReadAndMigrate(
+                _installationStateFile,
+                JsonStateSchemas.InstallOperationStateJson);
+            return result.Status switch
+            {
+                JsonStateReadStatus.Success => result.Value
+                    ?? throw new InvalidDataException("Install state was empty."),
+                JsonStateReadStatus.Missing => throw new FileNotFoundException(
+                    "No install state exists.",
+                    _installationStateFile),
+                JsonStateReadStatus.UnsupportedVersion => throw new NotSupportedException(
+                    $"Install state schema version {result.Version} is not supported."),
+                _ => throw new InvalidDataException(
+                    $"Install state is corrupt: {result.Error ?? "unknown error"}.")
+            };
+        }
 
 
         public async Task<System.IO.DriveInfo> GetDriveInfo(string path)
@@ -304,7 +347,10 @@ namespace Crimson.Utils
                     if (!File.Exists(manifestPath))
                         AtomicFile.WriteAllBytes(manifestPath, manifestBytes);
                     _manifestIndex[GetManifestCacheKey(appName, version)] = digest;
-                    AtomicJsonFile.Write(_manifestIndexFile, _manifestIndex);
+                    AtomicJsonFile.Write(
+                        _manifestIndexFile,
+                        _manifestIndex.ToDictionary(pair => pair.Key, pair => pair.Value),
+                        JsonStateSchemas.ManifestIndex);
                 }
             }
             catch (Exception ex)
@@ -317,6 +363,32 @@ namespace Crimson.Utils
 
         private static string GetManifestCacheKey(string appName, string version) =>
             StorageKeyCodec.Encode($"{appName}\n{version}");
+
+        private T? ReadState<T>(
+            string path,
+            JsonStateSchema<T> schema,
+            bool authoritative)
+        {
+            var result = AtomicJsonFile.ReadAndMigrate(path, schema);
+            if (result.IsSuccess)
+            {
+                if (result.Source == JsonStateSource.Backup)
+                    _logger.Warning("Recovered {Category} state from its validated backup", schema.Category);
+                return result.Value;
+            }
+            if (result.Status == JsonStateReadStatus.Missing)
+                return default;
+
+            _logger.Error(
+                "Failed to read {Category} state: {Status} {Error}",
+                schema.Category,
+                result.Status,
+                result.Error);
+            if (authoritative)
+                throw new InvalidDataException(
+                    $"Authoritative {schema.Category} state is unavailable: {result.Status}.");
+            return default;
+        }
 
         private string ResolveAppDataPath(params string[] segments)
         {
