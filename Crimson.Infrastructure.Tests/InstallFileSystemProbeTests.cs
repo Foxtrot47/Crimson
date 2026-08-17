@@ -20,6 +20,7 @@ public sealed class InstallFileSystemProbeTests : IDisposable
         Assert.True(result.AvailableBytes > 0);
         Assert.True(result.TotalBytes >= result.AvailableBytes);
         Assert.Null(result.ErrorType);
+        Assert.Null(result.CleanupFailures);
         Assert.Empty(Directory.EnumerateFiles(_root, ".crimson-write-probe-*"));
     }
 
@@ -35,6 +36,8 @@ public sealed class InstallFileSystemProbeTests : IDisposable
         Assert.False(result.Success);
         Assert.Equal("IOException", result.ErrorType);
         Assert.Equal("keep me", File.ReadAllText(filePath));
+        Assert.NotNull(result.CleanupFailures);
+        Assert.Empty(result.CleanupFailures);
         Assert.Empty(Directory.EnumerateFiles(_root, ".crimson-write-probe-*"));
     }
 

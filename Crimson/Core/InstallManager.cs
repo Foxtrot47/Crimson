@@ -251,6 +251,14 @@ public class InstallManager
                     "Install filesystem probe failed for {AppName} with {ErrorType}",
                     CurrentInstall.AppName,
                     writeProbe.ErrorType);
+                if (writeProbe.CleanupFailures is { Count: > 0 } cleanupFailures)
+                {
+                    _logger.Error(
+                        "Install filesystem probe left {Count} cleanup artifacts for {AppName}: {ErrorTypes}",
+                        cleanupFailures.Count,
+                        CurrentInstall.AppName,
+                        string.Join(",", cleanupFailures.Select(failure => failure.ErrorType)));
+                }
                 await HandleInstallationStoppage("Install location does not support required write operations");
                 return;
             }
