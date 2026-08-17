@@ -19,6 +19,7 @@
       <NativeWebView
           x:Name="LoginWebView"
           EnvironmentRequested="OnEnvironmentRequested"
+          AdapterCreated="OnAdapterCreated"
           NavigationStarted="OnNavigationStarted"
           NavigationCompleted="OnNavigationCompleted"
           WebMessageReceived="OnWebMessageReceived" />

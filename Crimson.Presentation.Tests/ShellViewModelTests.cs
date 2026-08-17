@@ -29,7 +29,7 @@ public sealed class ShellViewModelTests
             settings);
         await shell.ActivateAsync();
 
-        await login.AcceptAuthorizationCodeAsync("valid-code");
+        await login.AcceptExchangeCodeAsync("valid-code");
 
         Assert.Same(library, shell.CurrentPage);
         Assert.IsType<LibraryRoute>(navigation.Current);
@@ -49,9 +49,6 @@ public sealed class ShellViewModelTests
             string exchangeCode,
             CancellationToken cancellationToken = default) => LoginAsync();
 
-        public Task<EpicAuthenticationSnapshot> LoginWithAuthorizationCodeAsync(
-            string authorizationCode,
-            CancellationToken cancellationToken = default) => LoginAsync();
 
         public Task<string?> GetAccessToken(CancellationToken cancellationToken = default) =>
             Task.FromResult<string?>("token");

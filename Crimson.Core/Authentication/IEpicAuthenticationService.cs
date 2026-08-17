@@ -28,9 +28,6 @@ public interface IEpicAuthenticationService : IAccessTokenProvider
         string exchangeCode,
         CancellationToken cancellationToken = default);
 
-    Task<EpicAuthenticationSnapshot> LoginWithAuthorizationCodeAsync(
-        string authorizationCode,
-        CancellationToken cancellationToken = default);
 
     Task LogoutAsync(CancellationToken cancellationToken = default);
 }

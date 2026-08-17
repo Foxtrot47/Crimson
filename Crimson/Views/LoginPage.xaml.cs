@@ -19,7 +19,6 @@ public sealed partial class LoginPage : Page
     private readonly AuthManager _authManager = App.GetService<AuthManager>();
     private readonly ILogger _log;
     private readonly EpicLoginMessageGate _loginMessageGate = new();
-    private const string EpicGamesLauncherVersion = "11.0.1-14907503+++Portal+Release-Live";
 
     public LoginPage()
     {
@@ -72,12 +71,11 @@ public sealed partial class LoginPage : Page
             "Crimson");
         Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", userDataFolder);
         await LoginWebView.EnsureCoreWebView2Async();
-        LoginWebView.CoreWebView2.Settings.UserAgent = $"EpicGamesLauncher/{EpicGamesLauncherVersion}";
+        LoginWebView.CoreWebView2.Settings.UserAgent = EpicLauncherWebLogin.UserAgent;
         LoginWebView.NavigationStarting += WebView_NavigationStarting;
         LoginWebView.WebMessageReceived += WebView_WebMessageReceived;
 
-        var targetUri = new Uri("https://www.epicgames.com/id/login");
-        LoginWebView.Source = targetUri;
+        LoginWebView.Source = EpicLauncherWebLogin.LoginUri;
     }
     public void CloseWebView()
     {

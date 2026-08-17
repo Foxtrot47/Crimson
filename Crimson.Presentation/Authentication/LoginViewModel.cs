@@ -53,12 +53,6 @@ public partial class LoginViewModel : ObservableObject, IActivatable
         CancellationToken cancellationToken = default) =>
         Apply(await _authentication.LoginWithExchangeCodeAsync(exchangeCode, cancellationToken));
 
-    public async Task AcceptAuthorizationCodeAsync(
-        string authorizationCode,
-        CancellationToken cancellationToken = default) =>
-        Apply(await _authentication.LoginWithAuthorizationCodeAsync(
-            authorizationCode,
-            cancellationToken));
 
     [RelayCommand]
     private async Task LogoutAsync(CancellationToken cancellationToken)

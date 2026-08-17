@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Crimson.Core;
 using Crimson.Infrastructure;
 using Crimson.Presentation;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -37,11 +38,13 @@ public sealed partial class App : Application
             {
                 AllowAutoRedirect = false,
                 UseCookies = false,
-                ConnectTimeout = TimeSpan.FromSeconds(15)
+                ConnectTimeout = TimeSpan.FromSeconds(5)
             })
             {
-                Timeout = TimeSpan.FromSeconds(30)
+                Timeout = TimeSpan.FromSeconds(15)
             };
+            _authenticationClient.DefaultRequestHeaders.UserAgent.ParseAdd(
+                EpicLauncherWebLogin.ApiUserAgent);
             var authentication = new EpicAuthenticationService(
                 new InMemoryCredentialStore(),
                 _authenticationClient,

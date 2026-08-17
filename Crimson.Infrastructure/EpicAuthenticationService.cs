@@ -42,9 +42,14 @@ public sealed class EpicAuthenticationService : IEpicAuthenticationService
             return Publish(new EpicAuthenticationSnapshot(EpicAuthenticationState.LoggedOut));
 
         var token = await GetAccessToken(cancellationToken);
-        return string.IsNullOrWhiteSpace(token)
-            ? Publish(new EpicAuthenticationSnapshot(EpicAuthenticationState.LoggedOut))
-            : Publish(new EpicAuthenticationSnapshot(EpicAuthenticationState.LoggedIn, user.DisplayName));
+        if (string.IsNullOrWhiteSpace(token) ||
+            !await VerifyAccessTokenAsync(token, cancellationToken))
+        {
+            await _credentials.ClearUserData();
+            return Publish(new EpicAuthenticationSnapshot(EpicAuthenticationState.LoggedOut));
+        }
+
+        return Publish(new EpicAuthenticationSnapshot(EpicAuthenticationState.LoggedIn, user.DisplayName));
     }
 
     public Task<EpicAuthenticationSnapshot> LoginWithExchangeCodeAsync(
@@ -80,15 +85,6 @@ public sealed class EpicAuthenticationService : IEpicAuthenticationService
         return Publish(new EpicAuthenticationSnapshot(EpicAuthenticationState.LoggedIn, user.DisplayName));
     }
 
-    public Task<EpicAuthenticationSnapshot> LoginWithAuthorizationCodeAsync(
-        string authorizationCode,
-        CancellationToken cancellationToken = default) =>
-        LoginWithCodeAsync(
-            authorizationCode,
-            "authorization_code",
-            "code",
-            "authorization code",
-            cancellationToken);
 
 
     public async Task<string?> GetAccessToken(CancellationToken cancellationToken = default)
@@ -99,8 +95,12 @@ public sealed class EpicAuthenticationService : IEpicAuthenticationService
             var user = await _credentials.GetUserData();
             if (user is null || string.IsNullOrWhiteSpace(user.AccessToken))
                 return null;
-            if (!DateTimeOffset.TryParse(user.ExpiresAt, out var expiresAt) ||
-                expiresAt >= DateTimeOffset.UtcNow + RefreshBuffer)
+            if (!DateTimeOffset.TryParse(user.ExpiresAt, out var expiresAt))
+            {
+                await _credentials.ClearUserData();
+                return null;
+            }
+            if (expiresAt >= DateTimeOffset.UtcNow + RefreshBuffer)
                 return user.AccessToken;
             if (string.IsNullOrWhiteSpace(user.RefreshToken) ||
                 !DateTimeOffset.TryParse(user.RefreshExpiresAt, out var refreshExpiresAt) ||
@@ -135,6 +135,35 @@ public sealed class EpicAuthenticationService : IEpicAuthenticationService
         cancellationToken.ThrowIfCancellationRequested();
         await _credentials.ClearUserData();
         Publish(new EpicAuthenticationSnapshot(EpicAuthenticationState.LoggedOut));
+    }
+
+    private async Task<bool> VerifyAccessTokenAsync(
+        string accessToken,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            EpicEndpointPolicy.RequireApiUri($"{OAuthHost}/account/api/oauth/verify"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        try
+        {
+            using var response = await _httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                "Epic token verification failed with {ErrorType}",
+                exception.GetType().Name);
+            return false;
+        }
     }
 
     private async Task<UserData?> RequestTokensAsync(
