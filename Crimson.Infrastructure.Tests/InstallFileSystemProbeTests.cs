@@ -15,6 +15,10 @@ public sealed class InstallFileSystemProbeTests : IDisposable
         var result = InstallFileSystemProbe.Probe(_root);
 
         Assert.True(result.Success);
+        Assert.True(result.AtomicRenameSupported);
+        Assert.False(string.IsNullOrWhiteSpace(result.VolumeIdentity));
+        Assert.True(result.AvailableBytes > 0);
+        Assert.True(result.TotalBytes >= result.AvailableBytes);
         Assert.Null(result.ErrorType);
         Assert.Empty(Directory.EnumerateFiles(_root, ".crimson-write-probe-*"));
     }

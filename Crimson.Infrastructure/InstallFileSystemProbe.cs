@@ -1,6 +1,12 @@
 namespace Crimson.Infrastructure;
 
-public sealed record InstallFileSystemProbeResult(bool Success, string? ErrorType = null);
+public sealed record InstallFileSystemProbeResult(
+    bool Success,
+    string? ErrorType = null,
+    string? VolumeIdentity = null,
+    long? AvailableBytes = null,
+    long? TotalBytes = null,
+    bool AtomicRenameSupported = false);
 
 public static class InstallFileSystemProbe
 {
@@ -30,7 +36,13 @@ public static class InstallFileSystemProbe
 
             File.Move(sourcePath, renamedPath);
             File.Delete(renamedPath);
-            return new InstallFileSystemProbeResult(true);
+            var (volumeIdentity, availableBytes, totalBytes) = GetDriveCapacity(root);
+            return new InstallFileSystemProbeResult(
+                true,
+                VolumeIdentity: volumeIdentity,
+                AvailableBytes: availableBytes,
+                TotalBytes: totalBytes,
+                AtomicRenameSupported: true);
         }
         catch (Exception exception) when (exception is
                    IOException or
@@ -40,6 +52,25 @@ public static class InstallFileSystemProbe
             TryDelete(sourcePath);
             TryDelete(renamedPath);
             return new InstallFileSystemProbeResult(false, exception.GetType().Name);
+        }
+    }
+
+    private static (string? Identity, long? AvailableBytes, long? TotalBytes) GetDriveCapacity(
+        string path)
+    {
+        try
+        {
+            var root = Path.GetPathRoot(path);
+            if (string.IsNullOrWhiteSpace(root))
+                return default;
+            var drive = new DriveInfo(root);
+            return drive.IsReady
+                ? (drive.Name, drive.AvailableFreeSpace, drive.TotalSize)
+                : default;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return default;
         }
     }
 
