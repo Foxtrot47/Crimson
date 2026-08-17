@@ -9,6 +9,7 @@ public sealed record GameDetailsViewModel(string AppName, string Title, Uri? Ima
 public partial class ShellViewModel : ObservableObject, IActivatable, IDisposable
 {
     private readonly INavigationService _navigation;
+    private readonly IUiDispatcher _dispatcher;
     private bool _disposed;
 
     [ObservableProperty]
@@ -16,11 +17,13 @@ public partial class ShellViewModel : ObservableObject, IActivatable, IDisposabl
 
     public ShellViewModel(
         INavigationService navigation,
+        IUiDispatcher dispatcher,
         LoginViewModel login,
         LibraryViewModel library,
         SettingsViewModel settings)
     {
         _navigation = navigation;
+        _dispatcher = dispatcher;
         Login = login;
         Library = library;
         Settings = settings;
@@ -53,23 +56,25 @@ public partial class ShellViewModel : ObservableObject, IActivatable, IDisposabl
     [RelayCommand]
     private void ShowSettings() => _navigation.Navigate(new SettingsRoute());
 
-    private async void OnNavigationChanged(object? sender, AppRoute route)
+    private void OnNavigationChanged(object? sender, AppRoute route) =>
+        _ = ApplyRouteAsync(route);
+
+    private async Task ApplyRouteAsync(AppRoute route)
     {
         if (route is not SettingsRoute)
             Settings.Deactivate();
-        CurrentPage = route switch
+        await _dispatcher.InvokeAsync(() => CurrentPage = route switch
         {
             LoginRoute => Login,
             LibraryRoute => Library,
             GameRoute gameRoute => CreateGameDetails(gameRoute.AppName),
             SettingsRoute => Settings,
             _ => Login
-        };
+        });
         if (route is LibraryRoute)
             await Library.ActivateAsync();
         else if (route is SettingsRoute)
             await Settings.ActivateAsync();
-
     }
 
     private object CreateGameDetails(string appName)

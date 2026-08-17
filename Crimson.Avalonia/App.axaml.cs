@@ -47,7 +47,12 @@ public sealed partial class App : Application
                 _authenticationClient,
                 NullLogger<EpicAuthenticationService>.Instance);
             var login = new LoginViewModel(authentication, navigation);
-            _shell = new ShellViewModel(navigation, login, library, settings);
+            _shell = new ShellViewModel(
+                navigation,
+                new AvaloniaUiDispatcher(),
+                login,
+                library,
+                settings);
             window.DataContext = _shell;
             DataContext = new TrayViewModel(new DesktopApplicationControl(desktop, window));
             window.Opened += OnMainWindowOpened;
