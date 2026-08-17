@@ -73,6 +73,7 @@ public partial class LibraryViewModel : ObservableObject, IActivatable
         _active = false;
         _libraryService.Changed -= OnLibraryChanged;
     }
+
     partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(IsEmpty));
 
     partial void OnErrorMessageChanged(string? value)
@@ -88,7 +89,6 @@ public partial class LibraryViewModel : ObservableObject, IActivatable
         _navigation.Navigate(new GameRoute(value.AppName));
         SelectedGame = null;
     }
-
 
     [RelayCommand]
     private void OpenGame(LibraryItemViewModel? game)

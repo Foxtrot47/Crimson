@@ -65,7 +65,6 @@ public class InstallManager
     internal Action<string>? UpdatePublicationFaultInjector { get; set; }
     internal Action<UpdateTransactionState>? UpdateJournalTransitionFaultInjector { get; set; }
 
-
     public InstallItem? CurrentInstall { get; private set; }
 
     public InstallManager(ILogger logger, LibraryManager libraryManager, IStoreRepository repository, Storage storage,

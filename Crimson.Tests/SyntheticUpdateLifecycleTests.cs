@@ -499,6 +499,7 @@ public sealed class SyntheticUpdateLifecycleTests
             manager.InstallationStatusChanged -= OnStatusChanged;
         }
     }
+
     private static void SimulateInterruptedPublication(Storage storage, string installRoot)
     {
         var oldState = storage.LocalAppStateDictionary["CrimsonSyntheticGame"];
@@ -532,8 +533,6 @@ public sealed class SyntheticUpdateLifecycleTests
         Directory.CreateDirectory(Path.GetDirectoryName(journalPath)!);
         File.WriteAllText(journalPath, JsonSerializer.Serialize(transaction));
     }
-
-
 
     private static async Task WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
     {

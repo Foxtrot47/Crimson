@@ -52,40 +52,34 @@ public sealed class EpicAuthenticationService : IEpicAuthenticationService
         return Publish(new EpicAuthenticationSnapshot(EpicAuthenticationState.LoggedIn, user.DisplayName));
     }
 
-    public Task<EpicAuthenticationSnapshot> LoginWithExchangeCodeAsync(
+    public async Task<EpicAuthenticationSnapshot> LoginWithExchangeCodeAsync(
         string exchangeCode,
-        CancellationToken cancellationToken = default) =>
-        LoginWithCodeAsync(
-            exchangeCode,
-            "exchange_code",
-            "exchange_code",
-            "exchange code",
-            cancellationToken);
-
-    private async Task<EpicAuthenticationSnapshot> LoginWithCodeAsync(
-        string code,
-        string grantType,
-        string codeName,
-        string codeDescription,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(code) || code.Length > EpicLoginMessageGate.MaximumCodeLength)
+        if (string.IsNullOrWhiteSpace(exchangeCode) ||
+            exchangeCode.Length > EpicLoginMessageGate.MaximumCodeLength)
+        {
             return Publish(new EpicAuthenticationSnapshot(
                 EpicAuthenticationState.Failed,
-                Error: $"Epic returned an invalid {codeDescription}."));
+                Error: "Epic returned an invalid exchange code."));
+        }
 
         Publish(new EpicAuthenticationSnapshot(EpicAuthenticationState.Authenticating));
-        var user = await RequestTokensAsync(grantType, codeName, code, cancellationToken);
+        var user = await RequestTokensAsync(
+            "exchange_code",
+            "exchange_code",
+            exchangeCode,
+            cancellationToken);
         if (user is null)
+        {
             return Publish(new EpicAuthenticationSnapshot(
                 EpicAuthenticationState.Failed,
                 Error: "Epic authentication failed."));
+        }
 
         await _credentials.SaveUserData(user);
         return Publish(new EpicAuthenticationSnapshot(EpicAuthenticationState.LoggedIn, user.DisplayName));
     }
-
-
 
     public async Task<string?> GetAccessToken(CancellationToken cancellationToken = default)
     {

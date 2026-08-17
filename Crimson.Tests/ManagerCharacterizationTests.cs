@@ -75,7 +75,6 @@ public sealed class ManagerCharacterizationTests : IDisposable
             restarted.LocalAppStateDictionary[game.AppName].InstallStatus);
     }
 
-
     [Fact]
     public async Task LibraryManager_LaunchesInstalledExecutableAfterFetchingGameToken()
     {

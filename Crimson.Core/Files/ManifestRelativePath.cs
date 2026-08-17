@@ -13,8 +13,11 @@ public sealed class ManifestRelativePath
 
     private static readonly char[] InvalidCharacters = ['\0', ':', '*', '?', '"', '<', '>', '|'];
 
+    private readonly string[] _segments;
+
     private ManifestRelativePath(string[] segments)
     {
+        _segments = segments;
         Segments = segments;
         Value = string.Join('/', segments);
     }
@@ -44,7 +47,8 @@ public sealed class ManifestRelativePath
                 throw new InvalidDataException($"Manifest path contains an invalid filename: {value}");
 
             var normalized = segment.Normalize(NormalizationForm.FormC);
-            var deviceName = normalized.Split('.')[0];
+            var extensionIndex = normalized.IndexOf('.');
+            var deviceName = extensionIndex < 0 ? normalized : normalized[..extensionIndex];
             if (ReservedDeviceNames.Contains(deviceName))
                 throw new InvalidDataException($"Manifest path uses a reserved device name: {value}");
             segments[index] = normalized;
@@ -53,7 +57,7 @@ public sealed class ManifestRelativePath
         return new ManifestRelativePath(segments);
     }
 
-    public string ToPlatformPath() => Path.Combine(Segments.ToArray());
+    public string ToPlatformPath() => Path.Combine(_segments);
 
     public override string ToString() => Value;
 }

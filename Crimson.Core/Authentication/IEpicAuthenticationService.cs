@@ -28,6 +28,5 @@ public interface IEpicAuthenticationService : IAccessTokenProvider
         string exchangeCode,
         CancellationToken cancellationToken = default);
 
-
     Task LogoutAsync(CancellationToken cancellationToken = default);
 }

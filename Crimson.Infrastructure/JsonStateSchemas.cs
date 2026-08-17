@@ -73,7 +73,7 @@ public static class JsonStateSchemas
     private static string? DeserializeNestedJson(
         int version,
         JsonElement data,
-        JsonSerializerOptions? options) => version switch
+        JsonSerializerOptions? _) => version switch
     {
         0 => data.GetRawText(),
         1 when data.ValueKind == JsonValueKind.String => data.GetString(),

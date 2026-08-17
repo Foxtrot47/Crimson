@@ -61,7 +61,7 @@ public sealed class JsonStateSchema<T>
         JsonSerializerOptions? options) => _deserialize(version, data, options);
 
     private static T? DeserializeDefault(
-        int version,
+        int _,
         JsonElement data,
         JsonSerializerOptions? options) => data.Deserialize<T>(options);
 }

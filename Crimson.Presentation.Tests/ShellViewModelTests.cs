@@ -49,7 +49,6 @@ public sealed class ShellViewModelTests
             string exchangeCode,
             CancellationToken cancellationToken = default) => LoginAsync();
 
-
         public Task<string?> GetAccessToken(CancellationToken cancellationToken = default) =>
             Task.FromResult<string?>("token");
 

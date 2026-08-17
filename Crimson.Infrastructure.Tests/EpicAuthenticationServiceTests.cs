@@ -104,7 +104,6 @@ public sealed class EpicAuthenticationServiceTests
         Assert.Null(await credentials.GetUserData());
     }
 
-
     private sealed class StubHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send)
         : HttpMessageHandler
     {

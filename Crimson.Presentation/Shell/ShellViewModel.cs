@@ -5,7 +5,6 @@ namespace Crimson.Presentation;
 
 public sealed record GameDetailsViewModel(string AppName, string Title, Uri? ImageUri, string BuildVersion);
 
-
 public partial class ShellViewModel : ObservableObject, IActivatable, IDisposable
 {
     private readonly INavigationService _navigation;
