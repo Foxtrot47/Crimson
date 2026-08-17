@@ -6,8 +6,6 @@ using System.IO;
 using System.IO.Pipes;
 using System.Linq;
 using System.Numerics;
-using System.Security.AccessControl;
-using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -246,9 +244,14 @@ public class InstallManager
                 }
             }
 
-            if (!HasFolderWritePermissions(CurrentInstall.Location))
+            var writeProbe = InstallFileSystemProbe.Probe(CurrentInstall.Location);
+            if (!writeProbe.Success)
             {
-                await HandleInstallationStoppage("No write permissions to install location");
+                _logger.Warning(
+                    "Install filesystem probe failed for {AppName} with {ErrorType}",
+                    CurrentInstall.AppName,
+                    writeProbe.ErrorType);
+                await HandleInstallationStoppage("Install location does not support required write operations");
                 return;
             }
 
@@ -1588,40 +1591,6 @@ public class InstallManager
         return result;
     }
 
-    private bool HasFolderWritePermissions(string folderPath)
-    {
-        try
-        {
-            // Create a DirectoryInfo object representing the specified directory.
-            var directoryInfo = new DirectoryInfo(folderPath);
-
-            // Get the access control list for the folder
-            var directorySecurity = directoryInfo.GetAccessControl();
-
-            // Get the access rules for the current user and their groups
-            var currentUser = WindowsIdentity.GetCurrent();
-            var principal = new WindowsPrincipal(currentUser);
-
-            var hasWritePermissions = directorySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
-                .Cast<FileSystemAccessRule>()
-                .Any(rule =>
-                    (currentUser.User.Equals(rule.IdentityReference) ||
-                     principal.IsInRole((SecurityIdentifier)rule.IdentityReference)) &&
-                    rule.AccessControlType == AccessControlType.Allow &&
-                    (rule.FileSystemRights & FileSystemRights.Write) == FileSystemRights.Write);
-
-            return hasWritePermissions;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"An error occurred: {ex.Message}");
-            return false;
-        }
-    }
 
     public async Task StopProcessing()
     {
