@@ -330,6 +330,7 @@ public class LibraryManager
                 _log.Information("CheckForGameUpdates: {AppName} needs update ({OldVersion} -> {NewVersion})",
                     appName, localAppState.Version, asset.BuildVersion);
                 localAppState.InstallStatus = InstallState.NeedUpdate;
+                _storage.AddToLocalAppState(appName, localAppState);
 
                 var game = _storage.GetGameMetaData(appName);
                 if (game != null)

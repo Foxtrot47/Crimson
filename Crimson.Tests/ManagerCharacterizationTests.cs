@@ -32,6 +32,78 @@ public sealed class ManagerCharacterizationTests : IDisposable
     }
 
     [Fact]
+    public async Task LibraryManager_PersistsDetectedUpdateAcrossRestart()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-storage-{Guid.NewGuid():N}");
+        _storageRoots.Add(root);
+        var installRoot = Path.Combine(root, "installed-game");
+        Directory.CreateDirectory(installRoot);
+        var storage = new Storage(_logger, root);
+        var game = Game("update-game", InstallState.Installed);
+        game.LocalAppState!.InstallPath = installRoot;
+        game.LocalAppState.Version = "1.0.0";
+        storage.SaveMetaData(game);
+        storage.AddToLocalAppState(game.AppName, game.LocalAppState);
+        var available = new Asset
+        {
+            AppName = game.AppName,
+            BuildVersion = "2.0.0",
+            CatalogItemId = "update-catalog",
+            Namespace = "update-namespace"
+        };
+        var repository = new RefreshStoreRepository(
+            available,
+            new Metadata
+            {
+                Id = available.CatalogItemId,
+                Namespace = available.Namespace,
+                Title = "Update Game"
+            });
+        var authentication = new AuthManager(_logger, storage, new HttpClient());
+        var manager = new LibraryManager(_logger, repository, storage, authentication);
+        Game? published = null;
+        manager.LibraryUpdated += games => published = games.Single(candidate => candidate.AppName == game.AppName);
+
+        var result = await manager.GetLibraryData(forceUpdate: true);
+
+        Assert.Equal(InstallState.NeedUpdate, result.Single().LocalAppState?.InstallStatus);
+        Assert.Equal(InstallState.NeedUpdate, published?.LocalAppState?.InstallStatus);
+        var restarted = new Storage(_logger, root);
+        Assert.Equal(
+            InstallState.NeedUpdate,
+            restarted.LocalAppStateDictionary[game.AppName].InstallStatus);
+    }
+
+
+    [Fact]
+    public async Task LibraryManager_LaunchesInstalledExecutableAfterFetchingGameToken()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-storage-{Guid.NewGuid():N}");
+        _storageRoots.Add(root);
+        var installRoot = Path.Combine(root, "installed-game");
+        Directory.CreateDirectory(installRoot);
+        File.Copy(Environment.GetEnvironmentVariable("COMSPEC")!, Path.Combine(installRoot, "LaunchStub.exe"));
+        var storage = new Storage(_logger, root);
+        var game = Game("launch-game", InstallState.Installed);
+        game.LocalAppState!.InstallPath = installRoot;
+        game.LocalAppState.Executable = "LaunchStub.exe";
+        storage.SaveMetaData(game);
+        storage.AddToLocalAppState(game.AppName, game.LocalAppState);
+        await storage.SaveUserData(new UserData
+        {
+            AccountId = "test-account",
+            DisplayName = "Test Player"
+        });
+        var authentication = new AuthManager(_logger, storage, new HttpClient());
+        SetPrivateField(authentication, "_authenticationStatus", AuthenticationStatus.LoggedIn);
+        var repository = new LaunchStoreRepository();
+        var manager = new LibraryManager(_logger, repository, storage, authentication);
+
+        await manager.LaunchApp(game.AppName);
+
+        Assert.Equal(1, repository.GameTokenRequests);
+    }
+    [Fact]
     public void InstallManager_QueuesValidActionsAndPreservesOrder()
     {
         var installable = Game("installable");
@@ -216,6 +288,87 @@ public sealed class ManagerCharacterizationTests : IDisposable
 
     private static void SetPrivateField(object instance, string name, object value) =>
         instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(instance, value);
+
+    private sealed class RefreshStoreRepository(Asset asset, Metadata metadata) : IStoreRepository
+    {
+        public Task<RepositoryResult<IReadOnlyList<Asset>>> FetchGameAssets(
+            EpicPayloadPlatform platform,
+            string label = "Live",
+            CancellationToken cancellationToken = default)
+        {
+            Assert.Equal(EpicPayloadPlatform.Windows, platform);
+            return Task.FromResult(RepositoryResult<IReadOnlyList<Asset>>.Success([asset]));
+        }
+
+        public Task<RepositoryResult<Metadata>> FetchGameMetaData(
+            string nameSpace,
+            string catalogItemId,
+            CancellationToken cancellationToken = default)
+        {
+            Assert.Equal(asset.Namespace, nameSpace);
+            Assert.Equal(asset.CatalogItemId, catalogItemId);
+            return Task.FromResult(RepositoryResult<Metadata>.Success(metadata));
+        }
+
+        public Task<RepositoryResult<byte[]>> GetGameManifest(
+            GetManifestUrlData urlData,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<RepositoryResult<long>> DownloadFileAsync(
+            string url,
+            string destinationPath,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<RepositoryResult<string>> GetGameToken(
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<RepositoryResult<GetManifestUrlData>> GetManifestUrls(
+            string nameSpace,
+            string catalogItem,
+            string appName,
+            EpicPayloadPlatform platform,
+            string label = "Live",
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class LaunchStoreRepository : IStoreRepository
+    {
+        public int GameTokenRequests { get; private set; }
+
+        public Task<RepositoryResult<string>> GetGameToken(
+            CancellationToken cancellationToken = default)
+        {
+            GameTokenRequests++;
+            return Task.FromResult(RepositoryResult<string>.Success("{\"code\":\"launch-code\"}"));
+        }
+
+        public Task<RepositoryResult<Metadata>> FetchGameMetaData(
+            string nameSpace,
+            string catalogItemId,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<RepositoryResult<IReadOnlyList<Asset>>> FetchGameAssets(
+            EpicPayloadPlatform platform,
+            string label = "Live",
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<RepositoryResult<byte[]>> GetGameManifest(
+            GetManifestUrlData urlData,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<RepositoryResult<long>> DownloadFileAsync(
+            string url,
+            string destinationPath,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<RepositoryResult<GetManifestUrlData>> GetManifestUrls(
+            string nameSpace,
+            string catalogItem,
+            string appName,
+            EpicPayloadPlatform platform,
+            string label = "Live",
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
 
     private sealed class UnusedStoreRepository : IStoreRepository
     {
