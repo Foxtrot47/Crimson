@@ -1,0 +1,155 @@
+<Window
+    x:Class="Crimson.Avalonia.MainWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:Crimson.Presentation"
+    xmlns:local="using:Crimson.Avalonia"
+    x:DataType="vm:ShellViewModel"
+    Title="Crimson"
+    Width="1180"
+    Height="760"
+    MinWidth="820"
+    MinHeight="560"
+    Background="#101116">
+
+  <Window.DataTemplates>
+    <DataTemplate DataType="vm:LoginViewModel" x:DataType="vm:LoginViewModel">
+      <local:LoginView />
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:LibraryViewModel" x:DataType="vm:LibraryViewModel">
+      <Grid RowDefinitions="Auto,*" Margin="32">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Library" FontSize="32" FontWeight="SemiBold" />
+          <TextBlock Text="Your Epic games" Foreground="#9EA3B0" FontSize="15" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,24,0,0">
+          <StackPanel IsVisible="{Binding IsLoading}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+            <ProgressBar Width="240" IsIndeterminate="True" />
+            <TextBlock Text="Loading library…" HorizontalAlignment="Center" />
+          </StackPanel>
+
+          <Border IsVisible="{Binding HasError}" Padding="20" Background="#3A1E24" CornerRadius="10" VerticalAlignment="Top">
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="#FFB4AB" TextWrapping="Wrap" />
+          </Border>
+
+          <TextBlock
+              IsVisible="{Binding IsEmpty}"
+              Text="No games are available. Sign in and refresh the library first."
+              Foreground="#9EA3B0"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center" />
+
+          <ListBox
+              IsVisible="{Binding HasGames}"
+              ItemsSource="{Binding Games}"
+              SelectedItem="{Binding SelectedGame, Mode=TwoWay}"
+              Background="Transparent"
+              BorderThickness="0">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:LibraryItemViewModel">
+                <Border
+                    Width="220"
+                    Height="290"
+                    Margin="8"
+                    Padding="18"
+                    Background="#1B1D25"
+                    BorderBrush="#2C2F3A"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                  <Grid RowDefinitions="*,Auto,Auto">
+                    <Border Background="#292C38" CornerRadius="8">
+                      <TextBlock
+                          Text="{Binding Title}"
+                          FontSize="24"
+                          FontWeight="Bold"
+                          TextWrapping="Wrap"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          TextAlignment="Center"
+                          Margin="12" />
+                    </Border>
+                    <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="17" FontWeight="SemiBold" Margin="0,14,0,0" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Row="2" Text="{Binding BuildVersion}" FontSize="12" Foreground="#9EA3B0" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Grid>
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:GameDetailsViewModel" x:DataType="vm:GameDetailsViewModel">
+      <Grid Margin="40" RowDefinitions="Auto,Auto,*">
+        <TextBlock Text="{Binding Title}" FontSize="36" FontWeight="SemiBold" />
+        <TextBlock Grid.Row="1" Text="{Binding BuildVersion}" Foreground="#9EA3B0" Margin="0,8,0,0" />
+        <Border Grid.Row="2" Margin="0,28,0,0" Padding="24" Background="#1B1D25" CornerRadius="12" VerticalAlignment="Top">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Game details" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding AppName}" Foreground="#9EA3B0" />
+          </StackPanel>
+        </Border>
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:SettingsViewModel" x:DataType="vm:SettingsViewModel">
+      <Grid Margin="40" RowDefinitions="Auto,Auto,*">
+        <TextBlock Text="Settings" FontSize="32" FontWeight="SemiBold" />
+        <TextBlock Grid.Row="1" Text="Configure launcher behavior" Foreground="#9EA3B0" Margin="0,6,0,0" />
+        <StackPanel Grid.Row="2" Margin="0,28,0,0" Spacing="18" MaxWidth="720" HorizontalAlignment="Left">
+          <Border Padding="22" Background="#1B1D25" CornerRadius="12">
+            <StackPanel Spacing="10">
+              <TextBlock Text="Default install location" FontSize="18" FontWeight="SemiBold" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                <TextBox Text="{Binding DefaultInstallLocation, Mode=TwoWay}" PlaceholderText="Choose a folder" />
+                <Button Grid.Column="1" Content="Browse" Command="{Binding BrowseCommand}" Padding="18,8" />
+              </Grid>
+            </StackPanel>
+          </Border>
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Button Content="Save settings" Command="{Binding SaveCommand}" Padding="18,9" />
+            <Button Content="Open logs directory" Command="{Binding OpenLogsCommand}" Padding="18,9" />
+            <ProgressBar Width="100" IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
+          </StackPanel>
+          <TextBlock Text="{Binding StatusMessage}" Foreground="#9EA3B0" />
+        </StackPanel>
+      </Grid>
+    </DataTemplate>
+  </Window.DataTemplates>
+
+  <Grid ColumnDefinitions="220,*">
+    <Border Background="#17181F" BorderBrush="#292B34" BorderThickness="0,0,1,0">
+      <Grid RowDefinitions="Auto,Auto,*" Margin="18">
+        <TextBlock Text="Crimson" FontSize="26" FontWeight="Bold" Margin="10,8,0,26" />
+        <Button
+            Grid.Row="1"
+            Command="{Binding ShowLibraryCommand}"
+            HorizontalContentAlignment="Left"
+            Padding="14,10"
+            Background="#292C38"
+            CornerRadius="8">
+          <TextBlock Text="Library" FontSize="16" />
+        </Button>
+        <Button
+            Grid.Row="2"
+            Command="{Binding ShowSettingsCommand}"
+            HorizontalContentAlignment="Left"
+            VerticalAlignment="Bottom"
+            Padding="14,10"
+            Background="Transparent"
+            CornerRadius="8">
+          <TextBlock Text="Settings" FontSize="16" />
+        </Button>
+      </Grid>
+    </Border>
+
+    <ContentControl Grid.Column="1" Content="{Binding CurrentPage}" />
+  </Grid>
+</Window>

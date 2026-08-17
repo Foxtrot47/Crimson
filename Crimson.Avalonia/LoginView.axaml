@@ -1,0 +1,44 @@
+<UserControl
+    x:Class="Crimson.Avalonia.LoginView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:Crimson.Presentation"
+    x:DataType="vm:LoginViewModel">
+  <Grid RowDefinitions="Auto,*">
+    <Border Padding="18,12" Background="#17181F" BorderBrush="#292B34" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel>
+          <TextBlock Text="Sign in to Epic Games" FontSize="20" FontWeight="SemiBold" />
+          <TextBlock Text="Authentication is hosted by Epic Games." Foreground="#9EA3B0" />
+        </StackPanel>
+        <ProgressBar Grid.Column="1" Width="120" IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1">
+      <NativeWebView
+          x:Name="LoginWebView"
+          EnvironmentRequested="OnEnvironmentRequested"
+          NavigationStarted="OnNavigationStarted"
+          NavigationCompleted="OnNavigationCompleted"
+          WebMessageReceived="OnWebMessageReceived" />
+      <StackPanel
+          IsVisible="{Binding IsBusy}"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          Spacing="12">
+        <ProgressBar Width="240" IsIndeterminate="True" />
+        <TextBlock Text="Completing sign in…" HorizontalAlignment="Center" />
+      </StackPanel>
+      <Border
+          IsVisible="{Binding HasError}"
+          VerticalAlignment="Bottom"
+          Margin="20"
+          Padding="14"
+          Background="#3A1E24"
+          CornerRadius="8">
+        <TextBlock Text="{Binding ErrorMessage}" Foreground="#FFB4AB" TextWrapping="Wrap" />
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

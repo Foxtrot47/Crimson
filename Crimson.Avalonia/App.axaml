@@ -1,0 +1,23 @@
+<Application
+    x:Class="Crimson.Avalonia.App"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:Crimson.Presentation"
+    x:DataType="vm:TrayViewModel">
+  <TrayIcon.Icons>
+    <TrayIcons>
+      <TrayIcon Icon="/Assets/StoreLogo.png" ToolTipText="Crimson" Command="{Binding ShowCommand}">
+        <TrayIcon.Menu>
+          <NativeMenu>
+            <NativeMenuItem Header="Open Crimson" Command="{Binding ShowCommand}" />
+            <NativeMenuItemSeparator />
+            <NativeMenuItem Header="Quit" Command="{Binding QuitCommand}" />
+          </NativeMenu>
+        </TrayIcon.Menu>
+      </TrayIcon>
+    </TrayIcons>
+  </TrayIcon.Icons>
+  <Application.Styles>
+    <FluentTheme />
+  </Application.Styles>
+</Application>

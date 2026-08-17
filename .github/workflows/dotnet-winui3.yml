@@ -24,6 +24,15 @@ jobs:
     - name: Test portable Core
       run: dotnet test Crimson.Core.Tests/Crimson.Core.Tests.csproj --configuration Release
 
+    - name: Test portable Infrastructure
+      run: dotnet test Crimson.Infrastructure.Tests/Crimson.Infrastructure.Tests.csproj --configuration Release
+
+    - name: Test portable Presentation
+      run: dotnet test Crimson.Presentation.Tests/Crimson.Presentation.Tests.csproj --configuration Release
+
+    - name: Build Avalonia host
+      run: dotnet build Crimson.Avalonia/Crimson.Avalonia.csproj --configuration Release
+
   build:
     strategy:
       matrix:
