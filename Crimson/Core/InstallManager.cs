@@ -1691,14 +1691,22 @@ public class InstallManager
 
     public void ResumeInstall()
     {
+        if (CurrentInstall?.Status != ActionStatus.Paused)
+        {
+            _logger.Warning("No paused installation is available to resume");
+            return;
+        }
 
-        if (CurrentInstall.Status == ActionStatus.Paused)
+        if (_downloadTasks is null || _installTasks is null)
         {
             ProcessNext(true);
-            Thread.Sleep(2000);
+            return;
         }
-        else
-            _logger.Warning("Installation of {appName} is not paused {state}", CurrentInstall.AppName, CurrentInstall.Status);
+
+        _installStopWatch.Start();
+        CurrentInstall.Status = ActionStatus.Processing;
+        _pauseEvent.Set();
+        InstallationStatusChanged?.Invoke(CurrentInstall);
     }
 
     public async Task LoadPendingInstalls()
