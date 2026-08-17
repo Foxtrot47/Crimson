@@ -1,0 +1,18 @@
+{
+  "capturedUtc": "2026-08-17T09:35:51Z",
+  "metadataSnapshotSha256": "bc5051b444d03aac9a7ecf83831698090797d381c697d047d39e9254c580c375",
+  "assetAppName": "Sugar",
+  "manifestAppName": "SugarStaging",
+  "title": "Rocket League®",
+  "namespace": "9773aa1aa54f4f7b80e44bef04986cea",
+  "catalogItemId": "530145df28a24424923f5828cc9031a1",
+  "labelName": "Live-Windows",
+  "buildVersion": "++Prime+Update59.1-CL-524913",
+  "manifestSha256": "a805c5fd5c912c309c3a382b934226913bccf439e04848990afd429783db4674",
+  "manifestFileSize": 4332878,
+  "launchExecutable": "Binaries/Win64/Launcher.exe",
+  "fileCount": 20562,
+  "chunkCount": 38307,
+  "downloadSize": 39409064017,
+  "installSize": 42788409447
+}
