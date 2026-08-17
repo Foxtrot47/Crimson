@@ -73,9 +73,6 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _libraryManager = libraryManager;
         _storage = storage;
 
-        _libraryManager.GameStatusUpdated += CheckGameStatus;
-        _installer.InstallationStatusChanged += HandleInstallationStatusChanged;
-        _installer.InstallProgressUpdate += HandleInstallationStatusChanged;
     }
 
     public async Task OnNavigatedTo(object parameter)
