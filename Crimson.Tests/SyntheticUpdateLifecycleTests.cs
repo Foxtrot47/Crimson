@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Crimson.Core;
+using Crimson.Infrastructure;
 using Crimson.Models;
 using Crimson.Repository;
 using Crimson.Utils;
@@ -66,6 +67,16 @@ public sealed class SyntheticUpdateLifecycleTests
             Assert.Equal("preserve me", await File.ReadAllTextAsync(userFile));
 
             var retry = CreateHarness(logger, stateRoot, "new.manifest");
+            var journalTransitions = new List<JournalObservation>();
+            retry.Manager.UpdateJournalTransitionFaultInjector = transaction =>
+                journalTransitions.Add(new JournalObservation(
+                    transaction.Revision,
+                    transaction.Phase,
+                    transaction.BackedUpPaths.ToArray(),
+                    transaction.PublishedPaths.ToArray(),
+                    File.Exists(UpdateTransactionState.GetJournalPath(transaction.InstallRoot)),
+                    Directory.Exists(transaction.StagingRoot),
+                    Directory.Exists(transaction.BackupRoot)));
             var updateResult = await RunOperationAsync(
                 retry.Manager,
                 new InstallItem("CrimsonSyntheticGame", ActionType.Update, installRoot));
@@ -75,12 +86,135 @@ public sealed class SyntheticUpdateLifecycleTests
             Assert.True(File.Exists(Path.Combine(installRoot, "Data", "added.txt")));
             Assert.Equal("preserve me", await File.ReadAllTextAsync(userFile));
             Assert.Equal(unchangedWriteTime, File.GetLastWriteTimeUtc(unchangedPath));
+            Assert.Equal(Enumerable.Range(1, 8).Select(value => (long)value),
+                journalTransitions.Select(transition => transition.Revision));
+            Assert.Equal(UpdateTransactionPhase.Prepared, journalTransitions[0].Phase);
+            Assert.Equal(UpdateTransactionPhase.MetadataCommitted, journalTransitions[^1].Phase);
+            Assert.Equal(2, journalTransitions[^1].BackedUpPaths.Count);
+            Assert.True(journalTransitions[^1].JournalExists);
+            Assert.True(journalTransitions[^1].StagingExists);
+            Assert.True(journalTransitions[^1].BackupExists);
+            Assert.Equal(2, journalTransitions[^1].PublishedPaths.Count);
+            Assert.False(File.Exists(UpdateTransactionState.GetJournalPath(installRoot)));
 
             var persisted = new Storage(logger, stateRoot);
             var installation = persisted.LocalAppStateDictionary["CrimsonSyntheticGame"];
             Assert.Equal(InstallState.Installed, installation.InstallStatus);
             Assert.Equal("2.0.0", installation.Version);
             Assert.Equal("2.0.0", installation.CachedManifestVersion);
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    public async Task UpdateJournalFaultBeforeMetadataCommit_RestoresOldVersion(long faultRevision)
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-lifecycle-{Guid.NewGuid():N}");
+        var stateRoot = Path.Combine(sandbox, "state");
+        var installRoot = Path.Combine(sandbox, "game");
+        using var logger = new LoggerConfiguration().CreateLogger();
+        try
+        {
+            var harness = CreateHarness(logger, stateRoot, "old.manifest");
+            harness.Storage.SaveMetaData(CreateGame("1.0.0"));
+            Assert.Equal(ActionStatus.Success, (await RunOperationAsync(
+                harness.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Install, installRoot))).Status);
+            var userFile = Path.Combine(installRoot, "Data", "user-save.dat");
+            await File.WriteAllTextAsync(userFile, "preserve me");
+
+            var updater = CreateHarness(logger, stateRoot, "new.manifest");
+            var game = updater.Library.GetGameInfo("CrimsonSyntheticGame");
+            game.AssetInfos.Windows.BuildVersion = "2.0.0";
+            updater.Storage.SaveMetaData(game);
+            updater.Manager.UpdateJournalTransitionFaultInjector = transaction =>
+            {
+                if (transaction.Revision == faultRevision)
+                    throw new IOException($"Injected journal fault at revision {faultRevision}.");
+            };
+
+            var result = await RunOperationAsync(
+                updater.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Update, installRoot));
+
+            Assert.Equal(ActionStatus.Failed, result.Status);
+            await AssertInstalledFilesAsync("old", installRoot);
+            Assert.Equal("preserve me", await File.ReadAllTextAsync(userFile));
+            Assert.Equal(
+                "1.0.0",
+                updater.Storage.LocalAppStateDictionary["CrimsonSyntheticGame"].Version);
+            Assert.False(File.Exists(UpdateTransactionState.GetJournalPath(installRoot)));
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task MetadataCommittedJournal_ReconcilesNewInstallationState()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-lifecycle-{Guid.NewGuid():N}");
+        var stateRoot = Path.Combine(sandbox, "state");
+        var installRoot = Path.Combine(sandbox, "game");
+        using var logger = new LoggerConfiguration().CreateLogger();
+        try
+        {
+            var versionOne = CreateHarness(logger, stateRoot, "old.manifest");
+            versionOne.Storage.SaveMetaData(CreateGame("1.0.0"));
+            Assert.Equal(ActionStatus.Success, (await RunOperationAsync(
+                versionOne.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Install, installRoot))).Status);
+            var oldStateJson = JsonSerializer.Serialize(
+                versionOne.Storage.LocalAppStateDictionary["CrimsonSyntheticGame"]);
+
+            var versionTwo = CreateHarness(logger, stateRoot, "new.manifest");
+            var game = versionTwo.Library.GetGameInfo("CrimsonSyntheticGame");
+            game.AssetInfos.Windows.BuildVersion = "2.0.0";
+            versionTwo.Storage.SaveMetaData(game);
+            Assert.Equal(ActionStatus.Success, (await RunOperationAsync(
+                versionTwo.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Update, installRoot))).Status);
+            var newState = versionTwo.Storage.LocalAppStateDictionary["CrimsonSyntheticGame"];
+            var newStateJson = JsonSerializer.Serialize(newState);
+            var oldState = JsonSerializer.Deserialize<LocalAppState>(oldStateJson)!;
+            versionTwo.Storage.AddToLocalAppState(oldState.AppName, oldState);
+
+            var transaction = UpdateTransactionState.Create(
+                installRoot,
+                ["Data/changed.txt"],
+                ["Data/added.txt"],
+                ["Data/removed.txt"],
+                [],
+                oldStateJson,
+                newStateJson);
+            transaction.Phase = UpdateTransactionPhase.MetadataCommitted;
+            transaction.Revision = 8;
+            Directory.CreateDirectory(Path.GetDirectoryName(
+                UpdateTransactionState.GetJournalPath(installRoot))!);
+            AtomicFile.WriteAllBytes(
+                UpdateTransactionState.GetJournalPath(installRoot),
+                JsonSerializer.SerializeToUtf8Bytes(transaction));
+
+            var recovered = CreateHarness(logger, stateRoot, "new.manifest");
+
+            Assert.Equal(
+                "2.0.0",
+                recovered.Storage.LocalAppStateDictionary["CrimsonSyntheticGame"].Version);
+            await AssertInstalledFilesAsync("new", installRoot);
+            Assert.False(File.Exists(UpdateTransactionState.GetJournalPath(installRoot)));
         }
         finally
         {
@@ -374,8 +508,12 @@ public sealed class SyntheticUpdateLifecycleTests
             ["Data/added.txt"],
             ["Data/removed.txt"],
             [],
+            JsonSerializer.Serialize(oldState),
             JsonSerializer.Serialize(oldState));
         transaction.Phase = UpdateTransactionPhase.Published;
+        transaction.Revision = 3;
+        transaction.BackedUpPaths.AddRange(transaction.ChangedPaths.Concat(transaction.RemovedPaths));
+        transaction.PublishedPaths.AddRange(transaction.ChangedPaths.Concat(transaction.AddedPaths));
         Directory.CreateDirectory(transaction.StagingRoot);
         foreach (var relativePath in transaction.ChangedPaths.Concat(transaction.RemovedPaths))
         {
@@ -394,6 +532,7 @@ public sealed class SyntheticUpdateLifecycleTests
         Directory.CreateDirectory(Path.GetDirectoryName(journalPath)!);
         File.WriteAllText(journalPath, JsonSerializer.Serialize(transaction));
     }
+
 
 
     private static async Task WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
@@ -453,6 +592,15 @@ public sealed class SyntheticUpdateLifecycleTests
 
     private sealed record Harness(Storage Storage, LibraryManager Library, InstallManager Manager);
 
+    private sealed record JournalObservation(
+        long Revision,
+        UpdateTransactionPhase Phase,
+        IReadOnlyList<string> BackedUpPaths,
+        IReadOnlyList<string> PublishedPaths,
+        bool JournalExists,
+        bool StagingExists,
+        bool BackupExists);
+
     private sealed class SyntheticRepository(string manifestName) : IStoreRepository
     {
         public Task<RepositoryResult<GetManifestUrlData>> GetManifestUrls(
@@ -483,7 +631,6 @@ public sealed class SyntheticUpdateLifecycleTests
             string nameSpace,
             string catalogItemId,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
         public Task<RepositoryResult<IReadOnlyList<Asset>>> FetchGameAssets(
             EpicPayloadPlatform platform,
             string label = "Live",

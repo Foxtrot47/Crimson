@@ -41,8 +41,25 @@ public sealed class AtomicJsonFileTests : IDisposable
         Assert.Equal("first", result.Value?.Value);
         var repaired = AtomicJsonFile.ReadAndMigrate(path, TestSchema);
         Assert.Equal(JsonStateSource.Primary, repaired.Source);
+        Assert.Single(Directory.GetFiles(_root, "state.json.corrupt.*"));
         File.Delete(path + ".bak");
         Assert.Equal("first", AtomicJsonFile.Read(path, TestSchema).Value?.Value);
+    }
+
+    [Fact]
+    public void ReadAndMigrate_PreservesBoundedCorruptInput()
+    {
+        var path = Path.Combine(_root, "state.json");
+        Directory.CreateDirectory(_root);
+        const string corrupt = "{broken";
+        File.WriteAllText(path, corrupt);
+
+        var result = AtomicJsonFile.ReadAndMigrate(path, TestSchema);
+
+        Assert.Equal(JsonStateReadStatus.Corrupt, result.Status);
+        Assert.Equal(corrupt, File.ReadAllText(path));
+        var quarantine = Assert.Single(Directory.GetFiles(_root, "state.json.corrupt.*"));
+        Assert.Equal(corrupt, File.ReadAllText(quarantine));
     }
 
     [Fact]

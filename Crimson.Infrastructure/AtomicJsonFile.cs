@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.Cryptography;
 
 namespace Crimson.Infrastructure;
 
@@ -31,10 +32,19 @@ public static class AtomicJsonFile
         JsonSerializerOptions? options = null)
     {
         var result = Read(path, schema, options);
+        if (result.Status == JsonStateReadStatus.Corrupt)
+        {
+            PreserveCorruptArtifact(
+                result.Source == JsonStateSource.Backup ? GetBackupPath(path) : path,
+                schema.MaximumBytes);
+            return result;
+        }
         if (!result.IsSuccess || result.Value is null ||
             (result.Version == schema.CurrentVersion && result.Source == JsonStateSource.Primary))
             return result;
 
+        if (result.Source == JsonStateSource.Backup)
+            PreserveCorruptArtifact(path, schema.MaximumBytes);
         Write(path, result.Value, schema, options);
         return Read(path, schema, options);
     }
@@ -171,6 +181,29 @@ public static class AtomicJsonFile
             !TryGetProperty(root, "Data", "data", out data))
             return false;
         return true;
+    }
+
+    private static void PreserveCorruptArtifact(string path, long maximumBytes)
+    {
+        try
+        {
+            if (!File.Exists(path))
+                return;
+            var info = new FileInfo(path);
+            if (info.Length > maximumBytes)
+                return;
+            using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var digest = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+            var quarantinePath = $"{path}.corrupt.{digest}";
+            if (!File.Exists(quarantinePath))
+                File.Copy(path, quarantinePath);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private static bool TryGetProperty(

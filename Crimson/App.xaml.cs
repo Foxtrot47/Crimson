@@ -2,6 +2,7 @@
 using System.IO;
 using System.Net.Http;
 using Crimson.Core;
+using Crimson.Infrastructure;
 using Crimson.Repository;
 using Crimson.Utils;
 using Crimson.ViewModels;
@@ -44,6 +45,11 @@ namespace Crimson
             UseContentRoot(AppContext.BaseDirectory).
             ConfigureServices((context, services) =>
             {
+                services.AddSingleton(_ => new FileSettingsService(Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Crimson")));
+                services.AddSingleton<ISettingsStore>(provider =>
+                    provider.GetRequiredService<FileSettingsService>());
                 services.AddSingleton<SettingsManager>();
                 services.AddSingleton<ILogger>(provider =>
                 {

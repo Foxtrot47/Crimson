@@ -12,6 +12,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Crimson.Infrastructure;
 using Crimson.Models;
 using Crimson.Repository;
 using Crimson.Utils;
@@ -39,6 +40,8 @@ public class InstallManager
     private readonly ConcurrentDictionary<string, byte> _ioQueueTaskSet = new();
     private readonly List<string> _uninstallManifestPaths = [];
     private readonly JsonSerializerOptions _jsonSerializerOptions;
+    private static readonly JsonStateSchema<UpdateTransactionState> UpdateTransactionSchema =
+        new("update-transaction", 1, 16L * 1024 * 1024);
 
     private readonly object _installItemLock = new();
     private readonly object _operationLifecycleLock = new();
@@ -62,6 +65,7 @@ public class InstallManager
     private UpdateTransactionState? _updateTransaction;
 
     internal Action<string>? UpdatePublicationFaultInjector { get; set; }
+    internal Action<UpdateTransactionState>? UpdateJournalTransitionFaultInjector { get; set; }
 
 
     public InstallItem? CurrentInstall { get; private set; }
@@ -697,12 +701,14 @@ public class InstallManager
                         manifestData.FileManifestList.Elements,
                         _cancellationTokenSource.Token);
 
-                    var canRunOffLine = gameData.Metadata?.CustomAttributes?.CanRunOffline?.Value == "true";
-                    var requireOwnerShipToken = gameData.Metadata?.CustomAttributes?.OwnershipToken?.Value == "true";
-
                     if (invalidFilesList.Count > 0 && CurrentInstall.Action == ActionType.Update)
                         throw new InvalidDataException("Published update failed whole-installation verification.");
                     BeginFinalization();
+                    localAppState = BuildInstalledLocalState(
+                        gameData,
+                        manifestData,
+                        localAppState,
+                        CurrentInstall.Location);
                     if (invalidFilesList.Count > 0)
                     {
                         _logger.Warning("UpdateInstalledGameStatus: {Count} files failed verification for {AppName}. Marking as Broken.",
@@ -713,23 +719,6 @@ public class InstallManager
                     {
                         _logger.Information("UpdateInstalledGameStatus: Verification successful for {appName}", CurrentInstall.AppName);
                         localAppState.InstallStatus = InstallState.Installed;
-                    }
-
-                    localAppState.BaseUrls = gameData.BaseUrls;
-                    localAppState.CanRunOffline = canRunOffLine;
-                    localAppState.Executable = manifestData.ManifestMeta.LaunchExe;
-                    localAppState.InstallPath = CurrentInstall.Location;
-                    localAppState.LaunchParameters = manifestData.ManifestMeta.LaunchCommand;
-                    localAppState.RequiresOt = requireOwnerShipToken;
-                    localAppState.Version = manifestData.ManifestMeta.BuildVersion;
-                    localAppState.Title = gameData.AppTitle;
-
-                    if (manifestData.ManifestMeta.UninstallActionPath != null)
-                    {
-                        localAppState.Uninstaller = new Dictionary<string, string>
-                        {
-                            { manifestData.ManifestMeta.UninstallActionPath, manifestData.ManifestMeta.UninstallActionArgs }
-                        };
                     }
 
                     gameData.LocalAppState = localAppState;
@@ -976,13 +965,19 @@ public class InstallManager
                 throw new IOException($"Update would overwrite an untracked path: {addedFile.Filename}");
         }
 
+        var newLocalAppState = BuildInstalledLocalState(
+            gameData,
+            newManifest,
+            localAppState,
+            CurrentInstall.Location);
         _updateTransaction = UpdateTransactionState.Create(
             CurrentInstall.Location,
             updatePlan.ChangedFiles.Select(file => file.Filename),
             updatePlan.AddedFiles.Select(file => file.Filename),
             updatePlan.RemovedFiles,
             filesToDownload,
-            JsonSerializer.Serialize(localAppState));
+            JsonSerializer.Serialize(localAppState),
+            JsonSerializer.Serialize(newLocalAppState));
         PrepareUpdateDirectories(_updateTransaction);
         PersistUpdateTransaction(_updateTransaction);
 
@@ -996,6 +991,33 @@ public class InstallManager
             gameData.BaseUrls,
             _cancellationTokenSource.Token);
         GetChunksToDownloadFiltered(newManifest, filesToDownload, _updateTransaction.StagingRoot);
+    }
+
+    private static LocalAppState BuildInstalledLocalState(
+        Game gameData,
+        Manifest manifest,
+        LocalAppState existing,
+        string installPath)
+    {
+        var state = JsonSerializer.Deserialize<LocalAppState>(JsonSerializer.Serialize(existing))
+            ?? new LocalAppState { AppName = gameData.AppName };
+        state.AppName = gameData.AppName;
+        state.BaseUrls = gameData.BaseUrls;
+        state.CanRunOffline = gameData.Metadata?.CustomAttributes?.CanRunOffline?.Value == "true";
+        state.Executable = manifest.ManifestMeta.LaunchExe;
+        state.InstallPath = installPath;
+        state.LaunchParameters = manifest.ManifestMeta.LaunchCommand;
+        state.RequiresOt = gameData.Metadata?.CustomAttributes?.OwnershipToken?.Value == "true";
+        state.Version = manifest.ManifestMeta.BuildVersion;
+        state.Title = gameData.AppTitle;
+        if (manifest.ManifestMeta.UninstallActionPath != null)
+        {
+            state.Uninstaller = new Dictionary<string, string>
+            {
+                { manifest.ManifestMeta.UninstallActionPath, manifest.ManifestMeta.UninstallActionArgs }
+            };
+        }
+        return state;
     }
 
     private static void PrepareUpdateDirectories(UpdateTransactionState transaction)
@@ -1036,13 +1058,16 @@ public class InstallManager
 
             EnsureDirectoryExists(livePath);
             File.Move(stagedPath, livePath);
+            if (!transaction.PublishedPaths.Contains(relativePath, StringComparer.OrdinalIgnoreCase))
+                transaction.PublishedPaths.Add(relativePath);
+            PersistUpdateTransaction(transaction);
         }
 
         transaction.Phase = UpdateTransactionPhase.Published;
         PersistUpdateTransaction(transaction);
     }
 
-    private static void BackupLiveFile(UpdateTransactionState transaction, string relativePath)
+    private void BackupLiveFile(UpdateTransactionState transaction, string relativePath)
     {
         var livePath = ManifestPath.ResolveUnderRoot(transaction.InstallRoot, relativePath);
         if (Directory.Exists(livePath))
@@ -1055,6 +1080,9 @@ public class InstallManager
         if (!string.IsNullOrEmpty(backupDirectory))
             Directory.CreateDirectory(backupDirectory);
         File.Move(livePath, backupPath);
+        if (!transaction.BackedUpPaths.Contains(relativePath, StringComparer.OrdinalIgnoreCase))
+            transaction.BackedUpPaths.Add(relativePath);
+        PersistUpdateTransaction(transaction);
     }
 
     private void MarkUpdateMetadataCommitted()
@@ -1081,7 +1109,7 @@ public class InstallManager
             return;
 
         RollbackUpdateFiles(_updateTransaction);
-        RestoreOldInstallationState(_updateTransaction);
+        RestoreInstallationState(_updateTransaction, _updateTransaction.OldLocalStateJson);
         CleanupUpdateTransaction(_updateTransaction);
         _updateTransaction = null;
     }
@@ -1092,8 +1120,16 @@ public class InstallManager
         if (!File.Exists(journalPath))
             return;
 
-        var transaction = JsonSerializer.Deserialize<UpdateTransactionState>(File.ReadAllText(journalPath))
-            ?? throw new InvalidDataException("Update transaction journal is invalid.");
+        var journal = AtomicJsonFile.ReadAndMigrate(journalPath, UpdateTransactionSchema);
+        var transaction = journal.Status switch
+        {
+            JsonStateReadStatus.Success => journal.Value
+                ?? throw new InvalidDataException("Update transaction journal was empty."),
+            JsonStateReadStatus.UnsupportedVersion => throw new NotSupportedException(
+                $"Update journal schema {journal.Version} is newer than supported schema {UpdateTransactionSchema.CurrentVersion}."),
+            _ => throw new InvalidDataException(
+                $"Update transaction journal is unavailable: {journal.Status} {journal.Error}.")
+        };
         if (!string.Equals(
                 Path.GetFullPath(transaction.InstallRoot),
                 Path.GetFullPath(installRoot),
@@ -1103,22 +1139,26 @@ public class InstallManager
         if (transaction.Phase != UpdateTransactionPhase.MetadataCommitted)
         {
             RollbackUpdateFiles(transaction);
-            RestoreOldInstallationState(transaction);
+            RestoreInstallationState(transaction, transaction.OldLocalStateJson);
             _logger.Warning("Recovered incomplete update for {InstallRoot} by restoring the old version", installRoot);
+        }
+        else if (!string.IsNullOrWhiteSpace(transaction.NewLocalStateJson))
+        {
+            RestoreInstallationState(transaction, transaction.NewLocalStateJson);
         }
 
         CleanupUpdateTransaction(transaction);
     }
 
-    private void RestoreOldInstallationState(UpdateTransactionState transaction)
+    private void RestoreInstallationState(UpdateTransactionState transaction, string stateJson)
     {
-        var oldState = JsonSerializer.Deserialize<LocalAppState>(transaction.OldLocalStateJson)
-            ?? throw new InvalidDataException("Update transaction contains invalid prior installation state.");
-        _storage.AddToLocalAppState(oldState.AppName, oldState);
-        var game = _libraryManager.GetGameInfo(oldState.AppName);
+        var state = JsonSerializer.Deserialize<LocalAppState>(stateJson)
+            ?? throw new InvalidDataException("Update transaction contains invalid installation state.");
+        _storage.AddToLocalAppState(state.AppName, state);
+        var game = _libraryManager.GetGameInfo(state.AppName);
         if (game != null)
         {
-            game.LocalAppState = oldState;
+            game.LocalAppState = state;
             _libraryManager.UpdateGameInfo(game);
         }
     }
@@ -1150,24 +1190,14 @@ public class InstallManager
         }
     }
 
-    private static void PersistUpdateTransaction(UpdateTransactionState transaction)
+    private void PersistUpdateTransaction(UpdateTransactionState transaction)
     {
-        var journalPath = UpdateTransactionState.GetJournalPath(transaction.InstallRoot);
-        Directory.CreateDirectory(Path.GetDirectoryName(journalPath)!);
-        var temporaryPath = journalPath + ".tmp";
-        var contents = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(transaction));
-        using (var stream = new FileStream(
-            temporaryPath,
-            FileMode.Create,
-            FileAccess.Write,
-            FileShare.None,
-            bufferSize: 4_096,
-            FileOptions.WriteThrough))
-        {
-            stream.Write(contents);
-            stream.Flush(flushToDisk: true);
-        }
-        File.Move(temporaryPath, journalPath, overwrite: true);
+        transaction.Revision = checked(transaction.Revision + 1);
+        AtomicJsonFile.Write(
+            UpdateTransactionState.GetJournalPath(transaction.InstallRoot),
+            transaction,
+            UpdateTransactionSchema);
+        UpdateJournalTransitionFaultInjector?.Invoke(transaction);
     }
 
     private static void CleanupUpdateTransaction(UpdateTransactionState transaction)
@@ -1177,6 +1207,7 @@ public class InstallManager
         if (Directory.Exists(transaction.BackupRoot))
             Directory.Delete(transaction.BackupRoot, recursive: true);
         File.Delete(UpdateTransactionState.GetJournalPath(transaction.InstallRoot));
+        File.Delete(UpdateTransactionState.GetJournalPath(transaction.InstallRoot) + ".bak");
     }
 
     /// <summary>
@@ -1762,6 +1793,10 @@ internal sealed class UpdateTransactionState
     public List<string> RemovedPaths { get; set; } = [];
     public string OldLocalStateJson { get; set; } = string.Empty;
     public UpdateTransactionPhase Phase { get; set; }
+    public long Revision { get; set; }
+    public List<string> BackedUpPaths { get; set; } = [];
+    public List<string> PublishedPaths { get; set; } = [];
+    public string NewLocalStateJson { get; set; } = string.Empty;
 
     [System.Text.Json.Serialization.JsonIgnore]
     public List<FileManifest> FilesToVerify { get; set; } = [];
@@ -1772,7 +1807,8 @@ internal sealed class UpdateTransactionState
         IEnumerable<string> addedPaths,
         IEnumerable<string> removedPaths,
         IEnumerable<FileManifest> filesToVerify,
-        string oldLocalStateJson)
+        string oldLocalStateJson,
+        string newLocalStateJson)
     {
         var transactionRoot = Path.Combine(installRoot, ".Crimson");
         return new UpdateTransactionState
@@ -1785,6 +1821,7 @@ internal sealed class UpdateTransactionState
             RemovedPaths = removedPaths.ToList(),
             FilesToVerify = filesToVerify.ToList(),
             OldLocalStateJson = oldLocalStateJson,
+            NewLocalStateJson = newLocalStateJson,
             Phase = UpdateTransactionPhase.Prepared
         };
     }

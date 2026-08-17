@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Infrastructure;
@@ -18,7 +20,6 @@ namespace Crimson.Utils
         private readonly string _userDataFile;
         private readonly string _gameAssetsFile;
         private readonly string _metaDataDirectory;
-        private readonly string _settingsDataFile;
         private readonly string _installationStateFile;
         private readonly string _localAppStateFile;
         private readonly string _manifestPath;
@@ -26,12 +27,17 @@ namespace Crimson.Utils
         private readonly ConcurrentDictionary<string, Game> _gameMetaDataDictionary;
         private readonly ConcurrentDictionary<string, LocalAppState> _localAppStateDictionary;
         private readonly ConcurrentDictionary<string, string> _manifestIndex;
+        private IReadOnlyDictionary<string, Game> _gameMetadataSnapshot =
+            FrozenDictionary<string, Game>.Empty;
+        private IReadOnlyDictionary<string, LocalAppState> _localAppStateSnapshot =
+            FrozenDictionary<string, LocalAppState>.Empty;
         private readonly object _writeLock = new();
         private readonly ILogger _logger;
 
-        public IReadOnlyDictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
-        public IReadOnlyDictionary<string, LocalAppState> LocalAppStateDictionary => _localAppStateDictionary;
-
+        public IReadOnlyDictionary<string, Game> GameMetaDataDictionary =>
+            Volatile.Read(ref _gameMetadataSnapshot);
+        public IReadOnlyDictionary<string, LocalAppState> LocalAppStateDictionary =>
+            Volatile.Read(ref _localAppStateSnapshot);
         public string DefaultInstallPath => Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
 
 
@@ -48,7 +54,6 @@ namespace Crimson.Utils
             _userDataFile = ResolveAppDataPath("user.json");
             _gameAssetsFile = ResolveAppDataPath("assets.json");
             _metaDataDirectory = ResolveAppDataPath("metadata");
-            _settingsDataFile = ResolveAppDataPath("settings.json");
             _installationStateFile = ResolveAppDataPath("install_state.json");
             _localAppStateFile = ResolveAppDataPath("localstate.json");
             _manifestPath = ResolveAppDataPath("manifests");
@@ -108,6 +113,8 @@ namespace Crimson.Utils
             _manifestIndex = manifestIndex is not null
                 ? new ConcurrentDictionary<string, string>(manifestIndex, StringComparer.Ordinal)
                 : new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+            PublishGameMetadataSnapshot();
+            PublishLocalAppStateSnapshot();
         }
 
         public Task<UserData?> GetUserData() =>
@@ -218,6 +225,7 @@ namespace Crimson.Utils
             {
                 AtomicJsonFile.Write(fileName, game, JsonStateSchemas.GameMetadata);
                 _gameMetaDataDictionary[game.AppName] = game;
+                PublishGameMetadataSnapshot();
             }
         }
 
@@ -233,6 +241,7 @@ namespace Crimson.Utils
                     _localAppStateFile,
                     _localAppStateDictionary.ToDictionary(pair => pair.Key, pair => pair.Value),
                     JsonStateSchemas.LocalInstallations);
+                PublishLocalAppStateSnapshot();
             }
         }
 
@@ -245,19 +254,10 @@ namespace Crimson.Utils
                     _localAppStateFile,
                     _localAppStateDictionary.ToDictionary(pair => pair.Key, pair => pair.Value),
                     JsonStateSchemas.LocalInstallations);
+                PublishLocalAppStateSnapshot();
             }
         }
 
-        public Settings? GetSettings() =>
-            ReadState(_settingsDataFile, JsonStateSchemas.Settings, authoritative: false);
-
-        public Task SaveSettings(Settings settings)
-        {
-            ArgumentNullException.ThrowIfNull(settings);
-            lock (_writeLock)
-                AtomicJsonFile.Write(_settingsDataFile, settings, JsonStateSchemas.Settings);
-            return Task.CompletedTask;
-        }
 
         public void SaveInstallState(string data)
         {
@@ -389,6 +389,16 @@ namespace Crimson.Utils
                     $"Authoritative {schema.Category} state is unavailable: {result.Status}.");
             return default;
         }
+        private void PublishGameMetadataSnapshot() =>
+            Volatile.Write(
+                ref _gameMetadataSnapshot,
+                _gameMetaDataDictionary.ToFrozenDictionary(StringComparer.Ordinal));
+
+        private void PublishLocalAppStateSnapshot() =>
+            Volatile.Write(
+                ref _localAppStateSnapshot,
+                _localAppStateDictionary.ToFrozenDictionary(StringComparer.Ordinal));
+
 
         private string ResolveAppDataPath(params string[] segments)
         {

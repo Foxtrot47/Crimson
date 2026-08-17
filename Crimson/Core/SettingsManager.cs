@@ -9,14 +9,14 @@ namespace Crimson.Core;
 
 public class SettingsManager
 {
-    private readonly Storage _storage;
+    private readonly ISettingsStore _store;
     private readonly ILogger<SettingsManager> _logger;
 
     private Settings Settings { get; set; }
 
-    public SettingsManager(Storage storage, ILogger<SettingsManager> logger)
+    public SettingsManager(ISettingsStore store, ILogger<SettingsManager> logger)
     {
-        _storage = storage;
+        _store = store;
         _logger = logger;
         Settings = LoadSettings();
     }
@@ -38,7 +38,7 @@ public class SettingsManager
     {
         try
         {
-            return _storage.GetSettings() ?? new Settings();
+            return _store.Get() ?? new Settings();
         }
         catch (Exception ex)
         {
@@ -47,6 +47,10 @@ public class SettingsManager
         }
     }
 
-    public Task SaveSettings() => _storage.SaveSettings(Settings);
+    public Task SaveSettings()
+    {
+        _store.Save(Settings);
+        return Task.CompletedTask;
+    }
 
 }

@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Reflection;
 using System.Text.Json;
 using Crimson.Core;
@@ -191,10 +192,15 @@ public sealed class ManagerCharacterizationTests : IDisposable
         var storage = new Storage(_logger, root);
 
         Assert.Equal([canonical.AppName], storage.GameMetaDataDictionary.Keys);
+        var snapshot = storage.GameMetaDataDictionary;
+        Assert.IsAssignableFrom<FrozenDictionary<string, Game>>(snapshot);
+        storage.SaveMetaData(Game("later"));
+        Assert.DoesNotContain("later", snapshot.Keys);
+        Assert.Contains("later", storage.GameMetaDataDictionary.Keys);
     }
 
     [Fact]
-    public void Storage_MigratesHistoricalSettingsAndInstallState()
+    public void StateOwners_MigrateHistoricalSettingsAndInstallState()
     {
         var root = Path.Combine(Path.GetTempPath(), $"crimson-storage-{Guid.NewGuid():N}");
         _storageRoots.Add(root);
@@ -210,9 +216,10 @@ public sealed class ManagerCharacterizationTests : IDisposable
             "{\"CurrentInstall\":null,\"IoQueue\":null,\"CompletedChunks\":null}";
         File.WriteAllText(settingsPath, rawSettings);
         File.WriteAllText(installStatePath, rawInstallState);
+        var settingsStore = new FileSettingsService(root);
         var storage = new Storage(_logger, root);
 
-        var settings = storage.GetSettings();
+        var settings = settingsStore.Get();
         var installState = storage.GetInstallState();
 
         Assert.True(settings?.MicaEnabled);
@@ -238,6 +245,23 @@ public sealed class ManagerCharacterizationTests : IDisposable
 
         Assert.Throws<InvalidDataException>(() => new Storage(_logger, root));
         Assert.Equal(future, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void Storage_QuarantinesCorruptAuthoritativeStateWithoutResettingIt()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-storage-{Guid.NewGuid():N}");
+        _storageRoots.Add(root);
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "localstate.json");
+        const string corrupt = "{broken";
+        File.WriteAllText(path, corrupt);
+
+        Assert.Throws<InvalidDataException>(() => new Storage(_logger, root));
+
+        Assert.Equal(corrupt, File.ReadAllText(path));
+        var quarantine = Assert.Single(Directory.GetFiles(root, "localstate.json.corrupt.*"));
+        Assert.Equal(corrupt, File.ReadAllText(quarantine));
     }
 
     [Fact]
