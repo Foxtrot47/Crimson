@@ -9,6 +9,20 @@ namespace Crimson.Avalonia;
 
 public sealed partial class LoginView : UserControl
 {
+    private const string ClientId = "34a02cf8f4414e29b15921876da36f9a";
+    private const string ReadAuthorizationCodeScript = """
+        (() => {
+            const text = document.body?.innerText?.trim();
+            if (!text) return null;
+            try {
+                const value = JSON.parse(text);
+                return value.authorizationCode ?? null;
+            } catch {
+                const match = text.match(/"authorizationCode"\s*:\s*"([A-Za-z0-9_-]+)"/);
+                return match ? match[1] : null;
+            }
+        })()
+        """;
     private const string LoginScript = """
         window.ue = {
             signinprompt: {
@@ -25,12 +39,15 @@ public sealed partial class LoginView : UserControl
     private readonly NativeWebView _loginWebView;
     private readonly EpicLoginMessageGate _messageGate = new();
     private Uri? _currentSource;
+    private readonly EpicAuthorizationCodeGate _authorizationCodeGate = new();
 
     public LoginView()
     {
         AvaloniaXamlLoader.Load(this);
         _loginWebView = this.FindControl<NativeWebView>("LoginWebView")!;
-        _loginWebView.Source = new Uri("https://www.epicgames.com/id/login");
+        var redirect = $"https://www.epicgames.com/id/api/redirect?clientId={ClientId}&responseType=code";
+        _loginWebView.Source = new Uri(
+            $"https://www.epicgames.com/id/login?redirectUrl={Uri.EscapeDataString(redirect)}");
     }
 
     private void OnEnvironmentRequested(object? sender, WebViewEnvironmentRequestedEventArgs e)
@@ -60,6 +77,8 @@ public sealed partial class LoginView : UserControl
         }
 
         _currentSource = e.Request;
+        if (e.Request.AbsolutePath.Equals("/id/api/redirect", StringComparison.OrdinalIgnoreCase))
+            _loginWebView.IsVisible = false;
     }
 
     private async void OnNavigationCompleted(object? sender, WebViewNavigationCompletedEventArgs e)
@@ -69,7 +88,22 @@ public sealed partial class LoginView : UserControl
             return;
         _currentSource = e.Request;
 
-        await _loginWebView.InvokeScript(LoginScript);
+        try
+        {
+            await _loginWebView.InvokeScript(LoginScript);
+            var result = await _loginWebView.InvokeScript(ReadAuthorizationCodeScript);
+            if (_authorizationCodeGate.TryAccept(
+                    _currentSource.AbsoluteUri,
+                    result,
+                    out var authorizationCode))
+                await CompleteAuthorizationAsync(authorizationCode);
+            else if (!_loginWebView.IsVisible)
+                _loginWebView.IsVisible = true;
+        }
+        catch
+        {
+            _loginWebView.IsVisible = true;
+        }
     }
 
     private async void OnWebMessageReceived(object? sender, WebMessageReceivedEventArgs e)
@@ -84,4 +118,14 @@ public sealed partial class LoginView : UserControl
             _loginWebView.IsVisible = true;
     }
 
+    private async Task CompleteAuthorizationAsync(string authorizationCode)
+    {
+        if (DataContext is not LoginViewModel viewModel)
+            return;
+
+        _loginWebView.IsVisible = false;
+        await viewModel.AcceptAuthorizationCodeAsync(authorizationCode);
+        if (viewModel.State != EpicAuthenticationState.LoggedIn)
+            _loginWebView.IsVisible = true;
+    }
 }
