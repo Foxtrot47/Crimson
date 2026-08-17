@@ -6,30 +6,16 @@ namespace Crimson.Utils;
 
 public static class ManifestPath
 {
-    private static readonly HashSet<string> ReservedDeviceNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "CON", "PRN", "AUX", "NUL", "CLOCK$", "CONIN$", "CONOUT$",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
-    };
-
     public static string ResolveUnderRoot(string installRoot, string relativePath)
     {
         if (string.IsNullOrWhiteSpace(installRoot))
             throw new ArgumentException("Install root is required.", nameof(installRoot));
 
-        if (string.IsNullOrWhiteSpace(relativePath))
-            throw new InvalidDataException("Manifest path is empty.");
-
         try
         {
-            if (Path.IsPathRooted(relativePath))
-                throw new InvalidDataException($"Manifest path must be relative: {relativePath}");
-
-            ValidateSegments(relativePath);
-
+            var logicalPath = ManifestRelativePath.Parse(relativePath);
             var canonicalRoot = Path.GetFullPath(installRoot);
-            var candidate = Path.GetFullPath(Path.Combine(canonicalRoot, relativePath));
+            var candidate = Path.GetFullPath(Path.Combine(canonicalRoot, logicalPath.ToPlatformPath()));
             var pathFromRoot = Path.GetRelativePath(canonicalRoot, candidate);
 
             if (pathFromRoot == "." ||
@@ -54,30 +40,38 @@ public static class ManifestPath
         }
     }
 
-    private static void ValidateSegments(string relativePath)
+    public static IReadOnlyList<ManifestRelativePath> ValidateManifest(IEnumerable<string> paths)
     {
-        var segments = relativePath.Split(new[] { '\\', '/' }, StringSplitOptions.None);
-        var invalidCharacters = Path.GetInvalidFileNameChars();
-
-        foreach (var segment in segments)
+        ArgumentNullException.ThrowIfNull(paths);
+        var logicalPaths = paths.Select(ManifestRelativePath.Parse).ToList();
+        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in logicalPaths)
         {
-            if (segment.Length == 0 || segment is "." or "..")
-                throw new InvalidDataException($"Manifest path contains an invalid segment: {relativePath}");
-
-            if (segment.EndsWith(' ') || segment.EndsWith('.') || segment.IndexOfAny(invalidCharacters) >= 0)
-                throw new InvalidDataException($"Manifest path contains an invalid filename: {relativePath}");
-
-            var deviceName = segment.Split('.')[0];
-            if (ReservedDeviceNames.Contains(deviceName))
-                throw new InvalidDataException($"Manifest path uses a reserved device name: {relativePath}");
+            if (!files.Add(path.Value))
+                throw new InvalidDataException($"Duplicate or colliding manifest path: {path.Value}");
         }
+
+        foreach (var path in logicalPaths)
+        {
+            var prefix = string.Empty;
+            for (var index = 0; index < path.Segments.Count - 1; index++)
+            {
+                prefix = prefix.Length == 0
+                    ? path.Segments[index]
+                    : $"{prefix}/{path.Segments[index]}";
+                if (files.Contains(prefix))
+                    throw new InvalidDataException($"Manifest path collides with a parent file: {path.Value}");
+            }
+        }
+
+        return logicalPaths;
     }
 
     private static void RejectExistingReparsePoints(string canonicalRoot, string pathFromRoot, string relativePath)
     {
         var currentPath = canonicalRoot;
         var segments = pathFromRoot.Split(
-            new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
             StringSplitOptions.RemoveEmptyEntries);
 
         foreach (var segment in segments)

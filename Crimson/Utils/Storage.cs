@@ -1,15 +1,18 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.Text.Json;
+using System.Linq;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Crimson.Core;
+using Crimson.Infrastructure;
 using Crimson.Models;
 using Serilog;
 
 namespace Crimson.Utils
 {
-    public class Storage
+    public class Storage : ICredentialStore
     {
         private readonly string _appDataPath;
         private readonly string _userDataFile;
@@ -19,12 +22,15 @@ namespace Crimson.Utils
         private readonly string _installationStateFile;
         private readonly string _localAppStateFile;
         private readonly string _manifestPath;
-        private Dictionary<string, Game> _gameMetaDataDictionary;
-        private Dictionary<string, LocalAppState> _localAppStateDictionary;
+        private readonly string _manifestIndexFile;
+        private readonly ConcurrentDictionary<string, Game> _gameMetaDataDictionary;
+        private readonly ConcurrentDictionary<string, LocalAppState> _localAppStateDictionary;
+        private readonly ConcurrentDictionary<string, string> _manifestIndex;
+        private readonly object _writeLock = new();
         private readonly ILogger _logger;
 
-        public Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
-        public Dictionary<string, LocalAppState> LocalAppStateDictionary => _localAppStateDictionary;
+        public IReadOnlyDictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
+        public IReadOnlyDictionary<string, LocalAppState> LocalAppStateDictionary => _localAppStateDictionary;
 
         public string DefaultInstallPath => Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
 
@@ -46,20 +52,23 @@ namespace Crimson.Utils
             _installationStateFile = ResolveAppDataPath("install_state.json");
             _localAppStateFile = ResolveAppDataPath("localstate.json");
             _manifestPath = ResolveAppDataPath("manifests");
+            _manifestIndexFile = ResolveAppDataPath("manifests", "index.json");
 
             Directory.CreateDirectory(_metaDataDirectory);
             Directory.CreateDirectory(_manifestPath);
-            _gameMetaDataDictionary = new Dictionary<string, Game>(StringComparer.Ordinal);
+            _gameMetaDataDictionary = new ConcurrentDictionary<string, Game>(StringComparer.Ordinal);
             foreach (var file in Directory.EnumerateFiles(_metaDataDirectory, "*.json"))
             {
                 try
                 {
-                    var game = JsonSerializer.Deserialize<Game>(File.ReadAllText(file));
-                    if (game == null)
-                        throw new InvalidDataException("Metadata file did not contain a game record.");
+                    if (!AtomicJsonFile.TryRead<Game>(file, out var game) || game is null)
+                        continue;
 
-                    _ = StorageKeyCodec.Encode(game.AppName);
-                    _gameMetaDataDictionary.Add(game.AppName, game);
+                    var canonicalFileName = $"{StorageKeyCodec.Encode(game.AppName)}.json";
+                    if (!string.Equals(Path.GetFileName(file), canonicalFileName, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    _gameMetaDataDictionary[game.AppName] = game;
                 }
                 catch (Exception exception)
                 {
@@ -70,99 +79,89 @@ namespace Crimson.Utils
                 }
             }
 
-            if (!File.Exists(_localAppStateFile))
-            {
-                _localAppStateDictionary = new Dictionary<string, LocalAppState>(StringComparer.Ordinal);
-            }
-            else
-            {
-                var json = File.ReadAllText(_localAppStateFile);
-                _localAppStateDictionary = string.IsNullOrWhiteSpace(json)
-                    ? new Dictionary<string, LocalAppState>(StringComparer.Ordinal)
-                    : JsonSerializer.Deserialize<Dictionary<string, LocalAppState>>(json)
-                      ?? new Dictionary<string, LocalAppState>(StringComparer.Ordinal);
-            }
+            _localAppStateDictionary = AtomicJsonFile.TryRead<Dictionary<string, LocalAppState>>(
+                _localAppStateFile,
+                out var localStates) && localStates is not null
+                ? new ConcurrentDictionary<string, LocalAppState>(localStates, StringComparer.Ordinal)
+                : new ConcurrentDictionary<string, LocalAppState>(StringComparer.Ordinal);
+            _manifestIndex = AtomicJsonFile.TryRead<Dictionary<string, string>>(
+                _manifestIndexFile,
+                out var manifestIndex) && manifestIndex is not null
+                ? new ConcurrentDictionary<string, string>(manifestIndex, StringComparer.Ordinal)
+                : new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
         }
 
-        public async Task<UserData> GetUserData()
+        public Task<UserData?> GetUserData()
         {
-            if (!File.Exists(_userDataFile))
+            AtomicJsonFile.TryRead<UserData>(_userDataFile, out var userData);
+            return Task.FromResult(userData);
+        }
+
+        public Task SaveUserData(UserData? data)
+        {
+            lock (_writeLock)
             {
-                await SaveUserData(null);
-                return null;
+                if (data is null)
+                {
+                    File.Delete(_userDataFile);
+                    File.Delete(_userDataFile + ".bak");
+                }
+                else
+                {
+                    AtomicJsonFile.Write(_userDataFile, data);
+                }
             }
 
-            await using var fileStream = File.Open(_userDataFile, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using var streamReader = new StreamReader(fileStream);
-            var jsonString = await streamReader.ReadToEndAsync();
-            var userData = JsonSerializer.Deserialize<UserData>(jsonString);
-            streamReader.Dispose();
-
-            return userData;
+            return Task.CompletedTask;
         }
 
-        public async Task SaveUserData(UserData data)
-        {
-            var jsonString = JsonSerializer.Serialize(data);
-
-            await using var fileStream = File.Open(_userDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
-            await using var streamWriter = new StreamWriter(fileStream);
-            await streamWriter.WriteAsync(jsonString);
-            streamWriter.Close();
-        }
-
-        public async Task ClearUserData()
+        public Task ClearUserData()
         {
             try
             {
-                if (File.Exists(_userDataFile))
+                lock (_writeLock)
+                {
                     File.Delete(_userDataFile);
+                    File.Delete(_userDataFile + ".bak");
+                }
             }
             catch (Exception ex)
             {
                 _logger.Error(ex, "Failed to clear user data file");
             }
+
+            return Task.CompletedTask;
         }
 
-        public async Task<IEnumerable<Asset>> GetGameAssetsData()
+        public Task<IEnumerable<Asset>?> GetGameAssetsData()
+        {
+            AtomicJsonFile.TryRead<List<Asset>>(_gameAssetsFile, out var assets);
+            return Task.FromResult<IEnumerable<Asset>?>(assets);
+        }
+
+        public Task SaveGameAssetsData(IEnumerable<Asset>? data)
         {
             try
             {
-                if (!File.Exists(_gameAssetsFile))
+                lock (_writeLock)
                 {
-                    await SaveGameAssetsData(null);
-                    return null;
+                    if (data is null)
+                    {
+                        File.Delete(_gameAssetsFile);
+                        File.Delete(_gameAssetsFile + ".bak");
+                    }
+                    else
+                    {
+                        AtomicJsonFile.Write(_gameAssetsFile, data.ToList());
+                    }
                 }
-
-                await using var fileStream = File.Open(_gameAssetsFile, FileMode.Open, FileAccess.Read, FileShare.Read);
-                using var streamReader = new StreamReader(fileStream);
-                var jsonString = await streamReader.ReadToEndAsync();
-                streamReader.Close();
-                return JsonSerializer.Deserialize<IEnumerable<Asset>>(jsonString);
             }
             catch (Exception ex)
             {
-                Log.Error(ex.ToString());
-                return null;
+                _logger.Error(ex, "Failed to save game assets");
             }
-        }
 
-        public async Task SaveGameAssetsData(IEnumerable<Asset> data)
-        {
-            try
-            {
-                var jsonString = JsonSerializer.Serialize(data);
-
-                await using var fileStream =
-                    File.Open(_gameAssetsFile, FileMode.Create, FileAccess.Write, FileShare.Read);
-                await using var streamWriter = new StreamWriter(fileStream);
-                await streamWriter.WriteAsync(jsonString);
-                await streamWriter.FlushAsync();
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex.ToString());
-            }
+            return Task.CompletedTask;
         }
 
         public Game GetGameMetaData(string gameName)
@@ -194,82 +193,57 @@ namespace Crimson.Utils
 
         public void SaveMetaData(Game game)
         {
-            var jsonString = JsonSerializer.Serialize(game);
-
-            if (!Directory.Exists(_metaDataDirectory))
-                Directory.CreateDirectory(_metaDataDirectory);
-
+            ArgumentNullException.ThrowIfNull(game);
             var fileName = ResolveAppDataPath("metadata", $"{StorageKeyCodec.Encode(game.AppName)}.json");
-            File.WriteAllText(fileName, jsonString);
-
-            // Overwrite existing entry so in-memory state stays current
-            _gameMetaDataDictionary[game.AppName] = game;
+            lock (_writeLock)
+            {
+                AtomicJsonFile.Write(fileName, game);
+                _gameMetaDataDictionary[game.AppName] = game;
+            }
         }
 
-        public void UpdateLocalAppState(Dictionary<string, LocalAppState> installedGamesDict)
+        public void UpdateLocalAppState(IReadOnlyDictionary<string, LocalAppState> installedGames)
         {
-            _localAppStateDictionary = installedGamesDict;
-
-            var jsonString = JsonSerializer.Serialize(_localAppStateDictionary);
-
-            File.WriteAllText(_localAppStateFile, jsonString);
+            ArgumentNullException.ThrowIfNull(installedGames);
+            lock (_writeLock)
+            {
+                _localAppStateDictionary.Clear();
+                foreach (var (appName, appState) in installedGames)
+                    _localAppStateDictionary[appName] = appState;
+                AtomicJsonFile.Write(_localAppStateFile, _localAppStateDictionary);
+            }
         }
 
         public void AddToLocalAppState(string appName, LocalAppState appState)
         {
-            _localAppStateDictionary[appName] = appState;
-
-            var jsonString = JsonSerializer.Serialize(_localAppStateDictionary);
-
-            File.WriteAllText(_localAppStateFile, jsonString);
+            lock (_writeLock)
+            {
+                _localAppStateDictionary[appName] = appState;
+                AtomicJsonFile.Write(_localAppStateFile, _localAppStateDictionary);
+            }
         }
 
-        public string GetSettingsData()
-        {
-            using var fileStream = File.Open(_settingsDataFile, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using var streamReader = new StreamReader(fileStream);
-            var data = streamReader.ReadToEnd();
-            fileStream.Dispose();
-            return data;
-        }
+        public string GetSettingsData() =>
+            AtomicJsonFile.TryRead<string>(_settingsDataFile, out var data) ? data ?? "{}" : "{}";
 
-        public async Task SaveSettingsData(string data)
+        public Task SaveSettingsData(string data)
         {
-            await using var fileStream = File.Open(_settingsDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
-            await using var streamWriter = new StreamWriter(fileStream);
-            await streamWriter.WriteAsync(data);
-            streamWriter.Close();
+            lock (_writeLock)
+                AtomicJsonFile.Write(_settingsDataFile, data);
+            return Task.CompletedTask;
         }
 
         public void SaveInstallState(string data)
         {
-            using var fileStream = File.Open(_installationStateFile, FileMode.Create, FileAccess.Write, FileShare.None);
-            using var streamWriter = new StreamWriter(fileStream);
-            streamWriter.Write(data);
-            streamWriter.Close();
+            lock (_writeLock)
+                AtomicJsonFile.Write(_installationStateFile, data);
         }
 
-        public string GetInstallState()
-        {
-            using var fileStream = File.Open(_installationStateFile, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using var streamReader = new StreamReader(fileStream);
-            var data = streamReader.ReadToEnd();
-            fileStream.Close();
-            return data;
+        public string GetInstallState() =>
+            AtomicJsonFile.TryRead<string>(_installationStateFile, out var data)
+                ? data ?? throw new InvalidDataException("Install state was empty.")
+                : throw new FileNotFoundException("No valid install state exists.", _installationStateFile);
 
-        }
-
-        public async Task SaveAppManifest(byte[] manifestBytes, string appName)
-        {
-            var path = ResolveAppDataPath($"{StorageKeyCodec.Encode(appName)}.manifest");
-            await File.WriteAllBytesAsync(path, manifestBytes);
-        }
-
-        public Task<byte[]> GetAppManifest(string appName)
-        {
-            var path = ResolveAppDataPath($"{StorageKeyCodec.Encode(appName)}.manifest");
-            return File.ReadAllBytesAsync(path);
-        }
 
         public async Task<System.IO.DriveInfo> GetDriveInfo(string path)
         {
@@ -294,43 +268,55 @@ namespace Crimson.Utils
             }
         }
 
-        public async Task<byte[]> GetCachedManifestBytes(string appName, string version)
+        public Task<byte[]?> GetCachedManifestBytes(string appName, string version)
         {
             try
             {
-                var manifestPath = GetManifestCachePath(appName, version);
+                var key = GetManifestCacheKey(appName, version);
+                if (!_manifestIndex.TryGetValue(key, out var digest))
+                    return Task.FromResult<byte[]?>(null);
 
+                var manifestPath = ResolveAppDataPath("manifests", $"{digest}.manifest");
                 if (!File.Exists(manifestPath))
-                {
-                    return null;
-                }
+                    return Task.FromResult<byte[]?>(null);
 
-                return await File.ReadAllBytesAsync(manifestPath);
+                var bytes = File.ReadAllBytes(manifestPath);
+                var actualDigest = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+                return Task.FromResult<byte[]?>(string.Equals(actualDigest, digest, StringComparison.Ordinal)
+                    ? bytes
+                    : null);
             }
             catch (Exception ex)
             {
                 _logger.Error(ex, "Failed to get cached manifest bytes for app: {AppName}", appName);
-                return null;
+                return Task.FromResult<byte[]?>(null);
             }
-
         }
 
-        public async Task CacheManifestBytes(string appName, string version, byte[] manifestBytes)
+        public Task CacheManifestBytes(string appName, string version, byte[] manifestBytes)
         {
             try
             {
-                var manifestPath = GetManifestCachePath(appName, version);
-                await File.WriteAllBytesAsync(manifestPath, manifestBytes);
+                var digest = Convert.ToHexString(SHA256.HashData(manifestBytes)).ToLowerInvariant();
+                var manifestPath = ResolveAppDataPath("manifests", $"{digest}.manifest");
+                lock (_writeLock)
+                {
+                    if (!File.Exists(manifestPath))
+                        AtomicFile.WriteAllBytes(manifestPath, manifestBytes);
+                    _manifestIndex[GetManifestCacheKey(appName, version)] = digest;
+                    AtomicJsonFile.Write(_manifestIndexFile, _manifestIndex);
+                }
             }
             catch (Exception ex)
             {
                 _logger.Error(ex, "Failed to cache manifest bytes for app: {AppName}", appName);
             }
+
+            return Task.CompletedTask;
         }
 
-        private string GetManifestCachePath(string appName, string version) => ResolveAppDataPath(
-            "manifests",
-            $"{StorageKeyCodec.Encode(appName)}.{StorageKeyCodec.Encode(version)}.manifest");
+        private static string GetManifestCacheKey(string appName, string version) =>
+            StorageKeyCodec.Encode($"{appName}\n{version}");
 
         private string ResolveAppDataPath(params string[] segments)
         {

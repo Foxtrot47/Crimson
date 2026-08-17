@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
+using Crimson.Utils;
 
 namespace Crimson.Models;
 
@@ -113,16 +114,14 @@ internal static class JsonManifestReader
             filesElement.GetArrayLength() > EpicProtocolLimits.MaximumFileCount)
             throw new InvalidDataException("JSON file manifest list is invalid.");
         var files = new FileManifestList { Version = 0 };
-        var uniquePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         long cumulativeParts = 0;
         foreach (var fileElement in filesElement.EnumerateArray())
         {
             var filename = GetRequiredString(fileElement, "Filename");
-            if (!uniquePaths.Add(filename.Normalize(NormalizationForm.FormC)))
-                throw new InvalidDataException($"Duplicate JSON manifest path: {filename}.");
+            var logicalPath = ManifestRelativePath.Parse(filename);
             var file = new FileManifest
             {
-                Filename = filename,
+                Filename = logicalPath.Value,
                 Hash = DecodeDecimalBytes(GetRequiredString(fileElement, "FileHash"), 20),
                 Flags = fileElement.TryGetProperty("bIsUnixExecutable", out var executable) && executable.GetBoolean()
                     ? (byte)4
@@ -156,6 +155,7 @@ internal static class JsonManifestReader
             file.FileSize = fileOffset;
             files.Elements.Add(file);
         }
+        _ = ManifestPath.ValidateManifest(files.Elements.Select(file => file.Filename));
         files.Count = files.Elements.Count;
 
         var customFields = new CustomFields { Version = 0 };

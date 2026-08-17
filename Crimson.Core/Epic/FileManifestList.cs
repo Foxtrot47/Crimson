@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Text;
+using Crimson.Utils;
 
 namespace Crimson.Models;
 
@@ -37,19 +38,13 @@ public sealed class FileManifestList
         if (list.Version is < 0 or > 2)
             throw new InvalidDataException($"File manifest list version {list.Version} is unsupported.");
 
-        var normalizedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < list.Count; index++)
         {
             var filename = reader.ReadUtf8String(EpicProtocolLimits.MaximumPathBytes);
-            if (string.IsNullOrWhiteSpace(filename))
-                throw new InvalidDataException("Manifest filename is empty.");
-
-            var normalized = filename.Normalize(NormalizationForm.FormC);
-            if (!normalizedPaths.Add(normalized))
-                throw new InvalidDataException($"Duplicate or colliding manifest path: {filename}.");
-
-            list.Elements.Add(new FileManifest { Filename = filename });
+            var logicalPath = ManifestRelativePath.Parse(filename);
+            list.Elements.Add(new FileManifest { Filename = logicalPath.Value });
         }
+        _ = ManifestPath.ValidateManifest(list.Elements.Select(file => file.Filename));
 
         foreach (var file in list.Elements)
             file.SymlinkTarget = reader.ReadUtf8String(EpicProtocolLimits.MaximumPathBytes);

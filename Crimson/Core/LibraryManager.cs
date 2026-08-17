@@ -206,7 +206,6 @@ public class LibraryManager
             }
 
             var fetchList = new List<FetchListItem>();
-            var gameMetaDataDictionary = new Dictionary<string, Models.Game>();
 
             foreach (var asset in gameAssetsList)
             {
@@ -224,7 +223,6 @@ public class LibraryManager
                 if (game != null)
                 {
                     assetUpdated = asset.BuildVersion != game.AssetInfos.Windows.BuildVersion;
-                    gameMetaDataDictionary.Add(asset.AppName, game);
                 }
 
                 if (!updateAssets || (game != null && !forceUpdate && !assetUpdated)) continue;
@@ -274,11 +272,9 @@ public class LibraryManager
             _storage.HydrateAllLocalAppStates();
             CheckForGameUpdates(gameAssetsList);
 
-            gameMetaDataDictionary = _storage.GameMetaDataDictionary;
 
-            // Sort _gameData by name
             _log.Information("UpdateLibraryAsync: Library updated");
-            LibraryUpdated?.Invoke(gameMetaDataDictionary.Values.ToList());
+            LibraryUpdated?.Invoke(_storage.GameMetaDataDictionary.Values.ToList());
         }
         catch (Exception ex)
         {

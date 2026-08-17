@@ -63,6 +63,29 @@ public sealed class ManifestPathTests
     }
 
     [Fact]
+    public void ManifestRelativePath_NormalizesLogicalSegments()
+    {
+        var path = ManifestRelativePath.Parse("Folder\\Cafe\u0301/file.bin");
+
+        Assert.Equal("Folder/Caf\u00E9/file.bin", path.Value);
+        Assert.Equal(["Folder", "Caf\u00E9", "file.bin"], path.Segments);
+    }
+
+    [Theory]
+    [MemberData(nameof(CollidingManifests))]
+    public void ValidateManifest_RejectsCrossPlatformCollisions(string[] paths)
+    {
+        Assert.Throws<InvalidDataException>(() => ManifestPath.ValidateManifest(paths));
+    }
+
+    public static TheoryData<string[]> CollidingManifests => new()
+    {
+        new string[] { "Data/File.bin", "data/file.bin" },
+        new string[] { "Caf\u00E9.bin", "Cafe\u0301.bin" },
+        new string[] { "Data", "data/file.bin" }
+    };
+
+    [Fact]
     public void ResolveUnderRoot_RejectsExistingReparsePoint()
     {
         var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-path-test-{Guid.NewGuid():N}");

@@ -1,9 +1,12 @@
 using System.Reflection;
+using System.Text.Json;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Repository;
+using Crimson.Infrastructure;
 using Crimson.Utils;
 using Serilog;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Crimson.Tests;
 
@@ -92,9 +95,46 @@ public sealed class ManagerCharacterizationTests : IDisposable
             manager,
             new UnusedStoreRepository(),
             storage,
-            new DownloadManager(_logger, new HttpClient()));
+            new DownloadManager(NullLogger<DownloadManager>.Instance, new HttpClient()));
         installManager.AddToQueue(new InstallItem(game.AppName, ActionType.Repair, game.LocalAppState.InstallPath));
         Assert.Empty(installManager.GetQueueItemNames());
+    }
+
+    [Fact]
+    public void Storage_LoadsOnlyCanonicalMetadataFiles()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-storage-{Guid.NewGuid():N}");
+        _storageRoots.Add(root);
+        var metadataRoot = Path.Combine(root, "metadata");
+        Directory.CreateDirectory(metadataRoot);
+        var canonical = Game("canonical");
+        AtomicJsonFile.Write(
+            Path.Combine(metadataRoot, $"{StorageKeyCodec.Encode(canonical.AppName)}.json"),
+            canonical);
+        File.WriteAllText(
+            Path.Combine(metadataRoot, "legacy.json"),
+            JsonSerializer.Serialize(Game("legacy")));
+
+        var storage = new Storage(_logger, root);
+
+        Assert.Equal([canonical.AppName], storage.GameMetaDataDictionary.Keys);
+    }
+
+    [Fact]
+    public async Task Storage_IndexesContentAddressedManifestCache()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-storage-{Guid.NewGuid():N}");
+        _storageRoots.Add(root);
+        var storage = new Storage(_logger, root);
+        byte[] manifest = [1, 2, 3, 4];
+
+        await storage.CacheManifestBytes("game-one", "v1", manifest);
+        await storage.CacheManifestBytes("game-two", "v2", manifest);
+
+        Assert.Single(Directory.EnumerateFiles(Path.Combine(root, "manifests"), "*.manifest"));
+        var restarted = new Storage(_logger, root);
+        Assert.Equal(manifest, await restarted.GetCachedManifestBytes("game-one", "v1"));
+        Assert.Equal(manifest, await restarted.GetCachedManifestBytes("game-two", "v2"));
     }
 
     private LibraryManager LibraryManagerWith(Storage storage)
@@ -107,7 +147,7 @@ public sealed class ManagerCharacterizationTests : IDisposable
     {
         var storage = StorageWith(games);
         var library = LibraryManagerWith(storage);
-        var downloads = new DownloadManager(_logger, new HttpClient());
+        var downloads = new DownloadManager(NullLogger<DownloadManager>.Instance, new HttpClient());
         return new InstallManager(_logger, library, new UnusedStoreRepository(), storage, downloads);
     }
 

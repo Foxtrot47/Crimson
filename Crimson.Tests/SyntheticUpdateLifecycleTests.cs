@@ -6,6 +6,7 @@ using Crimson.Models;
 using Crimson.Repository;
 using Crimson.Utils;
 using Serilog;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Crimson.Tests;
 
@@ -98,7 +99,7 @@ public sealed class SyntheticUpdateLifecycleTests
         var auth = new AuthManager(logger, storage, new HttpClient(new RejectingHandler()));
         var library = new LibraryManager(logger, repository, storage, auth);
         var contentClient = new HttpClient(new FixtureContentHandler());
-        var downloads = new DownloadManager(logger, contentClient);
+        var downloads = new DownloadManager(NullLogger<DownloadManager>.Instance, contentClient);
         var manager = new InstallManager(logger, library, repository, storage, downloads);
         return new Harness(storage, library, manager);
     }
