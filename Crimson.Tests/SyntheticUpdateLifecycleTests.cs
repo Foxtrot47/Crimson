@@ -89,16 +89,226 @@ public sealed class SyntheticUpdateLifecycleTests
         }
     }
 
+    [Fact]
+    public async Task RepairThenUninstall_RestoresTrackedFilesAndPreservesUserFiles()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-lifecycle-{Guid.NewGuid():N}");
+        var stateRoot = Path.Combine(sandbox, "state");
+        var installRoot = Path.Combine(sandbox, "game");
+        Directory.CreateDirectory(installRoot);
+        using var logger = new LoggerConfiguration().CreateLogger();
+        try
+        {
+            var harness = CreateHarness(logger, stateRoot, "old.manifest");
+            harness.Storage.SaveMetaData(CreateGame("1.0.0"));
+            var installResult = await RunOperationAsync(
+                harness.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Install, installRoot));
+            Assert.Equal(ActionStatus.Success, installResult.Status);
+
+            var userFile = Path.Combine(installRoot, "Data", "user-save.dat");
+            await File.WriteAllTextAsync(userFile, "preserve me");
+            await File.WriteAllTextAsync(Path.Combine(installRoot, "Data", "changed.txt"), "corrupt");
+
+            var repairStatuses = new List<ActionStatus>();
+            var repairResult = await RunOperationAsync(
+                harness.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Repair, installRoot),
+                repairStatuses);
+
+            Assert.Equal(ActionStatus.Success, repairResult.Status);
+            Assert.Equal([ActionStatus.Processing, ActionStatus.Success], repairStatuses);
+            await AssertInstalledFilesAsync("old", installRoot);
+            Assert.Equal("preserve me", await File.ReadAllTextAsync(userFile));
+
+            var uninstallStatuses = new List<ActionStatus>();
+            var uninstallResult = await RunOperationAsync(
+                harness.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Uninstall, installRoot),
+                uninstallStatuses);
+
+            Assert.Equal(ActionStatus.Success, uninstallResult.Status);
+            Assert.Equal([ActionStatus.Processing, ActionStatus.Success], uninstallStatuses);
+            await AssertTrackedFilesDoNotExistAsync("old", installRoot);
+            Assert.Equal("preserve me", await File.ReadAllTextAsync(userFile));
+            var state = harness.Storage.LocalAppStateDictionary["CrimsonSyntheticGame"];
+            Assert.Equal(InstallState.NotInstalled, state.InstallStatus);
+            Assert.Null(state.InstallPath);
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ImportThenMove_PreservesFilesAndUpdatesInstallLocation()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-lifecycle-{Guid.NewGuid():N}");
+        var sourceRoot = Path.Combine(sandbox, "source");
+        var movedRoot = Path.Combine(sandbox, "moved");
+        using var logger = new LoggerConfiguration().CreateLogger();
+        try
+        {
+            var materializer = CreateHarness(logger, Path.Combine(sandbox, "materializer-state"), "old.manifest");
+            materializer.Storage.SaveMetaData(CreateGame("1.0.0"));
+            var installResult = await RunOperationAsync(
+                materializer.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Install, sourceRoot));
+            Assert.Equal(ActionStatus.Success, installResult.Status);
+            var userFile = Path.Combine(sourceRoot, "Data", "user-save.dat");
+            await File.WriteAllTextAsync(userFile, "preserve me");
+
+            var importer = CreateHarness(logger, Path.Combine(sandbox, "importer-state"), "old.manifest");
+            importer.Storage.SaveMetaData(CreateGame("1.0.0"));
+            var importStatuses = new List<ActionStatus>();
+            var importResult = await RunOperationAsync(
+                importer.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Import, sourceRoot),
+                importStatuses);
+
+            Assert.Equal(ActionStatus.Success, importResult.Status);
+            Assert.Equal([ActionStatus.Processing, ActionStatus.Success], importStatuses);
+            Assert.Equal(InstallState.Installed,
+                importer.Storage.LocalAppStateDictionary["CrimsonSyntheticGame"].InstallStatus);
+
+            var moveStatuses = new List<ActionStatus>();
+            var move = new InstallItem("CrimsonSyntheticGame", ActionType.Move, sourceRoot)
+            {
+                MoveLocation = movedRoot
+            };
+            var moveResult = await RunOperationAsync(importer.Manager, move, moveStatuses);
+
+            Assert.Equal(ActionStatus.Success, moveResult.Status);
+            Assert.Equal([ActionStatus.Processing, ActionStatus.Success], moveStatuses);
+            Assert.False(Directory.Exists(sourceRoot));
+            await AssertInstalledFilesAsync("old", movedRoot);
+            Assert.Equal("preserve me", await File.ReadAllTextAsync(Path.Combine(movedRoot, "Data", "user-save.dat")));
+            Assert.Equal(movedRoot,
+                importer.Storage.LocalAppStateDictionary["CrimsonSyntheticGame"].InstallPath);
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Cancellation_PublishesTerminalOrderAndSalvagesCompletedFiles()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-lifecycle-{Guid.NewGuid():N}");
+        var installRoot = Path.Combine(sandbox, "game");
+        var content = new BlockingContentHandler();
+        using var logger = new LoggerConfiguration().CreateLogger();
+        try
+        {
+            var harness = CreateHarness(
+                logger,
+                Path.Combine(sandbox, "state"),
+                "old.manifest",
+                content);
+            harness.Storage.SaveMetaData(CreateGame("1.0.0"));
+            var statuses = new List<ActionStatus>();
+            var terminal = new TaskCompletionSource<InstallItem>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            harness.Manager.InstallationStatusChanged += item =>
+            {
+                if (item.AppName != "CrimsonSyntheticGame")
+                    return;
+                statuses.Add(item.Status);
+                if (item.Status is ActionStatus.Success or ActionStatus.Failed or ActionStatus.Cancelled)
+                    terminal.TrySetResult(item);
+            };
+
+            harness.Manager.AddToQueue(
+                new InstallItem("CrimsonSyntheticGame", ActionType.Install, installRoot));
+            await content.RequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await harness.Manager.StopProcessing();
+            var result = await terminal.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal(ActionStatus.Cancelled, result.Status);
+            Assert.Equal(
+                [ActionStatus.Processing, ActionStatus.Cancelling, ActionStatus.Cancelling,
+                    ActionStatus.Cancelled],
+                statuses);
+            await AssertOnlyEmptyTrackedFilesExistAsync("old", installRoot);
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PauseThenResume_CompletesInstallAndPublishesCurrentOrder()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-lifecycle-{Guid.NewGuid():N}");
+        var installRoot = Path.Combine(sandbox, "game");
+        var content = new PausableContentHandler();
+        using var logger = new LoggerConfiguration().CreateLogger();
+        try
+        {
+            var harness = CreateHarness(
+                logger,
+                Path.Combine(sandbox, "state"),
+                "old.manifest",
+                content);
+            harness.Storage.SaveMetaData(CreateGame("1.0.0"));
+            var statuses = new List<ActionStatus>();
+            var terminal = new TaskCompletionSource<InstallItem>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            harness.Manager.InstallationStatusChanged += item =>
+            {
+                if (item.AppName != "CrimsonSyntheticGame")
+                    return;
+                statuses.Add(item.Status);
+                if (item.Status is ActionStatus.Success or ActionStatus.Failed or ActionStatus.Cancelled)
+                    terminal.TrySetResult(item);
+            };
+
+            harness.Manager.AddToQueue(
+                new InstallItem("CrimsonSyntheticGame", ActionType.Install, installRoot));
+            await content.RequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Run(harness.Manager.PauseInstall);
+            Assert.Equal(ActionStatus.Paused, harness.Manager.CurrentInstall?.Status);
+
+            var resume = Task.Run(harness.Manager.ResumeInstall);
+            await WaitUntilAsync(
+                () => statuses.Count(status => status == ActionStatus.Processing) >= 2,
+                TimeSpan.FromSeconds(5));
+            content.Release();
+            await resume;
+            var result = await terminal.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await WaitUntilAsync(() => harness.Manager.CurrentInstall is null, TimeSpan.FromSeconds(5));
+
+            Assert.Equal(ActionStatus.Success, result.Status);
+            Assert.Equal(
+                [ActionStatus.Processing, ActionStatus.Paused, ActionStatus.Processing,
+                    ActionStatus.Success],
+                statuses);
+            await AssertInstalledFilesAsync("old", installRoot);
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
     private static Harness CreateHarness(
         ILogger logger,
         string stateRoot,
-        string manifestName)
+        string manifestName,
+        HttpMessageHandler? contentHandler = null)
     {
         var storage = new Storage(logger, stateRoot);
         var repository = new SyntheticRepository(manifestName);
         var auth = new AuthManager(logger, storage, new HttpClient(new RejectingHandler()));
         var library = new LibraryManager(logger, repository, storage, auth);
-        var contentClient = new HttpClient(new FixtureContentHandler());
+        var contentClient = new HttpClient(contentHandler ?? new FixtureContentHandler());
         var downloads = new DownloadManager(NullLogger<DownloadManager>.Instance, contentClient);
         var manager = new InstallManager(logger, library, repository, storage, downloads);
         return new Harness(storage, library, manager);
@@ -126,14 +336,19 @@ public sealed class SyntheticUpdateLifecycleTests
         }
     };
 
-    private static async Task<InstallItem> RunOperationAsync(InstallManager manager, InstallItem operation)
+    private static async Task<InstallItem> RunOperationAsync(
+        InstallManager manager,
+        InstallItem operation,
+        ICollection<ActionStatus>? observedStatuses = null)
     {
         var completion = new TaskCompletionSource<InstallItem>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         void OnStatusChanged(InstallItem item)
         {
-            if (item.AppName == operation.AppName && item.Status is
-                ActionStatus.Success or ActionStatus.Failed or ActionStatus.Cancelled)
+            if (item.AppName != operation.AppName)
+                return;
+            observedStatuses?.Add(item.Status);
+            if (item.Status is ActionStatus.Success or ActionStatus.Failed or ActionStatus.Cancelled)
                 completion.TrySetResult(item);
         }
 
@@ -210,6 +425,32 @@ public sealed class SyntheticUpdateLifecycleTests
         }
     }
 
+    private static async Task AssertTrackedFilesDoNotExistAsync(string version, string installRoot)
+    {
+        using var expected = JsonDocument.Parse(
+            await File.ReadAllTextAsync(Path.Combine(FixtureRoot, "expected.json")));
+        foreach (var property in expected.RootElement.GetProperty(version).GetProperty("files").EnumerateObject())
+        {
+            var path = Path.Combine(
+                installRoot,
+                property.Name.Replace('/', Path.DirectorySeparatorChar));
+            Assert.False(File.Exists(path), $"Tracked file was not uninstalled: {property.Name}");
+        }
+    }
+
+    private static async Task AssertOnlyEmptyTrackedFilesExistAsync(string version, string installRoot)
+    {
+        using var expected = JsonDocument.Parse(
+            await File.ReadAllTextAsync(Path.Combine(FixtureRoot, "expected.json")));
+        foreach (var property in expected.RootElement.GetProperty(version).GetProperty("files").EnumerateObject())
+        {
+            var path = Path.Combine(
+                installRoot,
+                property.Name.Replace('/', Path.DirectorySeparatorChar));
+            Assert.Equal(property.Value.GetProperty("size").GetInt64() == 0, File.Exists(path));
+        }
+    }
+
     private sealed record Harness(Storage Storage, LibraryManager Library, InstallManager Manager);
 
     private sealed class SyntheticRepository(string manifestName) : IStoreRepository
@@ -261,25 +502,63 @@ public sealed class SyntheticUpdateLifecycleTests
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(CreateFixtureResponse(request));
+    }
+
+    private sealed class PausableContentHandler : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource _release =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource RequestStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Release() => _release.TrySetResult();
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            const string prefix = "/synthetic/";
-            var path = request.RequestUri?.AbsolutePath
-                ?? throw new InvalidOperationException("Synthetic request URI is missing.");
-            if (!path.StartsWith(prefix, StringComparison.Ordinal))
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            RequestStarted.TrySetResult();
+            await _release.Task.WaitAsync(cancellationToken);
+            return CreateFixtureResponse(request);
+        }
+    }
 
-            var relative = Uri.UnescapeDataString(path[prefix.Length..])
-                .Replace('/', Path.DirectorySeparatorChar);
-            var file = Path.GetFullPath(Path.Combine(FixtureRoot, relative));
-            if (!file.StartsWith(Path.GetFullPath(FixtureRoot), StringComparison.OrdinalIgnoreCase) ||
-                !File.Exists(file))
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+    private static HttpResponseMessage CreateFixtureResponse(HttpRequestMessage request)
+    {
+        const string prefix = "/synthetic/";
+        var path = request.RequestUri?.AbsolutePath
+            ?? throw new InvalidOperationException("Synthetic request URI is missing.");
+        if (!path.StartsWith(prefix, StringComparison.Ordinal))
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new ByteArrayContent(File.ReadAllBytes(file))
-            });
+        var relative = Uri.UnescapeDataString(path[prefix.Length..])
+            .Replace('/', Path.DirectorySeparatorChar);
+        var file = Path.GetFullPath(Path.Combine(FixtureRoot, relative));
+        if (!file.StartsWith(Path.GetFullPath(FixtureRoot), StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(file))
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(File.ReadAllBytes(file))
+        };
+    }
+
+    private sealed class BlockingContentHandler : HttpMessageHandler
+    {
+        public TaskCompletionSource RequestStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestStarted.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("Blocked synthetic request completed unexpectedly.");
         }
     }
 
