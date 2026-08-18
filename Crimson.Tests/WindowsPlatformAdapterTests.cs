@@ -38,9 +38,10 @@ public sealed class WindowsPlatformAdapterTests
             ?? throw new InvalidOperationException("COMSPEC is unavailable.");
         var runner = new WindowsGameProcessRunner();
 
-        await runner.RunAsync(new GameProcessStartInfo(
+        await runner.RunAsync(new LaunchPlan(
             commandInterpreter,
-            "/d /c exit 0",
-            Path.GetTempPath()));
+            Path.GetTempPath(),
+            ["/d", "/c", "exit 0"],
+            System.Collections.Immutable.ImmutableDictionary<string, string>.Empty));
     }
 }

@@ -102,6 +102,15 @@ public sealed class SyntheticUpdateLifecycleTests
             Assert.Equal(InstallState.Installed, installation.InstallStatus);
             Assert.Equal("2.0.0", installation.Version);
             Assert.Equal("2.0.0", installation.CachedManifestVersion);
+            Assert.Equal("2.0.0", installation.InstalledManifestBuildVersion);
+            Assert.Equal(
+                Convert.ToHexString(SHA1.HashData(await File.ReadAllBytesAsync(
+                    Path.Combine(FixtureRoot, "new.manifest")))).ToLowerInvariant(),
+                installation.InstalledManifestSha1);
+            Assert.Equal(
+                "d81d6a12b85b9909a924de02f360f2da749cc1576d6320e015fc6f9dc9f58ebf",
+                installation.InstalledManifestSha256);
+            Assert.Equal(installation.InstalledManifestSha256, installation.AvailableManifestDigest);
         }
         finally
         {
@@ -529,7 +538,11 @@ public sealed class SyntheticUpdateLifecycleTests
             repository,
             storage,
             auth,
-            new RecordingGameProcessRunner());
+            new RecordingGameProcessRunner(),
+            new LibraryService(repository, storage),
+            new EpicLaunchPlanner(),
+            new TestRuntimeProfileResolver(),
+            new TestInstallRecoveryStatus());
         var contentClient = new HttpClient(contentHandler ?? new FixtureContentHandler());
         var downloads = new DownloadManager(NullLogger<DownloadManager>.Instance, contentClient);
         var manager = new InstallManager(

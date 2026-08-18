@@ -76,7 +76,7 @@
                           Margin="12" />
                     </Border>
                     <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="17" FontWeight="SemiBold" Margin="0,14,0,0" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Grid.Row="2" Text="{Binding BuildVersion}" FontSize="12" Foreground="#9EA3B0" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Row="2" Text="{Binding AssetBuildVersion}" FontSize="12" Foreground="#9EA3B0" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
                   </Grid>
                 </Border>
               </DataTemplate>

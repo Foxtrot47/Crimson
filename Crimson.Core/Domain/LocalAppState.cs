@@ -13,6 +13,18 @@ public class LocalAppState
     [JsonPropertyName("cached_manifest_version")]
     public string CachedManifestVersion { get; set; }
 
+    [JsonPropertyName("installed_manifest_build_version")]
+    public string? InstalledManifestBuildVersion { get; set; }
+
+    [JsonPropertyName("installed_manifest_sha1")]
+    public string? InstalledManifestSha1 { get; set; }
+
+    [JsonPropertyName("installed_manifest_sha256")]
+    public string? InstalledManifestSha256 { get; set; }
+
+    [JsonPropertyName("available_manifest_digest")]
+    public string? AvailableManifestDigest { get; set; }
+
     [JsonPropertyName("base_urls")]
     public List<string> BaseUrls { get; set; }
 

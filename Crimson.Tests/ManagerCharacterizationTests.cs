@@ -70,7 +70,11 @@ public sealed class ManagerCharacterizationTests : IDisposable
             repository,
             storage,
             authentication,
-            new RecordingGameProcessRunner());
+            new RecordingGameProcessRunner(),
+            new LibraryService(repository, storage),
+            new EpicLaunchPlanner(),
+            new TestRuntimeProfileResolver(),
+            new TestInstallRecoveryStatus());
         Game? published = null;
         manager.LibraryUpdated += games => published = games.Single(candidate => candidate.AppName == game.AppName);
 
@@ -116,21 +120,71 @@ public sealed class ManagerCharacterizationTests : IDisposable
             repository,
             storage,
             authentication,
-            processRunner);
+            processRunner,
+            new LibraryService(repository, storage),
+            new EpicLaunchPlanner(),
+            new TestRuntimeProfileResolver(),
+            new TestInstallRecoveryStatus());
 
         await manager.LaunchApp(game.AppName);
 
         Assert.Equal(1, repository.GameTokenRequests);
-        var startInfo = Assert.IsType<GameProcessStartInfo>(processRunner.LastStartInfo);
-        Assert.Equal(Path.Combine(installRoot, "LaunchStub.exe"), startInfo.FileName);
-        Assert.Equal(installRoot, startInfo.WorkingDirectory);
+        var launchPlan = Assert.IsType<LaunchPlan>(processRunner.LastPlan);
+        Assert.Equal(Path.Combine(installRoot, "LaunchStub.exe"), launchPlan.FileName);
+        Assert.Equal(installRoot, launchPlan.WorkingDirectory);
         Assert.Equal(
-            "-AUTH_LOGIN=unused -AUTH_PASSWORD=launch-code -AUTH_TYPE=exchangecode " +
-            "-epicapp=launch-game -epicenv=Prod -EpicPortal " +
-            "-epicusername=\"Test Player\" -epicuserid=test-account " +
-            "-epicsandboxid=synthetic -epiclocale=en",
-            startInfo.Arguments);
+            [
+                "-AUTH_LOGIN=unused",
+                "-AUTH_PASSWORD=launch-code",
+                "-AUTH_TYPE=exchangecode",
+                "-epicapp=launch-game",
+                "-epicenv=Prod",
+                "-EpicPortal",
+                "-epicusername=Test Player",
+                "-epicuserid=test-account",
+                "-epicsandboxid=synthetic",
+                "-epiclocale=en"
+            ],
+            launchPlan.Arguments.ToArray());
     }
+
+    [Fact]
+    public async Task LibraryManager_BlocksLaunchDuringRecovery()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-storage-{Guid.NewGuid():N}");
+        _storageRoots.Add(root);
+        var installRoot = Path.Combine(root, "installed-game");
+        Directory.CreateDirectory(installRoot);
+        var storage = new Storage(_logger, root);
+        var game = Game("launch-game", InstallState.Installed);
+        game.LocalAppState!.InstallPath = installRoot;
+        game.LocalAppState.Executable = "LaunchStub.exe";
+        storage.SaveMetaData(game);
+        storage.AddToLocalAppState(game.AppName, game.LocalAppState);
+        var authentication = new AuthManager(
+            _logger,
+            storage,
+            new TestCredentialProtector(),
+            new HttpClient());
+        var repository = new LaunchStoreRepository();
+        var processRunner = new RecordingGameProcessRunner();
+        var manager = new LibraryManager(
+            _logger,
+            repository,
+            storage,
+            authentication,
+            processRunner,
+            new LibraryService(repository, storage),
+            new EpicLaunchPlanner(),
+            new TestRuntimeProfileResolver(),
+            new TestInstallRecoveryStatus(unresolved: true));
+
+        await manager.LaunchApp(game.AppName);
+
+        Assert.Equal(0, repository.GameTokenRequests);
+        Assert.Null(processRunner.LastPlan);
+    }
+
     [Fact]
     public void InstallManager_QueuesValidActionsAndPreservesOrder()
     {
@@ -316,12 +370,17 @@ public sealed class ManagerCharacterizationTests : IDisposable
             storage,
             new TestCredentialProtector(),
             new HttpClient());
+        var repository = new UnusedStoreRepository();
         return new LibraryManager(
             _logger,
-            new UnusedStoreRepository(),
+            repository,
             storage,
             auth,
-            new RecordingGameProcessRunner());
+            new RecordingGameProcessRunner(),
+            new LibraryService(repository, storage),
+            new EpicLaunchPlanner(),
+            new TestRuntimeProfileResolver(),
+            new TestInstallRecoveryStatus());
     }
 
     private InstallManager InstallManagerWith(params Game[] games)
@@ -443,7 +502,13 @@ public sealed class ManagerCharacterizationTests : IDisposable
             string appName,
             EpicPayloadPlatform platform,
             string label = "Live",
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            CancellationToken cancellationToken = default) => Task.FromResult(
+            RepositoryResult<GetManifestUrlData>.Success(new GetManifestUrlData
+            {
+                BaseUrls = [],
+                ManifestUrls = [],
+                ManifestHash = "new-digest"
+            }));
     }
 
     private sealed class LaunchStoreRepository : IStoreRepository

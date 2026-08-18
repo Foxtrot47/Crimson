@@ -6,6 +6,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Linq;
 using System.Numerics;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -293,7 +294,11 @@ public class InstallManager
             }
             else if (CurrentInstall.Action == ActionType.Update)
             {
-                await PrepareUpdateTasks(gameData, data);
+                await PrepareUpdateTasks(
+                    gameData,
+                    data,
+                    ComputeManifestSha1(manifestData),
+                    ComputeManifestSha256(manifestData));
             }
             else if (CurrentInstall.Action == ActionType.Repair)
             {
@@ -728,6 +733,10 @@ public class InstallManager
                     localAppState.LaunchParameters = manifestData.ManifestMeta.LaunchCommand;
                     localAppState.RequiresOt = requireOwnerShipToken;
                     localAppState.Version = manifestData.ManifestMeta.BuildVersion;
+                    localAppState.InstalledManifestBuildVersion = manifestData.ManifestMeta.BuildVersion;
+                    localAppState.InstalledManifestSha1 = ComputeManifestSha1(manifestBytes);
+                    localAppState.InstalledManifestSha256 = ComputeManifestSha256(manifestBytes);
+                    localAppState.AvailableManifestDigest = localAppState.InstalledManifestSha256;
                     localAppState.Title = gameData.AppTitle;
 
                     if (manifestData.ManifestMeta.UninstallActionPath is { } uninstallPath)
@@ -772,7 +781,9 @@ public class InstallManager
                         gameData,
                         manifestData,
                         localAppState,
-                        CurrentInstall.Location);
+                        CurrentInstall.Location,
+                        ComputeManifestSha1(manifestBytes),
+                        ComputeManifestSha256(manifestBytes));
                     if (invalidFilesList.Count > 0)
                     {
                         _logger.Warning("UpdateInstalledGameStatus: {Count} files failed verification for {AppName}. Marking as Broken.",
@@ -975,7 +986,11 @@ public class InstallManager
     /// Downloads only chunks for changed/added files and deletes removed files.
     /// Falls back to full reinstall if old manifest is unavailable.
     /// </summary>
-    private async Task PrepareUpdateTasks(Game gameData, Manifest newManifest)
+    private async Task PrepareUpdateTasks(
+        Game gameData,
+        Manifest newManifest,
+        string newManifestSha1,
+        string newManifestSha256)
     {
         // Try to load the old manifest for the currently installed version
         var localAppState = _storage.LocalAppStateDictionary
@@ -1034,7 +1049,9 @@ public class InstallManager
             gameData,
             newManifest,
             localAppState,
-            CurrentInstall.Location);
+            CurrentInstall.Location,
+            newManifestSha1,
+            newManifestSha256);
         _updateTransaction = UpdateTransactionState.Create(
             CurrentInstall.Location,
             updatePlan.ChangedFiles.Select(file => file.Path.Value),
@@ -1062,7 +1079,9 @@ public class InstallManager
         Game gameData,
         Manifest manifest,
         LocalAppState existing,
-        string installPath)
+        string installPath,
+        string manifestSha1,
+        string manifestSha256)
     {
         var state = JsonSerializer.Deserialize<LocalAppState>(JsonSerializer.Serialize(existing))
             ?? new LocalAppState { AppName = gameData.AppName };
@@ -1074,6 +1093,10 @@ public class InstallManager
         state.LaunchParameters = manifest.ManifestMeta.LaunchCommand;
         state.RequiresOt = gameData.Metadata?.CustomAttributes?.OwnershipToken?.Value == "true";
         state.Version = manifest.ManifestMeta.BuildVersion;
+        state.InstalledManifestBuildVersion = manifest.ManifestMeta.BuildVersion;
+        state.InstalledManifestSha1 = manifestSha1;
+        state.InstalledManifestSha256 = manifestSha256;
+        state.AvailableManifestDigest = manifestSha256;
         state.Title = gameData.AppTitle;
         if (manifest.ManifestMeta.UninstallActionPath is { } uninstallPath)
         {
@@ -1084,6 +1107,12 @@ public class InstallManager
         }
         return state;
     }
+
+    private static string ComputeManifestSha1(byte[] manifestBytes) =>
+        Convert.ToHexString(SHA1.HashData(manifestBytes)).ToLowerInvariant();
+
+    private static string ComputeManifestSha256(byte[] manifestBytes) =>
+        Convert.ToHexString(SHA256.HashData(manifestBytes)).ToLowerInvariant();
 
     private static void PrepareUpdateDirectories(UpdateTransactionState transaction)
     {

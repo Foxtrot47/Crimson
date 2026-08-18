@@ -81,7 +81,7 @@ public partial class ShellViewModel : ObservableObject, IActivatable, IDisposabl
         var game = Library.Games.FirstOrDefault(item => item.AppName == appName);
         return game is null
             ? Library
-            : new GameDetailsViewModel(game.AppName, game.Title, game.ImageUri, game.BuildVersion);
+            : new GameDetailsViewModel(game.AppName, game.Title, game.ImageUri, game.AssetBuildVersion);
     }
 
     public void Dispose()

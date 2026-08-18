@@ -6,22 +6,24 @@ namespace Crimson.Platform.Windows;
 public sealed class WindowsGameProcessRunner : IGameProcessRunner
 {
     public async Task RunAsync(
-        GameProcessStartInfo startInfo,
+        LaunchPlan launchPlan,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(startInfo);
-        using var process = new Process
+        ArgumentNullException.ThrowIfNull(launchPlan);
+        var processStartInfo = new ProcessStartInfo
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = startInfo.FileName,
-                Arguments = startInfo.Arguments,
-                WorkingDirectory = startInfo.WorkingDirectory,
-                UseShellExecute = false
-            }
+            FileName = launchPlan.FileName,
+            WorkingDirectory = launchPlan.WorkingDirectory,
+            UseShellExecute = false
         };
+        foreach (var argument in launchPlan.Arguments)
+            processStartInfo.ArgumentList.Add(argument);
+        foreach (var (name, value) in launchPlan.Environment)
+            processStartInfo.Environment[name] = value;
+
+        using var process = new Process { StartInfo = processStartInfo };
         if (!process.Start())
-            throw new InvalidOperationException($"Failed to launch '{startInfo.FileName}'.");
+            throw new InvalidOperationException($"Failed to launch '{launchPlan.FileName}'.");
         await process.WaitForExitAsync(cancellationToken);
     }
 }

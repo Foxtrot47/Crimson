@@ -19,14 +19,30 @@ internal sealed class TestCredentialProtector : ICredentialProtector
 
 internal sealed class RecordingGameProcessRunner : IGameProcessRunner
 {
-    public GameProcessStartInfo? LastStartInfo { get; private set; }
+    public LaunchPlan? LastPlan { get; private set; }
 
     public Task RunAsync(
-        GameProcessStartInfo startInfo,
+        LaunchPlan launchPlan,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        LastStartInfo = startInfo;
+        LastPlan = launchPlan;
         return Task.CompletedTask;
     }
+}
+
+internal sealed class TestRuntimeProfileResolver : IRuntimeProfileResolver
+{
+    public Task<RuntimeProfile> ResolveAsync(
+        GameSnapshot game,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new RuntimeProfile("Test"));
+    }
+}
+
+internal sealed class TestInstallRecoveryStatus(bool unresolved = false) : IInstallRecoveryStatus
+{
+    public bool HasUnresolvedTransaction(string installRoot) => unresolved;
 }

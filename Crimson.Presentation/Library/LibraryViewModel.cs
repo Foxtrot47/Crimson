@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
+using Crimson.Models;
 
 namespace Crimson.Presentation;
 
@@ -9,7 +10,7 @@ public sealed record LibraryItemViewModel(
     string AppName,
     string Title,
     Uri? ImageUri,
-    string BuildVersion,
+    string AssetBuildVersion,
     bool IsInstalled);
 
 public partial class LibraryViewModel : ObservableObject, IActivatable
@@ -57,8 +58,9 @@ public partial class LibraryViewModel : ObservableObject, IActivatable
         ErrorMessage = null;
         try
         {
-            var snapshot = await _libraryService.GetSnapshotAsync(cancellationToken);
-            await ApplySnapshotAsync(snapshot, cancellationToken);
+            var result = await _libraryService.RefreshAsync(cancellationToken: cancellationToken);
+            ErrorMessage = result.Failure?.Message;
+            await ApplySnapshotAsync(result.Snapshot, cancellationToken);
         }
         finally
         {
@@ -113,9 +115,8 @@ public partial class LibraryViewModel : ObservableObject, IActivatable
                         game.AppName,
                         game.Title,
                         game.ImageUri,
-                        game.BuildVersion,
-                        game.IsInstalled)));
-                ErrorMessage = snapshot.Error;
+                        game.AssetBuildVersion,
+                        game.InstallState is InstallState.Installed or InstallState.NeedUpdate)));
                 OnPropertyChanged(nameof(HasGames));
                 OnPropertyChanged(nameof(IsEmpty));
             }, cancellationToken);

@@ -50,6 +50,9 @@ namespace Crimson
                 services.AddSingleton<ICredentialProtector, WindowsCredentialProtector>();
                 services.AddSingleton<IGameProcessRunner, WindowsGameProcessRunner>();
                 services.AddSingleton<IPlatformPathLauncher, WindowsPlatformPathLauncher>();
+                services.AddSingleton<ILaunchPlanner, EpicLaunchPlanner>();
+                services.AddSingleton<IRuntimeProfileResolver, WindowsRuntimeProfileResolver>();
+                services.AddSingleton<IInstallRecoveryStatus, FileInstallRecoveryStatus>();
                 services.AddSingleton(provider => new FileSettingsService(
                     provider.GetRequiredService<IApplicationDirectories>().DataRoot));
                 services.AddSingleton<ISettingsStore>(provider =>
@@ -87,6 +90,8 @@ namespace Crimson
                 services.AddSingleton(provider => new Storage(
                     provider.GetRequiredService<ILogger>(),
                     provider.GetRequiredService<IApplicationDirectories>().DataRoot));
+                services.AddSingleton<ILibraryStore>(provider =>
+                    provider.GetRequiredService<Storage>());
                 services.AddSingleton<AuthManager>(provider => new AuthManager(
                     provider.GetRequiredService<ILogger>(),
                     provider.GetRequiredService<Storage>(),
@@ -97,6 +102,7 @@ namespace Crimson
                     provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<EpicGamesRepository>>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicApi"),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
+                services.AddSingleton<ILibraryService, LibraryService>();
                 services.AddSingleton<LibraryManager>();
                 services.AddSingleton<IInstallFileSystemProbe, InstallFileSystemProbe>();
                 services.AddSingleton<InstallManager>();

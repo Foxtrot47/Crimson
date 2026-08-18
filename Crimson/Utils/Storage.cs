@@ -14,7 +14,7 @@ using Serilog;
 
 namespace Crimson.Utils
 {
-    public class Storage : ICredentialStore
+    public class Storage : ICredentialStore, ILibraryStore
     {
         private readonly string _appDataPath;
         private readonly string _userDataFile;
@@ -108,6 +108,77 @@ namespace Crimson.Utils
                 : new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
             PublishGameMetadataSnapshot();
             PublishLocalAppStateSnapshot();
+        }
+
+        public LibraryStoreState Read()
+        {
+            var assets = ReadState(
+                    _gameAssetsFile,
+                    JsonStateSchemas.GameAssets,
+                    authoritative: false)
+                ?? [];
+            return new LibraryStoreState(
+                assets,
+                GameMetaDataDictionary,
+                LocalAppStateDictionary);
+        }
+
+        public LibraryStoreState WriteRefresh(
+            IReadOnlyList<Asset> assets,
+            IReadOnlyList<Game> games,
+            IReadOnlyList<LibraryInstallationRefresh> installationRefreshes)
+        {
+            ArgumentNullException.ThrowIfNull(assets);
+            ArgumentNullException.ThrowIfNull(games);
+            ArgumentNullException.ThrowIfNull(installationRefreshes);
+            lock (_writeLock)
+            {
+                AtomicJsonFile.Write(_gameAssetsFile, assets.ToList(), JsonStateSchemas.GameAssets);
+                var currentAppNames = games.Select(game => game.AppName).ToHashSet(StringComparer.Ordinal);
+                foreach (var existingAppName in _gameMetaDataDictionary.Keys)
+                {
+                    if (currentAppNames.Contains(existingAppName))
+                        continue;
+                    var stalePath = ResolveAppDataPath(
+                        "metadata",
+                        $"{StorageKeyCodec.Encode(existingAppName)}.json");
+                    File.Delete(stalePath);
+                    File.Delete(stalePath + ".bak");
+                    _gameMetaDataDictionary.TryRemove(existingAppName, out _);
+                }
+                foreach (var game in games)
+                {
+                    var path = ResolveAppDataPath(
+                        "metadata",
+                        $"{StorageKeyCodec.Encode(game.AppName)}.json");
+                    AtomicJsonFile.Write(path, game, JsonStateSchemas.GameMetadata);
+                    _gameMetaDataDictionary[game.AppName] = game;
+                }
+
+                foreach (var refresh in installationRefreshes)
+                {
+                    if (!_localAppStateDictionary.TryGetValue(refresh.AppName, out var local))
+                        continue;
+                    local.AvailableManifestDigest = refresh.AvailableManifestDigest;
+                    var classification = GameUpdateClassifier.Classify(local, refresh.AssetBuildVersion);
+                    if (local.InstallStatus is InstallState.Installed or InstallState.NeedUpdate)
+                    {
+                        local.InstallStatus = classification == GameUpdateClassification.UpdateAvailable
+                            ? InstallState.NeedUpdate
+                            : InstallState.Installed;
+                    }
+                }
+                AtomicJsonFile.Write(
+                    _localAppStateFile,
+                    _localAppStateDictionary.ToDictionary(pair => pair.Key, pair => pair.Value),
+                    JsonStateSchemas.LocalInstallations);
+                PublishGameMetadataSnapshot();
+                PublishLocalAppStateSnapshot();
+                return new LibraryStoreState(
+                    assets,
+                    GameMetaDataDictionary,
+                    LocalAppStateDictionary);
+            }
         }
 
         public Task<UserData?> GetUserData() =>

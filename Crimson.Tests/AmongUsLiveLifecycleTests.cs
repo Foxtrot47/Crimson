@@ -107,12 +107,17 @@ public sealed class AmongUsLiveLifecycleTests
             NullLogger<EpicGamesRepository>.Instance,
             apiClient,
             repositoryContentClient);
+        var libraryService = new LibraryService(repository, storage);
         var library = new LibraryManager(
             logger,
             repository,
             storage,
             authentication,
-            new WindowsGameProcessRunner());
+            new WindowsGameProcessRunner(),
+            libraryService,
+            new EpicLaunchPlanner(),
+            new WindowsRuntimeProfileResolver(),
+            new FileInstallRecoveryStatus());
         var downloads = new DownloadManager(
             NullLogger<DownloadManager>.Instance,
             downloadContentClient);

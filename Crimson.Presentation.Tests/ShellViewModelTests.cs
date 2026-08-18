@@ -69,6 +69,8 @@ public sealed class ShellViewModelTests
 
     private sealed class StubLibraryService : ILibraryService
     {
+        public LibrarySnapshot Snapshot { get; } = LibrarySnapshot.Empty;
+
         public event EventHandler<LibrarySnapshot>? Changed
         {
             add { }
@@ -76,7 +78,12 @@ public sealed class ShellViewModelTests
         }
 
         public Task<LibrarySnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new LibrarySnapshot(1, []));
+            Task.FromResult(Snapshot);
+
+        public Task<LibraryRefreshResult> RefreshAsync(
+            bool force = false,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new LibraryRefreshResult(Snapshot));
     }
 
     private sealed class StubSettingsService : ISettingsService
