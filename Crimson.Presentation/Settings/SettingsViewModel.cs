@@ -16,6 +16,12 @@ public partial class SettingsViewModel : ObservableObject, IActivatable
     private string _defaultInstallLocation = string.Empty;
 
     [ObservableProperty]
+    private bool _micaEnabled;
+
+    [ObservableProperty]
+    private bool _advancedSettingsExpanded;
+
+    [ObservableProperty]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -43,6 +49,7 @@ public partial class SettingsViewModel : ObservableObject, IActivatable
         {
             var settings = await _settings.GetAsync(cancellationToken);
             DefaultInstallLocation = settings.DefaultInstallLocation;
+            MicaEnabled = settings.MicaEnabled;
         }
         catch (Exception exception)
         {
@@ -71,7 +78,9 @@ public partial class SettingsViewModel : ObservableObject, IActivatable
         StatusMessage = null;
         try
         {
-            await _settings.SaveAsync(new AppSettings(DefaultInstallLocation), cancellationToken);
+            await _settings.SaveAsync(
+                new AppSettings(DefaultInstallLocation, MicaEnabled),
+                cancellationToken);
             StatusMessage = "Settings saved";
         }
         catch (Exception exception)
@@ -85,6 +94,12 @@ public partial class SettingsViewModel : ObservableObject, IActivatable
     }
 
     [RelayCommand]
-    private Task OpenLogsAsync(CancellationToken cancellationToken) =>
+    private Task OpenLogsDirectoryAsync(CancellationToken cancellationToken) =>
         _pathLauncher.OpenAsync(_logsDirectory, cancellationToken);
+
+    partial void OnMicaEnabledChanged(bool value)
+    {
+        if (_active)
+            _ = SaveAsync(CancellationToken.None);
+    }
 }

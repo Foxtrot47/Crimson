@@ -8,10 +8,14 @@ public sealed class DesktopApplicationControl(
     IClassicDesktopStyleApplicationLifetime lifetime,
     Window mainWindow) : IDesktopApplicationControl
 {
-    public void ShowMainWindow()
+    public void ToggleMainWindow()
     {
-        if (!mainWindow.IsVisible)
-            mainWindow.Show();
+        if (mainWindow.IsVisible)
+        {
+            mainWindow.Hide();
+            return;
+        }
+        mainWindow.Show();
         mainWindow.WindowState = WindowState.Normal;
         mainWindow.Activate();
     }

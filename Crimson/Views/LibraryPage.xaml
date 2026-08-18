@@ -5,13 +5,15 @@
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Crimson.Views"
+    xmlns:presentation="using:Crimson.Presentation"
+    xmlns:utils="using:Crimson.Utils"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
     <Grid x:Name="GamesGrid" HorizontalAlignment="Center">
         <Grid.Resources>
             <UniformGridLayout x:Name="UniformGridLayout" />
-            <DataTemplate x:Key="GameCardTemplate" x:DataType="local:LibraryItem">
+            <DataTemplate x:Key="GameCardTemplate" x:DataType="presentation:LibraryItemViewModel">
                 <Button
                     Padding="16,16,16,16"
                     Background="Transparent"
@@ -24,7 +26,7 @@
                             Height="300"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Source="{x:Bind Image}"
+                            Source="{x:Bind ImageUri, Converter={StaticResource UriToBitmapImageConverter}}"
                             Stretch="UniformToFill" />
                         <TextBlock
                             MaxWidth="200"
@@ -42,7 +44,7 @@
         <StackPanel
             x:Name="LoadingSection"
             VerticalAlignment="Center"
-            Visibility="{x:Bind ViewModel.ShowLoadingScreen, Converter={StaticResource BoolToVisibilityConverter}, Mode=TwoWay}">
+            Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
             <ProgressRing
                 Width="50"
                 Height="50"
@@ -57,11 +59,12 @@
             x:Name="ItemsRepeater"
             Margin="0,20,0,20"
             ItemTemplate="{StaticResource GameCardTemplate}"
-            ItemsSource="{x:Bind ViewModel.S_gamesList, Mode=TwoWay}"
+            ItemsSource="{x:Bind ViewModel.Games, Mode=OneWay}"
             Layout="{StaticResource UniformGridLayout}" />
     </Grid>
 
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <utils:UriToBitmapImageConverter x:Key="UriToBitmapImageConverter" />
     </Page.Resources>
 </Page>

@@ -1,6 +1,4 @@
-﻿using System;
-using Crimson.Core;
-using Crimson.Models;
+using Crimson.Presentation;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -8,129 +6,19 @@ namespace Crimson.Views;
 
 public sealed partial class CurrentDownloadControl : UserControl
 {
-    private readonly LibraryManager _libraryManager;
-    private readonly InstallManager _installManager;
     public CurrentDownloadControl()
     {
         InitializeComponent();
-        _installManager = App.GetService<InstallManager>();
-        _libraryManager = App.GetService<LibraryManager>();
-
-        var gameInQueue = _installManager.CurrentInstall;
-        HandleInstallationStatusChanged(gameInQueue);
-        _installManager.InstallationStatusChanged += HandleInstallationStatusChanged;
-        _installManager.InstallProgressUpdate += InstallationProgressUpdate;
-
+        ViewModel = App.GetService<CurrentOperationViewModel>();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
-    // Handing Installtion State Change
-    // This function is never run on UI Thread
-    // So always make sure to use Dispatcher Queue to update UI thread
-    private void HandleInstallationStatusChanged(InstallItem installItem)
-    {
-        try
-        {
-            var game = installItem;
-            if (game == null)
-            {
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    EmptyDownloadText.Visibility = Visibility.Visible;
-                    DownloadStatus.Visibility = Visibility.Collapsed;
-                });
-                return;
-            }
+    public CurrentOperationViewModel ViewModel { get; }
 
-            var gameInfo = _libraryManager.GetGameInfo(installItem.AppName);
-            if (gameInfo == null) return;
+    private async void OnLoaded(object sender, RoutedEventArgs args) =>
+        await ViewModel.ActivateAsync();
 
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                UpdateStatus(installItem, gameInfo.AppTitle);
-            });
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex.ToString());
-        }
-    }
-
-    private void UpdateStatus(InstallItem installItem, string Title)
-    {
-        DownloadSpeed.Text = "";
-        DownloadedSize.Text = "";
-        ProgressBar.IsEnabled = true;
-        ProgressBar.IsIndeterminate = true;
-        EmptyDownloadText.Visibility = Visibility.Collapsed;
-        DownloadStatus.Visibility = Visibility.Visible;
-        GameName.Text = Title;
-
-        switch (installItem.Status)
-        {
-            case ActionStatus.Processing:
-                ProgressBar.IsIndeterminate = false;
-                ProgressBar.Value = installItem.ProgressPercentage;
-                DownloadedSize.Text =
-                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
-                DownloadSpeed.Text = $@"{installItem.DownloadSpeedRawMiB} MB/s";
-                break;
-            case ActionStatus.Paused:
-                ProgressBar.IsIndeterminate = false;
-                ProgressBar.Value = installItem.ProgressPercentage;
-                DownloadedSize.Text =
-                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
-                DownloadSpeed.Text = "Paused";
-                break;
-            case ActionStatus.Success:
-                DownloadedSize.Text = GetActionLabel(installItem.Action) + " Completed";
-                DownloadSpeed.Text = installItem.StatusMessage ?? string.Empty;
-                ProgressBar.IsIndeterminate = false;
-                ProgressBar.Value = 100;
-                break;
-            case ActionStatus.Failed:
-                DownloadedSize.Text = GetActionLabel(installItem.Action) + " Failed";
-                DownloadSpeed.Text = installItem.StatusMessage ?? string.Empty;
-                ProgressBar.IsIndeterminate = false;
-                ProgressBar.Value = 100;
-                break;
-            case ActionStatus.Cancelled:
-                DownloadedSize.Text = GetActionLabel(installItem.Action) + " Cancelled";
-                DownloadSpeed.Text = string.Empty;
-                ProgressBar.IsIndeterminate = false;
-                ProgressBar.Value = 100;
-                break;
-        }
-    }
-
-    private void InstallationProgressUpdate(InstallItem installItem)
-    {
-        try
-        {
-            if (installItem == null) return;
-
-            if (installItem.Status != ActionStatus.Processing) return;
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                ProgressBar.Value = installItem.ProgressPercentage;
-                DownloadedSize.Text =
-                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
-                DownloadSpeed.Text = $@"{installItem.DownloadSpeedRawMiB} MB/s";
-            });
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex.ToString());
-        }
-    }
-
-    private static string GetActionLabel(ActionType action) => action switch
-    {
-        ActionType.Install => "Installation",
-        ActionType.Update => "Update",
-        ActionType.Repair or ActionType.Verify => "Verification",
-        ActionType.Uninstall => "Uninstall",
-        ActionType.Move => "Move",
-        ActionType.Import => "Import",
-        _ => "Operation"
-    };
+    private void OnUnloaded(object sender, RoutedEventArgs args) =>
+        ViewModel.Deactivate();
 }

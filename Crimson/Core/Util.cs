@@ -1,21 +1,11 @@
 ﻿using System;
 using System.IO;
 using System.Security.Cryptography;
-using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace Crimson.Core
 {
     public class Util
     {
-        public static BitmapImage GetBitmapImage(string imageUrl)
-        {
-            if (string.IsNullOrEmpty(imageUrl)) return null;
-            var bitmapImage = new BitmapImage
-            {
-                UriSource = new Uri(imageUrl)
-            };
-            return bitmapImage;
-        }
 
         public static string ConvertMiBToGiBOrMiB(double mib)
         {

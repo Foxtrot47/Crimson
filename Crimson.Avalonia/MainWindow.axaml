@@ -115,7 +115,7 @@
           </Border>
           <StackPanel Orientation="Horizontal" Spacing="10">
             <Button Content="Save settings" Command="{Binding SaveCommand}" Padding="18,9" />
-            <Button Content="Open logs directory" Command="{Binding OpenLogsCommand}" Padding="18,9" />
+            <Button Content="Open logs directory" Command="{Binding OpenLogsDirectoryCommand}" Padding="18,9" />
             <ProgressBar Width="100" IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
           </StackPanel>
           <TextBlock Text="{Binding StatusMessage}" Foreground="#9EA3B0" />

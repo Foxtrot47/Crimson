@@ -1,6 +1,6 @@
 namespace Crimson.Core;
 
-public sealed record AppSettings(string DefaultInstallLocation);
+public sealed record AppSettings(string DefaultInstallLocation, bool MicaEnabled = false);
 
 public interface ISettingsService
 {

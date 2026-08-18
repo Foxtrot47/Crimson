@@ -47,6 +47,7 @@
         <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
         <ProjectReference Include="..\Crimson.Infrastructure\Crimson.Infrastructure.csproj" />
         <ProjectReference Include="..\Crimson.Platform.Windows\Crimson.Platform.Windows.csproj" />
+        <ProjectReference Include="..\Crimson.Presentation\Crimson.Presentation.csproj" />
     </ItemGroup>
 
     <!-- 

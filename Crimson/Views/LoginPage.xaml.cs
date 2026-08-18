@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Threading.Tasks;
 using Crimson.Core;
+using Crimson.Presentation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using Serilog;
@@ -14,10 +16,11 @@ namespace Crimson.Views;
 /// </summary>
 public sealed partial class LoginPage : Page
 {
-    private readonly AuthManager _authManager = App.GetService<AuthManager>();
+    private readonly LoginViewModel _viewModel = App.GetService<LoginViewModel>();
     private readonly ILogger _log;
     private readonly IApplicationDirectories _directories = App.GetService<IApplicationDirectories>();
     private readonly EpicLoginMessageGate _loginMessageGate = new();
+    private bool _initialized;
 
     public LoginPage()
     {
@@ -60,11 +63,15 @@ public sealed partial class LoginPage : Page
             return;
         }
 
-        await _authManager.DoExchangeLogin(exchangeCode);
+        await _viewModel.AcceptExchangeCodeAsync(exchangeCode);
     }
-    public async void InitWebView()
+
+    public async Task InitWebViewAsync()
     {
-        _log.Information("InitWebView: WebView Initializing}");
+        if (_initialized)
+            return;
+        _initialized = true;
+        _log.Information("InitWebView: WebView Initializing");
         Environment.SetEnvironmentVariable(
             "WEBVIEW2_USER_DATA_FOLDER",
             _directories.WebViewDataDirectory);
@@ -77,6 +84,9 @@ public sealed partial class LoginPage : Page
     }
     public void CloseWebView()
     {
+        if (!_initialized)
+            return;
+        _initialized = false;
         LoginWebView.NavigationStarting -= WebView_NavigationStarting;
         LoginWebView.WebMessageReceived -= WebView_WebMessageReceived;
         LoginWebView.Close();

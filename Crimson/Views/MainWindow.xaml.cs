@@ -1,7 +1,9 @@
 ﻿using System;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Crimson.Core;
+using Crimson.Presentation;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -18,9 +20,11 @@ namespace Crimson.Views;
 public sealed partial class MainWindow : Window
 {
     public bool IsLoggedIn;
-    private ILogger _log = App.GetService<ILogger>();
-    private readonly AuthManager _authManager;
+    private readonly ILogger _log;
     private readonly InstallManager _installManager;
+    private readonly ShellViewModel _shell;
+    private readonly LoginViewModel _login;
+    private readonly INavigationService _navigation;
 
     WindowsSystemDispatcherQueueHelper _mWsdqHelper;
     MicaController _mBackdropController;
@@ -29,6 +33,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Closed += Window_Closed;
 
         // Disable setting mica as default
         // We will config later when we do configuration manager
@@ -36,16 +41,29 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
-        _authManager = App.GetService<AuthManager>();
         _installManager = App.GetService<InstallManager>();
+        _shell = App.GetService<ShellViewModel>();
+        _login = App.GetService<LoginViewModel>();
+        _navigation = App.GetService<INavigationService>();
         _log = App.GetService<ILogger>();
-
+        _login.PropertyChanged += OnLoginPropertyChanged;
+        _navigation.Changed += OnNavigationChanged;
         IsLoggedIn = false;
-        Task.Run(async () =>
+        _ = InitializeAsync();
+    }
+
+    private async Task InitializeAsync()
+    {
+        try
         {
-            _authManager.AuthStatusChanged += AuthStatusChangedHandler;
-            await _authManager.CheckAuthStatus();
-        });
+            await _shell.ActivateAsync();
+            UpdateUIBasedOnAuthenticationStatus(_login.State);
+        }
+        catch (Exception exception)
+        {
+            _log.Error(exception, "Main window activation failed");
+            UpdateUIBasedOnAuthenticationStatus(EpicAuthenticationState.Failed);
+        }
     }
 
     private void NavControl_BackRequested(NavigationView sender,
@@ -64,16 +82,17 @@ public sealed partial class MainWindow : Window
 
     private void NavControl_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
-        if (args.IsSettingsInvoked == true)
+        if (args.IsSettingsInvoked)
         {
-            NavControl_Navigate(typeof(SettingsPage), args.RecommendedNavigationTransitionInfo);
+            _navigation.Navigate(new SettingsRoute());
+            return;
         }
-        else
-        if (args.InvokedItemContainer != null)
-        {
-            var navPageType = Type.GetType(args.InvokedItemContainer.Tag.ToString() ?? string.Empty);
-            NavControl_Navigate(navPageType, args.RecommendedNavigationTransitionInfo);
-        }
+
+        var tag = args.InvokedItemContainer?.Tag?.ToString();
+        if (tag == "Crimson.Views.LibraryPage")
+            _navigation.Navigate(new LibraryRoute());
+        else if (tag == "Crimson.Views.DownloadsPage")
+            _navigation.Navigate(new DownloadsRoute());
     }
 
     private void NavControl_Navigate(
@@ -88,44 +107,37 @@ public sealed partial class MainWindow : Window
         if (navPageType is not null && !Equals(preNavPageType, navPageType))
             ContentFrame.Navigate(navPageType, null, transitionInfo);
     }
-    private void UpdateUIBasedOnAuthenticationStatus(AuthenticationStatus authStatus)
+    private void UpdateUIBasedOnAuthenticationStatus(EpicAuthenticationState authStatus)
     {
-        Log.Information($"Auth status: {authStatus}");
-
+        _log.Information("Auth status: {Status}", authStatus);
         switch (authStatus)
         {
-            case AuthenticationStatus.Checking:
+            case EpicAuthenticationState.Checking:
+            case EpicAuthenticationState.Authenticating:
                 NavControl.Visibility = Visibility.Collapsed;
                 LoginPage.Visibility = Visibility.Collapsed;
                 LoginModal.Visibility = Visibility.Visible;
                 LoginModalTitle.Text = "Checking authentication status";
                 LoginModalDescription.Text = "Please wait...";
                 break;
-
-            case AuthenticationStatus.LoggedOut:
+            case EpicAuthenticationState.LoggedOut:
                 NavControl.Visibility = Visibility.Collapsed;
+                LoginModal.Visibility = Visibility.Collapsed;
                 LoginPage.Visibility = Visibility.Visible;
-                LoginPage.InitWebView();
+                _ = LoginPage.InitWebViewAsync();
                 break;
-
-            case AuthenticationStatus.LoggedIn:
-                Log.Information("Logged in");
+            case EpicAuthenticationState.LoggedIn:
                 LoginModalTitle.Text = "Login Success";
-
                 LoginPage.CloseWebView();
-
                 NavControl.Visibility = Visibility.Visible;
                 NavControl.IsEnabled = true;
                 LoginPage.Visibility = Visibility.Collapsed;
                 LoginModal.Visibility = Visibility.Collapsed;
                 NavControl.SelectedItem = NavControl.MenuItems[0];
-                NavControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
-                Log.Information("Opening Library Page");
-
-                _installManager.LoadPendingInstalls();
+                _navigation.Navigate(new LibraryRoute());
+                _ = _installManager.LoadPendingInstalls();
                 break;
-
-            case AuthenticationStatus.LoginFailed:
+            case EpicAuthenticationState.Failed:
                 LoginModalTitle.Text = "Login failed";
                 LoginModalDescription.Text = "Please try again";
                 LoginModal.Visibility = Visibility.Visible;
@@ -135,9 +147,32 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void AuthStatusChangedHandler(object sender, AuthStatusChangedEventArgs e)
+    private void OnLoginPropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
-        DispatcherQueue.TryEnqueue(() => UpdateUIBasedOnAuthenticationStatus(e.NewStatus));
+        if (args.PropertyName == nameof(LoginViewModel.State))
+            DispatcherQueue.TryEnqueue(() => UpdateUIBasedOnAuthenticationStatus(_login.State));
+    }
+
+    private void OnNavigationChanged(object? sender, AppRoute route)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            switch (route)
+            {
+                case LibraryRoute:
+                    NavControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
+                    break;
+                case GameRoute game:
+                    ContentFrame.Navigate(typeof(GameInfoPage), game.AppName, new EntranceNavigationTransitionInfo());
+                    break;
+                case DownloadsRoute:
+                    NavControl_Navigate(typeof(DownloadsPage), new EntranceNavigationTransitionInfo());
+                    break;
+                case SettingsRoute:
+                    NavControl_Navigate(typeof(SettingsPage), new EntranceNavigationTransitionInfo());
+                    break;
+            }
+        });
     }
     private bool TrySetSystemBackdrop()
     {
@@ -149,7 +184,6 @@ public sealed partial class MainWindow : Window
         // Create the policy object.
         _mConfigurationSource = new SystemBackdropConfiguration();
         this.Activated += Window_Activated;
-        this.Closed += Window_Closed;
         ((FrameworkElement)this.Content).ActualThemeChanged += Window_ThemeChanged;
 
         // Initial configuration state.
@@ -175,12 +209,16 @@ public sealed partial class MainWindow : Window
     {
         // Make sure any Mica/Acrylic controller is disposed
         // so it doesn't try to use this closed window.
+        Closed -= Window_Closed;
         if (_mBackdropController != null)
         {
             _mBackdropController.Dispose();
             _mBackdropController = null;
         }
         this.Activated -= Window_Activated;
+        _login.PropertyChanged -= OnLoginPropertyChanged;
+        _navigation.Changed -= OnNavigationChanged;
+        _shell.Dispose();
         _mConfigurationSource = null;
     }
 

@@ -110,8 +110,10 @@ public partial class LibraryViewModel : ObservableObject, IActivatable
         {
             await _dispatcher.InvokeAsync(() =>
             {
-                Games = new ObservableCollection<LibraryItemViewModel>(snapshot.Games.Select(game =>
-                    new LibraryItemViewModel(
+                Games = new ObservableCollection<LibraryItemViewModel>(snapshot.Games
+                    .Where(game => !game.IsDlc)
+                    .OrderBy(game => game.Title, StringComparer.CurrentCultureIgnoreCase)
+                    .Select(game => new LibraryItemViewModel(
                         game.AppName,
                         game.Title,
                         game.ImageUri,

@@ -607,37 +607,37 @@ CommunityToolkit.Mvvm remains the shared MVVM library. Reconcile the parked Pres
 
 ### Tasks
 
-- [ ] Complete and reconcile `Crimson.Presentation` targeting `net10.0`; remove prototype-only workflows that do not match the engine contracts.
-- [ ] Migrate one workflow at a time: characterize current WinUI behavior, implement the shared viewmodel, switch WinUI bindings/composition to it, pass parity tests, then remove the duplicate WinUI viewmodel.
-- [ ] Keep WinUI XAML, layout, styling, and user-visible workflow unchanged except for security or lifecycle correctness.
-- [ ] Constructor-inject all viewmodel dependencies.
-- [ ] Remove `App.GetService` from viewmodels and shared services.
-- [ ] Remove direct `new Storage()` and other infrastructure construction from viewmodels.
-- [ ] Move `LibraryItem`, `DownloadManagerItem`, and selectable DLC presentation state out of view code-behind/domain folders.
-- [ ] Replace `BitmapImage` properties with validated `Uri?` or nullable source strings.
-- [ ] Replace WinUI glyph strings with semantic action/icon enums.
-- [ ] Introduce narrow presentation contracts only when used:
-  - [ ] `IUiDispatcher`
-  - [ ] `IFolderPickerService`
-  - [ ] `IInstallDialogService`
-  - [ ] `INavigationService`
-  - [ ] `IExternalPathLauncher`
-- [ ] Make UI dispatch awaitable.
-- [ ] Move async loading out of constructors and into explicit activation/load methods.
-- [ ] Add deterministic activation/deactivation or disposal.
-- [ ] Ensure every long-lived manager subscription has a matching unsubscribe.
-- [ ] Replace untyped navigation payloads with typed routes.
-- [ ] Add or reshape:
-  - [ ] `ShellViewModel`
-  - [ ] `LoginViewModel`
-  - [ ] `LibraryViewModel`
-  - [ ] `GameInfoViewModel`
-  - [ ] `DownloadsViewModel`
-  - [ ] One shared `CurrentOperationViewModel`
-  - [ ] `AppInstallDialogViewModel`
-  - [ ] `SettingsViewModel`
-- [ ] Keep platform code in the host for WebView events, native window lifecycle, tray ownership, pickers, native dialogs, and platform image conversion.
-- [ ] Add headless viewmodel tests.
+- [x] Complete and reconcile `Crimson.Presentation` targeting `net10.0`; remove prototype-only workflows that do not match the engine contracts.
+- [x] Migrate one workflow at a time: characterize current WinUI behavior, implement the shared viewmodel, switch WinUI bindings/composition to it, pass parity tests, then remove the duplicate WinUI viewmodel.
+- [x] Keep WinUI XAML, layout, styling, and user-visible workflow unchanged except for security or lifecycle correctness.
+- [x] Constructor-inject all viewmodel dependencies.
+- [x] Remove `App.GetService` from viewmodels and shared services.
+- [x] Remove direct `new Storage()` and other infrastructure construction from viewmodels.
+- [x] Move `LibraryItem`, `DownloadManagerItem`, and selectable DLC presentation state out of view code-behind/domain folders.
+- [x] Replace `BitmapImage` properties with validated `Uri?` or nullable source strings.
+- [x] Replace WinUI glyph strings with semantic action/icon enums.
+- [x] Introduce narrow presentation contracts only when used:
+  - [x] `IUiDispatcher`
+  - [x] `IFolderPickerService`
+  - [x] `IInstallDialogService`
+  - [x] `INavigationService`
+  - [x] `IExternalPathLauncher`
+- [x] Make UI dispatch awaitable.
+- [x] Move async loading out of constructors and into explicit activation/load methods.
+- [x] Add deterministic activation/deactivation or disposal.
+- [x] Ensure every long-lived manager subscription has a matching unsubscribe.
+- [x] Replace untyped navigation payloads with typed routes.
+- [x] Add or reshape:
+  - [x] `ShellViewModel`
+  - [x] `LoginViewModel`
+  - [x] `LibraryViewModel`
+  - [x] `GameInfoViewModel`
+  - [x] `DownloadsViewModel`
+  - [x] One shared `CurrentOperationViewModel`
+  - [x] `AppInstallDialogViewModel`
+  - [x] `SettingsViewModel`
+- [x] Keep platform code in the host for WebView events, native window lifecycle, tray ownership, pickers, native dialogs, and platform image conversion.
+- [x] Add headless viewmodel tests.
 
 ### Anti-abstraction rules
 

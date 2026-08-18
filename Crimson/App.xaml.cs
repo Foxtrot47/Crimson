@@ -6,7 +6,8 @@ using Crimson.Infrastructure;
 using Crimson.Platform.Windows;
 using Crimson.Repository;
 using Crimson.Utils;
-using Crimson.ViewModels;
+using Crimson.Presentation;
+using Crimson.PresentationAdapters;
 using Crimson.Views;
 using H.NotifyIcon;
 using Microsoft.Extensions.DependencyInjection;
@@ -58,6 +59,8 @@ namespace Crimson
                 services.AddSingleton<ISettingsStore>(provider =>
                     provider.GetRequiredService<FileSettingsService>());
                 services.AddSingleton<SettingsManager>();
+                services.AddSingleton<ISettingsService>(provider =>
+                    provider.GetRequiredService<SettingsManager>());
                 services.AddSingleton<ILogger>(provider =>
                 {
                     var directories = provider.GetRequiredService<IApplicationDirectories>();
@@ -97,6 +100,7 @@ namespace Crimson
                     provider.GetRequiredService<Storage>(),
                     provider.GetRequiredService<ICredentialProtector>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicOAuth")));
+                services.AddSingleton<IEpicAuthenticationService, WinUiEpicAuthenticationService>();
                 services.AddSingleton<IStoreRepository>(provider => new EpicGamesRepository(
                     provider.GetRequiredService<AuthManager>(),
                     provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<EpicGamesRepository>>(),
@@ -110,11 +114,28 @@ namespace Crimson
                     provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DownloadManager>>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
 
-                services.AddTransient<SettingsViewModel>();
-                services.AddTransient<DownloadsViewModel>();
-                services.AddTransient<LibraryViewModel>();
-                services.AddTransient<GameInfoViewModel>();
-                services.AddTransient<AppInstallDialogViewModel>();
+                services.AddSingleton<INavigationService, NavigationService>();
+                services.AddSingleton<IUiDispatcher, WinUiUiDispatcher>();
+                services.AddSingleton<IFolderPickerService, WinUiFolderPickerService>();
+                services.AddSingleton<IExternalPathLauncher, WinUiExternalPathLauncher>();
+                services.AddSingleton<WinUiInstallDialogService>();
+                services.AddSingleton<IInstallDialogService>(provider =>
+                    provider.GetRequiredService<WinUiInstallDialogService>());
+                services.AddSingleton<IGameWorkflowService, WinUiGameWorkflowService>();
+                services.AddSingleton<IDesktopApplicationControl, WinUiDesktopApplicationControl>();
+                services.AddSingleton<TrayViewModel>();
+                services.AddSingleton<LoginViewModel>();
+                services.AddSingleton<LibraryViewModel>();
+                services.AddSingleton<GameInfoViewModel>();
+                services.AddSingleton<CurrentOperationViewModel>();
+                services.AddSingleton<DownloadsViewModel>();
+                services.AddSingleton<AppInstallDialogViewModel>();
+                services.AddSingleton(provider => new SettingsViewModel(
+                    provider.GetRequiredService<ISettingsService>(),
+                    provider.GetRequiredService<IFolderPickerService>(),
+                    provider.GetRequiredService<IExternalPathLauncher>(),
+                    provider.GetRequiredService<IApplicationDirectories>().LogsDirectory));
+                services.AddSingleton<ShellViewModel>();
             }).
             Build();
         }

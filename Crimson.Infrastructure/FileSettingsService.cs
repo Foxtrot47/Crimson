@@ -40,7 +40,8 @@ public sealed class FileSettingsService(string appDataRoot) : ISettingsService, 
         return Task.FromResult(new AppSettings(
             string.IsNullOrWhiteSpace(stored?.DefaultInstallLocation)
                 ? GetDefaultInstallLocation()
-                : stored.DefaultInstallLocation));
+                : stored.DefaultInstallLocation,
+            stored?.MicaEnabled ?? false));
     }
 
     public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
@@ -51,6 +52,7 @@ public sealed class FileSettingsService(string appDataRoot) : ISettingsService, 
             throw new ArgumentException("Default install location is required.", nameof(settings));
         var stored = Get() ?? new Settings();
         stored.DefaultInstallLocation = settings.DefaultInstallLocation;
+        stored.MicaEnabled = settings.MicaEnabled;
         Save(stored);
         return Task.CompletedTask;
     }

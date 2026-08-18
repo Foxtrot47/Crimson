@@ -6,10 +6,10 @@
     x:DataType="vm:TrayViewModel">
   <TrayIcon.Icons>
     <TrayIcons>
-      <TrayIcon Icon="/Assets/StoreLogo.png" ToolTipText="Crimson" Command="{Binding ShowCommand}">
+      <TrayIcon Icon="/Assets/StoreLogo.png" ToolTipText="Crimson" Command="{Binding ToggleCommand}">
         <TrayIcon.Menu>
           <NativeMenu>
-            <NativeMenuItem Header="Open Crimson" Command="{Binding ShowCommand}" />
+            <NativeMenuItem Header="Open Crimson" Command="{Binding ToggleCommand}" />
             <NativeMenuItemSeparator />
             <NativeMenuItem Header="Quit" Command="{Binding QuitCommand}" />
           </NativeMenu>

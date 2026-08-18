@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Threading.Tasks;
+using System.Threading;
 using Crimson.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Crimson.Core;
 
-public class SettingsManager
+public class SettingsManager : ISettingsService
 {
     private readonly ISettingsStore _store;
     private readonly ILogger<SettingsManager> _logger;
@@ -51,6 +52,21 @@ public class SettingsManager
     {
         _store.Save(Settings);
         return Task.CompletedTask;
+    }
+
+    public Task<AppSettings> GetAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new AppSettings(DefaultInstallLocation, MicEnabled));
+    }
+
+    public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        cancellationToken.ThrowIfCancellationRequested();
+        DefaultInstallLocation = settings.DefaultInstallLocation;
+        MicEnabled = settings.MicaEnabled;
+        return SaveSettings();
     }
 
 }

@@ -19,12 +19,16 @@ public partial class ShellViewModel : ObservableObject, IActivatable, IDisposabl
         IUiDispatcher dispatcher,
         LoginViewModel login,
         LibraryViewModel library,
+        GameInfoViewModel gameInfo,
+        DownloadsViewModel downloads,
         SettingsViewModel settings)
     {
         _navigation = navigation;
         _dispatcher = dispatcher;
         Login = login;
         Library = library;
+        GameInfo = gameInfo;
+        Downloads = downloads;
         Settings = settings;
         _currentPage = login;
         _navigation.Changed += OnNavigationChanged;
@@ -33,6 +37,8 @@ public partial class ShellViewModel : ObservableObject, IActivatable, IDisposabl
     public LoginViewModel Login { get; }
 
     public LibraryViewModel Library { get; }
+    public GameInfoViewModel GameInfo { get; }
+    public DownloadsViewModel Downloads { get; }
     public SettingsViewModel Settings { get; }
 
     public Task ActivateAsync(CancellationToken cancellationToken = default) =>
@@ -40,6 +46,8 @@ public partial class ShellViewModel : ObservableObject, IActivatable, IDisposabl
 
     public void Deactivate()
     {
+        Downloads.Deactivate();
+        GameInfo.Deactivate();
         Library.Deactivate();
         Settings.Deactivate();
         Login.Deactivate();
@@ -62,27 +70,40 @@ public partial class ShellViewModel : ObservableObject, IActivatable, IDisposabl
     {
         if (route is not SettingsRoute)
             Settings.Deactivate();
-        await _dispatcher.InvokeAsync(() => CurrentPage = route switch
+        if (route is not LibraryRoute)
+            Library.Deactivate();
+        if (route is not GameRoute)
+            GameInfo.Deactivate();
+        if (route is not DownloadsRoute)
+            Downloads.Deactivate();
+
+        object page = route switch
         {
             LoginRoute => Login,
             LibraryRoute => Library,
-            GameRoute gameRoute => CreateGameDetails(gameRoute.AppName),
+            GameRoute => GameInfo,
+            DownloadsRoute => Downloads,
             SettingsRoute => Settings,
             _ => Login
-        });
-        if (route is LibraryRoute)
-            await Library.ActivateAsync();
-        else if (route is SettingsRoute)
-            await Settings.ActivateAsync();
+        };
+        await _dispatcher.InvokeAsync(() => CurrentPage = page);
+        switch (route)
+        {
+            case LibraryRoute:
+                await Library.ActivateAsync();
+                break;
+            case GameRoute gameRoute:
+                await GameInfo.LoadAsync(gameRoute.AppName);
+                break;
+            case DownloadsRoute:
+                await Downloads.ActivateAsync();
+                break;
+            case SettingsRoute:
+                await Settings.ActivateAsync();
+                break;
+        }
     }
 
-    private object CreateGameDetails(string appName)
-    {
-        var game = Library.Games.FirstOrDefault(item => item.AppName == appName);
-        return game is null
-            ? Library
-            : new GameDetailsViewModel(game.AppName, game.Title, game.ImageUri, game.AssetBuildVersion);
-    }
 
     public void Dispose()
     {

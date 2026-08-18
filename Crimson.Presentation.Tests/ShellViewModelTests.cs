@@ -1,4 +1,5 @@
 using Crimson.Core;
+using Crimson.Models;
 using Crimson.Presentation;
 using Xunit;
 
@@ -12,20 +13,29 @@ public sealed class ShellViewModelTests
         var navigation = new NavigationService();
         var authentication = new StubAuthenticationService();
         var login = new LoginViewModel(authentication, navigation);
-        var library = new LibraryViewModel(
-            new StubLibraryService(),
-            new ImmediateUiDispatcher(),
-            navigation);
+        var dispatcher = new ImmediateUiDispatcher();
+        var workflow = new StubGameWorkflowService();
+        var library = new LibraryViewModel(new StubLibraryService(), dispatcher, navigation);
+        var folderPicker = new StubFolderPicker();
+        var gameInfo = new GameInfoViewModel(
+            workflow,
+            new StubInstallDialog(),
+            folderPicker,
+            dispatcher);
+        var currentOperation = new CurrentOperationViewModel(workflow, dispatcher);
+        var downloads = new DownloadsViewModel(workflow, dispatcher, currentOperation);
         var settings = new SettingsViewModel(
             new StubSettingsService(),
-            new StubFolderPicker(),
+            folderPicker,
             new StubPathLauncher(),
             "logs");
-        using var shell = new ShellViewModel(
+        var shell = new ShellViewModel(
             navigation,
-            new ImmediateUiDispatcher(),
+            dispatcher,
             login,
             library,
+            gameInfo,
+            downloads,
             settings);
         await shell.ActivateAsync();
 
@@ -33,6 +43,8 @@ public sealed class ShellViewModelTests
 
         Assert.Same(library, shell.CurrentPage);
         Assert.IsType<LibraryRoute>(navigation.Current);
+        shell.Dispose();
+        Assert.Equal(0, authentication.SubscriberCount);
     }
 
     private sealed class StubAuthenticationService : IEpicAuthenticationService
@@ -40,7 +52,15 @@ public sealed class ShellViewModelTests
         public EpicAuthenticationSnapshot Snapshot { get; private set; } =
             new(EpicAuthenticationState.LoggedOut);
 
-        public event EventHandler<EpicAuthenticationSnapshot>? Changed;
+        public int SubscriberCount { get; private set; }
+
+        private EventHandler<EpicAuthenticationSnapshot>? _changed;
+
+        public event EventHandler<EpicAuthenticationSnapshot>? Changed
+        {
+            add { _changed += value; SubscriberCount++; }
+            remove { _changed -= value; SubscriberCount--; }
+        }
 
         public Task<EpicAuthenticationSnapshot> CheckAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(Snapshot);
@@ -55,14 +75,14 @@ public sealed class ShellViewModelTests
         public Task LogoutAsync(CancellationToken cancellationToken = default)
         {
             Snapshot = new EpicAuthenticationSnapshot(EpicAuthenticationState.LoggedOut);
-            Changed?.Invoke(this, Snapshot);
+            _changed?.Invoke(this, Snapshot);
             return Task.CompletedTask;
         }
 
         private Task<EpicAuthenticationSnapshot> LoginAsync()
         {
             Snapshot = new EpicAuthenticationSnapshot(EpicAuthenticationState.LoggedIn, "Player");
-            Changed?.Invoke(this, Snapshot);
+            _changed?.Invoke(this, Snapshot);
             return Task.FromResult(Snapshot);
         }
     }
@@ -106,5 +126,57 @@ public sealed class ShellViewModelTests
     {
         public Task OpenAsync(string path, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+    }
+
+    private sealed class StubInstallDialog : IInstallDialogService
+    {
+        public Task ShowAsync(string appName, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public void Close()
+        {
+        }
+    }
+
+    private sealed class StubGameWorkflowService : IGameWorkflowService
+    {
+        public event EventHandler<GamePresentationData>? GameChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<InstallOperationSnapshot?>? OperationChanged
+        {
+            add { }
+            remove { }
+        }
+        public InstallOperationSnapshot? CurrentOperation => null;
+        public GamePresentationData? GetGame(string appName) => null;
+        public IReadOnlyList<GamePresentationData> GetDlcs(string appName) => [];
+        public IReadOnlyList<GamePresentationData> GetQueuedGames() => [];
+        public IReadOnlyList<GamePresentationData> GetHistoryGames() => [];
+        public Task LaunchAsync(string appName, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+        public Task<InstallCommandResult> EnqueueAsync(
+            InstallOperationRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new InstallCommandResult(InstallCommandOutcome.Accepted));
+        public Task<InstallCommandResult> CancelAsync(
+            string appName,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new InstallCommandResult(InstallCommandOutcome.Accepted));
+        public Task<InstallCommandResult> PauseAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new InstallCommandResult(InstallCommandOutcome.Accepted));
+        public Task<InstallCommandResult> ResumeAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new InstallCommandResult(InstallCommandOutcome.Accepted));
+        public Task<InstallContentSize> GetContentSizeAsync(
+            string appName,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new InstallContentSize());
+        public Task<DriveSpaceSnapshot?> GetDriveSpaceAsync(
+            string path,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<DriveSpaceSnapshot?>(null);
     }
 }

@@ -69,7 +69,8 @@ public sealed record GameSnapshot(
     InstallState InstallState,
     GameUpdateClassification UpdateClassification,
     string? InstallPath,
-    string? Executable);
+    string? Executable,
+    bool IsDlc = false);
 
 public sealed record LibrarySnapshot(
     long Sequence,

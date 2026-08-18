@@ -199,7 +199,8 @@ public sealed class LibraryService : ILibraryService, IDisposable
             local?.InstallStatus ?? InstallState.NotInstalled,
             classification,
             local?.InstallPath,
-            local?.Executable);
+            local?.Executable,
+            game.IsDlc());
     }
 
     private static string? NormalizeDigest(string? value)

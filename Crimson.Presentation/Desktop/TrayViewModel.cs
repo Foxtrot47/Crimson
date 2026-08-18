@@ -4,7 +4,7 @@ namespace Crimson.Presentation;
 
 public interface IDesktopApplicationControl
 {
-    void ShowMainWindow();
+    void ToggleMainWindow();
 
     void Quit();
 }
@@ -12,7 +12,7 @@ public interface IDesktopApplicationControl
 public partial class TrayViewModel(IDesktopApplicationControl application)
 {
     [RelayCommand]
-    private void Show() => application.ShowMainWindow();
+    private void Toggle() => application.ToggleMainWindow();
 
     [RelayCommand]
     private void Quit() => application.Quit();

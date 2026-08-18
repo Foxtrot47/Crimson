@@ -22,7 +22,7 @@ public sealed class SettingsViewModelTests
         await viewModel.SaveCommand.ExecuteAsync(null);
         Assert.Equal(new AppSettings("D:/Games"), settings.Saved);
         Assert.Equal("Settings saved", viewModel.StatusMessage);
-        await viewModel.OpenLogsCommand.ExecuteAsync(null);
+        await viewModel.OpenLogsDirectoryCommand.ExecuteAsync(null);
         Assert.Equal("C:/Logs", launcher.OpenedPath);
     }
 

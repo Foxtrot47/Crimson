@@ -6,7 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Crimson.Controls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:models="using:Crimson.Models"
+    xmlns:presentation="using:Crimson.Presentation"
     mc:Ignorable="d">
 
     <ContentDialog x:Name="InstallContentDialog" MinWidth="800">
@@ -25,7 +25,7 @@
                     <Image
                         Width="64"
                         Height="64"
-                        Source="{x:Bind ViewModel.GameImage, Mode=OneWay}" />
+                        Source="{x:Bind ViewModel.GameImageUri, Mode=OneWay, Converter={StaticResource UriToBitmapImageConverter}}" />
                     <StackPanel>
                         <TextBlock
                             FontSize="24"
@@ -123,7 +123,7 @@
                     ItemsSource="{x:Bind ViewModel.AvailableDlcs, Mode=OneWay}"
                     Visibility="{x:Bind ViewModel.HasDlcs, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                     <ItemsRepeater.ItemTemplate>
-                        <DataTemplate x:DataType="models:DlcOption">
+                        <DataTemplate x:DataType="presentation:DlcOptionViewModel">
                             <Grid Margin="0,4,0,0" MaxWidth="400" HorizontalAlignment="Left">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="24" />
@@ -196,5 +196,6 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:BoolToInverseVisibilityConverter x:Key="BoolToInverseVisibilityConverter" />
         <converters:DriveSpaceColorConverter x:Key="DriveSpaceColorConverter" />
+        <converters:UriToBitmapImageConverter x:Key="UriToBitmapImageConverter" />
     </UserControl.Resources>
 </UserControl>

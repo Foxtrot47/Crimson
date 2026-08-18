@@ -27,9 +27,11 @@ public sealed partial class App : Application
             var root = AppDataPaths.GetDefaultRoot();
             var window = new MainWindow();
             var settingsService = new FileSettingsService(root);
+            var folderPicker = new AvaloniaFolderPickerService(() => window);
+            var dispatcher = new AvaloniaUiDispatcher();
             var settings = new SettingsViewModel(
                 settingsService,
-                new AvaloniaFolderPickerService(() => window),
+                folderPicker,
                 new DesktopPathLauncher(),
                 settingsService.LogsDirectory);
             _authenticationClient = CreateClient(
@@ -51,16 +53,23 @@ public sealed partial class App : Application
                 _apiClient,
                 _contentClient);
             _libraryService = new LibraryService(repository, new FileLibraryStore(root));
-            var library = new LibraryViewModel(
-                _libraryService,
-                new AvaloniaUiDispatcher(),
-                navigation);
+            var library = new LibraryViewModel(_libraryService, dispatcher, navigation);
             var login = new LoginViewModel(authentication, navigation);
+            var gameWorkflow = new ReadOnlyGameWorkflowService(_libraryService);
+            var gameInfo = new GameInfoViewModel(
+                gameWorkflow,
+                new UnsupportedInstallDialogService(),
+                folderPicker,
+                dispatcher);
+            var currentOperation = new CurrentOperationViewModel(gameWorkflow, dispatcher);
+            var downloads = new DownloadsViewModel(gameWorkflow, dispatcher, currentOperation);
             _shell = new ShellViewModel(
                 navigation,
-                new AvaloniaUiDispatcher(),
+                dispatcher,
                 login,
                 library,
+                gameInfo,
+                downloads,
                 settings);
             window.DataContext = _shell;
             DataContext = new TrayViewModel(new DesktopApplicationControl(desktop, window));

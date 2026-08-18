@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:local="using:Crimson.Views"
+    xmlns:local="using:Crimson.Presentation"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:utils="using:Crimson.Utils"
@@ -19,25 +19,25 @@
                 Padding="20"
                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                 CornerRadius="10"
-                Visibility="{x:Bind ViewModel.ShowCurrentDownload, Converter={StaticResource BoolToVisibilityConverter}, Mode=TwoWay}">
+                Visibility="{x:Bind ViewModel.CurrentOperation.IsVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                 <StackPanel Orientation="Horizontal" Spacing="20">
-                    <Image Height="200" Source="{x:Bind ViewModel.CurrentInstallItemImageSource, Mode=TwoWay}" />
+                    <Image Height="200" Source="{x:Bind ViewModel.CurrentOperation.ImageUri, Mode=OneWay, Converter={StaticResource UriToBitmapImageConverter}}" />
                     <StackPanel Orientation="Vertical">
-                        <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.CurrentInstallItemName, Mode=TwoWay}" />
+                        <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.CurrentOperation.Title, Mode=OneWay}" />
                         <StackPanel Orientation="Horizontal" Spacing="30">
                             <ProgressBar
                                 Width="500"
                                 Height="50"
-                                IsIndeterminate="{x:Bind ViewModel.DownloadProgressBarIndeterminate, Mode=TwoWay}"
-                                Value="{x:Bind ViewModel.DownloadProgressBarValue, Mode=TwoWay}" />
+                                IsIndeterminate="{x:Bind ViewModel.CurrentOperation.IsIndeterminate, Mode=OneWay}"
+                                Value="{x:Bind ViewModel.CurrentOperation.ProgressPercentage, Mode=OneWay}" />
                             <Grid>
                                 <Button
                                     Width="30"
                                     Height="30"
                                     Padding="5"
-                                    Command="{x:Bind ViewModel.PauseInstallCommand}"
-                                    IsEnabled="{x:Bind ViewModel.EnablePauseButton, Mode=TwoWay}"
-                                    Visibility="{x:Bind ViewModel.ShowPauseButton, Mode=TwoWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    Command="{x:Bind ViewModel.CurrentOperation.PauseCommand}"
+                                    IsEnabled="{x:Bind ViewModel.CurrentOperation.CanPause, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.CurrentOperation.CanPause, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <FontIcon Glyph="&#xE769;" />
                                 </Button>
 
@@ -45,8 +45,8 @@
                                     Width="30"
                                     Height="30"
                                     Padding="5"
-                                    Command="{x:Bind ViewModel.ResumeInstallCommand}"
-                                    Visibility="{x:Bind ViewModel.ShowPauseButton, Converter={StaticResource BoolToInverseVisibilityConverter}, Mode=TwoWay}">
+                                    Command="{x:Bind ViewModel.CurrentOperation.ResumeCommand}"
+                                    Visibility="{x:Bind ViewModel.CurrentOperation.CanResume, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                     <FontIcon Glyph="&#xE768;" />
                                 </Button>
                             </Grid>
@@ -55,12 +55,12 @@
                                 Width="30"
                                 Height="30"
                                 Padding="5"
-                                Command="{x:Bind ViewModel.CancelInstallCommand}">
+                                Command="{x:Bind ViewModel.CurrentOperation.CancelCommand}">
                                 <FontIcon Glyph="&#xE711;" />
                             </Button>
                         </StackPanel>
-                        <TextBlock Style="{ThemeResource BodyStrongTextBlockStyle}" Text="{x:Bind ViewModel.CurrentInstallAction, Mode=TwoWay}" />
-                        <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="{x:Bind ViewModel.CurrentDownloadSize, Mode=TwoWay}" />
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{x:Bind ViewModel.CurrentOperation.ActionText, Mode=OneWay}" />
+                        <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="{x:Bind ViewModel.CurrentOperation.SizeText, Mode=OneWay}" />
                     </StackPanel>
 
                     <StackPanel
@@ -68,7 +68,7 @@
                         Orientation="Vertical"
                         Spacing="15">
                         <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" Style="{ThemeResource SubtitleTextBlockStyle}">Download Rate</TextBlock>
-                        <TextBlock Text="{x:Bind ViewModel.CurrentDownloadSpeed, Mode=TwoWay}" />
+                        <TextBlock Text="{x:Bind ViewModel.CurrentOperation.SpeedText, Mode=OneWay}" />
                     </StackPanel>
 
                 </StackPanel>
@@ -77,7 +77,7 @@
             <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Install Queue</TextBlock>
             <ListView x:Name="InstallQueueListView" ItemsSource="{x:Bind ViewModel.QueueItems, Mode=TwoWay}">
                 <ListView.ItemTemplate>
-                    <DataTemplate x:DataType="local:DownloadManagerItem">
+                    <DataTemplate x:DataType="local:DownloadQueueItemViewModel">
                         <Border
                             Margin="0"
                             Padding="0"
@@ -87,7 +87,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="20">
                                 <Image
                                     Height="150"
-                                    Source="{x:Bind Image}"
+                                    Source="{x:Bind ImageUri, Converter={StaticResource UriToBitmapImageConverter}}"
                                     Stretch="UniformToFill" />
                                 <TextBlock
                                     VerticalAlignment="Center"
@@ -109,7 +109,7 @@
             <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Previous Installs</TextBlock>
             <ListView x:Name="HistoryItemsList" ItemsSource="{x:Bind ViewModel.HistoryItems, Mode=TwoWay}">
                 <ListView.ItemTemplate>
-                    <DataTemplate x:DataType="local:DownloadManagerItem">
+                    <DataTemplate x:DataType="local:DownloadQueueItemViewModel">
                         <Border
                             Margin="0"
                             Padding="0"
@@ -119,7 +119,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="20">
                                 <Image
                                     Height="150"
-                                    Source="{x:Bind Image}"
+                                    Source="{x:Bind ImageUri, Converter={StaticResource UriToBitmapImageConverter}}"
                                     Stretch="UniformToFill" />
                                 <TextBlock
                                     VerticalAlignment="Center"
@@ -144,5 +144,6 @@
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <utils:BoolToInverseVisibilityConverter x:Key="BoolToInverseVisibilityConverter" />
+        <utils:UriToBitmapImageConverter x:Key="UriToBitmapImageConverter" />
     </Page.Resources>
 </Page>
