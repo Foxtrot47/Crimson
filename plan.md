@@ -40,13 +40,13 @@ This status reconciles the roadmap with the repository as of 2026-08-18. The tas
 | 5 — Durable JSON state | Complete | Bounded typed schemas, idempotent legacy migration, single state owners, stable snapshots, corruption quarantine, revisioned atomic journals, and full transition recovery passed locally and in Windows/Ubuntu CI. |
 | 6 — Filesystem semantics | Complete | Typed manifest paths, cross-host collision rules, link rejection, unique Linux import resolution, local-filesystem policy, capacity and volume gates, mutation-time revalidation, and concrete Windows adapters pass locally on Windows and WSL Ubuntu 24.04. |
 | 7 — Library service | Complete | The authoritative portable service publishes immutable sequenced snapshots, serializes refreshes, atomically applies metadata, classifies updates by comparable manifest identity, and produces platform-neutral launch plans; WinUI uses a temporary compatibility facade. |
-| 8 — Transactional installer | Partial | Recoverable update publication exists; the single coordinator, durable pause/resume, and complete fault matrix remain. |
+| 8 — Transactional installer | Complete | A serialized coordinator executes immutable plans through operation-scoped staging, backup, trash, durable pause/resume, typed terminal results, and idempotent journal recovery; deterministic lifecycle, process-termination, atomic-write-failure, Windows, and WSL gates passed. |
 | 9 — Shared MVVM | Parked partial work | Existing Presentation code is retained but does not satisfy the phase until WinUI uses the shared workflows. |
 | 10 — Linux headless/Proton | Not started | No Linux platform project or headless host exists. |
 | 11 — Avalonia | Parked prototype | The existing host remains buildable but is not parity evidence and receives no feature work before Phase 10 passes. |
 | 12 — Release hardening | Not started | Release gates remain unchanged. |
 
-Current deterministic Windows results: Core 81 passed with two opt-in local/live tests skipped; Infrastructure 9 passed; Presentation 4 passed; Windows 60 passed with one opt-in live lifecycle skipped; Avalonia Release build and WinUI self-contained publish passed. WSL Ubuntu 24.04 results: Core 80 passed with three local-manifest tests skipped; Infrastructure 9 passed; Presentation 4 passed; Avalonia Release build passed. The full Among Us live lifecycle passed previously, and the Rocket League build/manifest baseline is recorded.
+Current deterministic Windows results: Core 87 passed with two opt-in local/live tests skipped; Infrastructure 10 passed; Presentation 4 passed; Windows 65 passed with one opt-in live lifecycle skipped; Avalonia Release build and WinUI self-contained publish passed. WSL Ubuntu 24.04 results: Core 86 passed with three local-manifest tests skipped; Infrastructure 10 passed; Presentation 4 passed; Avalonia Release build passed. The full Among Us live lifecycle passed previously, and the Rocket League build/manifest baseline is recorded.
 
 Premature Presentation and Avalonia code is preserved to avoid waste, but parked code does not advance a phase or relax an exit gate.
 
@@ -492,38 +492,38 @@ This is the largest phase. Implement and validate each subphase before proceedin
 
 ### 8.1 Single operation coordinator
 
-- [ ] Replace `async void ProcessNext` with one observable queue-processing task.
-- [ ] Introduce a serialized command channel for enqueue, pause, resume, cancel, shutdown, and recovery.
-- [ ] Make queue and history mutation thread-safe.
-- [ ] Ensure one active operation context owns each worker set.
-- [ ] Return typed command and terminal results.
+- [x] Replace `async void ProcessNext` with one observable queue-processing task.
+- [x] Introduce a serialized command channel for enqueue, pause, resume, cancel, shutdown, and recovery.
+- [x] Make queue and history mutation thread-safe.
+- [x] Ensure one active operation context owns each worker set.
+- [x] Return typed command and terminal results.
 
 ### 8.2 Per-operation state
 
-- [ ] Move queues, worker tasks, cancellation, pause state, progress, chunk references, manifest identities, staging paths, journal revision, and timing into `InstallOperationContext`.
-- [ ] Keep the service as coordinator rather than storing all current-operation implementation state globally.
-- [ ] Do not invoke external events while internal locks are held.
+- [x] Move queues, worker tasks, cancellation, pause state, progress, chunk references, manifest identities, staging paths, journal revision, and timing into `InstallOperationContext`.
+- [x] Keep the service as coordinator rather than storing all current-operation implementation state globally.
+- [x] Do not invoke external events while internal locks are held.
 
 ### 8.3 Pure deterministic planning
 
-- [ ] Create pure planners for install, update, repair, import, uninstall, and move.
-- [ ] Produce immutable serializable plans.
-- [ ] Reconstruct plans from manifest identity and verified progress rather than trusting serialized absolute IO tasks.
-- [ ] Validate all destinations and resource requirements before download begins.
+- [x] Create pure planners for install, update, repair, import, uninstall, and move.
+- [x] Produce immutable serializable plans.
+- [x] Reconstruct plans from manifest identity and verified progress rather than trusting serialized absolute IO tasks.
+- [x] Validate all destinations and resource requirements before download begins.
 
 ### 8.4 Transactional staging and commit
 
-- [ ] Persist the operation and intended plan atomically before mutation.
-- [ ] Download and reconstruct under an operation-specific staging directory on the destination filesystem.
-- [ ] Verify staged files before modifying the live installation.
-- [ ] Journal additions, replacements, removals, backups, and publication progress.
-- [ ] Persist `ReadyToCommit` before live-tree changes.
-- [ ] Move existing owned targets to operation backup.
-- [ ] Publish verified staged files through same-volume atomic renames where supported.
-- [ ] Defer removed-file disposal until installation metadata commits.
-- [ ] Update installed manifest identity in the authoritative versioned state before cleanup.
-- [ ] Mark the operation complete before deleting staging and backups.
-- [ ] Prevent launch while commit or recovery is active.
+- [x] Persist the operation and intended plan atomically before mutation.
+- [x] Download and reconstruct under an operation-specific staging directory on the destination filesystem.
+- [x] Verify staged files before modifying the live installation.
+- [x] Journal additions, replacements, removals, backups, and publication progress.
+- [x] Persist `ReadyToCommit` before live-tree changes.
+- [x] Move existing owned targets to operation backup.
+- [x] Publish verified staged files through same-volume atomic renames where supported.
+- [x] Defer removed-file disposal until installation metadata commits.
+- [x] Update installed manifest identity in the authoritative versioned state before cleanup.
+- [x] Mark the operation complete before deleting staging and backups.
+- [x] Prevent launch while commit or recovery is active.
 
 Application state and filesystem changes cannot be committed atomically. The required service invariant is:
 
@@ -533,38 +533,38 @@ Application state and filesystem changes cannot be committed atomically. The req
 
 Pause must:
 
-- [ ] Stop dequeuing new work.
-- [ ] Signal in-flight workers.
-- [ ] Await every worker at a defined safe point.
-- [ ] Flush staged files.
-- [ ] Persist manifest identity, phase, verified artifacts, progress, and revision atomically.
-- [ ] Publish `Paused` only after the checkpoint is durable.
+- [x] Stop dequeuing new work.
+- [x] Signal in-flight workers.
+- [x] Await every worker at a defined safe point.
+- [x] Flush staged files.
+- [x] Persist manifest identity, phase, verified artifacts, progress, and revision atomically.
+- [x] Publish `Paused` only after the checkpoint is durable.
 
 Resume must:
 
-- [ ] Create exactly one worker set.
-- [ ] Rebuild a deterministic plan.
-- [ ] Revalidate staged artifacts.
-- [ ] Resume only required work.
-- [ ] Remain cancellable through a correctly initialized operation lifecycle.
+- [x] Create exactly one worker set.
+- [x] Rebuild a deterministic plan.
+- [x] Revalidate staged artifacts.
+- [x] Resume only required work.
+- [x] Remain cancellable through a correctly initialized operation lifecycle.
 
 ### 8.6 Cancellation, shutdown, and recovery
 
-- [ ] Cancellation before commit removes only operation-owned staging data.
-- [ ] Cancellation during commit transitions to recovery rather than ad hoc deletion.
-- [ ] Shutdown waits for a durable safe checkpoint.
-- [ ] Remove fixed sleeps and timing-based state assumptions.
-- [ ] Make startup recovery idempotent.
-- [ ] Recover forward or roll back from every journal phase.
-- [ ] Emit one stable terminal result per operation.
+- [x] Cancellation before commit removes only operation-owned staging data.
+- [x] Cancellation during commit transitions to recovery rather than ad hoc deletion.
+- [x] Shutdown waits for a durable safe checkpoint.
+- [x] Remove fixed sleeps and timing-based state assumptions.
+- [x] Make startup recovery idempotent.
+- [x] Recover forward or roll back from every journal phase.
+- [x] Emit one stable terminal result per operation.
 
 ### 8.7 Uninstall and move
 
-- [ ] Uninstall moves manifest-owned files into transaction trash first.
-- [ ] Commit `NotInstalled` before permanently deleting transaction trash.
-- [ ] Preserve untracked files.
-- [ ] Remove only empty manifest-owned directories and operation metadata.
-- [ ] Keep rejecting cross-volume move with a typed result until the same-volume transactional lifecycle passes its exit gate.
+- [x] Uninstall moves manifest-owned files into transaction trash first.
+- [x] Commit `NotInstalled` before permanently deleting transaction trash.
+- [x] Preserve untracked files.
+- [x] Remove only empty manifest-owned directories and operation metadata.
+- [x] Keep rejecting cross-volume move with a typed result until the same-volume transactional lifecycle passes its exit gate.
 
 Cross-volume copy/verify/switch/delete is deferred until after engine and frontend parity unless it becomes a release requirement.
 

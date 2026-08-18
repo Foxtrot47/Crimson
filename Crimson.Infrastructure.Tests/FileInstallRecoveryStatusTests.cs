@@ -21,6 +21,22 @@ public sealed class FileInstallRecoveryStatusTests : IDisposable
         Assert.True(status.HasUnresolvedTransaction(_root));
     }
 
+    [Fact]
+    public void DetectsOperationTransactionJournal()
+    {
+        var status = new FileInstallRecoveryStatus();
+        var journal = Path.Combine(
+            _root,
+            ".Crimson",
+            "operations",
+            "operation-1",
+            "journal.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(journal)!);
+        File.WriteAllText(journal, "{}");
+
+        Assert.True(status.HasUnresolvedTransaction(_root));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))

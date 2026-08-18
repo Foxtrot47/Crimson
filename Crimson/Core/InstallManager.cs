@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -11,6 +12,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Channels;
 using Crimson.Infrastructure;
 using Crimson.Models;
 using Crimson.Repository;
@@ -23,6 +25,7 @@ public class InstallManager
 {
     public event Action<InstallItem> InstallationStatusChanged;
     public event Action<InstallItem> InstallProgressUpdate;
+    public event Action<InstallTerminalResult>? OperationCompleted;
 
     private readonly ILogger _logger;
     private readonly LibraryManager _libraryManager;
@@ -33,41 +36,140 @@ public class InstallManager
 
     private readonly List<InstallItem> _installQueue = [];
     private readonly List<InstallItem> _installHistory = [];
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<InstallTerminalResult>> _terminalResults =
+        new(StringComparer.Ordinal);
 
-    private readonly ConcurrentDictionary<string, object> _fileLocksConcurrentDictionary = new();
-    private ConcurrentDictionary<BigInteger, List<FileManifest>> _chunkToFileManifestsDictionary = new();
-    private ConcurrentDictionary<BigInteger, int> _chunkPartReferences = new();
-    private readonly ConcurrentDictionary<string, byte> _ioQueueTaskSet = new();
-    private readonly List<string> _uninstallManifestPaths = [];
     private readonly JsonSerializerOptions _jsonSerializerOptions;
     private static readonly JsonStateSchema<UpdateTransactionState> UpdateTransactionSchema =
         new("update-transaction", 1, 16L * 1024 * 1024);
+    private static readonly JsonStateSchema<InstallTransactionState> InstallTransactionSchema =
+        new("install-transaction", 1, 16L * 1024 * 1024);
 
     private readonly object _installItemLock = new();
     private readonly object _operationLifecycleLock = new();
+    private readonly Channel<InstallCommandEnvelope> _commandChannel = Channel.CreateUnbounded<InstallCommandEnvelope>(
+        new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
+    private readonly Task _commandLoopTask;
     private readonly int _numberOfThreads;
     private const int _progressUpdateIntervalInMS = 1000;
-    private List<FileManifest> _importVerificationResult;
+    private InstallOperationContext? _activeContext;
+    private Task _processingTask = Task.CompletedTask;
 
-    private BlockingCollection<DownloadTask> _downloadQueue = [];
-    private BlockingCollection<IoTask> _ioQueue = [];
-    private BlockingCollection<BigInteger> _completedChunks = []; // Chunks that are downloaded and data written to all dependent files
-    private List<Task> _downloadTasks;
-    private List<Task> _installTasks;
-    private CancellationTokenSource _cancellationTokenSource = new();
-    private Stopwatch _installStopWatch = new();
-    private DateTime _lastUpdateTime = DateTime.MinValue;
-    private ManualResetEventSlim _pauseEvent = new ManualResetEventSlim(true);
-    private volatile bool _userCancellationRequested;
-    private bool _acceptCancellation;
-    private TaskCompletionSource _operationCompletion =
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private UpdateTransactionState? _updateTransaction;
+    private InstallOperationContext Operation =>
+        _activeContext ?? throw new InvalidOperationException("No install operation is active.");
+
+    private ConcurrentDictionary<string, object> _fileLocksConcurrentDictionary => Operation.FileLocks;
+    private ConcurrentDictionary<BigInteger, List<FileManifest>> _chunkToFileManifestsDictionary
+    {
+        get => Operation.ChunkFiles;
+        set => Operation.ChunkFiles = value;
+    }
+    private ConcurrentDictionary<BigInteger, int> _chunkPartReferences
+    {
+        get => Operation.ChunkReferences;
+        set => Operation.ChunkReferences = value;
+    }
+    private ConcurrentDictionary<string, byte> _ioQueueTaskSet => Operation.IoTaskSet;
+    private List<string> _uninstallManifestPaths => Operation.UninstallManifestPaths;
+    private List<FileManifest>? _importVerificationResult
+    {
+        get => Operation.ImportVerificationResult;
+        set => Operation.ImportVerificationResult = value;
+    }
+    private BlockingCollection<DownloadTask> _downloadQueue
+    {
+        get => Operation.DownloadQueue;
+        set => Operation.DownloadQueue = value;
+    }
+    private BlockingCollection<IoTask> _ioQueue
+    {
+        get => Operation.IoQueue;
+        set => Operation.IoQueue = value;
+    }
+    private BlockingCollection<BigInteger> _completedChunks
+    {
+        get => Operation.CompletedChunks;
+        set => Operation.CompletedChunks = value;
+    }
+    private List<Task>? _downloadTasks
+    {
+        get => Operation.DownloadWorkers;
+        set => Operation.DownloadWorkers = value;
+    }
+    private List<Task>? _installTasks
+    {
+        get => Operation.InstallWorkers;
+        set => Operation.InstallWorkers = value;
+    }
+    private CancellationTokenSource _cancellationTokenSource => Operation.Cancellation;
+    private Stopwatch _installStopWatch => Operation.Stopwatch;
+    private DateTime _lastUpdateTime
+    {
+        get => Operation.LastProgressUpdate;
+        set => Operation.LastProgressUpdate = value;
+    }
+    private bool _userCancellationRequested
+    {
+        get => Operation.UserCancellationRequested;
+        set => Operation.UserCancellationRequested = value;
+    }
+    private bool _acceptCancellation
+    {
+        get => Operation.AcceptCancellation;
+        set => Operation.AcceptCancellation = value;
+    }
+    private TaskCompletionSource _operationCompletion => Operation.Completion;
+    private UpdateTransactionState? _updateTransaction
+    {
+        get => Operation.UpdateTransaction;
+        set => Operation.UpdateTransaction = value;
+    }
+    private InstallTransactionState? _transaction
+    {
+        get => Operation.Transaction;
+        set => Operation.Transaction = value;
+    }
 
     internal Action<string>? UpdatePublicationFaultInjector { get; set; }
     internal Action<UpdateTransactionState>? UpdateJournalTransitionFaultInjector { get; set; }
+    internal Action<InstallTransactionState>? InstallJournalWriteFaultInjector { get; set; }
+    internal Action<InstallTransactionState>? InstallJournalTransitionFaultInjector { get; set; }
 
-    public InstallItem? CurrentInstall { get; private set; }
+    public InstallItem? CurrentInstall
+    {
+        get
+        {
+            lock (_operationLifecycleLock)
+                return _activeContext?.Item;
+        }
+        private set
+        {
+            lock (_operationLifecycleLock)
+            {
+                if (value is null)
+                {
+                    var completed = _activeContext;
+                    _activeContext = null;
+                    completed?.Dispose();
+                    return;
+                }
+
+                if (!ReferenceEquals(_activeContext?.Item, value))
+                {
+                    _activeContext?.Dispose();
+                    _activeContext = new InstallOperationContext(value);
+                }
+            }
+        }
+    }
+    public Task ProcessingTask
+    {
+        get
+        {
+            lock (_installItemLock)
+                return _processingTask;
+        }
+    }
 
     public InstallManager(
         ILogger logger,
@@ -80,7 +182,6 @@ public class InstallManager
         _logger = logger;
         _libraryManager = libraryManager;
         _downloadManager = downloadManager;
-        CurrentInstall = null;
         _repository = repository;
         _storage = storage;
         _fileSystemProbe = fileSystemProbe;
@@ -90,79 +191,187 @@ public class InstallManager
         {
             Converters = { new BigIntegerJsonConverter() }
         };
+        _commandLoopTask = Task.Run(ProcessCommandsAsync);
 
         foreach (var installation in _storage.LocalAppStateDictionary.Values)
         {
             if (!string.IsNullOrWhiteSpace(installation.InstallPath))
                 RecoverPendingUpdate(installation.InstallPath);
         }
+        RecoverPendingOperation();
     }
 
-    /// <summary>
-    /// Adds game to the install queue.
-    /// Starts processing it immediately if no other game is in the queue
-    /// </summary>
-    /// <param name="item"></param>
-    public void AddToQueue(InstallItem item)
-    {
-        if (item == null)
-            return;
+    public void AddToQueue(InstallItem item) =>
+        EnqueueAsync(item).GetAwaiter().GetResult();
 
-        // check if the game is already in the queue
-        if (_installQueue.Contains(item, new InstallItemComparer()))
+    public async Task<InstallCommandResult> EnqueueAsync(
+        InstallItem item,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        var completion = new TaskCompletionSource<InstallCommandResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        await _commandChannel.Writer.WriteAsync(
+            new InstallCommandEnvelope(InstallCommandKind.Enqueue, item, item.AppName, completion),
+            cancellationToken);
+        return await completion.Task.WaitAsync(cancellationToken);
+    }
+
+    public Task<InstallCommandResult> PauseAsync(CancellationToken cancellationToken = default) =>
+        SendCommandAsync(InstallCommandKind.Pause, cancellationToken: cancellationToken);
+
+    public Task<InstallCommandResult> ResumeAsync(CancellationToken cancellationToken = default) =>
+        SendCommandAsync(InstallCommandKind.Resume, cancellationToken: cancellationToken);
+
+    public Task<InstallCommandResult> CancelAsync(
+        string appName,
+        CancellationToken cancellationToken = default) =>
+        SendCommandAsync(InstallCommandKind.Cancel, appName, cancellationToken);
+
+    public Task<InstallCommandResult> ShutdownAsync(CancellationToken cancellationToken = default) =>
+        SendCommandAsync(InstallCommandKind.Shutdown, cancellationToken: cancellationToken);
+
+    public Task<InstallCommandResult> RecoverAsync(CancellationToken cancellationToken = default) =>
+        SendCommandAsync(InstallCommandKind.Recover, cancellationToken: cancellationToken);
+
+    private async Task<InstallCommandResult> SendCommandAsync(
+        InstallCommandKind kind,
+        string? appName = null,
+        CancellationToken cancellationToken = default)
+    {
+        var completion = new TaskCompletionSource<InstallCommandResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        await _commandChannel.Writer.WriteAsync(
+            new InstallCommandEnvelope(kind, null, appName, completion),
+            cancellationToken);
+        return await completion.Task.WaitAsync(cancellationToken);
+    }
+
+    private async Task ProcessCommandsAsync()
+    {
+        await foreach (var command in _commandChannel.Reader.ReadAllAsync())
         {
-            _logger.Warning("AddToQueue: Game {Name} already in queue", item.AppName);
-            return;
+            try
+            {
+                var result = command.Kind switch
+                {
+                    InstallCommandKind.Enqueue => ExecuteEnqueue(command.Item!),
+                    InstallCommandKind.Pause => await ExecutePauseAsync(),
+                    InstallCommandKind.Resume => ExecuteResume(),
+                    InstallCommandKind.Cancel => await ExecuteCancelAsync(command.AppName),
+                    InstallCommandKind.Shutdown => await ExecuteShutdownAsync(),
+                    InstallCommandKind.Recover => await ExecuteRecoverAsync(),
+                    _ => new InstallCommandResult(
+                        InstallCommandOutcome.Rejected,
+                        $"Unsupported install command: {command.Kind}.")
+                };
+                command.Completion.TrySetResult(result);
+            }
+            catch (Exception exception)
+            {
+                _logger.Error(exception, "Install command {Command} failed", command.Kind);
+                command.Completion.TrySetException(exception);
+            }
+        }
+    }
+
+    private InstallCommandResult ExecuteEnqueue(InstallItem item)
+    {
+        lock (_installItemLock)
+        {
+            if (_installQueue.Contains(item, new InstallItemComparer()) ||
+                string.Equals(CurrentInstall?.AppName, item.AppName, StringComparison.Ordinal))
+            {
+                _logger.Warning("AddToQueue: Game {Name} already in queue", item.AppName);
+                return new InstallCommandResult(
+                    InstallCommandOutcome.Rejected,
+                    "The game already has an active or queued operation.");
+            }
         }
 
-        // Check if the game we are trying to install exists in the library
         var gameData = _libraryManager.GetGameInfo(item.AppName);
         if (gameData == null)
         {
             _logger.Warning("AddToQueue: Game {Name} not found in library", item.AppName);
-            return;
+            return new InstallCommandResult(InstallCommandOutcome.NotFound, "The game is not in the library.");
         }
 
         if (item.Action != ActionType.Install && item.Action != ActionType.Import &&
-            (gameData.LocalAppState == null || gameData.LocalAppState?.InstallStatus == InstallState.NotInstalled))
+            (gameData.LocalAppState == null || gameData.LocalAppState.InstallStatus == InstallState.NotInstalled))
         {
-            _logger.Warning($"AddToQueue: {item.AppName} is not installed, cannot {item.Action.ToString()}");
-            return;
+            _logger.Warning("AddToQueue: {AppName} is not installed, cannot {Action}", item.AppName, item.Action);
+            return new InstallCommandResult(
+                InstallCommandOutcome.Rejected,
+                "The requested operation requires an installed game.");
         }
 
-        if (item.Action != ActionType.Repair && item.Action != ActionType.Uninstall && gameData.LocalAppState?.InstallStatus == InstallState.Broken)
+        if (item.Action != ActionType.Repair && item.Action != ActionType.Uninstall &&
+            gameData.LocalAppState?.InstallStatus == InstallState.Broken)
         {
-            _logger.Warning($"AddToQueue: {item.AppName} is broken, forcing repair");
+            _logger.Warning("AddToQueue: {AppName} is broken, forcing repair", item.AppName);
             item.Action = ActionType.Repair;
         }
 
+        var terminal = new TaskCompletionSource<InstallTerminalResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_terminalResults.TryAdd(item.AppName, terminal))
+            return new InstallCommandResult(
+                InstallCommandOutcome.Rejected,
+                "The game already has a pending terminal result.");
+
         _logger.Information("AddToQueue: Adding new Install to queue {Name} Action {Action}", item.AppName, item.Action);
-        _installQueue.Add(item);
-        if (CurrentInstall == null)
-            ProcessNext();
+        lock (_installItemLock)
+            _installQueue.Add(item);
+        StartProcessingIfIdle();
+        return new InstallCommandResult(InstallCommandOutcome.Accepted, Terminal: terminal.Task);
     }
 
-    private async void ProcessNext(bool isResuming = false)
+    private void StartProcessingIfIdle()
+    {
+        lock (_installItemLock)
+        {
+            if (!_processingTask.IsCompleted)
+                return;
+
+            _processingTask = ProcessQueueAsync();
+        }
+    }
+
+    private async Task ProcessQueueAsync()
+    {
+        while (true)
+        {
+            lock (_installItemLock)
+            {
+                if (CurrentInstall is not null || _installQueue.Count == 0)
+                    return;
+            }
+
+            await ProcessNextAsync();
+        }
+    }
+
+    private async Task ProcessNextAsync(bool isResuming = false)
     {
         try
         {
-            if (isResuming == false && (CurrentInstall != null || _installQueue.Count <= 0)) return;
-
             if (!isResuming)
             {
-                lock (_operationLifecycleLock)
+                lock (_installItemLock)
                 {
-                    _userCancellationRequested = false;
-                    _installStopWatch.Reset();
-                    _acceptCancellation = true;
-                    _operationCompletion = new TaskCompletionSource(
-                        TaskCreationOptions.RunContinuationsAsynchronously);
-                    _downloadTasks = null;
-                    _installTasks = null;
-                    _cancellationTokenSource.Dispose();
-                    _cancellationTokenSource = new CancellationTokenSource();
+                    if (CurrentInstall is not null || _installQueue.Count == 0)
+                        return;
+                    CurrentInstall = _installQueue[0];
+                    _installQueue.RemoveAt(0);
                 }
+
+                lock (_operationLifecycleLock)
+                    _acceptCancellation = true;
                 await PrepareTasks();
+            }
+            else
+            {
+                await PrepareTasks(true, Operation.ResumeCompletedChunks);
             }
 
             // PrepareTasks may call HandleInstallationStoppage (e.g. import folder empty),
@@ -173,15 +382,16 @@ public class InstallManager
             CurrentInstall.Status = ActionStatus.Processing;
             InstallationStatusChanged?.Invoke(CurrentInstall);
 
-            // Import and Move don't need download/IO workers
-            if (CurrentInstall.Action == ActionType.Import || CurrentInstall.Action == ActionType.Move)
+            // Import does not mutate the live tree. Move commits without worker queues.
+            if (CurrentInstall.Action is ActionType.Import or ActionType.Move)
             {
+                if (CurrentInstall.Action == ActionType.Move)
+                    await CommitPreparedTransaction();
                 await UpdateInstalledGameStatus();
                 return;
             }
 
             _installStopWatch.Start();
-            _pauseEvent.Set();
 
             _downloadTasks = Enumerable.Range(0, _numberOfThreads)
                 .Select(_ => Task.Run(ProcessDownloadQueue, _cancellationTokenSource.Token))
@@ -200,19 +410,36 @@ public class InstallManager
             BeginFinalization();
             if (CurrentInstall.Action == ActionType.Update && _updateTransaction != null)
                 await CommitPreparedUpdate();
+            else if (_transaction is not null)
+                await CommitPreparedTransaction();
             await UpdateInstalledGameStatus();
 
         }
         catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested)
         {
+            if (Operation.PauseRequested)
+                return;
+            var workerFailure = Operation.WorkerFailure;
             await HandleInstallationStoppage(
-                _userCancellationRequested ? "Installation cancelled" : "Installation worker cancelled",
+                _userCancellationRequested
+                    ? "Installation cancelled"
+                    : workerFailure is null
+                        ? "Installation worker cancelled"
+                        : $"{workerFailure.GetType().Name}: {workerFailure.Message}",
                 _userCancellationRequested);
+        }
+        catch (InstallProcessTerminationException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
+            if (ex is InstallPlanningException planningException)
+                Operation.PlanningFailure = planningException.Failure;
             _logger.Error(ex, "ProcessNext: Installation failed");
-            await HandleInstallationStoppage("An error occurred during installation");
+            await HandleInstallationStoppage(
+                $"{ex.GetType().Name}: {ex.Message}",
+                _userCancellationRequested);
         }
     }
 
@@ -220,11 +447,8 @@ public class InstallManager
     {
         try
         {
-            if (!isResuming)
-            {
-                CurrentInstall = _installQueue[0];
-                _installQueue.RemoveAt(0);
-            }
+            if (!isResuming && CurrentInstall is null)
+                return;
 
             if (CurrentInstall == null) return;
             _logger.Information("ProcessNext: Processing {Action} of {AppName}. Game Location {Location} ",
@@ -237,22 +461,6 @@ public class InstallManager
 
             _logger.Information("ProcessNext: Parsing game manifest");
             var data = Manifest.ReadAll(manifestData);
-
-            // TODO Handle stats if game is installed
-
-
-            if (CurrentInstall.Action == ActionType.Install)
-            {
-                var installRoot = ManifestPath.RevalidateUnderRoot(
-                    CurrentInstall.Location,
-                    CurrentInstall.Location);
-                if (!Directory.Exists(installRoot))
-                {
-                    Directory.CreateDirectory(installRoot);
-                    _ = ManifestPath.RevalidateUnderRoot(installRoot, installRoot);
-                    _logger.Debug("Folder created at: {location}", installRoot);
-                }
-            }
 
             var writeProbe = _fileSystemProbe.Probe(CurrentInstall.Location);
             if (!writeProbe.Success)
@@ -285,24 +493,30 @@ public class InstallManager
 
             ResetQueues();
 
+            if (CurrentInstall.Action is ActionType.Install or ActionType.Uninstall or ActionType.Import)
+            {
+                CreateAndPersistPlan(data, manifestData, writeProbe);
+                if (CurrentInstall.Action != ActionType.Import)
+                    PrepareTransactionDirectories();
+            }
+
             if (CurrentInstall.Action == ActionType.Install)
             {
                 await _downloadManager.InitializeMirrors(
                     gameData.BaseUrls,
                     _cancellationTokenSource.Token);
-                GetChunksToDownload(data, downloadedChunks);
+                GetChunksToDownloadFiltered(
+                    data,
+                    GetPendingManifestFiles(data),
+                    _transaction!.StagingRoot);
             }
             else if (CurrentInstall.Action == ActionType.Update)
             {
-                await PrepareUpdateTasks(
-                    gameData,
-                    data,
-                    ComputeManifestSha1(manifestData),
-                    ComputeManifestSha256(manifestData));
+                await PrepareUpdateTasks(gameData, data, manifestData);
             }
             else if (CurrentInstall.Action == ActionType.Repair)
             {
-                await PrepareRepairTasks(gameData, data);
+                await PrepareRepairTasks(gameData, data, manifestData, writeProbe);
             }
             else if (CurrentInstall.Action == ActionType.Uninstall)
             {
@@ -310,15 +524,6 @@ public class InstallManager
                 {
                     _uninstallManifestPaths.Add(fileManifest.Path.Value);
                     CurrentInstall.TotalWriteSizeMb += fileManifest.FileSize / 1024.0 / 1024.0;
-
-                    var task = new IoTask()
-                    {
-                        DestinationFilePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, fileManifest.Path),
-                        TaskType = IoTaskType.Delete,
-                        Size = fileManifest.FileSize,
-                    };
-                    _logger.Debug("ProcessNext: Adding ioTask: {task}", task);
-                    _ioQueue.Add(task);
                 }
             }
             else if (CurrentInstall.Action == ActionType.Import)
@@ -358,52 +563,28 @@ public class InstallManager
             }
             else if (CurrentInstall.Action == ActionType.Move)
             {
-                var destinationParent = Path.GetDirectoryName(
-                    Path.GetFullPath(CurrentInstall.MoveLocation));
+                var destinationParent = Path.GetDirectoryName(Path.GetFullPath(CurrentInstall.MoveLocation));
                 if (string.IsNullOrWhiteSpace(destinationParent))
                 {
                     await HandleInstallationStoppage("Move destination has no parent directory");
                     return;
                 }
                 var destinationProbe = _fileSystemProbe.Probe(destinationParent);
-                if (!destinationProbe.Success ||
-                    destinationProbe.Location != InstallFileSystemLocation.Local ||
-                    string.IsNullOrWhiteSpace(writeProbe.VolumeIdentity) ||
-                    !string.Equals(
-                        writeProbe.VolumeIdentity,
-                        destinationProbe.VolumeIdentity,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    await HandleInstallationStoppage("Cross-volume moves are not supported");
-                    return;
-                }
-
                 if (Directory.Exists(CurrentInstall.MoveLocation))
                 {
                     await HandleInstallationStoppage("Destination directory already exists");
                     return;
                 }
 
-                var sourcePath = ManifestPath.RevalidateUnderRoot(
-                    CurrentInstall.Location,
-                    CurrentInstall.Location);
-                var destinationPath = ManifestPath.RevalidateUnderRoot(
-                    CurrentInstall.MoveLocation,
-                    CurrentInstall.MoveLocation);
-                _logger.Information("Move: Moving {AppName} from {Src} to {Dest}",
-                    CurrentInstall.AppName, sourcePath, destinationPath);
-                BeginFinalization();
-                Directory.Move(sourcePath, destinationPath);
-                _logger.Information("Move: Successfully moved {AppName}", CurrentInstall.AppName);
+                CreateAndPersistPlan(
+                    data,
+                    manifestData,
+                    destinationProbe,
+                    moveDestination: CurrentInstall.MoveLocation,
+                    source: writeProbe);
+                PrepareTransactionDirectories();
             }
 
-            if (CurrentInstall.Action is ActionType.Install or ActionType.Update or ActionType.Repair &&
-                (writeProbe.AvailableBytes is not long availableBytes ||
-                 CurrentInstall.TotalWriteSizeBytes > availableBytes))
-            {
-                await HandleInstallationStoppage("Install location does not have enough available space");
-                return;
-            }
         }
         catch (Exception ex)
         {
@@ -428,42 +609,461 @@ public class InstallManager
         _fileLocksConcurrentDictionary.Clear();
     }
 
-    private async Task ProcessDownloadQueue()
+    private InstallOperationPlan CreateAndPersistPlan(
+        Manifest manifest,
+        byte[] manifestBytes,
+        InstallFileSystemProbeResult destination,
+        IReadOnlyList<InstallPlanFile>? installedFiles = null,
+        IReadOnlyCollection<string>? invalidFiles = null,
+        string? moveDestination = null,
+        InstallFileSystemProbeResult? source = null)
     {
+        var local = _storage.LocalAppStateDictionary
+            .FirstOrDefault(pair => pair.Key == CurrentInstall!.AppName).Value;
+        var targetIdentity = new InstallManifestIdentity(
+            manifest.ManifestMeta.BuildVersion,
+            ComputeManifestSha1(manifestBytes),
+            ComputeManifestSha256(manifestBytes));
+        var targetFiles = manifest.FileManifestList.Elements
+            .Select(ToPlanFile)
+            .ToArray();
+        var installedIdentity = local is null
+            ? null
+            : new InstallManifestIdentity(
+                local.InstalledManifestBuildVersion ?? local.Version ?? string.Empty,
+                local.InstalledManifestSha1 ?? string.Empty,
+                local.InstalledManifestSha256 ?? string.Empty);
+        var verifiedStagedFiles = Operation.Plan is { } previousPlan &&
+            string.Equals(
+                previousPlan.TargetManifest.Sha256,
+                targetIdentity.Sha256,
+                StringComparison.OrdinalIgnoreCase)
+                ? previousPlan.VerifiedStageFiles.Select(file => file.Path).ToArray()
+                : [];
+        var result = InstallOperationPlanner.Create(new InstallPlanningRequest(
+            Operation.OperationId,
+            CurrentInstall!.AppName,
+            CurrentInstall.Action,
+            Path.GetFullPath(CurrentInstall.Location),
+            targetIdentity,
+            targetFiles,
+            destination,
+            installedIdentity,
+            installedFiles ?? (CurrentInstall.Action == ActionType.Install ? [] : targetFiles),
+            invalidFiles,
+            verifiedStagedFiles,
+            MoveDestination: moveDestination,
+            Source: source));
+        if (!result.IsSuccess)
+            throw new InstallPlanningException(result.Failure!.Value, result.Message!);
+
+        Operation.Plan = result.Plan!;
+        _transaction = InstallTransactionState.Create(
+            result.Plan!,
+            local is null ? null : JsonSerializer.Serialize(local),
+            null);
+        PersistDurableOperationState();
+        return result.Plan!;
+    }
+
+    private static InstallPlanFile ToPlanFile(FileManifest file) => new(
+        file.Path.Value,
+        file.FileSize,
+        Convert.ToHexString(file.ShaHash).ToLowerInvariant());
+
+    private List<FileManifest> GetPendingManifestFiles(Manifest manifest)
+    {
+        var pending = new HashSet<string>(
+            Operation.Plan?.PendingStageFiles.Select(file => file.Path) ?? [],
+            StringComparer.OrdinalIgnoreCase);
+        return manifest.FileManifestList.Elements
+            .Where(file => pending.Contains(file.Path.Value))
+            .ToList();
+    }
+
+    private void PersistDurableOperationState()
+    {
+        var state = new InstallManagerState
+        {
+            CurrentInstall = CurrentInstall,
+            IoQueue = [],
+            CompletedChunks = [.. Operation.ResumeCompletedChunks, .. _completedChunks],
+            Plan = Operation.Plan,
+            Phase = _transaction?.Phase
+        };
+        _storage.SaveInstallState(JsonSerializer.Serialize(state, _jsonSerializerOptions));
+    }
+
+    private void PrepareTransactionDirectories()
+    {
+        var transaction = _transaction
+            ?? throw new InvalidOperationException("No install transaction is planned.");
+        Directory.CreateDirectory(transaction.Plan.InstallRoot);
+        _ = ManifestPath.RevalidateUnderRoot(transaction.Plan.InstallRoot, transaction.Plan.InstallRoot);
+        foreach (var path in new[] { transaction.StagingRoot, transaction.BackupRoot, transaction.TrashRoot })
+        {
+            Directory.CreateDirectory(path);
+            _ = ManifestPath.RevalidateUnderRoot(transaction.Plan.InstallRoot, path);
+        }
+        transaction.Phase = InstallTransactionPhase.Staging;
+        PersistTransaction(transaction);
+    }
+
+    private void PersistTransaction(InstallTransactionState transaction)
+    {
+        transaction.Revision = checked(transaction.Revision + 1);
+        var journalPath = transaction.Plan.Action == ActionType.Move &&
+            !Directory.Exists(transaction.Plan.InstallRoot)
+                ? Path.Combine(
+                    transaction.Plan.MoveDestination!,
+                    ".Crimson",
+                    "operations",
+                    transaction.Plan.OperationId,
+                    "journal.json")
+                : transaction.JournalPath;
+        InstallJournalWriteFaultInjector?.Invoke(transaction);
+        AtomicJsonFile.Write(journalPath, transaction, InstallTransactionSchema);
+        PersistDurableOperationState();
+        InstallJournalTransitionFaultInjector?.Invoke(transaction);
+    }
+
+    private void ThrowIfRecoveryRequested()
+    {
+        if (Operation.RecoveryRequested)
+            throw new InvalidOperationException("Cancellation requested transactional recovery.");
+    }
+
+    private async Task CommitPreparedTransaction()
+    {
+        var transaction = _transaction
+            ?? throw new InvalidOperationException("No install transaction is planned.");
+        if (transaction.Plan.Action is ActionType.Import or ActionType.Update)
+            return;
+
+        if (transaction.Plan.Action is ActionType.Install or ActionType.Repair)
+            await VerifyStagedFiles(transaction);
+        transaction.Phase = InstallTransactionPhase.ReadyToCommit;
+        PersistTransaction(transaction);
+        BeginFinalization();
+        transaction.Phase = InstallTransactionPhase.Committing;
+        PersistTransaction(transaction);
+        ThrowIfRecoveryRequested();
+
+        switch (transaction.Plan.Action)
+        {
+            case ActionType.Install:
+            case ActionType.Repair:
+                foreach (var file in transaction.Plan.VerifiedStageFiles.Concat(transaction.Plan.PendingStageFiles))
+                {
+                    ThrowIfRecoveryRequested();
+                    var stagedPath = ManifestPath.ResolveUnderRoot(transaction.StagingRoot, file.Path);
+                    var livePath = ManifestPath.ResolveUnderRoot(transaction.Plan.InstallRoot, file.Path);
+                    if (!File.Exists(stagedPath))
+                        throw new InvalidDataException($"Staged file is missing: {file.Path}");
+                    if (!string.Equals(
+                            Util.CalculateSHA1(stagedPath),
+                            file.Sha1,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidDataException($"Staged file changed before publication: {file.Path}");
+                    }
+                    if (File.Exists(livePath))
+                    {
+                        if (transaction.Plan.Action == ActionType.Install)
+                            throw new IOException($"Install would overwrite an existing path: {file.Path}");
+                        var backupPath = ManifestPath.ResolveUnderRoot(transaction.BackupRoot, file.Path);
+                        EnsureDirectoryExists(backupPath);
+                        File.Move(livePath, backupPath);
+                        transaction.BackedUpPaths.Add(file.Path);
+                        PersistTransaction(transaction);
+                        ThrowIfRecoveryRequested();
+                    }
+                    else if (Directory.Exists(livePath))
+                    {
+                        throw new IOException($"Publication target is a directory: {file.Path}");
+                    }
+
+                    EnsureDirectoryExists(livePath);
+                    File.Move(stagedPath, livePath);
+                    transaction.PublishedPaths.Add(file.Path);
+                    PersistTransaction(transaction);
+                    ThrowIfRecoveryRequested();
+                }
+                break;
+
+            case ActionType.Uninstall:
+                foreach (var relativePath in transaction.Plan.RemoveFiles)
+                {
+                    ThrowIfRecoveryRequested();
+                    var livePath = ManifestPath.ResolveUnderRoot(transaction.Plan.InstallRoot, relativePath);
+                    if (!File.Exists(livePath))
+                        continue;
+                    var trashPath = ManifestPath.ResolveUnderRoot(transaction.TrashRoot, relativePath);
+                    EnsureDirectoryExists(trashPath);
+                    File.Move(livePath, trashPath);
+                    transaction.TrashedPaths.Add(relativePath);
+                    PersistTransaction(transaction);
+                    ThrowIfRecoveryRequested();
+                }
+                break;
+
+            case ActionType.Move:
+                ThrowIfRecoveryRequested();
+                var destination = transaction.Plan.MoveDestination
+                    ?? throw new InvalidOperationException("Move transaction has no destination.");
+                Directory.Move(transaction.Plan.InstallRoot, destination);
+                ThrowIfRecoveryRequested();
+                break;
+        }
+
+        ThrowIfRecoveryRequested();
+        transaction.Phase = InstallTransactionPhase.Published;
+        PersistTransaction(transaction);
+    }
+
+    private async Task VerifyStagedFiles(InstallTransactionState transaction)
+    {
+        foreach (var file in transaction.Plan.VerifiedStageFiles.Concat(transaction.Plan.PendingStageFiles))
+        {
+            _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+            var stagedPath = ManifestPath.ResolveUnderRoot(transaction.StagingRoot, file.Path);
+            if (!File.Exists(stagedPath))
+                throw new InvalidDataException($"Staged file is missing: {file.Path}");
+            var actual = await Task.Run(() => Util.CalculateSHA1(stagedPath), _cancellationTokenSource.Token);
+            if (!string.Equals(actual, file.Sha1, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"Staged file hash mismatch: {file.Path}");
+        }
+    }
+
+    private void MarkTransactionMetadataCommitted()
+    {
+        if (_transaction is null)
+            return;
+        _transaction.Phase = InstallTransactionPhase.MetadataCommitted;
+        if (_transaction.Plan.Action == ActionType.Move &&
+            !Directory.Exists(_transaction.Plan.InstallRoot))
+        {
+            PersistDurableOperationState();
+            return;
+        }
+        PersistTransaction(_transaction);
+    }
+
+    private void CompletePreparedTransaction()
+    {
+        if (_transaction is null)
+            return;
+        _transaction.Phase = InstallTransactionPhase.Completed;
+        if (_transaction.Plan.Action == ActionType.Move &&
+            !Directory.Exists(_transaction.Plan.InstallRoot))
+        {
+            PersistDurableOperationState();
+        }
+        else
+        {
+            PersistTransaction(_transaction);
+        }
+
+        var operationRoot = _transaction.Plan.Action == ActionType.Move
+            ? Path.Combine(
+                _transaction.Plan.MoveDestination!,
+                ".Crimson",
+                "operations",
+                _transaction.Plan.OperationId)
+            : Path.GetDirectoryName(_transaction.JournalPath)!;
+        if (Directory.Exists(operationRoot))
+            Directory.Delete(operationRoot, recursive: true);
+        _transaction = null;
+        PersistDurableOperationState();
+    }
+
+    private void RollbackPreparedTransaction()
+    {
+        if (_transaction is null)
+            return;
+        var transaction = _transaction;
+        if (transaction.Phase == InstallTransactionPhase.Completed)
+        {
+            var completedRoot = transaction.Plan.Action == ActionType.Move
+                ? Path.Combine(
+                    transaction.Plan.MoveDestination!,
+                    ".Crimson",
+                    "operations",
+                    transaction.Plan.OperationId)
+                : Path.GetDirectoryName(transaction.JournalPath)!;
+            if (Directory.Exists(completedRoot))
+                Directory.Delete(completedRoot, recursive: true);
+            _transaction = null;
+            PersistDurableOperationState();
+            return;
+        }
+        if (transaction.Phase == InstallTransactionPhase.MetadataCommitted)
+        {
+            CompletePreparedTransaction();
+            return;
+        }
+
+        if (transaction.Plan.Action == ActionType.Move)
+        {
+            var destination = transaction.Plan.MoveDestination!;
+            if (!Directory.Exists(transaction.Plan.InstallRoot) && Directory.Exists(destination))
+                Directory.Move(destination, transaction.Plan.InstallRoot);
+        }
+        else
+        {
+            foreach (var relativePath in transaction.PublishedPaths.AsEnumerable().Reverse())
+            {
+                var livePath = ManifestPath.ResolveUnderRoot(transaction.Plan.InstallRoot, relativePath);
+                if (File.Exists(livePath))
+                    File.Delete(livePath);
+            }
+            foreach (var relativePath in transaction.BackedUpPaths.AsEnumerable().Reverse())
+            {
+                var backupPath = ManifestPath.ResolveUnderRoot(transaction.BackupRoot, relativePath);
+                if (!File.Exists(backupPath))
+                    continue;
+                var livePath = ManifestPath.ResolveUnderRoot(transaction.Plan.InstallRoot, relativePath);
+                EnsureDirectoryExists(livePath);
+                File.Move(backupPath, livePath, overwrite: true);
+            }
+            foreach (var relativePath in transaction.TrashedPaths.AsEnumerable().Reverse())
+            {
+                var trashPath = ManifestPath.ResolveUnderRoot(transaction.TrashRoot, relativePath);
+                if (!File.Exists(trashPath))
+                    continue;
+                var livePath = ManifestPath.ResolveUnderRoot(transaction.Plan.InstallRoot, relativePath);
+                EnsureDirectoryExists(livePath);
+                File.Move(trashPath, livePath, overwrite: true);
+            }
+        }
+
+        var operationRoot = Path.GetDirectoryName(transaction.JournalPath)!;
+        if (Directory.Exists(operationRoot))
+            Directory.Delete(operationRoot, recursive: true);
+        _transaction = null;
+        PersistDurableOperationState();
+    }
+
+    private void RecoverPendingOperation()
+    {
+        InstallManagerState? state;
         try
         {
-            foreach (var downloadTask in _downloadQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
-            {
-                _pauseEvent.Wait(_cancellationTokenSource.Token);
+            state = JsonSerializer.Deserialize<InstallManagerState>(
+                _storage.GetInstallState(),
+                _jsonSerializerOptions);
+        }
+        catch (FileNotFoundException)
+        {
+            return;
+        }
+        catch (Exception exception)
+        {
+            _logger.Error(exception, "Durable install operation state could not be read");
+            return;
+        }
 
-                _logger.Debug("ProcessDownloadQueue: Downloading chunk with guid{guid} from {url} to {path}",
-                    downloadTask.GuidNum, downloadTask.Url, downloadTask.TempPath);
+        if (state?.Plan is null || state.Phase is null)
+            return;
+        if (state.Phase == InstallTransactionPhase.Paused)
+            return;
+
+        try
+        {
+            var item = state.CurrentInstall ?? new InstallItem(
+                state.Plan.AppName,
+                state.Plan.Action,
+                state.Plan.InstallRoot)
+            {
+                MoveLocation = state.Plan.MoveDestination
+            };
+            lock (_operationLifecycleLock)
+                _activeContext = new InstallOperationContext(item, state.Plan.OperationId);
+            Operation.Plan = state.Plan;
+            Operation.ResumeCompletedChunks.AddRange(state.CompletedChunks ?? []);
+
+            var planned = InstallTransactionState.Create(state.Plan, null, null);
+            var journalPath = planned.JournalPath;
+            if (!File.Exists(journalPath) && state.Plan.Action == ActionType.Move &&
+                !string.IsNullOrWhiteSpace(state.Plan.MoveDestination))
+            {
+                journalPath = Path.Combine(
+                    state.Plan.MoveDestination,
+                    ".Crimson",
+                    "operations",
+                    state.Plan.OperationId,
+                    "journal.json");
+            }
+
+            if (File.Exists(journalPath))
+            {
+                var read = AtomicJsonFile.ReadAndMigrate(journalPath, InstallTransactionSchema);
+                if (!read.IsSuccess || read.Value is null)
+                    throw new InvalidDataException($"Install transaction journal is unavailable: {read.Status}.");
+                _transaction = read.Value;
+            }
+            else
+            {
+                planned.Phase = state.Phase.Value;
+                _transaction = planned;
+            }
+
+            RollbackPreparedTransaction();
+            _storage.SaveInstallState(JsonSerializer.Serialize(new InstallManagerState(), _jsonSerializerOptions));
+            CurrentInstall = null;
+        }
+        catch (Exception exception)
+        {
+            _logger.Fatal(exception, "Install transaction recovery failed; launch remains blocked");
+            if (_activeContext is not null)
+            {
+                Operation.Transaction ??= InstallTransactionState.Create(state.Plan, null, null);
+                Operation.Transaction.Phase = InstallTransactionPhase.RecoveryRequired;
+                PersistDurableOperationState();
+            }
+        }
+    }
+
+    private async Task ProcessDownloadQueue()
+    {
+        var context = Operation;
+        var cancellation = context.Cancellation;
+        var cancellationToken = cancellation.Token;
+        try
+        {
+            foreach (var downloadTask in context.DownloadQueue.GetConsumingEnumerable(cancellationToken))
+            {
+                _logger.Debug(
+                    "ProcessDownloadQueue: Downloading chunk with guid{Guid} from {Url} to {Path}",
+                    downloadTask.GuidNum,
+                    downloadTask.Url,
+                    downloadTask.TempPath);
                 var success = await _downloadManager.DownloadFileWithFallback(
                     downloadTask.Url,
                     downloadTask.TempPath,
-                    cancellationToken: _cancellationTokenSource.Token,
+                    cancellationToken: cancellationToken,
                     expectedSize: downloadTask.ChunkInfo.FileSize);
                 if (!success)
                     throw new IOException($"Failed to download chunk {downloadTask.GuidNum} from all mirrors");
 
                 var downloadedChunkBytes = await File.ReadAllBytesAsync(
                     downloadTask.TempPath,
-                    _cancellationTokenSource.Token);
+                    cancellationToken);
                 var downloadedChunk = Chunk.ReadBuffer(downloadedChunkBytes);
                 downloadedChunk.ValidateAgainst(downloadTask.ChunkInfo);
-
                 UpdateDownloadProgress(downloadTask.ChunkInfo.FileSize);
                 CreateIoTasksForChunk(downloadTask);
             }
         }
-        catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
         catch (Exception ex)
         {
+            context.WorkerFailure = ex;
             _logger.Error(ex, "ProcessDownloadQueue: Download worker failed");
-            _cancellationTokenSource.Cancel();
+            cancellation.Cancel();
             throw;
         }
     }
@@ -471,7 +1071,7 @@ public class InstallManager
     private void CreateIoTasksForChunk(DownloadTask downloadTask)
     {
         // get file manifest from dictionary
-        var writeRoot = _updateTransaction?.StagingRoot ?? CurrentInstall.Location;
+        var writeRoot = _transaction?.StagingRoot ?? _updateTransaction?.StagingRoot ?? CurrentInstall.Location;
         var fileManifests = _chunkToFileManifestsDictionary[downloadTask.GuidNum];
         foreach (var fileManifest in fileManifests)
         {
@@ -504,20 +1104,22 @@ public class InstallManager
 
     private async Task ProcessIOQueue()
     {
+        var context = Operation;
+        var cancellation = context.Cancellation;
+        var cancellationToken = cancellation.Token;
         try
         {
-            foreach (var ioTask in _ioQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
+            foreach (var ioTask in context.IoQueue.GetConsumingEnumerable(cancellationToken))
             {
-                _pauseEvent.Wait(_cancellationTokenSource.Token);
-
                 switch (ioTask.TaskType)
                 {
                     case IoTaskType.Copy:
-                        await ProcessCopyTask(ioTask);
+                        await ProcessCopyTask(ioTask, cancellationToken);
                         break;
                     case IoTaskType.Delete:
+                        cancellationToken.ThrowIfCancellationRequested();
                         var deletePath = ManifestPath.RevalidateUnderRoot(
-                            CurrentInstall.Location,
+                            context.Item.Location,
                             ioTask.DestinationFilePath);
                         File.Delete(deletePath);
                         break;
@@ -525,34 +1127,32 @@ public class InstallManager
                 UpdateInstallWriteProgress(ioTask.Size);
             }
         }
-        catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
         catch (Exception ex)
         {
+            context.WorkerFailure = ex;
             _logger.Error(ex, "ProcessIoQueue: IO worker failed");
-            _cancellationTokenSource.Cancel();
+            cancellation.Cancel();
             throw;
         }
     }
 
-    private async Task ProcessCopyTask(IoTask ioTask)
+    private async Task ProcessCopyTask(IoTask ioTask, CancellationToken cancellationToken)
     {
-        var writeRoot = _updateTransaction?.StagingRoot ?? CurrentInstall.Location;
+        var writeRoot = _transaction?.StagingRoot ?? _updateTransaction?.StagingRoot ?? CurrentInstall.Location;
         var destinationPath = ManifestPath.RevalidateUnderRoot(
             writeRoot,
             ioTask.DestinationFilePath);
         EnsureDirectoryExists(destinationPath);
         destinationPath = ManifestPath.RevalidateUnderRoot(writeRoot, destinationPath);
 
-        // Ensure there is a lock object for each destination file
         var fileLock = _fileLocksConcurrentDictionary.GetOrAdd(destinationPath, new object());
-
-        var compressedChunkData = await File.ReadAllBytesAsync(
-            ioTask.SourceFilePath, _cancellationTokenSource.Token);
+        var compressedChunkData = await File.ReadAllBytesAsync(ioTask.SourceFilePath, cancellationToken);
         var chunk = Chunk.ReadBuffer(compressedChunkData);
-        _logger.Debug("ProcessIoQueue: Reading chunk buffers from {source} finished", ioTask.SourceFilePath);
+        _logger.Debug("ProcessIoQueue: Reading chunk buffers from {Source} finished", ioTask.SourceFilePath);
 
         if (ioTask.Offset < 0 || ioTask.Size < 0 || ioTask.FileOffset < 0 || ioTask.DestinationFileSize < 0 ||
             ioTask.Offset > chunk.Data.LongLength || ioTask.Size > chunk.Data.LongLength - ioTask.Offset ||
@@ -564,57 +1164,38 @@ public class InstallManager
 
         lock (fileLock)
         {
-            _cancellationTokenSource.Token.ThrowIfCancellationRequested();
-            using var fileStream = new FileStream(destinationPath, FileMode.OpenOrCreate,
-                FileAccess.Write, FileShare.None);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var fileStream = new FileStream(
+                destinationPath,
+                FileMode.OpenOrCreate,
+                FileAccess.Write,
+                FileShare.None);
             fileStream.SetLength(ioTask.DestinationFileSize);
-
-            _logger.Debug("ProcessIoQueue: Seeking {seek}bytes on file {destination}", ioTask.FileOffset, ioTask.DestinationFilePath);
             fileStream.Seek(ioTask.FileOffset, SeekOrigin.Begin);
 
-            // Since chunk offset is a long we cannot use it directly in File stream write or read
-            // Use a memory stream to seek to the chunk offset
             using var memoryStream = new MemoryStream(chunk.Data);
             memoryStream.Seek(ioTask.Offset, SeekOrigin.Begin);
-
             var remainingBytesToWrite = ioTask.Size;
-            // Buffer size is irrelevant as write is continuous
             const int bufferSize = 4096;
             var buffer = new byte[bufferSize];
-
-            _logger.Debug("ProcessIoQueue: Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
-
             while (remainingBytesToWrite > 0)
             {
                 var bytesToRead = (int)Math.Min(bufferSize, remainingBytesToWrite);
-                _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
                 memoryStream.ReadExactly(buffer, 0, bytesToRead);
                 fileStream.Write(buffer, 0, bytesToRead);
-
                 remainingBytesToWrite -= bytesToRead;
             }
-
-            fileStream.Flush();
-            _logger.Debug("ProcessIoQueue: Finished Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
+            fileStream.Flush(flushToDisk: true);
         }
 
-        // Check for references to the chunk and decrement by one
-        int newCount = _chunkPartReferences.AddOrUpdate(
+        var newCount = _chunkPartReferences.AddOrUpdate(
             ioTask.GuidNum,
-            (key) => 0, // Not expected to be called as the key should exist
-            (key, oldValue) =>
-            {
-                _logger.Debug("ProcessIoQueue: decrementing reference count of {GuidNum} by 1. Current value:{oldValue}", ioTask.GuidNum, oldValue);
-                return oldValue - 1;
-            }
-        );
-
-        // Check if the updated count is 0 or less
+            _ => 0,
+            (_, oldValue) => oldValue - 1);
         if (newCount <= 0 && _chunkPartReferences.TryRemove(ioTask.GuidNum, out _))
         {
             _completedChunks.Add(ioTask.SourceChunkGuidNum);
-            _logger.Debug("ProcessIoQueue: Deleting chunk file {file}", ioTask.SourceFilePath);
-            // Delete the file if successfully removed
             var chunkPath = ManifestPath.RevalidateUnderRoot(
                 CurrentInstall.Location,
                 ioTask.SourceFilePath);
@@ -651,9 +1232,6 @@ public class InstallManager
             if (!IsInstallationInProgress())
                 return;
 
-            // Only delay for actions that used download/IO workers
-            if (CurrentInstall.Action != ActionType.Import && CurrentInstall.Action != ActionType.Move)
-                await Task.Delay(2000, _cancellationTokenSource.Token);
             _installStopWatch.Reset();
 
             var gameData = _libraryManager.GetGameInfo(CurrentInstall.AppName);
@@ -768,7 +1346,6 @@ public class InstallManager
                         _cancellationTokenSource.Token);
                     var manifestData = Manifest.ReadAll(manifestBytes);
 
-                    // Verify all the files
                     var invalidFilesList = await VerifyFiles(
                         CurrentInstall.Location,
                         manifestData.FileManifestList.Elements,
@@ -786,13 +1363,17 @@ public class InstallManager
                         ComputeManifestSha256(manifestBytes));
                     if (invalidFilesList.Count > 0)
                     {
-                        _logger.Warning("UpdateInstalledGameStatus: {Count} files failed verification for {AppName}. Marking as Broken.",
-                            invalidFilesList.Count, CurrentInstall.AppName);
+                        _logger.Warning(
+                            "UpdateInstalledGameStatus: {Count} files failed verification for {AppName}. Marking as Broken.",
+                            invalidFilesList.Count,
+                            CurrentInstall.AppName);
                         localAppState.InstallStatus = InstallState.Broken;
                     }
                     else
                     {
-                        _logger.Information("UpdateInstalledGameStatus: Verification successful for {appName}", CurrentInstall.AppName);
+                        _logger.Information(
+                            "UpdateInstalledGameStatus: Verification successful for {AppName}",
+                            CurrentInstall.AppName);
                         localAppState.InstallStatus = InstallState.Installed;
                     }
 
@@ -803,25 +1384,30 @@ public class InstallManager
                 }
             }
 
+            MarkTransactionMetadataCommitted();
             if (CurrentInstall.Action == ActionType.Update && _updateTransaction != null)
             {
                 MarkUpdateMetadataCommitted();
                 CompletePreparedUpdate();
             }
+            CompletePreparedTransaction();
 
             CurrentInstall.Status = ActionStatus.Success;
-            _installHistory.Add(CurrentInstall);
-            InstallationStatusChanged?.Invoke(CurrentInstall);
+            PublishTerminal(CurrentInstall, InstallTerminalOutcome.Succeeded);
             CompleteCurrentOperation();
-            ProcessNext();
+            return;
         }
         catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested)
         {
             throw;
         }
+        catch (InstallProcessTerminationException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            _logger.Fatal("UpdateInstalledGameStatus: Exception {ex}", ex);
+            _logger.Fatal("UpdateInstalledGameStatus: Exception {Exception}", ex);
 
             if (_updateTransaction != null)
             {
@@ -835,14 +1421,27 @@ public class InstallManager
                 }
             }
 
+            if (_transaction != null)
+            {
+                try
+                {
+                    RollbackPreparedTransaction();
+                }
+                catch (Exception rollbackException)
+                {
+                    _transaction.Phase = InstallTransactionPhase.RecoveryRequired;
+                    PersistDurableOperationState();
+                    _logger.Fatal(rollbackException, "Operation rollback failed; startup recovery is required");
+                }
+            }
+
             if (CurrentInstall != null)
             {
                 CurrentInstall.Status = ActionStatus.Failed;
-                _installHistory.Add(CurrentInstall);
-                InstallationStatusChanged?.Invoke(CurrentInstall);
+                PublishTerminal(CurrentInstall, InstallTerminalOutcome.Failed, ex.GetType().Name);
             }
             CompleteCurrentOperation();
-            ProcessNext();
+            return;
         }
     }
 
@@ -868,7 +1467,6 @@ public class InstallManager
                     token.ThrowIfCancellationRequested();
                     var filePath = ManifestPath.ResolveUnderRoot(installPath, manifest.Path);
 
-                    // Check if file exists and add to list if it doesn't
                     if (!File.Exists(filePath))
                     {
                         _logger.Warning("VerifyFiles: MISSING {Filename}", manifest.Path);
@@ -876,14 +1474,19 @@ public class InstallManager
                         return;
                     }
 
+                    filePath = ManifestPath.RevalidateUnderRoot(installPath, filePath);
                     var fileSha1 = Util.CalculateSHA1(filePath);
                     token.ThrowIfCancellationRequested();
                     var expectedHash = BitConverter.ToString(manifest.ShaHash).Replace("-", "").ToLowerInvariant();
                     if (fileSha1 != expectedHash)
                     {
                         var fileInfo = new FileInfo(filePath);
-                        _logger.Warning("VerifyFiles: HASH MISMATCH {Filename} (size={Size}, expected={Expected}, actual={Actual})",
-                            manifest.Path, fileInfo.Length, expectedHash, fileSha1);
+                        _logger.Warning(
+                            "VerifyFiles: HASH MISMATCH {Filename} (size={Size}, expected={Expected}, actual={Actual})",
+                            manifest.Path,
+                            fileInfo.Length,
+                            expectedHash,
+                            fileSha1);
                         invalidFilesBag.Add(manifest);
                     }
                 }
@@ -901,87 +1504,6 @@ public class InstallManager
     }
 
     /// <summary>
-    /// Retrieves the chunks to download from the file manifest list
-    /// </summary>
-    /// <param name="manifestData"></param>
-    /// <param name="data"></param>
-    private void GetChunksToDownload(Manifest data, List<BigInteger> chunksToSkip = null)
-    {
-        var addedChunkGuids = new HashSet<BigInteger>();
-        var chunkDownloadList = new List<ChunkInfo>();
-        double totalWrittenSize = 0;
-
-        foreach (var fileManifest in data.FileManifestList.Elements)
-        {
-            foreach (var chunkPart in fileManifest.ChunkParts)
-            {
-                if (chunksToSkip != null && chunksToSkip.FirstOrDefault(chunk => chunk == chunkPart.GuidNum) != 0)
-                {
-                    // Add up file sizes of all chunks written to subtract from total
-                    totalWrittenSize += chunkPart.Size;
-                    continue;
-                }
-
-                if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidNum, out var fileManifests))
-                {
-                    fileManifests.Add(fileManifest);
-                    _chunkToFileManifestsDictionary[chunkPart.GuidNum] = fileManifests;
-                }
-                else
-                {
-                    _ = _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidNum,
-                        new List<FileManifest>() { fileManifest });
-                }
-
-                _logger.Debug("ProcessDownloadQueue: New file reference for chunk {GuidNum} filename:{filename}", chunkPart.GuidNum, fileManifest.Path);
-                // keep track of files count to which the parts of chunk must be copied to
-                _chunkPartReferences.AddOrUpdate(
-                    chunkPart.GuidNum,
-                    1, // Add with a count of 1 if not present
-                    (key, oldValue) => oldValue + 1 // Update: increment the count
-                );
-
-                if (addedChunkGuids.Contains(chunkPart.GuidNum))
-                {
-                    continue;
-                }
-
-                addedChunkGuids.Add(chunkPart.GuidNum);
-                var chunkInfo = data.CDL.GetChunkByGuidNum(chunkPart.GuidNum);
-                var newTask = new DownloadTask()
-                {
-                    Url = chunkInfo.Path,
-                    TempPath = Path.Combine(CurrentInstall.Location, ".Crimson", (chunkInfo.GuidNum + ".chunk")),
-                    GuidNum = chunkInfo.GuidNum,
-                    ChunkInfo = chunkInfo
-                };
-                _logger.Debug("ProcessNext: Adding new download task {@task}", newTask);
-                chunkDownloadList.Add(chunkInfo);
-                _downloadQueue.Add(newTask);
-
-                CurrentInstall.TotalDownloadSizeBytes += chunkInfo.FileSize;
-            }
-            CurrentInstall.TotalWriteSizeBytes += fileManifest.FileSize;
-        }
-        CurrentInstall.TotalWriteSizeBytes -= totalWrittenSize;
-        CurrentInstall.TotalDownloadSizeMiB = CurrentInstall.TotalDownloadSizeBytes / 1024.0 / 1024.0;
-        CurrentInstall.TotalWriteSizeMb = CurrentInstall.TotalWriteSizeBytes / 1024.0 / 1024.0;
-
-        // Create empty files (manifest entries with 0 chunks, e.g. DO_NOT_DELETE.txt)
-        foreach (var fileManifest in data.FileManifestList.Elements)
-        {
-            if (fileManifest.ChunkParts.Count == 0)
-            {
-                var filePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, fileManifest.Path);
-                EnsureDirectoryExists(filePath);
-                filePath = ManifestPath.RevalidateUnderRoot(CurrentInstall.Location, filePath);
-                File.Create(filePath).Dispose();
-                _logger.Debug("GetChunksToDownload: Created empty file {Path}", filePath);
-            }
-        }
-    }
-
-    /// <summary>
     /// Prepare update tasks by comparing old and new manifests.
     /// Downloads only chunks for changed/added files and deletes removed files.
     /// Falls back to full reinstall if old manifest is unavailable.
@@ -989,9 +1511,10 @@ public class InstallManager
     private async Task PrepareUpdateTasks(
         Game gameData,
         Manifest newManifest,
-        string newManifestSha1,
-        string newManifestSha256)
+        byte[] newManifestBytes)
     {
+        var newManifestSha1 = ComputeManifestSha1(newManifestBytes);
+        var newManifestSha256 = ComputeManifestSha256(newManifestBytes);
         // Try to load the old manifest for the currently installed version
         var localAppState = _storage.LocalAppStateDictionary
             .FirstOrDefault(g => g.Key == CurrentInstall.AppName).Value;
@@ -1000,10 +1523,18 @@ public class InstallManager
         {
             _logger.Warning("PrepareUpdateTasks: No installed version info, falling back to full install");
             CurrentInstall.Action = ActionType.Install;
+            CreateAndPersistPlan(
+                newManifest,
+                newManifestBytes,
+                _fileSystemProbe.Probe(CurrentInstall.Location));
+            PrepareTransactionDirectories();
             await _downloadManager.InitializeMirrors(
                 gameData.BaseUrls,
                 _cancellationTokenSource.Token);
-            GetChunksToDownload(newManifest);
+            GetChunksToDownloadFiltered(
+                newManifest,
+                GetPendingManifestFiles(newManifest),
+                _transaction!.StagingRoot);
             return;
         }
 
@@ -1014,10 +1545,18 @@ public class InstallManager
         {
             _logger.Warning("PrepareUpdateTasks: Old manifest not cached, falling back to full install");
             CurrentInstall.Action = ActionType.Install;
+            CreateAndPersistPlan(
+                newManifest,
+                newManifestBytes,
+                _fileSystemProbe.Probe(CurrentInstall.Location));
+            PrepareTransactionDirectories();
             await _downloadManager.InitializeMirrors(
                 gameData.BaseUrls,
                 _cancellationTokenSource.Token);
-            GetChunksToDownload(newManifest);
+            GetChunksToDownloadFiltered(
+                newManifest,
+                GetPendingManifestFiles(newManifest),
+                _transaction!.StagingRoot);
             return;
         }
 
@@ -1045,6 +1584,19 @@ public class InstallManager
                 throw new IOException($"Update would overwrite an untracked path: {addedFile.Path}");
         }
 
+        CreateAndPersistPlan(
+            newManifest,
+            newManifestBytes,
+            _fileSystemProbe.Probe(CurrentInstall.Location),
+            oldManifest.FileManifestList.Elements.Select(ToPlanFile).ToArray());
+        PrepareTransactionDirectories();
+        var pendingPaths = new HashSet<string>(
+            Operation.Plan!.PendingStageFiles.Select(file => file.Path),
+            StringComparer.OrdinalIgnoreCase);
+        var pendingFilesToDownload = filesToDownload
+            .Where(file => pendingPaths.Contains(file.Path.Value))
+            .ToList();
+
         var newLocalAppState = BuildInstalledLocalState(
             gameData,
             newManifest,
@@ -1052,6 +1604,7 @@ public class InstallManager
             CurrentInstall.Location,
             newManifestSha1,
             newManifestSha256);
+        _transaction!.NewLocalStateJson = JsonSerializer.Serialize(newLocalAppState);
         _updateTransaction = UpdateTransactionState.Create(
             CurrentInstall.Location,
             updatePlan.ChangedFiles.Select(file => file.Path.Value),
@@ -1060,7 +1613,8 @@ public class InstallManager
             filesToDownload,
             JsonSerializer.Serialize(localAppState),
             JsonSerializer.Serialize(newLocalAppState));
-        PrepareUpdateDirectories(_updateTransaction);
+        _updateTransaction.StagingRoot = _transaction!.StagingRoot;
+        _updateTransaction.BackupRoot = _transaction.BackupRoot;
         PersistUpdateTransaction(_updateTransaction);
 
         if (filesToDownload.Count == 0)
@@ -1072,7 +1626,10 @@ public class InstallManager
         await _downloadManager.InitializeMirrors(
             gameData.BaseUrls,
             _cancellationTokenSource.Token);
-        GetChunksToDownloadFiltered(newManifest, filesToDownload, _updateTransaction.StagingRoot);
+        GetChunksToDownloadFiltered(
+            newManifest,
+            pendingFilesToDownload,
+            _updateTransaction.StagingRoot);
     }
 
     private static LocalAppState BuildInstalledLocalState(
@@ -1146,10 +1703,15 @@ public class InstallManager
         transaction.Phase = UpdateTransactionPhase.Committing;
         PersistUpdateTransaction(transaction);
         foreach (var relativePath in transaction.ChangedPaths.Concat(transaction.RemovedPaths))
+        {
+            ThrowIfRecoveryRequested();
             BackupLiveFile(transaction, relativePath);
+            ThrowIfRecoveryRequested();
+        }
 
         foreach (var relativePath in transaction.ChangedPaths.Concat(transaction.AddedPaths))
         {
+            ThrowIfRecoveryRequested();
             UpdatePublicationFaultInjector?.Invoke(relativePath);
             var stagedPath = ManifestPath.ResolveUnderRoot(transaction.StagingRoot, relativePath);
             var livePath = ManifestPath.ResolveUnderRoot(transaction.InstallRoot, relativePath);
@@ -1165,8 +1727,10 @@ public class InstallManager
             if (!transaction.PublishedPaths.Contains(relativePath, StringComparer.OrdinalIgnoreCase))
                 transaction.PublishedPaths.Add(relativePath);
             PersistUpdateTransaction(transaction);
+            ThrowIfRecoveryRequested();
         }
 
+        ThrowIfRecoveryRequested();
         transaction.Phase = UpdateTransactionPhase.Published;
         PersistUpdateTransaction(transaction);
     }
@@ -1344,15 +1908,24 @@ public class InstallManager
     /// <summary>
     /// Verify installed files and re-download only broken/missing ones
     /// </summary>
-    private async Task PrepareRepairTasks(Game gameData, Manifest manifest)
+    private async Task PrepareRepairTasks(
+        Game gameData,
+        Manifest manifest,
+        byte[] manifestBytes,
+        InstallFileSystemProbeResult writeProbe)
     {
-        _logger.Information("PrepareRepairTasks: Verifying files for {AppName}", CurrentInstall.AppName);
-
+        _logger.Information("PrepareRepairTasks: Verifying files for {AppName}", CurrentInstall!.AppName);
         var invalidFiles = await VerifyFiles(
             CurrentInstall.Location,
             manifest.FileManifestList.Elements,
             _cancellationTokenSource.Token);
 
+        CreateAndPersistPlan(
+            manifest,
+            manifestBytes,
+            writeProbe,
+            invalidFiles: invalidFiles.Select(file => file.Path.Value).ToArray());
+        PrepareTransactionDirectories();
         if (invalidFiles.Count == 0)
         {
             _logger.Information("PrepareRepairTasks: All files valid, nothing to repair");
@@ -1360,11 +1933,16 @@ public class InstallManager
         }
 
         _logger.Information("PrepareRepairTasks: {Count} files need repair", invalidFiles.Count);
-
         await _downloadManager.InitializeMirrors(
             gameData.BaseUrls,
             _cancellationTokenSource.Token);
-        GetChunksToDownloadFiltered(manifest, invalidFiles);
+        var pendingPaths = new HashSet<string>(
+            Operation.Plan!.PendingStageFiles.Select(file => file.Path),
+            StringComparer.OrdinalIgnoreCase);
+        GetChunksToDownloadFiltered(
+            manifest,
+            invalidFiles.Where(file => pendingPaths.Contains(file.Path.Value)).ToList(),
+            _transaction!.StagingRoot);
     }
 
     /// <summary>
@@ -1404,7 +1982,10 @@ public class InstallManager
                 _downloadQueue.Add(new DownloadTask()
                 {
                     Url = chunkInfo.Path,
-                    TempPath = Path.Combine(CurrentInstall.Location, ".Crimson", (chunkInfo.GuidNum + ".chunk")),
+                    TempPath = Path.Combine(
+                        _transaction?.StagingRoot ?? CurrentInstall.Location,
+                        ".chunks",
+                        chunkInfo.GuidNum + ".chunk"),
                     GuidNum = chunkInfo.GuidNum,
                     ChunkInfo = chunkInfo
                 });
@@ -1487,7 +2068,6 @@ public class InstallManager
         if (CurrentInstall == null)
         {
             _logger.Error("HandleInstallationStoppage called with no active install: {ErrorMessage}", errorMessage);
-            ProcessNext();
             return;
         }
 
@@ -1506,7 +2086,6 @@ public class InstallManager
             catch (Exception) { }
         }
 
-        var cleanupAllowed = true;
         if (_updateTransaction != null)
         {
             try
@@ -1515,36 +2094,45 @@ public class InstallManager
             }
             catch (Exception rollbackException)
             {
-                cleanupAllowed = false;
                 _logger.Fatal(rollbackException, "Update rollback failed; preserving recovery journal");
             }
         }
 
-        var tempChunkDir = Path.Combine(CurrentInstall.Location, ".Crimson");
-        try
+        if (_transaction != null)
         {
-            if (cleanupAllowed && Directory.Exists(tempChunkDir))
-                Directory.Delete(tempChunkDir, true);
-        }
-        catch (Exception ex)
-        {
-            _logger.Warning(ex, "Failed to clean up temp directory {Dir}", tempChunkDir);
+            try
+            {
+                RollbackPreparedTransaction();
+            }
+            catch (Exception rollbackException)
+            {
+                _transaction.Phase = InstallTransactionPhase.RecoveryRequired;
+                PersistDurableOperationState();
+                _logger.Fatal(rollbackException, "Operation rollback failed; preserving recovery journal");
+            }
         }
 
+        CurrentInstall.StatusMessage = errorMessage;
         CurrentInstall.Status = userCancellation ? ActionStatus.Cancelled : ActionStatus.Failed;
-        _installHistory.Add(CurrentInstall);
-        InstallationStatusChanged?.Invoke(CurrentInstall);
+        PublishTerminal(
+            CurrentInstall,
+            userCancellation ? InstallTerminalOutcome.Cancelled : InstallTerminalOutcome.Failed,
+            userCancellation ? null : errorMessage);
         if (userCancellation)
             _logger.Information("Installation cancelled");
         else
             _logger.Error("Installation failed: {ErrorMessage}", errorMessage);
 
-        var state = new InstallManagerState
-        {
-            CurrentInstall = null,
-            IoQueue = null,
-            CompletedChunks = null
-        };
+        var state = _transaction?.Phase == InstallTransactionPhase.RecoveryRequired
+            ? new InstallManagerState
+            {
+                CurrentInstall = CurrentInstall,
+                IoQueue = [],
+                CompletedChunks = [.. Operation.ResumeCompletedChunks, .. _completedChunks],
+                Plan = Operation.Plan,
+                Phase = InstallTransactionPhase.RecoveryRequired
+            }
+            : new InstallManagerState();
 
         try
         {
@@ -1558,7 +2146,6 @@ public class InstallManager
         finally
         {
             CompleteCurrentOperation();
-            ProcessNext();
         }
     }
 
@@ -1575,7 +2162,6 @@ public class InstallManager
 
         _logger.Information($"GetGameDownloadInstallSizes: parsing game manifest of {appName}");
         var manifest = Manifest.ReadAll(manifestData);
-        var chunkDownloadList = new List<ChunkInfo>();
         var addedChunkGuids = new HashSet<BigInteger>();
 
         double totalDownloadSizeBytes = 0;
@@ -1585,23 +2171,9 @@ public class InstallManager
         {
             foreach (var chunkPart in fileManifest.ChunkParts)
             {
-                if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidNum, out var fileManifests))
-                {
-                    fileManifests.Add(fileManifest);
-                    _chunkToFileManifestsDictionary[chunkPart.GuidNum] = fileManifests;
-                }
-                else
-                {
-                    _ = _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidNum,
-                        new List<FileManifest>() { fileManifest });
-                }
-
-                if (!addedChunkGuids.Contains(chunkPart.GuidNum))
+                if (addedChunkGuids.Add(chunkPart.GuidNum))
                 {
                     var chunkInfo = manifest.CDL.GetChunkByGuidNum(chunkPart.GuidNum);
-                    chunkDownloadList.Add(chunkInfo);
-                    addedChunkGuids.Add(chunkPart.GuidNum);
-
                     totalDownloadSizeBytes += chunkInfo.FileSize;
                 }
             }
@@ -1672,90 +2244,136 @@ public class InstallManager
         return manifestData;
     }
 
-    public InstallItem GameGameInQueue(string gameName)
+    public InstallItem? GameGameInQueue(string gameName)
     {
-        InstallItem item;
-        if (CurrentInstall != null && CurrentInstall.AppName == gameName)
-            item = CurrentInstall;
-        else
-            item = _installQueue.FirstOrDefault(r => r.AppName == gameName);
-        return item;
+        lock (_installItemLock)
+        {
+            if (CurrentInstall?.AppName == gameName)
+                return CurrentInstall;
+            return _installQueue.FirstOrDefault(item => item.AppName == gameName);
+        }
     }
 
-    public void CancelInstall(string appName)
+    public void CancelInstall(string appName) =>
+        CancelAsync(appName).GetAwaiter().GetResult();
+
+    private async Task<InstallCommandResult> ExecuteCancelAsync(string? appName)
     {
-        if (string.IsNullOrEmpty(appName))
+        if (string.IsNullOrWhiteSpace(appName))
+            return new InstallCommandResult(InstallCommandOutcome.Rejected, "An app name is required.");
+
+        CancellationTokenSource? cancellation = null;
+        InstallItem? cancellingItem = null;
+        var paused = false;
+        var recoveryRequested = false;
+        lock (_operationLifecycleLock)
         {
-            _logger.Warning("RemoveFromQueue: Invalid app name provided");
+            if (string.Equals(CurrentInstall?.AppName, appName, StringComparison.Ordinal))
+            {
+                _userCancellationRequested = true;
+                paused = CurrentInstall.Status == ActionStatus.Paused;
+                recoveryRequested = !_acceptCancellation;
+                Operation.RecoveryRequested = recoveryRequested;
+                CurrentInstall.Status = ActionStatus.Cancelling;
+                cancellingItem = CurrentInstall;
+                if (!recoveryRequested)
+                    cancellation = _cancellationTokenSource;
+            }
         }
 
-        if (CurrentInstall?.AppName == appName)
+        if (recoveryRequested)
         {
-            Task.Run(() => StopProcessing());
+            if (_transaction is not null)
+            {
+                _transaction.Phase = InstallTransactionPhase.RecoveryRequired;
+                PersistTransaction(_transaction);
+            }
+            InstallationStatusChanged?.Invoke(cancellingItem!);
+            return new InstallCommandResult(InstallCommandOutcome.Accepted);
         }
 
-        var removedItem = _installQueue.RemoveAll(item => item.AppName == appName);
-        if (removedItem > 0)
+        if (cancellation is not null)
         {
-            _logger.Information("RemoveFromQueue: Removed {AppName} from the install queue", appName);
+            InstallationStatusChanged?.Invoke(cancellingItem!);
+            if (paused)
+                await HandleInstallationStoppage("Installation cancelled", userCancellation: true);
+            else
+                await cancellation.CancelAsync();
+            return new InstallCommandResult(InstallCommandOutcome.Accepted);
         }
+
+        InstallItem? removedItem;
+        lock (_installItemLock)
+        {
+            removedItem = _installQueue.FirstOrDefault(item => item.AppName == appName);
+            if (removedItem is not null)
+                _installQueue.Remove(removedItem);
+        }
+        if (removedItem is null)
+            return new InstallCommandResult(InstallCommandOutcome.NotFound, "No matching operation was found.");
+
+        removedItem.Status = ActionStatus.Cancelled;
+        PublishTerminal(removedItem, InstallTerminalOutcome.Cancelled);
+        _logger.Information("RemoveFromQueue: Removed {AppName} from the install queue", appName);
+        return new InstallCommandResult(InstallCommandOutcome.Accepted);
     }
 
     public List<string> GetQueueItemNames()
     {
-        return _installQueue.Select(item => item.AppName).ToList();
+        lock (_installItemLock)
+            return _installQueue.Select(item => item.AppName).ToList();
     }
 
     public List<string> GetHistoryItemsNames()
     {
-        // Deduplicate: keep only the latest entry per AppName
-        var seen = new HashSet<string>();
-        var result = new List<string>();
-        for (int i = _installHistory.Count - 1; i >= 0; i--)
+        lock (_installItemLock)
         {
-            if (seen.Add(_installHistory[i].AppName))
-                result.Add(_installHistory[i].AppName);
+            var seen = new HashSet<string>();
+            var result = new List<string>();
+            for (var index = _installHistory.Count - 1; index >= 0; index--)
+            {
+                if (seen.Add(_installHistory[index].AppName))
+                    result.Add(_installHistory[index].AppName);
+            }
+            result.Reverse();
+            return result;
         }
-        result.Reverse();
-        return result;
     }
-
 
     public async Task StopProcessing()
     {
         Task completion;
-        CancellationTokenSource cancellationTokenSource = null;
-        InstallItem cancellingItem = null;
-
+        string? appName;
         lock (_operationLifecycleLock)
         {
-            if (CurrentInstall == null)
-                return;
-
+            appName = CurrentInstall?.AppName;
             completion = _operationCompletion.Task;
-            if (_acceptCancellation &&
-                CurrentInstall.Action != ActionType.Import && CurrentInstall.Action != ActionType.Move &&
-                _downloadTasks != null && _downloadTasks.All(task => task.IsCompleted) &&
-                _installTasks != null && _installTasks.All(task => task.IsCompleted))
-            {
-                _acceptCancellation = false;
-            }
-
-            if (_acceptCancellation)
-            {
-                _userCancellationRequested = true;
-                CurrentInstall.Status = ActionStatus.Cancelling;
-                cancellingItem = CurrentInstall;
-                cancellationTokenSource = _cancellationTokenSource;
-            }
         }
 
-        if (cancellationTokenSource != null)
-        {
-            InstallationStatusChanged?.Invoke(cancellingItem);
-            await cancellationTokenSource.CancelAsync();
-        }
+        if (appName is null)
+            return;
+
+        await CancelAsync(appName);
         await completion;
+    }
+
+    private void PublishTerminal(
+        InstallItem item,
+        InstallTerminalOutcome outcome,
+        string? error = null)
+    {
+        var terminal = new InstallTerminalResult(
+            item.AppName,
+            item.Action,
+            outcome,
+            error,
+            Operation.PlanningFailure);
+        lock (_installItemLock)
+            _installHistory.Add(item);
+        InstallationStatusChanged?.Invoke(item);
+        OperationCompleted?.Invoke(terminal);
+        if (_terminalResults.TryRemove(item.AppName, out var completion))
+            completion.TrySetResult(terminal);
     }
 
     private void BeginFinalization()
@@ -1788,57 +2406,104 @@ public class InstallManager
             CurrentInstall.Status != ActionStatus.Paused;
     }
 
-    public void PauseInstall()
+    public void PauseInstall() =>
+        PauseAsync().GetAwaiter().GetResult();
+
+    private async Task<InstallCommandResult> ExecutePauseAsync()
     {
+        if (!IsInstallationInProgress() || CurrentInstall is null)
+            return new InstallCommandResult(InstallCommandOutcome.Rejected, "No running operation can be paused.");
 
-        if (IsInstallationInProgress())
+        var context = Operation;
+        var pausedItem = context.Item;
+        _logger.Debug("Pausing installation of {Game}", pausedItem.AppName);
+        context.PauseRequested = true;
+        await context.Cancellation.CancelAsync();
+        try
         {
-            _logger.Debug("Pausing installation of {game}", CurrentInstall.AppName);
-            _pauseEvent.Reset();
-
-            Thread.Sleep(2000);
-
-            _installStopWatch.Stop();
-            CurrentInstall.Status = ActionStatus.Paused;
-            InstallationStatusChanged?.Invoke(CurrentInstall);
-
-            var state = new InstallManagerState
+            await _processingTask;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        context.Stopwatch.Stop();
+        if (context.Plan is { } plan && context.Transaction is { } transaction)
+        {
+            var verifiedPaths = new HashSet<string>(
+                plan.VerifiedStageFiles.Select(file => file.Path),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var file in plan.PendingStageFiles)
             {
-                CurrentInstall = CurrentInstall,
-                IoQueue = [.. _ioQueue],
-                CompletedChunks = [.. _completedChunks]
-            };
+                var stagedPath = ManifestPath.ResolveUnderRoot(transaction.StagingRoot, file.Path);
+                if (File.Exists(stagedPath) && string.Equals(
+                        Util.CalculateSHA1(stagedPath),
+                        file.Sha1,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    verifiedPaths.Add(file.Path);
+                }
+            }
 
-            var json = JsonSerializer.Serialize(state, _jsonSerializerOptions);
-            _storage.SaveInstallState(json);
-            _logger.Information("Saved installation state");
-            _logger.Debug("Successfully paused installation of {game}", CurrentInstall.AppName);
+            var allStageFiles = plan.VerifiedStageFiles
+                .Concat(plan.PendingStageFiles)
+                .ToArray();
+            var verifiedFiles = allStageFiles
+                .Where(file => verifiedPaths.Contains(file.Path))
+                .ToImmutableArray();
+            var pendingFiles = allStageFiles
+                .Where(file => !verifiedPaths.Contains(file.Path))
+                .ToImmutableArray();
+            context.Plan = plan with
+            {
+                VerifiedStageFiles = verifiedFiles,
+                PendingStageFiles = pendingFiles,
+                RequiredStagingBytes = pendingFiles.Sum(file => file.Size)
+            };
+            transaction.Plan = context.Plan;
+            transaction.Phase = InstallTransactionPhase.Paused;
+            PersistTransaction(transaction);
         }
         else
-            _logger.Warning("Installation of {appName} is not in progress {state}", CurrentInstall.AppName, CurrentInstall.Status);
+        {
+            PersistDurableOperationState();
+        }
+
+        pausedItem.Status = ActionStatus.Paused;
+        InstallationStatusChanged?.Invoke(pausedItem);
+        _logger.Information("Saved durable pause checkpoint for {Game}", pausedItem.AppName);
+        return new InstallCommandResult(InstallCommandOutcome.Accepted);
     }
 
-    public void ResumeInstall()
+    public void ResumeInstall() =>
+        ResumeAsync().GetAwaiter().GetResult();
+
+    private InstallCommandResult ExecuteResume()
     {
         if (CurrentInstall?.Status != ActionStatus.Paused)
-        {
-            _logger.Warning("No paused installation is available to resume");
-            return;
-        }
+            return new InstallCommandResult(InstallCommandOutcome.Rejected, "No paused operation is available.");
 
-        if (_downloadTasks is null || _installTasks is null)
+        InstallOperationContext previous;
+        lock (_operationLifecycleLock)
         {
-            ProcessNext(true);
-            return;
+            previous = Operation;
+            var resumed = new InstallOperationContext(previous.Item, previous.OperationId)
+            {
+                AcceptCancellation = true,
+                Plan = previous.Plan,
+                Transaction = previous.Transaction
+            };
+            _activeContext = resumed;
         }
+        previous.Dispose();
 
-        _installStopWatch.Start();
-        CurrentInstall.Status = ActionStatus.Processing;
-        _pauseEvent.Set();
-        InstallationStatusChanged?.Invoke(CurrentInstall);
+        lock (_installItemLock)
+            _processingTask = ProcessNextAsync(true);
+        return new InstallCommandResult(InstallCommandOutcome.Accepted);
     }
 
-    public async Task LoadPendingInstalls()
+    public Task LoadPendingInstalls() => RecoverAsync();
+
+    private async Task<InstallCommandResult> ExecuteRecoverAsync()
     {
         string jsonData;
         try
@@ -1847,29 +2512,50 @@ public class InstallManager
         }
         catch (Exception)
         {
-            return;
+            return new InstallCommandResult(InstallCommandOutcome.NotFound, "No durable operation checkpoint exists.");
         }
 
         if (string.IsNullOrEmpty(jsonData))
-            return;
+            return new InstallCommandResult(InstallCommandOutcome.NotFound, "No durable operation checkpoint exists.");
 
         var state = JsonSerializer.Deserialize<InstallManagerState>(jsonData, _jsonSerializerOptions);
-        if (state == null) return;
+        if (state?.CurrentInstall is null || state.Plan is null ||
+            state.Phase != InstallTransactionPhase.Paused)
+        {
+            return new InstallCommandResult(InstallCommandOutcome.NotFound, "No resumable operation exists.");
+        }
 
-        if (state.CurrentInstall == null) return;
+        var planned = InstallTransactionState.Create(state.Plan, null, null);
+        var read = AtomicJsonFile.ReadAndMigrate(planned.JournalPath, InstallTransactionSchema);
+        if (!read.IsSuccess || read.Value is null)
+            return new InstallCommandResult(InstallCommandOutcome.Rejected, "The paused operation journal is unavailable.");
 
-        CurrentInstall = new InstallItem(state.CurrentInstall.AppName, state.CurrentInstall.Action, state.CurrentInstall.Location);
-
-        state.IoQueue.ForEach(task => _ioQueue.Add(task));
-        state.CompletedChunks.ForEach(chunk => _completedChunks.Add(chunk));
-
-        await PrepareTasks(true, state.CompletedChunks);
-
+        lock (_operationLifecycleLock)
+        {
+            _activeContext = new InstallOperationContext(
+                state.CurrentInstall,
+                state.Plan.OperationId)
+            {
+                Plan = state.Plan,
+                Transaction = read.Value,
+                AcceptCancellation = true
+            };
+        }
         CurrentInstall.Status = ActionStatus.Paused;
         InstallationStatusChanged?.Invoke(CurrentInstall);
+        return new InstallCommandResult(InstallCommandOutcome.Accepted);
+    }
 
-        _pauseEvent.Set();
-        //ProcessNext(true);
+    private async Task<InstallCommandResult> ExecuteShutdownAsync()
+    {
+        var current = CurrentInstall;
+        if (current is null || current.Status == ActionStatus.Paused)
+            return new InstallCommandResult(InstallCommandOutcome.Accepted);
+        if (IsInstallationInProgress() && _acceptCancellation)
+            return await ExecutePauseAsync();
+
+        await _processingTask;
+        return new InstallCommandResult(InstallCommandOutcome.Accepted);
     }
 }
 
@@ -1928,6 +2614,22 @@ internal sealed class UpdateTransactionState
         Path.Combine(installRoot, ".Crimson", "update-transaction.json");
 }
 
+internal enum InstallCommandKind
+{
+    Enqueue,
+    Pause,
+    Resume,
+    Cancel,
+    Shutdown,
+    Recover
+}
+
+internal sealed record InstallCommandEnvelope(
+    InstallCommandKind Kind,
+    InstallItem? Item,
+    string? AppName,
+    TaskCompletionSource<InstallCommandResult> Completion);
+
 internal class InstallItemComparer : IEqualityComparer<InstallItem>
 {
     public bool Equals(InstallItem x, InstallItem y)
@@ -1952,7 +2654,6 @@ public class DownloadTask
     public ChunkInfo ChunkInfo { get; set; }
 }
 
-
 public class IoTask
 {
     public string SourceFilePath { get; set; }
@@ -1974,9 +2675,13 @@ public enum IoTaskType
     Read
 }
 
-public class InstallManagerState
+internal sealed class InstallProcessTerminationException(string message) : Exception(message);
+
+internal sealed class InstallManagerState
 {
-    public InstallItem CurrentInstall { get; set; }
-    public List<IoTask> IoQueue { get; set; }
-    public List<BigInteger> CompletedChunks { get; set; }
+    public InstallItem? CurrentInstall { get; set; }
+    public List<IoTask>? IoQueue { get; set; }
+    public List<BigInteger>? CompletedChunks { get; set; }
+    public InstallOperationPlan? Plan { get; set; }
+    public InstallTransactionPhase? Phase { get; set; }
 }

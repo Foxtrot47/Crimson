@@ -9,9 +9,28 @@ public sealed class FileInstallRecoveryStatus : IInstallRecoveryStatus
     {
         if (string.IsNullOrWhiteSpace(installRoot))
             return false;
-        var journalPath = ManifestPath.ResolveUnderRoot(
+        var metadataRoot = ManifestPath.ResolveUnderRoot(
+            installRoot,
+            ManifestRelativePath.Parse(".Crimson"));
+        var updateJournal = ManifestPath.ResolveUnderRoot(
             installRoot,
             ManifestRelativePath.Parse(".Crimson/update-transaction.json"));
-        return File.Exists(journalPath);
+        if (File.Exists(updateJournal))
+            return true;
+
+        var operationsRoot = Path.Combine(metadataRoot, "operations");
+        try
+        {
+            return Directory.Exists(operationsRoot) &&
+                Directory.EnumerateFiles(operationsRoot, "journal.json", SearchOption.AllDirectories).Any();
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true;
+        }
     }
 }

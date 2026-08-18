@@ -173,6 +173,216 @@ public sealed class SyntheticUpdateLifecycleTests
     }
 
     [Fact]
+    public async Task InstallJournalFaultsRecoverToCompleteOldOrNewState()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-install-faults-{Guid.NewGuid():N}");
+        using var logger = new LoggerConfiguration().CreateLogger();
+        try
+        {
+            var baseline = CreateHarness(logger, Path.Combine(root, "baseline-state"), "old.manifest");
+            baseline.Storage.SaveMetaData(CreateGame("1.0.0"));
+            var revisions = new List<long>();
+            baseline.Manager.InstallJournalTransitionFaultInjector = transaction =>
+                revisions.Add(transaction.Revision);
+            var baselineRoot = Path.Combine(root, "baseline-game");
+            Assert.Equal(ActionStatus.Success, (await RunOperationAsync(
+                baseline.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Install, baselineRoot))).Status);
+
+            foreach (var revision in revisions.Distinct())
+            {
+                var caseRoot = Path.Combine(root, $"case-{revision}");
+                var stateRoot = Path.Combine(caseRoot, "state");
+                var installRoot = Path.Combine(caseRoot, "game");
+                Directory.CreateDirectory(installRoot);
+                var userFile = Path.Combine(installRoot, "user-save.dat");
+                await File.WriteAllTextAsync(userFile, "preserve me");
+                var harness = CreateHarness(logger, stateRoot, "old.manifest");
+                harness.Storage.SaveMetaData(CreateGame("1.0.0"));
+                harness.Manager.InstallJournalTransitionFaultInjector = transaction =>
+                {
+                    if (transaction.Revision == revision)
+                    {
+                        throw new InstallProcessTerminationException(
+                            $"Injected process termination at revision {revision}.");
+                    }
+                };
+
+                var command = await harness.Manager.EnqueueAsync(
+                    new InstallItem("CrimsonSyntheticGame", ActionType.Install, installRoot));
+                Assert.True(command.IsAccepted);
+                var termination = await Record.ExceptionAsync(
+                    async () => await harness.Manager.ProcessingTask);
+                Assert.True(
+                    termination is InstallProcessTerminationException,
+                    $"Revision {revision} did not terminate processing: {termination?.GetType().Name ?? "none"}.");
+
+                _ = CreateHarness(logger, stateRoot, "old.manifest");
+                _ = CreateHarness(logger, stateRoot, "old.manifest");
+                var recovered = new Storage(logger, stateRoot);
+                var installation = recovered.LocalAppStateDictionary["CrimsonSyntheticGame"];
+                if (installation.InstallStatus == InstallState.Installed)
+                    await AssertInstalledFilesAsync("old", installRoot);
+                else
+                    await AssertTrackedFilesDoNotExistAsync("old", installRoot);
+                Assert.Equal("preserve me", await File.ReadAllTextAsync(userFile));
+                Assert.False(new FileInstallRecoveryStatus().HasUnresolvedTransaction(installRoot));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task InstallJournalWriteFaultsRecoverToCompleteOldOrNewState()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-install-write-faults-{Guid.NewGuid():N}");
+        using var logger = new LoggerConfiguration().CreateLogger();
+        try
+        {
+            var baseline = CreateHarness(logger, Path.Combine(root, "baseline-state"), "old.manifest");
+            baseline.Storage.SaveMetaData(CreateGame("1.0.0"));
+            var revisions = new List<long>();
+            baseline.Manager.InstallJournalTransitionFaultInjector = transaction =>
+                revisions.Add(transaction.Revision);
+            Assert.Equal(ActionStatus.Success, (await RunOperationAsync(
+                baseline.Manager,
+                new InstallItem(
+                    "CrimsonSyntheticGame",
+                    ActionType.Install,
+                    Path.Combine(root, "baseline-game")))).Status);
+
+            foreach (var revision in revisions.Distinct())
+            {
+                var caseRoot = Path.Combine(root, $"case-{revision}");
+                var stateRoot = Path.Combine(caseRoot, "state");
+                var installRoot = Path.Combine(caseRoot, "game");
+                Directory.CreateDirectory(installRoot);
+                var userFile = Path.Combine(installRoot, "user-save.dat");
+                await File.WriteAllTextAsync(userFile, "preserve me");
+                var harness = CreateHarness(logger, stateRoot, "old.manifest");
+                harness.Storage.SaveMetaData(CreateGame("1.0.0"));
+                harness.Manager.InstallJournalWriteFaultInjector = transaction =>
+                {
+                    if (transaction.Revision == revision)
+                        throw new IOException($"Injected atomic journal write failure at revision {revision}.");
+                };
+
+                var result = await RunOperationAsync(
+                    harness.Manager,
+                    new InstallItem("CrimsonSyntheticGame", ActionType.Install, installRoot));
+                Assert.Equal(ActionStatus.Failed, result.Status);
+                var installation = harness.Storage.LocalAppStateDictionary["CrimsonSyntheticGame"];
+                if (installation.InstallStatus == InstallState.Installed)
+                    await AssertInstalledFilesAsync("old", installRoot);
+                else
+                    await AssertTrackedFilesDoNotExistAsync("old", installRoot);
+                Assert.Equal("preserve me", await File.ReadAllTextAsync(userFile));
+                Assert.False(new FileInstallRecoveryStatus().HasUnresolvedTransaction(installRoot));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task StagedCorruptionBeforePublicationLeavesLiveTreeUntouched()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-staged-corruption-{Guid.NewGuid():N}");
+        var stateRoot = Path.Combine(sandbox, "state");
+        var installRoot = Path.Combine(sandbox, "game");
+        using var logger = new LoggerConfiguration().CreateLogger();
+        try
+        {
+            Directory.CreateDirectory(installRoot);
+            var userFile = Path.Combine(installRoot, "user-save.dat");
+            await File.WriteAllTextAsync(userFile, "preserve me");
+            var harness = CreateHarness(logger, stateRoot, "old.manifest");
+            harness.Storage.SaveMetaData(CreateGame("1.0.0"));
+            harness.Manager.InstallJournalTransitionFaultInjector = transaction =>
+            {
+                if (transaction.Phase != InstallTransactionPhase.ReadyToCommit)
+                    return;
+                var staged = Path.Combine(
+                    transaction.StagingRoot,
+                    transaction.Plan.PendingStageFiles[0].Path.Replace('/', Path.DirectorySeparatorChar));
+                File.WriteAllText(staged, "corrupt");
+            };
+
+            var result = await RunOperationAsync(
+                harness.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Install, installRoot));
+
+            Assert.Equal(ActionStatus.Failed, result.Status);
+            await AssertTrackedFilesDoNotExistAsync("old", installRoot);
+            Assert.Equal("preserve me", await File.ReadAllTextAsync(userFile));
+            Assert.False(new FileInstallRecoveryStatus().HasUnresolvedTransaction(installRoot));
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+    [Fact]
+    public async Task CancellationDuringCommitTransitionsThroughRecovery()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-commit-cancel-{Guid.NewGuid():N}");
+        var stateRoot = Path.Combine(sandbox, "state");
+        var installRoot = Path.Combine(sandbox, "game");
+        using var logger = new LoggerConfiguration().CreateLogger();
+        using var releaseCommit = new ManualResetEventSlim();
+        try
+        {
+            var first = CreateHarness(logger, stateRoot, "old.manifest");
+            first.Storage.SaveMetaData(CreateGame("1.0.0"));
+            Assert.Equal(ActionStatus.Success, (await RunOperationAsync(
+                first.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Install, installRoot))).Status);
+
+            var updater = CreateHarness(logger, stateRoot, "new.manifest");
+            var game = updater.Library.GetGameInfo("CrimsonSyntheticGame");
+            game.AssetInfos.Windows.BuildVersion = "2.0.0";
+            updater.Storage.SaveMetaData(game);
+            var commitStarted = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            updater.Manager.UpdatePublicationFaultInjector = _ =>
+            {
+                commitStarted.TrySetResult();
+                releaseCommit.Wait();
+            };
+
+            var command = await updater.Manager.EnqueueAsync(
+                new InstallItem("CrimsonSyntheticGame", ActionType.Update, installRoot));
+            Assert.NotNull(command.Terminal);
+            await commitStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var cancellation = await updater.Manager.CancelAsync("CrimsonSyntheticGame");
+            releaseCommit.Set();
+            var terminal = await command.Terminal.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.True(cancellation.IsAccepted);
+            Assert.Equal(InstallTerminalOutcome.Cancelled, terminal.Outcome);
+            await AssertInstalledFilesAsync("old", installRoot);
+            Assert.Equal(
+                "1.0.0",
+                updater.Storage.LocalAppStateDictionary["CrimsonSyntheticGame"].Version);
+            Assert.False(new FileInstallRecoveryStatus().HasUnresolvedTransaction(installRoot));
+        }
+        finally
+        {
+            releaseCommit.Set();
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task MetadataCommittedJournal_ReconcilesNewInstallationState()
     {
         var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-lifecycle-{Guid.NewGuid():N}");
@@ -376,7 +586,7 @@ public sealed class SyntheticUpdateLifecycleTests
                 [ActionStatus.Processing, ActionStatus.Cancelling, ActionStatus.Cancelling,
                     ActionStatus.Cancelled],
                 statuses);
-            await AssertOnlyEmptyTrackedFilesExistAsync("old", installRoot);
+            await AssertTrackedFilesDoNotExistAsync("old", installRoot);
         }
         finally
         {
@@ -433,6 +643,48 @@ public sealed class SyntheticUpdateLifecycleTests
                     ActionStatus.Success],
                 statuses);
             await AssertInstalledFilesAsync("old", installRoot);
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ShutdownRestartAndResume_CompletesFromDurableCheckpoint()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-shutdown-resume-{Guid.NewGuid():N}");
+        var stateRoot = Path.Combine(sandbox, "state");
+        var installRoot = Path.Combine(sandbox, "game");
+        var content = new PausableContentHandler();
+        using var logger = new LoggerConfiguration().CreateLogger();
+        try
+        {
+            var first = CreateHarness(logger, stateRoot, "old.manifest", content);
+            first.Storage.SaveMetaData(CreateGame("1.0.0"));
+            first.Manager.AddToQueue(
+                new InstallItem("CrimsonSyntheticGame", ActionType.Install, installRoot));
+            await content.RequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var shutdown = await first.Manager.ShutdownAsync();
+
+            Assert.True(shutdown.IsAccepted);
+            Assert.Equal(ActionStatus.Paused, first.Manager.CurrentInstall?.Status);
+            var restarted = CreateHarness(logger, stateRoot, "old.manifest");
+            await restarted.Manager.LoadPendingInstalls();
+            Assert.Equal(ActionStatus.Paused, restarted.Manager.CurrentInstall?.Status);
+            var terminal = new TaskCompletionSource<InstallTerminalResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            restarted.Manager.OperationCompleted += result => terminal.TrySetResult(result);
+
+            var resume = await restarted.Manager.ResumeAsync();
+            var result = await terminal.Task.WaitAsync(TimeSpan.FromSeconds(15));
+
+            Assert.True(resume.IsAccepted);
+            Assert.Equal(InstallTerminalOutcome.Succeeded, result.Outcome);
+            await AssertInstalledFilesAsync("old", installRoot);
+            Assert.False(new FileInstallRecoveryStatus().HasUnresolvedTransaction(installRoot));
         }
         finally
         {
@@ -506,9 +758,13 @@ public sealed class SyntheticUpdateLifecycleTests
                 MoveLocation = destinationRoot
             };
 
-            var result = await RunOperationAsync(harness.Manager, move);
+            var command = await harness.Manager.EnqueueAsync(move);
+            Assert.NotNull(command.Terminal);
+            var terminal = await command.Terminal.WaitAsync(TimeSpan.FromSeconds(30));
+            await WaitUntilAsync(() => harness.Manager.CurrentInstall is null, TimeSpan.FromSeconds(5));
 
-            Assert.Equal(ActionStatus.Failed, result.Status);
+            Assert.Equal(InstallTerminalOutcome.Failed, terminal.Outcome);
+            Assert.Equal(InstallPlanningFailure.CrossVolumeMove, terminal.PlanningFailure);
             Assert.True(Directory.Exists(sourceRoot));
             Assert.False(Directory.Exists(destinationRoot));
         }
