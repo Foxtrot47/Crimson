@@ -1,8 +1,6 @@
 ﻿using System;
-using System.IO;
 using System.Threading.Tasks;
 using Crimson.Models;
-using Crimson.Utils;
 using Microsoft.Extensions.Logging;
 
 namespace Crimson.Core;
@@ -11,13 +9,18 @@ public class SettingsManager
 {
     private readonly ISettingsStore _store;
     private readonly ILogger<SettingsManager> _logger;
+    private readonly IApplicationDirectories _directories;
 
     private Settings Settings { get; set; }
 
-    public SettingsManager(ISettingsStore store, ILogger<SettingsManager> logger)
+    public SettingsManager(
+        ISettingsStore store,
+        ILogger<SettingsManager> logger,
+        IApplicationDirectories directories)
     {
         _store = store;
         _logger = logger;
+        _directories = directories;
         Settings = LoadSettings();
     }
 
@@ -29,10 +32,7 @@ public class SettingsManager
         set { Settings.DefaultInstallLocation = value; }
     }
 
-    public string LogsDirectory => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Crimson",
-        "logs");
+    public string LogsDirectory => _directories.LogsDirectory;
 
     private Settings LoadSettings()
     {

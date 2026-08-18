@@ -1,21 +1,13 @@
+using Crimson.Core;
+using Crimson.Utils;
+
 namespace Crimson.Infrastructure;
 
-public sealed record InstallFileSystemCleanupFailure(string FileName, string ErrorType);
-
-public sealed record InstallFileSystemProbeResult(
-    bool Success,
-    string? ErrorType = null,
-    string? VolumeIdentity = null,
-    long? AvailableBytes = null,
-    long? TotalBytes = null,
-    bool AtomicRenameSupported = false,
-    IReadOnlyList<InstallFileSystemCleanupFailure>? CleanupFailures = null);
-
-public static class InstallFileSystemProbe
+public sealed class InstallFileSystemProbe : IInstallFileSystemProbe
 {
     private const string ProbePrefix = ".crimson-write-probe-";
 
-    public static InstallFileSystemProbeResult Probe(string directoryPath)
+    public InstallFileSystemProbeResult Probe(string directoryPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
         var root = Path.GetFullPath(directoryPath);
@@ -26,7 +18,9 @@ public static class InstallFileSystemProbe
         var renamedCreated = false;
         try
         {
+            root = ManifestPath.RevalidateUnderRoot(root, root);
             Directory.CreateDirectory(root);
+            root = ManifestPath.RevalidateUnderRoot(root, root);
             using (var stream = new FileStream(
                        sourcePath,
                        FileMode.CreateNew,
@@ -45,18 +39,20 @@ public static class InstallFileSystemProbe
             renamedCreated = true;
             File.Delete(renamedPath);
             renamedCreated = false;
-            var (volumeIdentity, availableBytes, totalBytes) = GetDriveCapacity(root);
+            var (volumeIdentity, availableBytes, totalBytes, location) = GetDriveCapacity(root);
             return new InstallFileSystemProbeResult(
                 true,
                 VolumeIdentity: volumeIdentity,
                 AvailableBytes: availableBytes,
                 TotalBytes: totalBytes,
-                AtomicRenameSupported: true);
+                AtomicRenameSupported: true,
+                Location: location);
         }
         catch (Exception exception) when (exception is
                    IOException or
                    UnauthorizedAccessException or
-                   NotSupportedException)
+                   NotSupportedException or
+                   InvalidDataException)
         {
             var cleanupFailures = new List<InstallFileSystemCleanupFailure>(2);
             AddCleanupFailure(sourceCreated, sourcePath, cleanupFailures);
@@ -68,23 +64,52 @@ public static class InstallFileSystemProbe
         }
     }
 
-    private static (string? Identity, long? AvailableBytes, long? TotalBytes) GetDriveCapacity(
-        string path)
+    private static (
+        string? Identity,
+        long? AvailableBytes,
+        long? TotalBytes,
+        InstallFileSystemLocation Location) GetDriveCapacity(string path)
     {
         try
         {
-            var root = Path.GetPathRoot(path);
-            if (string.IsNullOrWhiteSpace(root))
+            var fullPath = Path.GetFullPath(path);
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            var drive = DriveInfo.GetDrives()
+                .Where(candidate => IsUnderRoot(fullPath, candidate.RootDirectory.FullName, comparison))
+                .OrderByDescending(candidate => candidate.RootDirectory.FullName.Length)
+                .FirstOrDefault();
+            if (drive is null || !drive.IsReady)
                 return default;
-            var drive = new DriveInfo(root);
-            return drive.IsReady
-                ? (drive.Name, drive.AvailableFreeSpace, drive.TotalSize)
-                : default;
+            return (
+                drive.Name,
+                drive.AvailableFreeSpace,
+                drive.TotalSize,
+                drive.DriveType switch
+                {
+                    DriveType.Fixed or DriveType.Removable or DriveType.Ram =>
+                        InstallFileSystemLocation.Local,
+                    DriveType.Network => InstallFileSystemLocation.Network,
+                    _ => InstallFileSystemLocation.Unknown
+                });
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             return default;
         }
+    }
+
+    private static bool IsUnderRoot(
+        string path,
+        string root,
+        StringComparison comparison)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        return relative == "." ||
+            (!Path.IsPathRooted(relative) &&
+             relative != ".." &&
+             !relative.StartsWith($"..{Path.DirectorySeparatorChar}", comparison));
     }
 
     private static void AddCleanupFailure(

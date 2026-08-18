@@ -114,7 +114,7 @@ public sealed class SecurityContainmentTests
         var sink = new CapturingSink();
         using var logger = new LoggerConfiguration().WriteTo.Sink(sink).CreateLogger();
         var storage = (Storage)RuntimeHelpers.GetUninitializedObject(typeof(Storage));
-        var manager = new AuthManager(logger, storage, client);
+        var manager = new AuthManager(logger, storage, new TestCredentialProtector(), client);
 
         await manager.DoExchangeLogin(exchangeCanary);
 

@@ -30,19 +30,23 @@ public static class InstallDirectoryCleanup
 
         var tempDirectory = ManifestPath.ResolveUnderRoot(canonicalRoot, ".Crimson");
         if (Directory.Exists(tempDirectory))
+        {
+            tempDirectory = ManifestPath.RevalidateUnderRoot(canonicalRoot, tempDirectory);
             Directory.Delete(tempDirectory, recursive: true);
+        }
 
         foreach (var directory in directories.OrderByDescending(path => path.Length))
-            TryDeleteIfEmpty(directory);
+            TryDeleteIfEmpty(canonicalRoot, directory);
 
-        TryDeleteIfEmpty(canonicalRoot);
+        TryDeleteIfEmpty(canonicalRoot, canonicalRoot);
     }
 
-    private static void TryDeleteIfEmpty(string directory)
+    private static void TryDeleteIfEmpty(string installRoot, string directory)
     {
         try
         {
-            Directory.Delete(directory, recursive: false);
+            var path = ManifestPath.RevalidateUnderRoot(installRoot, directory);
+            Directory.Delete(path, recursive: false);
         }
         catch (DirectoryNotFoundException)
         {

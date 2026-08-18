@@ -58,10 +58,10 @@ internal static class JsonManifestReader
             AppId = unchecked((uint)DecodeInt32(GetRequiredString(root, "AppID"))),
             AppName = GetRequiredString(root, "AppNameString"),
             BuildVersion = GetRequiredString(root, "BuildVersionString"),
-            LaunchExe = GetRequiredString(root, "LaunchExeString"),
+            LaunchExe = ManifestRelativePath.Parse(GetRequiredString(root, "LaunchExeString")),
             LaunchCommand = GetRequiredString(root, "LaunchCommand"),
             PrereqName = GetRequiredString(root, "PrereqName"),
-            PrereqPath = GetRequiredString(root, "PrereqPath"),
+            PrereqPath = ManifestRelativePath.ParseOptional(GetRequiredString(root, "PrereqPath")),
             PrereqArgs = GetRequiredString(root, "PrereqArgs")
         };
         if (root.TryGetProperty("PrereqIds", out var prereqIds))
@@ -119,9 +119,14 @@ internal static class JsonManifestReader
         {
             var filename = GetRequiredString(fileElement, "Filename");
             var logicalPath = ManifestRelativePath.Parse(filename);
+            if (fileElement.TryGetProperty("SymlinkTarget", out var symlinkTarget) &&
+                !string.IsNullOrEmpty(GetBoundedString(symlinkTarget, "SymlinkTarget")))
+            {
+                throw new InvalidDataException($"Manifest symlink entries are unsupported: {filename}");
+            }
             var file = new FileManifest
             {
-                Filename = logicalPath.Value,
+                Path = logicalPath,
                 Hash = DecodeDecimalBytes(GetRequiredString(fileElement, "FileHash"), 20),
                 Flags = fileElement.TryGetProperty("bIsUnixExecutable", out var executable) && executable.GetBoolean()
                     ? (byte)4
@@ -155,7 +160,7 @@ internal static class JsonManifestReader
             file.FileSize = fileOffset;
             files.Elements.Add(file);
         }
-        _ = ManifestPath.ValidateManifest(files.Elements.Select(file => file.Filename));
+        _ = ManifestPath.ValidateManifest(files.Elements.Select(file => file.Path));
         files.Count = files.Elements.Count;
 
         var customFields = new CustomFields { Version = 0 };

@@ -1,6 +1,4 @@
 ﻿using System;
-using System.IO;
-using System.Text.Json;
 using Crimson.Core;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
@@ -18,6 +16,7 @@ public sealed partial class LoginPage : Page
 {
     private readonly AuthManager _authManager = App.GetService<AuthManager>();
     private readonly ILogger _log;
+    private readonly IApplicationDirectories _directories = App.GetService<IApplicationDirectories>();
     private readonly EpicLoginMessageGate _loginMessageGate = new();
 
     public LoginPage()
@@ -66,10 +65,9 @@ public sealed partial class LoginPage : Page
     public async void InitWebView()
     {
         _log.Information("InitWebView: WebView Initializing}");
-        var userDataFolder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Crimson");
-        Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", userDataFolder);
+        Environment.SetEnvironmentVariable(
+            "WEBVIEW2_USER_DATA_FOLDER",
+            _directories.WebViewDataDirectory);
         await LoginWebView.EnsureCoreWebView2Async();
         LoginWebView.CoreWebView2.Settings.UserAgent = EpicLauncherWebLogin.UserAgent;
         LoginWebView.NavigationStarting += WebView_NavigationStarting;

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Ionic.Zlib;
+using Crimson.Utils;
 
 namespace Crimson.Models;
 
@@ -153,13 +154,13 @@ public sealed class ManifestMeta
     public uint AppId { get; internal set; }
     public string AppName { get; internal set; } = string.Empty;
     public string BuildVersion { get; internal set; } = string.Empty;
-    public string LaunchExe { get; internal set; } = string.Empty;
+    public ManifestRelativePath LaunchExe { get; internal set; } = null!;
     public string LaunchCommand { get; internal set; } = string.Empty;
     public List<string> PrereqIds { get; internal set; } = [];
     public string PrereqName { get; internal set; } = string.Empty;
-    public string PrereqPath { get; internal set; } = string.Empty;
+    public ManifestRelativePath? PrereqPath { get; internal set; }
     public string PrereqArgs { get; internal set; } = string.Empty;
-    public string UninstallActionPath { get; internal set; } = string.Empty;
+    public ManifestRelativePath? UninstallActionPath { get; internal set; }
     public string UninstallActionArgs { get; internal set; } = string.Empty;
 
     private string? _buildId;
@@ -177,7 +178,7 @@ public sealed class ManifestMeta
                 writer.Write(AppId);
                 writer.Write(Encoding.UTF8.GetBytes(AppName));
                 writer.Write(Encoding.UTF8.GetBytes(BuildVersion));
-                writer.Write(Encoding.UTF8.GetBytes(LaunchExe));
+                writer.Write(Encoding.UTF8.GetBytes(LaunchExe.Value));
                 writer.Write(Encoding.UTF8.GetBytes(LaunchCommand));
             }
 
@@ -212,7 +213,8 @@ public sealed class ManifestMeta
         meta.AppId = reader.ReadUInt32();
         meta.AppName = reader.ReadUnrealString();
         meta.BuildVersion = reader.ReadUnrealString();
-        meta.LaunchExe = reader.ReadUnrealString(EpicProtocolLimits.MaximumPathBytes);
+        meta.LaunchExe = ManifestRelativePath.Parse(
+            reader.ReadUnrealString(EpicProtocolLimits.MaximumPathBytes));
         meta.LaunchCommand = reader.ReadUnrealString();
 
         var prereqCount = reader.ReadUInt32();
@@ -222,13 +224,15 @@ public sealed class ManifestMeta
             meta.PrereqIds.Add(reader.ReadUnrealString());
 
         meta.PrereqName = reader.ReadUnrealString();
-        meta.PrereqPath = reader.ReadUnrealString(EpicProtocolLimits.MaximumPathBytes);
+        meta.PrereqPath = ManifestRelativePath.ParseOptional(
+            reader.ReadUnrealString(EpicProtocolLimits.MaximumPathBytes));
         meta.PrereqArgs = reader.ReadUnrealString();
         if (meta.DataVersion >= 1)
             meta._buildId = reader.ReadUnrealString();
         if (meta.DataVersion >= 2)
         {
-            meta.UninstallActionPath = reader.ReadUnrealString(EpicProtocolLimits.MaximumPathBytes);
+            meta.UninstallActionPath = ManifestRelativePath.ParseOptional(
+                reader.ReadUnrealString(EpicProtocolLimits.MaximumPathBytes));
             meta.UninstallActionArgs = reader.ReadUnrealString();
         }
 

@@ -87,13 +87,34 @@ public sealed class ManifestParsingTests
         var list = FileManifestList.Read(body);
 
         var file = Assert.Single(list.Elements);
-        Assert.Equal("folder/file.bin", file.Filename);
+        Assert.Equal("folder/file.bin", file.Path.Value);
         Assert.Equal(11, file.FileSize);
         var part = Assert.Single(file.ChunkParts);
         Assert.Equal(new[] { 1, 2, 3, 4 }, part.Guid);
         Assert.Equal(7, part.Offset);
         Assert.Equal(11, part.Size);
         Assert.Equal(0, part.FileOffset);
+    }
+
+    [Fact]
+    public void FileManifestListRead_RejectsSymlinkTarget()
+    {
+        using var body = new MemoryStream();
+        using var writer = new BinaryWriter(body, Encoding.UTF8, leaveOpen: true);
+        writer.Write(0);
+        writer.Write((byte)0);
+        writer.Write(1);
+        WriteString(writer, "folder/link.bin");
+        WriteString(writer, "../target.bin");
+        writer.Flush();
+        body.Position = 0;
+        writer.Write(checked((int)body.Length));
+        writer.Flush();
+        body.Position = 0;
+
+        var error = Assert.Throws<InvalidDataException>(() => FileManifestList.Read(body));
+
+        Assert.Equal("Manifest symlink entries are unsupported: folder/link.bin", error.Message);
     }
 
     [Fact]
@@ -171,8 +192,35 @@ public sealed class ManifestParsingTests
     [Fact]
     public void ManifestReadAll_ReadsJsonManifest()
     {
+        var json = BuildJsonManifest();
+
+        var manifest = Manifest.ReadAll(Encoding.UTF8.GetBytes(json));
+
+        Assert.Equal("json-game", manifest.ManifestMeta.AppName);
+        Assert.Equal("1.0", manifest.ManifestMeta.BuildVersion);
+        Assert.Equal("game.exe", manifest.ManifestMeta.LaunchExe.Value);
+        Assert.Equal(31, Assert.Single(manifest.FileManifestList.Elements).FileSize);
+        Assert.Equal(97, Assert.Single(manifest.CDL.Elements).FileSize);
+    }
+
+    [Fact]
+    public void ManifestReadAll_RejectsJsonSymlinkTarget()
+    {
+        var json = BuildJsonManifest().Replace(
+            "\"Filename\":\"game.exe\",",
+            "\"Filename\":\"game.exe\",\"SymlinkTarget\":\"target.exe\",",
+            StringComparison.Ordinal);
+
+        var error = Assert.Throws<InvalidDataException>(() =>
+            Manifest.ReadAll(Encoding.UTF8.GetBytes(json)));
+
+        Assert.Equal("Manifest symlink entries are unsupported: game.exe", error.Message);
+    }
+
+    private static string BuildJsonManifest()
+    {
         var guid = "00000001000000020000000300000004";
-        var json = $$"""
+        return $$"""
             {
               "ManifestFileVersion":"{{EncodeDecimalBytes(BitConverter.GetBytes(13))}}",
               "bIsFileData":false,
@@ -202,14 +250,6 @@ public sealed class ManifestParsingTests
               "CustomFields":{}
             }
             """;
-
-        var manifest = Manifest.ReadAll(Encoding.UTF8.GetBytes(json));
-
-        Assert.Equal("json-game", manifest.ManifestMeta.AppName);
-        Assert.Equal("1.0", manifest.ManifestMeta.BuildVersion);
-        Assert.Equal("game.exe", manifest.ManifestMeta.LaunchExe);
-        Assert.Equal(31, Assert.Single(manifest.FileManifestList.Elements).FileSize);
-        Assert.Equal(97, Assert.Single(manifest.CDL.Elements).FileSize);
     }
 
     private static byte[] BuildManifest(byte[] payload, bool compressed = false)

@@ -40,13 +40,13 @@
         <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
         <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
         <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-        <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
 		<Manifest Include="$(ApplicationManifest)" />
 	</ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
         <ProjectReference Include="..\Crimson.Infrastructure\Crimson.Infrastructure.csproj" />
+        <ProjectReference Include="..\Crimson.Platform.Windows\Crimson.Platform.Windows.csproj" />
     </ItemGroup>
 
     <!-- 

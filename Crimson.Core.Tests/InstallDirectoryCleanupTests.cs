@@ -71,6 +71,32 @@ public sealed class InstallDirectoryCleanupTests
         }
     }
 
+    [Fact]
+    public void RemoveEmptyOwnedDirectories_RejectsLinkedManifestDirectory()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-cleanup-test-{Guid.NewGuid():N}");
+        var root = Path.Combine(sandbox, "game");
+        var outside = Path.Combine(sandbox, "outside");
+        var linkedDirectory = Path.Combine(root, "Data");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(outside);
+        var outsideFile = Path.Combine(outside, "owned.bin");
+        File.WriteAllText(outsideFile, "keep");
+        Directory.CreateSymbolicLink(linkedDirectory, outside);
+
+        try
+        {
+            Assert.Throws<InvalidDataException>(() =>
+                InstallDirectoryCleanup.RemoveEmptyOwnedDirectories(root, ["Data/owned.bin"]));
+            Assert.True(File.Exists(outsideFile));
+        }
+        finally
+        {
+            Directory.Delete(linkedDirectory);
+            Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
     private static string CreateRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), $"crimson-cleanup-test-{Guid.NewGuid():N}");

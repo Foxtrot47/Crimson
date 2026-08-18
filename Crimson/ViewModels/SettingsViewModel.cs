@@ -1,10 +1,9 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
-using System.Diagnostics;
-using System.IO;
 using Serilog;
 
 namespace Crimson.ViewModels
@@ -13,6 +12,7 @@ namespace Crimson.ViewModels
     {
         private readonly SettingsManager _settingsManager;
         private readonly ILogger _logger;
+        private readonly IPlatformPathLauncher _pathLauncher;
 
         public bool MicaEnabled
         {
@@ -41,10 +41,14 @@ namespace Crimson.ViewModels
         [ObservableProperty]
         private bool _advancedSettingsExpanded;
 
-        public SettingsViewModel(SettingsManager settingsManager, ILogger logger)
+        public SettingsViewModel(
+            SettingsManager settingsManager,
+            ILogger logger,
+            IPlatformPathLauncher pathLauncher)
         {
             _settingsManager = settingsManager;
             _logger = logger;
+            _pathLauncher = pathLauncher;
         }
 
         private async Task SaveSettingsAsync()
@@ -53,16 +57,13 @@ namespace Crimson.ViewModels
         }
 
         [RelayCommand]
-        private void OpenLogsDirectory()
+        private async Task OpenLogsDirectoryAsync(CancellationToken cancellationToken)
         {
             try
             {
-                Directory.CreateDirectory(_settingsManager.LogsDirectory);
-                Process.Start(new ProcessStartInfo
-                {
-                    UseShellExecute = true,
-                    FileName = _settingsManager.LogsDirectory,
-                });
+                await _pathLauncher.OpenDirectoryAsync(
+                    _settingsManager.LogsDirectory,
+                    cancellationToken);
             }
             catch (Exception exception)
             {

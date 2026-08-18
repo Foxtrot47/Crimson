@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Crimson.Avalonia", "Crimson
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Crimson.Infrastructure.Tests", "Crimson.Infrastructure.Tests\Crimson.Infrastructure.Tests.csproj", "{79355334-316C-456B-AE55-7750B735C581}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Crimson.Platform.Windows", "Crimson.Platform.Windows\Crimson.Platform.Windows.csproj", "{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -225,6 +227,26 @@ Global
 		{79355334-316C-456B-AE55-7750B735C581}.Release|x64.Build.0 = Release|Any CPU
 		{79355334-316C-456B-AE55-7750B735C581}.Release|x86.ActiveCfg = Release|Any CPU
 		{79355334-316C-456B-AE55-7750B735C581}.Release|x86.Build.0 = Release|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Debug|ARM.ActiveCfg = Debug|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Debug|ARM.Build.0 = Debug|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Debug|arm64.ActiveCfg = Debug|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Debug|arm64.Build.0 = Debug|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Debug|x64.Build.0 = Debug|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Debug|x86.Build.0 = Debug|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Release|ARM.ActiveCfg = Release|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Release|ARM.Build.0 = Release|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Release|arm64.ActiveCfg = Release|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Release|arm64.Build.0 = Release|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Release|x64.ActiveCfg = Release|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Release|x64.Build.0 = Release|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Release|x86.ActiveCfg = Release|Any CPU
+		{D4AE9FF5-13A3-41DD-B386-AF5D459EDE8D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -432,19 +432,113 @@ public sealed class SyntheticUpdateLifecycleTests
         }
     }
 
+    [Theory]
+    [InlineData(InstallFileSystemLocation.Network, long.MaxValue)]
+    [InlineData(InstallFileSystemLocation.Local, 0L)]
+    public async Task Install_RejectsUnsupportedFilesystemOrCapacity(
+        InstallFileSystemLocation location,
+        long availableBytes)
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-lifecycle-{Guid.NewGuid():N}");
+        var installRoot = Path.Combine(sandbox, "game");
+        using var logger = new LoggerConfiguration().CreateLogger();
+        try
+        {
+            var harness = CreateHarness(
+                logger,
+                Path.Combine(sandbox, "state"),
+                "old.manifest",
+                fileSystemProbe: new StubFileSystemProbe(location, availableBytes));
+            harness.Storage.SaveMetaData(CreateGame("1.0.0"));
+
+            var result = await RunOperationAsync(
+                harness.Manager,
+                new InstallItem("CrimsonSyntheticGame", ActionType.Install, installRoot));
+
+            Assert.Equal(ActionStatus.Failed, result.Status);
+            Assert.False(File.Exists(Path.Combine(installRoot, "LaunchStub.cmd")));
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Move_RejectsDifferentVolumeIdentity()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-lifecycle-{Guid.NewGuid():N}");
+        var sourceRoot = Path.Combine(sandbox, "source");
+        var destinationParent = Path.Combine(sandbox, "destination-volume");
+        var destinationRoot = Path.Combine(destinationParent, "game");
+        Directory.CreateDirectory(sourceRoot);
+        Directory.CreateDirectory(destinationParent);
+        using var logger = new LoggerConfiguration().CreateLogger();
+        try
+        {
+            var harness = CreateHarness(
+                logger,
+                Path.Combine(sandbox, "state"),
+                "old.manifest",
+                fileSystemProbe: new PathIdentityFileSystemProbe(destinationParent));
+            var game = CreateGame("1.0.0");
+            game.LocalAppState = new LocalAppState
+            {
+                AppName = game.AppName,
+                InstallPath = sourceRoot,
+                InstallStatus = InstallState.Installed,
+                Version = "1.0.0"
+            };
+            harness.Storage.SaveMetaData(game);
+            harness.Storage.AddToLocalAppState(game.AppName, game.LocalAppState);
+            var move = new InstallItem(game.AppName, ActionType.Move, sourceRoot)
+            {
+                MoveLocation = destinationRoot
+            };
+
+            var result = await RunOperationAsync(harness.Manager, move);
+
+            Assert.Equal(ActionStatus.Failed, result.Status);
+            Assert.True(Directory.Exists(sourceRoot));
+            Assert.False(Directory.Exists(destinationRoot));
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
     private static Harness CreateHarness(
         ILogger logger,
         string stateRoot,
         string manifestName,
-        HttpMessageHandler? contentHandler = null)
+        HttpMessageHandler? contentHandler = null,
+        IInstallFileSystemProbe? fileSystemProbe = null)
     {
         var storage = new Storage(logger, stateRoot);
         var repository = new SyntheticRepository(manifestName);
-        var auth = new AuthManager(logger, storage, new HttpClient(new RejectingHandler()));
-        var library = new LibraryManager(logger, repository, storage, auth);
+        var auth = new AuthManager(
+            logger,
+            storage,
+            new TestCredentialProtector(),
+            new HttpClient(new RejectingHandler()));
+        var library = new LibraryManager(
+            logger,
+            repository,
+            storage,
+            auth,
+            new RecordingGameProcessRunner());
         var contentClient = new HttpClient(contentHandler ?? new FixtureContentHandler());
         var downloads = new DownloadManager(NullLogger<DownloadManager>.Instance, contentClient);
-        var manager = new InstallManager(logger, library, repository, storage, downloads);
+        var manager = new InstallManager(
+            logger,
+            library,
+            repository,
+            storage,
+            downloads,
+            fileSystemProbe ?? new InstallFileSystemProbe());
         return new Harness(storage, library, manager);
     }
 
@@ -691,6 +785,38 @@ public sealed class SyntheticUpdateLifecycleTests
         {
             Content = new ByteArrayContent(File.ReadAllBytes(file))
         };
+    }
+
+    private sealed class PathIdentityFileSystemProbe(string destinationParent)
+        : IInstallFileSystemProbe
+    {
+        public InstallFileSystemProbeResult Probe(string directoryPath)
+        {
+            var destination = Path.GetFullPath(destinationParent);
+            var candidate = Path.GetFullPath(directoryPath);
+            var isDestination = candidate.Equals(destination, StringComparison.OrdinalIgnoreCase) ||
+                candidate.StartsWith(destination + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            return new InstallFileSystemProbeResult(
+                true,
+                VolumeIdentity: isDestination ? "destination-volume" : "source-volume",
+                AvailableBytes: long.MaxValue,
+                TotalBytes: long.MaxValue,
+                AtomicRenameSupported: true,
+                Location: InstallFileSystemLocation.Local);
+        }
+    }
+
+    private sealed class StubFileSystemProbe(
+        InstallFileSystemLocation location,
+        long availableBytes) : IInstallFileSystemProbe
+    {
+        public InstallFileSystemProbeResult Probe(string directoryPath) => new(
+            true,
+            VolumeIdentity: "test-volume",
+            AvailableBytes: availableBytes,
+            TotalBytes: long.MaxValue,
+            AtomicRenameSupported: true,
+            Location: location);
     }
 
     private sealed class BlockingContentHandler : HttpMessageHandler

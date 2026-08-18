@@ -1,5 +1,6 @@
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Utils;
 
 namespace Crimson.Tests;
 
@@ -22,7 +23,7 @@ public sealed class ManifestUpdatePlannerTests
         Assert.Equal(1, plan.UnchangedFileCount);
         Assert.Equal([changedNew], plan.ChangedFiles);
         Assert.Equal([added], plan.AddedFiles);
-        Assert.Equal(["Data/removed.bin"], plan.RemovedFiles);
+        Assert.Equal(["Data/removed.bin"], plan.RemovedFiles.Select(path => path.Value));
     }
 
     [Fact]
@@ -65,7 +66,7 @@ public sealed class ManifestUpdatePlannerTests
 
     private static FileManifest File(string path, params byte[] hash) => new()
     {
-        Filename = path,
+        Path = ManifestRelativePath.Parse(path),
         Hash = hash
     };
 }

@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using Crimson.Core;
 using Crimson.Infrastructure;
+using Crimson.Platform.Windows;
 using Crimson.Repository;
 using Crimson.Utils;
 using Crimson.ViewModels;
@@ -45,17 +46,22 @@ namespace Crimson
             UseContentRoot(AppContext.BaseDirectory).
             ConfigureServices((context, services) =>
             {
-                services.AddSingleton(_ => new FileSettingsService(Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "Crimson")));
+                services.AddSingleton<IApplicationDirectories, WindowsApplicationDirectories>();
+                services.AddSingleton<ICredentialProtector, WindowsCredentialProtector>();
+                services.AddSingleton<IGameProcessRunner, WindowsGameProcessRunner>();
+                services.AddSingleton<IPlatformPathLauncher, WindowsPlatformPathLauncher>();
+                services.AddSingleton(provider => new FileSettingsService(
+                    provider.GetRequiredService<IApplicationDirectories>().DataRoot));
                 services.AddSingleton<ISettingsStore>(provider =>
                     provider.GetRequiredService<FileSettingsService>());
                 services.AddSingleton<SettingsManager>();
                 services.AddSingleton<ILogger>(provider =>
                 {
-                    var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                    _ = Directory.CreateDirectory($@"{appDataPath}\Crimson\logs");
-                    var logFilePath = $@"{appDataPath}\Crimson\logs\{DateTime.Now:yyyy-MM-dd}.txt";
+                    var directories = provider.GetRequiredService<IApplicationDirectories>();
+                    _ = Directory.CreateDirectory(directories.LogsDirectory);
+                    var logFilePath = Path.Combine(
+                        directories.LogsDirectory,
+                        $"{DateTime.Now:yyyy-MM-dd}.txt");
 
                     return new LoggerConfiguration()
                         .MinimumLevel.Information()
@@ -78,10 +84,13 @@ namespace Crimson
                         ConfigureEpicClient(client, TimeSpan.FromMinutes(10)))
                     .ConfigurePrimaryHttpMessageHandler(() => CreateSecureHttpHandler(TimeSpan.FromSeconds(15)));
 
-                services.AddSingleton<Storage>();
+                services.AddSingleton(provider => new Storage(
+                    provider.GetRequiredService<ILogger>(),
+                    provider.GetRequiredService<IApplicationDirectories>().DataRoot));
                 services.AddSingleton<AuthManager>(provider => new AuthManager(
                     provider.GetRequiredService<ILogger>(),
                     provider.GetRequiredService<Storage>(),
+                    provider.GetRequiredService<ICredentialProtector>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicOAuth")));
                 services.AddSingleton<IStoreRepository>(provider => new EpicGamesRepository(
                     provider.GetRequiredService<AuthManager>(),
@@ -89,6 +98,7 @@ namespace Crimson
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicApi"),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
                 services.AddSingleton<LibraryManager>();
+                services.AddSingleton<IInstallFileSystemProbe, InstallFileSystemProbe>();
                 services.AddSingleton<InstallManager>();
                 services.AddSingleton<DownloadManager>(provider => new DownloadManager(
                     provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DownloadManager>>(),

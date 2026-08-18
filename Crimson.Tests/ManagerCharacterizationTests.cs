@@ -60,8 +60,17 @@ public sealed class ManagerCharacterizationTests : IDisposable
                 Namespace = available.Namespace,
                 Title = "Update Game"
             });
-        var authentication = new AuthManager(_logger, storage, new HttpClient());
-        var manager = new LibraryManager(_logger, repository, storage, authentication);
+        var authentication = new AuthManager(
+            _logger,
+            storage,
+            new TestCredentialProtector(),
+            new HttpClient());
+        var manager = new LibraryManager(
+            _logger,
+            repository,
+            storage,
+            authentication,
+            new RecordingGameProcessRunner());
         Game? published = null;
         manager.LibraryUpdated += games => published = games.Single(candidate => candidate.AppName == game.AppName);
 
@@ -94,14 +103,33 @@ public sealed class ManagerCharacterizationTests : IDisposable
             AccountId = "test-account",
             DisplayName = "Test Player"
         });
-        var authentication = new AuthManager(_logger, storage, new HttpClient());
+        var authentication = new AuthManager(
+            _logger,
+            storage,
+            new TestCredentialProtector(),
+            new HttpClient());
         SetPrivateField(authentication, "_authenticationStatus", AuthenticationStatus.LoggedIn);
         var repository = new LaunchStoreRepository();
-        var manager = new LibraryManager(_logger, repository, storage, authentication);
+        var processRunner = new RecordingGameProcessRunner();
+        var manager = new LibraryManager(
+            _logger,
+            repository,
+            storage,
+            authentication,
+            processRunner);
 
         await manager.LaunchApp(game.AppName);
 
         Assert.Equal(1, repository.GameTokenRequests);
+        var startInfo = Assert.IsType<GameProcessStartInfo>(processRunner.LastStartInfo);
+        Assert.Equal(Path.Combine(installRoot, "LaunchStub.exe"), startInfo.FileName);
+        Assert.Equal(installRoot, startInfo.WorkingDirectory);
+        Assert.Equal(
+            "-AUTH_LOGIN=unused -AUTH_PASSWORD=launch-code -AUTH_TYPE=exchangecode " +
+            "-epicapp=launch-game -epicenv=Prod -EpicPortal " +
+            "-epicusername=\"Test Player\" -epicuserid=test-account " +
+            "-epicsandboxid=synthetic -epiclocale=en",
+            startInfo.Arguments);
     }
     [Fact]
     public void InstallManager_QueuesValidActionsAndPreservesOrder()
@@ -167,7 +195,8 @@ public sealed class ManagerCharacterizationTests : IDisposable
             manager,
             new UnusedStoreRepository(),
             storage,
-            new DownloadManager(NullLogger<DownloadManager>.Instance, new HttpClient()));
+            new DownloadManager(NullLogger<DownloadManager>.Instance, new HttpClient()),
+            new InstallFileSystemProbe());
         installManager.AddToQueue(new InstallItem(game.AppName, ActionType.Repair, game.LocalAppState.InstallPath));
         Assert.Empty(installManager.GetQueueItemNames());
     }
@@ -282,8 +311,17 @@ public sealed class ManagerCharacterizationTests : IDisposable
 
     private LibraryManager LibraryManagerWith(Storage storage)
     {
-        var auth = new AuthManager(_logger, storage, new HttpClient());
-        return new LibraryManager(_logger, new UnusedStoreRepository(), storage, auth);
+        var auth = new AuthManager(
+            _logger,
+            storage,
+            new TestCredentialProtector(),
+            new HttpClient());
+        return new LibraryManager(
+            _logger,
+            new UnusedStoreRepository(),
+            storage,
+            auth,
+            new RecordingGameProcessRunner());
     }
 
     private InstallManager InstallManagerWith(params Game[] games)
@@ -291,7 +329,13 @@ public sealed class ManagerCharacterizationTests : IDisposable
         var storage = StorageWith(games);
         var library = LibraryManagerWith(storage);
         var downloads = new DownloadManager(NullLogger<DownloadManager>.Instance, new HttpClient());
-        return new InstallManager(_logger, library, new UnusedStoreRepository(), storage, downloads);
+        return new InstallManager(
+            _logger,
+            library,
+            new UnusedStoreRepository(),
+            storage,
+            downloads,
+            new InstallFileSystemProbe());
     }
 
     private Storage StorageWith(params Game[] games)

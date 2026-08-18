@@ -38,19 +38,12 @@ namespace Crimson.Utils
             Volatile.Read(ref _gameMetadataSnapshot);
         public IReadOnlyDictionary<string, LocalAppState> LocalAppStateDictionary =>
             Volatile.Read(ref _localAppStateSnapshot);
-        public string DefaultInstallPath => Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
 
-
-        public Storage() : this(App.GetService<ILogger>())
-        {
-        }
-
-        public Storage(ILogger logger, string? appDataPath = null)
+        public Storage(ILogger logger, string appDataPath)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _appDataPath = Path.GetFullPath(appDataPath ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Crimson"));
+            ArgumentException.ThrowIfNullOrWhiteSpace(appDataPath);
+            _appDataPath = Path.GetFullPath(appDataPath);
             _userDataFile = ResolveAppDataPath("user.json");
             _gameAssetsFile = ResolveAppDataPath("assets.json");
             _metaDataDirectory = ResolveAppDataPath("metadata");

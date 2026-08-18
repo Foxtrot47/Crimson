@@ -24,8 +24,8 @@ public sealed class SyntheticGameFixtureTests
 
         Assert.Equal(root.GetProperty("appName").GetString(), oldManifest.ManifestMeta.AppName);
         Assert.Equal(root.GetProperty("appName").GetString(), newManifest.ManifestMeta.AppName);
-        Assert.Equal(root.GetProperty("launchExecutable").GetString(), oldManifest.ManifestMeta.LaunchExe);
-        Assert.Equal(root.GetProperty("launchExecutable").GetString(), newManifest.ManifestMeta.LaunchExe);
+        Assert.Equal(root.GetProperty("launchExecutable").GetString(), oldManifest.ManifestMeta.LaunchExe.Value);
+        Assert.Equal(root.GetProperty("launchExecutable").GetString(), newManifest.ManifestMeta.LaunchExe.Value);
 
         Assert.Contains(oldManifest.FileManifestList.Elements, file => file.ChunkParts.Count > 1);
         Assert.Contains(newManifest.FileManifestList.Elements, file => file.ChunkParts.Count > 1);
@@ -44,13 +44,13 @@ public sealed class SyntheticGameFixtureTests
         Assert.Equal(update.GetProperty("unchanged").GetArrayLength(), plan.UnchangedFileCount);
         Assert.Equal(
             ReadStringArray(update.GetProperty("changed")),
-            plan.ChangedFiles.Select(file => file.Filename).Order());
+            plan.ChangedFiles.Select(file => file.Path.Value).Order());
         Assert.Equal(
             ReadStringArray(update.GetProperty("added")),
-            plan.AddedFiles.Select(file => file.Filename).Order());
+            plan.AddedFiles.Select(file => file.Path.Value).Order());
         Assert.Equal(
             ReadStringArray(update.GetProperty("removed")),
-            plan.RemovedFiles.Order());
+            plan.RemovedFiles.Select(path => path.Value).Order());
     }
 
     private static async Task<Manifest> ReadManifestAsync(string name, JsonElement expected)
@@ -73,7 +73,7 @@ public sealed class SyntheticGameFixtureTests
         Assert.Equal(expectedFiles.EnumerateObject().Count(), manifest.FileManifestList.Elements.Count);
         foreach (var file in manifest.FileManifestList.Elements)
         {
-            var expectedFile = expectedFiles.GetProperty(file.Filename);
+            var expectedFile = expectedFiles.GetProperty(file.Path.Value);
             var contents = await MaterializeAsync(manifest, file);
             Assert.Equal(expectedFile.GetProperty("size").GetInt64(), contents.LongLength);
             Assert.Equal(

@@ -24,7 +24,7 @@ public sealed class AmongUsManifestIntegrationTests
 
         Assert.Equal(AppName, manifest.ManifestMeta.AppName);
         Assert.Equal(BuildVersion, manifest.ManifestMeta.BuildVersion);
-        Assert.Equal("Among Us.exe", manifest.ManifestMeta.LaunchExe);
+        Assert.Equal("Among Us.exe", manifest.ManifestMeta.LaunchExe.Value);
         Assert.Equal(101, manifest.FileManifestList.Elements.Count);
         Assert.Equal(977, manifest.CDL.Elements.Count);
         Assert.Equal(DownloadSize, manifest.CDL.Elements.Sum(chunk => chunk.FileSize));
@@ -36,8 +36,8 @@ public sealed class AmongUsManifestIntegrationTests
 
         foreach (var file in manifest.FileManifestList.Elements)
         {
-            var resolvedPath = ManifestPath.ResolveUnderRoot(root, file.Filename);
-            Assert.True(resolvedPaths.Add(resolvedPath), $"Duplicate destination path: {file.Filename}");
+            var resolvedPath = ManifestPath.ResolveUnderRoot(root, file.Path);
+            Assert.True(resolvedPaths.Add(resolvedPath), $"Duplicate destination path: {file.Path}");
 
             foreach (var part in file.ChunkParts)
             {

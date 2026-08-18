@@ -28,6 +28,7 @@ public class InstallManager
     private readonly DownloadManager _downloadManager;
     private readonly IStoreRepository _repository;
     private readonly Storage _storage;
+    private readonly IInstallFileSystemProbe _fileSystemProbe;
 
     private readonly List<InstallItem> _installQueue = [];
     private readonly List<InstallItem> _installHistory = [];
@@ -67,8 +68,13 @@ public class InstallManager
 
     public InstallItem? CurrentInstall { get; private set; }
 
-    public InstallManager(ILogger logger, LibraryManager libraryManager, IStoreRepository repository, Storage storage,
-        DownloadManager downloadManager)
+    public InstallManager(
+        ILogger logger,
+        LibraryManager libraryManager,
+        IStoreRepository repository,
+        Storage storage,
+        DownloadManager downloadManager,
+        IInstallFileSystemProbe fileSystemProbe)
     {
         _logger = logger;
         _libraryManager = libraryManager;
@@ -76,6 +82,7 @@ public class InstallManager
         CurrentInstall = null;
         _repository = repository;
         _storage = storage;
+        _fileSystemProbe = fileSystemProbe;
 
         _numberOfThreads = 12;
         _jsonSerializerOptions = new JsonSerializerOptions
@@ -235,15 +242,18 @@ public class InstallManager
 
             if (CurrentInstall.Action == ActionType.Install)
             {
-                // create CurrentInstall.folder if it doesn't exist
-                if (!Directory.Exists(CurrentInstall.Location))
+                var installRoot = ManifestPath.RevalidateUnderRoot(
+                    CurrentInstall.Location,
+                    CurrentInstall.Location);
+                if (!Directory.Exists(installRoot))
                 {
-                    Directory.CreateDirectory(CurrentInstall.Location);
-                    _logger.Debug("Folder created at: {location}", CurrentInstall.Location);
+                    Directory.CreateDirectory(installRoot);
+                    _ = ManifestPath.RevalidateUnderRoot(installRoot, installRoot);
+                    _logger.Debug("Folder created at: {location}", installRoot);
                 }
             }
 
-            var writeProbe = InstallFileSystemProbe.Probe(CurrentInstall.Location);
+            var writeProbe = _fileSystemProbe.Probe(CurrentInstall.Location);
             if (!writeProbe.Success)
             {
                 _logger.Warning(
@@ -259,6 +269,16 @@ public class InstallManager
                         string.Join(",", cleanupFailures.Select(failure => failure.ErrorType)));
                 }
                 await HandleInstallationStoppage("Install location does not support required write operations");
+                return;
+            }
+
+            if (writeProbe.Location != InstallFileSystemLocation.Local)
+            {
+                _logger.Warning(
+                    "Install filesystem for {AppName} is {Location}; only local filesystems are supported",
+                    CurrentInstall.AppName,
+                    writeProbe.Location);
+                await HandleInstallationStoppage("Install location is not on a supported local filesystem");
                 return;
             }
 
@@ -283,12 +303,12 @@ public class InstallManager
             {
                 foreach (var fileManifest in data.FileManifestList.Elements)
                 {
-                    _uninstallManifestPaths.Add(fileManifest.Filename);
+                    _uninstallManifestPaths.Add(fileManifest.Path.Value);
                     CurrentInstall.TotalWriteSizeMb += fileManifest.FileSize / 1024.0 / 1024.0;
 
                     var task = new IoTask()
                     {
-                        DestinationFilePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, fileManifest.Filename),
+                        DestinationFilePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, fileManifest.Path),
                         TaskType = IoTaskType.Delete,
                         Size = fileManifest.FileSize,
                     };
@@ -310,11 +330,11 @@ public class InstallManager
                 var missingFiles = new List<FileManifest>();
                 foreach (var fileManifest in data.FileManifestList.Elements)
                 {
-                    var filePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, fileManifest.Filename);
-                    if (!File.Exists(filePath))
-                    {
+                    var filePath = ManifestPath.ResolveExistingImportFile(
+                        CurrentInstall.Location,
+                        fileManifest.Path);
+                    if (filePath is null)
                         missingFiles.Add(fileManifest);
-                    }
                 }
 
                 _importVerificationResult = missingFiles;
@@ -333,12 +353,23 @@ public class InstallManager
             }
             else if (CurrentInstall.Action == ActionType.Move)
             {
-                var sourceDrive = Path.GetPathRoot(CurrentInstall.Location);
-                var destDrive = Path.GetPathRoot(CurrentInstall.MoveLocation);
-
-                if (!string.Equals(sourceDrive, destDrive, StringComparison.OrdinalIgnoreCase))
+                var destinationParent = Path.GetDirectoryName(
+                    Path.GetFullPath(CurrentInstall.MoveLocation));
+                if (string.IsNullOrWhiteSpace(destinationParent))
                 {
-                    await HandleInstallationStoppage("Cross-drive moves are not supported. Please uninstall and reinstall to the new location.");
+                    await HandleInstallationStoppage("Move destination has no parent directory");
+                    return;
+                }
+                var destinationProbe = _fileSystemProbe.Probe(destinationParent);
+                if (!destinationProbe.Success ||
+                    destinationProbe.Location != InstallFileSystemLocation.Local ||
+                    string.IsNullOrWhiteSpace(writeProbe.VolumeIdentity) ||
+                    !string.Equals(
+                        writeProbe.VolumeIdentity,
+                        destinationProbe.VolumeIdentity,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    await HandleInstallationStoppage("Cross-volume moves are not supported");
                     return;
                 }
 
@@ -348,11 +379,25 @@ public class InstallManager
                     return;
                 }
 
+                var sourcePath = ManifestPath.RevalidateUnderRoot(
+                    CurrentInstall.Location,
+                    CurrentInstall.Location);
+                var destinationPath = ManifestPath.RevalidateUnderRoot(
+                    CurrentInstall.MoveLocation,
+                    CurrentInstall.MoveLocation);
                 _logger.Information("Move: Moving {AppName} from {Src} to {Dest}",
-                    CurrentInstall.AppName, CurrentInstall.Location, CurrentInstall.MoveLocation);
+                    CurrentInstall.AppName, sourcePath, destinationPath);
                 BeginFinalization();
-                Directory.Move(CurrentInstall.Location, CurrentInstall.MoveLocation);
+                Directory.Move(sourcePath, destinationPath);
                 _logger.Information("Move: Successfully moved {AppName}", CurrentInstall.AppName);
+            }
+
+            if (CurrentInstall.Action is ActionType.Install or ActionType.Update or ActionType.Repair &&
+                (writeProbe.AvailableBytes is not long availableBytes ||
+                 CurrentInstall.TotalWriteSizeBytes > availableBytes))
+            {
+                await HandleInstallationStoppage("Install location does not have enough available space");
+                return;
             }
         }
         catch (Exception ex)
@@ -430,14 +475,14 @@ public class InstallManager
                 if (part.GuidNum != downloadTask.GuidNum) continue;
 
                 // mandatory check to prevent duplicate io tasks
-                var ioTaskHashString = $"{fileManifest.Filename}.{part.GuidNum}.{part.FileOffset}";
+                var ioTaskHashString = $"{fileManifest.Path}.{part.GuidNum}.{part.FileOffset}";
                 if (!_ioQueueTaskSet.TryAdd(ioTaskHashString, 0))
                     continue;
 
                 var task = new IoTask()
                 {
                     SourceFilePath = downloadTask.TempPath,
-                    DestinationFilePath = ManifestPath.ResolveUnderRoot(writeRoot, fileManifest.Filename),
+                    DestinationFilePath = ManifestPath.ResolveUnderRoot(writeRoot, fileManifest.Path),
                     TaskType = IoTaskType.Copy,
                     Size = part.Size,
                     DestinationFileSize = fileManifest.FileSize,
@@ -466,7 +511,10 @@ public class InstallManager
                         await ProcessCopyTask(ioTask);
                         break;
                     case IoTaskType.Delete:
-                        File.Delete(ioTask.DestinationFilePath);
+                        var deletePath = ManifestPath.RevalidateUnderRoot(
+                            CurrentInstall.Location,
+                            ioTask.DestinationFilePath);
+                        File.Delete(deletePath);
                         break;
                 }
                 UpdateInstallWriteProgress(ioTask.Size);
@@ -486,12 +534,15 @@ public class InstallManager
 
     private async Task ProcessCopyTask(IoTask ioTask)
     {
-
-        EnsureDirectoryExists(ioTask.DestinationFilePath);
+        var writeRoot = _updateTransaction?.StagingRoot ?? CurrentInstall.Location;
+        var destinationPath = ManifestPath.RevalidateUnderRoot(
+            writeRoot,
+            ioTask.DestinationFilePath);
+        EnsureDirectoryExists(destinationPath);
+        destinationPath = ManifestPath.RevalidateUnderRoot(writeRoot, destinationPath);
 
         // Ensure there is a lock object for each destination file
-        var fileLock =
-            _fileLocksConcurrentDictionary.GetOrAdd(ioTask.DestinationFilePath, new object());
+        var fileLock = _fileLocksConcurrentDictionary.GetOrAdd(destinationPath, new object());
 
         var compressedChunkData = await File.ReadAllBytesAsync(
             ioTask.SourceFilePath, _cancellationTokenSource.Token);
@@ -503,13 +554,13 @@ public class InstallManager
             ioTask.FileOffset > ioTask.DestinationFileSize ||
             ioTask.Size > ioTask.DestinationFileSize - ioTask.FileOffset)
         {
-            throw new InvalidDataException($"Invalid chunk range for {ioTask.DestinationFilePath}");
+            throw new InvalidDataException($"Invalid chunk range for {destinationPath}");
         }
 
         lock (fileLock)
         {
             _cancellationTokenSource.Token.ThrowIfCancellationRequested();
-            using var fileStream = new FileStream(ioTask.DestinationFilePath, FileMode.OpenOrCreate,
+            using var fileStream = new FileStream(destinationPath, FileMode.OpenOrCreate,
                 FileAccess.Write, FileShare.None);
             fileStream.SetLength(ioTask.DestinationFileSize);
 
@@ -559,7 +610,10 @@ public class InstallManager
             _completedChunks.Add(ioTask.SourceChunkGuidNum);
             _logger.Debug("ProcessIoQueue: Deleting chunk file {file}", ioTask.SourceFilePath);
             // Delete the file if successfully removed
-            File.Delete(ioTask.SourceFilePath);
+            var chunkPath = ManifestPath.RevalidateUnderRoot(
+                CurrentInstall.Location,
+                ioTask.SourceFilePath);
+            File.Delete(chunkPath);
         }
     }
 
@@ -669,18 +723,18 @@ public class InstallManager
                         : InstallState.Installed;
                     localAppState.BaseUrls = gameData.BaseUrls;
                     localAppState.CanRunOffline = canRunOffLine;
-                    localAppState.Executable = manifestData.ManifestMeta.LaunchExe;
+                    localAppState.Executable = manifestData.ManifestMeta.LaunchExe.Value;
                     localAppState.InstallPath = CurrentInstall.Location;
                     localAppState.LaunchParameters = manifestData.ManifestMeta.LaunchCommand;
                     localAppState.RequiresOt = requireOwnerShipToken;
                     localAppState.Version = manifestData.ManifestMeta.BuildVersion;
                     localAppState.Title = gameData.AppTitle;
 
-                    if (manifestData.ManifestMeta.UninstallActionPath != null)
+                    if (manifestData.ManifestMeta.UninstallActionPath is { } uninstallPath)
                     {
                         localAppState.Uninstaller = new Dictionary<string, string>
                         {
-                            { manifestData.ManifestMeta.UninstallActionPath, manifestData.ManifestMeta.UninstallActionArgs }
+                            { uninstallPath.Value, manifestData.ManifestMeta.UninstallActionArgs }
                         };
                     }
 
@@ -801,12 +855,12 @@ public class InstallManager
                 try
                 {
                     token.ThrowIfCancellationRequested();
-                    var filePath = ManifestPath.ResolveUnderRoot(installPath, manifest.Filename);
+                    var filePath = ManifestPath.ResolveUnderRoot(installPath, manifest.Path);
 
                     // Check if file exists and add to list if it doesn't
                     if (!File.Exists(filePath))
                     {
-                        _logger.Warning("VerifyFiles: MISSING {Filename}", manifest.Filename);
+                        _logger.Warning("VerifyFiles: MISSING {Filename}", manifest.Path);
                         invalidFilesBag.Add(manifest);
                         return;
                     }
@@ -818,7 +872,7 @@ public class InstallManager
                     {
                         var fileInfo = new FileInfo(filePath);
                         _logger.Warning("VerifyFiles: HASH MISMATCH {Filename} (size={Size}, expected={Expected}, actual={Actual})",
-                            manifest.Filename, fileInfo.Length, expectedHash, fileSha1);
+                            manifest.Path, fileInfo.Length, expectedHash, fileSha1);
                         invalidFilesBag.Add(manifest);
                     }
                 }
@@ -828,7 +882,7 @@ public class InstallManager
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error(ex, "VerifyFiles: Error verifying file {Filename}", manifest.Filename);
+                    _logger.Error(ex, "VerifyFiles: Error verifying file {Filename}", manifest.Path);
                     invalidFilesBag.Add(manifest);
                 }
             });
@@ -868,7 +922,7 @@ public class InstallManager
                         new List<FileManifest>() { fileManifest });
                 }
 
-                _logger.Debug("ProcessDownloadQueue: New file reference for chunk {GuidNum} filename:{filename}", chunkPart.GuidNum, fileManifest.Filename);
+                _logger.Debug("ProcessDownloadQueue: New file reference for chunk {GuidNum} filename:{filename}", chunkPart.GuidNum, fileManifest.Path);
                 // keep track of files count to which the parts of chunk must be copied to
                 _chunkPartReferences.AddOrUpdate(
                     chunkPart.GuidNum,
@@ -907,8 +961,9 @@ public class InstallManager
         {
             if (fileManifest.ChunkParts.Count == 0)
             {
-                var filePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, fileManifest.Filename);
+                var filePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, fileManifest.Path);
                 EnsureDirectoryExists(filePath);
+                filePath = ManifestPath.RevalidateUnderRoot(CurrentInstall.Location, filePath);
                 File.Create(filePath).Dispose();
                 _logger.Debug("GetChunksToDownload: Created empty file {Path}", filePath);
             }
@@ -970,9 +1025,9 @@ public class InstallManager
             .ToList();
         foreach (var addedFile in updatePlan.AddedFiles)
         {
-            var livePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, addedFile.Filename);
+            var livePath = ManifestPath.ResolveUnderRoot(CurrentInstall.Location, addedFile.Path);
             if (File.Exists(livePath) || Directory.Exists(livePath))
-                throw new IOException($"Update would overwrite an untracked path: {addedFile.Filename}");
+                throw new IOException($"Update would overwrite an untracked path: {addedFile.Path}");
         }
 
         var newLocalAppState = BuildInstalledLocalState(
@@ -982,9 +1037,9 @@ public class InstallManager
             CurrentInstall.Location);
         _updateTransaction = UpdateTransactionState.Create(
             CurrentInstall.Location,
-            updatePlan.ChangedFiles.Select(file => file.Filename),
-            updatePlan.AddedFiles.Select(file => file.Filename),
-            updatePlan.RemovedFiles,
+            updatePlan.ChangedFiles.Select(file => file.Path.Value),
+            updatePlan.AddedFiles.Select(file => file.Path.Value),
+            updatePlan.RemovedFiles.Select(path => path.Value),
             filesToDownload,
             JsonSerializer.Serialize(localAppState),
             JsonSerializer.Serialize(newLocalAppState));
@@ -1014,17 +1069,17 @@ public class InstallManager
         state.AppName = gameData.AppName;
         state.BaseUrls = gameData.BaseUrls;
         state.CanRunOffline = gameData.Metadata?.CustomAttributes?.CanRunOffline?.Value == "true";
-        state.Executable = manifest.ManifestMeta.LaunchExe;
+        state.Executable = manifest.ManifestMeta.LaunchExe.Value;
         state.InstallPath = installPath;
         state.LaunchParameters = manifest.ManifestMeta.LaunchCommand;
         state.RequiresOt = gameData.Metadata?.CustomAttributes?.OwnershipToken?.Value == "true";
         state.Version = manifest.ManifestMeta.BuildVersion;
         state.Title = gameData.AppTitle;
-        if (manifest.ManifestMeta.UninstallActionPath != null)
+        if (manifest.ManifestMeta.UninstallActionPath is { } uninstallPath)
         {
             state.Uninstaller = new Dictionary<string, string>
             {
-                { manifest.ManifestMeta.UninstallActionPath, manifest.ManifestMeta.UninstallActionArgs }
+                { uninstallPath.Value, manifest.ManifestMeta.UninstallActionArgs }
             };
         }
         return state;
@@ -1032,12 +1087,20 @@ public class InstallManager
 
     private static void PrepareUpdateDirectories(UpdateTransactionState transaction)
     {
-        if (Directory.Exists(transaction.StagingRoot))
-            Directory.Delete(transaction.StagingRoot, recursive: true);
-        if (Directory.Exists(transaction.BackupRoot))
-            Directory.Delete(transaction.BackupRoot, recursive: true);
-        Directory.CreateDirectory(transaction.StagingRoot);
-        Directory.CreateDirectory(transaction.BackupRoot);
+        var stagingRoot = ManifestPath.RevalidateUnderRoot(
+            transaction.InstallRoot,
+            transaction.StagingRoot);
+        var backupRoot = ManifestPath.RevalidateUnderRoot(
+            transaction.InstallRoot,
+            transaction.BackupRoot);
+        if (Directory.Exists(stagingRoot))
+            Directory.Delete(stagingRoot, recursive: true);
+        if (Directory.Exists(backupRoot))
+            Directory.Delete(backupRoot, recursive: true);
+        Directory.CreateDirectory(stagingRoot);
+        _ = ManifestPath.RevalidateUnderRoot(transaction.InstallRoot, stagingRoot);
+        Directory.CreateDirectory(backupRoot);
+        _ = ManifestPath.RevalidateUnderRoot(transaction.InstallRoot, backupRoot);
     }
 
     private async Task CommitPreparedUpdate()
@@ -1067,6 +1130,8 @@ public class InstallManager
                 throw new IOException($"Update publication target is occupied: {relativePath}");
 
             EnsureDirectoryExists(livePath);
+            stagedPath = ManifestPath.RevalidateUnderRoot(transaction.StagingRoot, stagedPath);
+            livePath = ManifestPath.RevalidateUnderRoot(transaction.InstallRoot, livePath);
             File.Move(stagedPath, livePath);
             if (!transaction.PublishedPaths.Contains(relativePath, StringComparer.OrdinalIgnoreCase))
                 transaction.PublishedPaths.Add(relativePath);
@@ -1089,6 +1154,8 @@ public class InstallManager
         var backupDirectory = Path.GetDirectoryName(backupPath);
         if (!string.IsNullOrEmpty(backupDirectory))
             Directory.CreateDirectory(backupDirectory);
+        livePath = ManifestPath.RevalidateUnderRoot(transaction.InstallRoot, livePath);
+        backupPath = ManifestPath.RevalidateUnderRoot(transaction.BackupRoot, backupPath);
         File.Move(livePath, backupPath);
         if (!transaction.BackedUpPaths.Contains(relativePath, StringComparer.OrdinalIgnoreCase))
             transaction.BackedUpPaths.Add(relativePath);
@@ -1126,7 +1193,9 @@ public class InstallManager
 
     private void RecoverPendingUpdate(string installRoot)
     {
-        var journalPath = UpdateTransactionState.GetJournalPath(installRoot);
+        var journalPath = ManifestPath.RevalidateUnderRoot(
+            installRoot,
+            UpdateTransactionState.GetJournalPath(installRoot));
         if (!File.Exists(journalPath))
             return;
 
@@ -1179,7 +1248,10 @@ public class InstallManager
         {
             var livePath = ManifestPath.ResolveUnderRoot(transaction.InstallRoot, relativePath);
             if (File.Exists(livePath))
+            {
+                livePath = ManifestPath.RevalidateUnderRoot(transaction.InstallRoot, livePath);
                 File.Delete(livePath);
+            }
         }
 
         foreach (var relativePath in transaction.ChangedPaths.Concat(transaction.RemovedPaths))
@@ -1192,10 +1264,15 @@ public class InstallManager
             if (Directory.Exists(livePath))
                 throw new IOException($"Cannot restore update backup over directory: {relativePath}");
             if (File.Exists(livePath))
+            {
+                livePath = ManifestPath.RevalidateUnderRoot(transaction.InstallRoot, livePath);
                 File.Delete(livePath);
+            }
             var liveDirectory = Path.GetDirectoryName(livePath);
             if (!string.IsNullOrEmpty(liveDirectory))
                 Directory.CreateDirectory(liveDirectory);
+            backupPath = ManifestPath.RevalidateUnderRoot(transaction.BackupRoot, backupPath);
+            livePath = ManifestPath.RevalidateUnderRoot(transaction.InstallRoot, livePath);
             File.Move(backupPath, livePath);
         }
     }
@@ -1203,8 +1280,11 @@ public class InstallManager
     private void PersistUpdateTransaction(UpdateTransactionState transaction)
     {
         transaction.Revision = checked(transaction.Revision + 1);
+        var journalPath = ManifestPath.RevalidateUnderRoot(
+            transaction.InstallRoot,
+            UpdateTransactionState.GetJournalPath(transaction.InstallRoot));
         AtomicJsonFile.Write(
-            UpdateTransactionState.GetJournalPath(transaction.InstallRoot),
+            journalPath,
             transaction,
             UpdateTransactionSchema);
         UpdateJournalTransitionFaultInjector?.Invoke(transaction);
@@ -1212,12 +1292,24 @@ public class InstallManager
 
     private static void CleanupUpdateTransaction(UpdateTransactionState transaction)
     {
-        if (Directory.Exists(transaction.StagingRoot))
-            Directory.Delete(transaction.StagingRoot, recursive: true);
-        if (Directory.Exists(transaction.BackupRoot))
-            Directory.Delete(transaction.BackupRoot, recursive: true);
-        File.Delete(UpdateTransactionState.GetJournalPath(transaction.InstallRoot));
-        File.Delete(UpdateTransactionState.GetJournalPath(transaction.InstallRoot) + ".bak");
+        var stagingRoot = ManifestPath.RevalidateUnderRoot(
+            transaction.InstallRoot,
+            transaction.StagingRoot);
+        var backupRoot = ManifestPath.RevalidateUnderRoot(
+            transaction.InstallRoot,
+            transaction.BackupRoot);
+        var journalPath = ManifestPath.RevalidateUnderRoot(
+            transaction.InstallRoot,
+            UpdateTransactionState.GetJournalPath(transaction.InstallRoot));
+        var journalBackupPath = ManifestPath.RevalidateUnderRoot(
+            transaction.InstallRoot,
+            journalPath + ".bak");
+        if (Directory.Exists(stagingRoot))
+            Directory.Delete(stagingRoot, recursive: true);
+        if (Directory.Exists(backupRoot))
+            Directory.Delete(backupRoot, recursive: true);
+        File.Delete(journalPath);
+        File.Delete(journalBackupPath);
     }
 
     /// <summary>
@@ -1304,8 +1396,9 @@ public class InstallManager
         {
             if (fileManifest.ChunkParts.Count == 0)
             {
-                var filePath = ManifestPath.ResolveUnderRoot(destinationRoot, fileManifest.Filename);
+                var filePath = ManifestPath.ResolveUnderRoot(destinationRoot, fileManifest.Path);
                 EnsureDirectoryExists(filePath);
+                filePath = ManifestPath.RevalidateUnderRoot(destinationRoot, filePath);
                 File.Create(filePath).Dispose();
                 _logger.Debug("GetChunksToDownloadFiltered: Created empty file {Path}", filePath);
             }

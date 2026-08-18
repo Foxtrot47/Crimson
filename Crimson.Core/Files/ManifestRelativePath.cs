@@ -26,6 +26,9 @@ public sealed class ManifestRelativePath
 
     public string Value { get; }
 
+    public static ManifestRelativePath? ParseOptional(string? value) =>
+        string.IsNullOrEmpty(value) ? null : Parse(value);
+
     public static ManifestRelativePath Parse(string value)
     {
         if (string.IsNullOrWhiteSpace(value))

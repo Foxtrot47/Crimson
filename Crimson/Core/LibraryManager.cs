@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -20,18 +19,25 @@ public class LibraryManager
     private readonly IStoreRepository _storeRepository;
     private readonly Storage _storage;
     private readonly AuthManager _authManager;
+    private readonly IGameProcessRunner _processRunner;
 
     public event Action<IEnumerable<Game>> LibraryUpdated;
     public event Action<Game> GameStatusUpdated;
 
     private DateTime _lastUpdateDateTime = DateTime.MinValue;
 
-    public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager)
+    public LibraryManager(
+        ILogger log,
+        IStoreRepository repository,
+        Storage storage,
+        AuthManager authManager,
+        IGameProcessRunner processRunner)
     {
         _log = log;
         _storeRepository = repository;
         _storage = storage;
         _authManager = authManager;
+        _processRunner = processRunner;
     }
 
     /// <summary>
@@ -146,22 +152,12 @@ public class LibraryManager
                 parameters.Add($"-epicsandboxid={metaData.AssetInfos.Windows.Namespace}");
                 parameters.Add("-epiclocale=en");
 
-                string arguments = string.Join(" ", parameters);
-
-                // Create a new process start info
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = ManifestPath.ResolveUnderRoot(gameInfo.InstallPath, gameInfo.Executable),
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    WorkingDirectory = gameInfo.InstallPath
-                };
-
-                // Create and start the process
-                using var process = new Process { StartInfo = startInfo };
-                process.Start();
-                process.WaitForExit();
-                process.Dispose();
+                var arguments = string.Join(" ", parameters);
+                var executable = ManifestRelativePath.Parse(gameInfo.Executable);
+                await _processRunner.RunAsync(new GameProcessStartInfo(
+                    ManifestPath.ResolveUnderRoot(gameInfo.InstallPath, executable),
+                    arguments,
+                    gameInfo.InstallPath));
             }
         }
         catch (Exception ex)

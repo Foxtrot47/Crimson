@@ -106,6 +106,145 @@ public sealed class ManifestPathTests
     }
 
     [Fact]
+    public void RevalidateUnderRoot_RejectsNewReparsePoint()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-path-test-{Guid.NewGuid():N}");
+        var root = Path.Combine(sandbox, "root");
+        var outside = Path.Combine(sandbox, "outside");
+        var linkedDirectory = Path.Combine(root, "linked");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(outside);
+        var candidate = ManifestPath.ResolveUnderRoot(root, "linked/victim.bin");
+        Directory.CreateSymbolicLink(linkedDirectory, outside);
+
+        try
+        {
+            Assert.Throws<InvalidDataException>(() =>
+                ManifestPath.RevalidateUnderRoot(root, candidate));
+        }
+        finally
+        {
+            Directory.Delete(linkedDirectory);
+            Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RevalidateUnderRoot_RejectsLinkedInstallRoot()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"crimson-path-test-{Guid.NewGuid():N}");
+        var target = Path.Combine(sandbox, "target");
+        var linkedRoot = Path.Combine(sandbox, "linked-root");
+        Directory.CreateDirectory(target);
+        Directory.CreateSymbolicLink(linkedRoot, target);
+
+        try
+        {
+            Assert.Throws<InvalidDataException>(() =>
+                ManifestPath.RevalidateUnderRoot(linkedRoot, linkedRoot));
+        }
+        finally
+        {
+            Directory.Delete(linkedRoot);
+            Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RevalidateUnderRoot_RejectsPathOutsideRoot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-path-test-{Guid.NewGuid():N}");
+        var outside = Path.Combine(Path.GetTempPath(), $"crimson-outside-{Guid.NewGuid():N}");
+
+        Assert.Throws<InvalidDataException>(() =>
+            ManifestPath.RevalidateUnderRoot(root, outside));
+    }
+
+    [Fact]
+    public void ResolveExistingImportFile_UsesSingleCaseInsensitiveMatch()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-import-test-{Guid.NewGuid():N}");
+        var actualPath = Path.Combine(root, "Data", "CONFIG.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(actualPath)!);
+        File.WriteAllText(actualPath, "config");
+
+        try
+        {
+            var resolved = ManifestPath.ResolveExistingImportFile(
+                root,
+                ManifestRelativePath.Parse("data/config.JSON"));
+
+            Assert.NotNull(resolved);
+            Assert.Equal("config", File.ReadAllText(resolved));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ResolveExistingImportFile_ReturnsNullForMissingSegment()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-import-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            Assert.Null(ManifestPath.ResolveExistingImportFile(
+                root,
+                ManifestRelativePath.Parse("missing/file.bin")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ResolveExistingImportFile_RejectsAmbiguousCaseInsensitiveMatch()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-import-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(root, "Data"));
+        Directory.CreateDirectory(Path.Combine(root, "data"));
+
+        try
+        {
+            Assert.Throws<InvalidDataException>(() => ManifestPath.ResolveExistingImportFile(
+                root,
+                ManifestRelativePath.Parse("DATA/file.bin")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ResolveUnderRoot_SupportsLongNestedPath()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-long-path-{Guid.NewGuid():N}");
+        var logicalPath = string.Join('/', Enumerable.Repeat("segment0123456789", 16)) + "/file.bin";
+        var resolved = ManifestPath.ResolveUnderRoot(root, logicalPath);
+        Assert.True(resolved.Length > 260);
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(resolved)!);
+            File.WriteAllText(resolved, "long-path");
+            Assert.Equal("long-path", File.ReadAllText(resolved));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ResolveUnderRoot_RejectsMalformedPathAsInvalidManifestData()
     {
         var root = Path.Combine(Path.GetTempPath(), "crimson-path-test", "game");

@@ -16,8 +16,8 @@ public sealed class FileManifestList
     public FileManifest GetFileByPath(string path)
     {
         _pathMap ??= Elements
-            .Select((element, index) => (element.Filename, index))
-            .ToDictionary(item => item.Filename, item => item.index, StringComparer.Ordinal);
+            .Select((element, index) => (element.Path.Value, index))
+            .ToDictionary(item => item.Value, item => item.index, StringComparer.Ordinal);
         return _pathMap.TryGetValue(path, out var index)
             ? Elements[index]
             : throw new ArgumentException($"Invalid manifest path: {path}", nameof(path));
@@ -42,12 +42,16 @@ public sealed class FileManifestList
         {
             var filename = reader.ReadUtf8String(EpicProtocolLimits.MaximumPathBytes);
             var logicalPath = ManifestRelativePath.Parse(filename);
-            list.Elements.Add(new FileManifest { Filename = logicalPath.Value });
+            list.Elements.Add(new FileManifest { Path = logicalPath });
         }
-        _ = ManifestPath.ValidateManifest(list.Elements.Select(file => file.Filename));
+        _ = ManifestPath.ValidateManifest(list.Elements.Select(file => file.Path));
 
         foreach (var file in list.Elements)
+        {
             file.SymlinkTarget = reader.ReadUtf8String(EpicProtocolLimits.MaximumPathBytes);
+            if (!string.IsNullOrEmpty(file.SymlinkTarget))
+                throw new InvalidDataException($"Manifest symlink entries are unsupported: {file.Path}");
+        }
         foreach (var file in list.Elements)
             file.Hash = reader.ReadBytesExact(20);
         foreach (var file in list.Elements)
@@ -130,7 +134,7 @@ public sealed class FileManifestList
 
 public sealed class FileManifest
 {
-    public string Filename { get; set; } = string.Empty;
+    public required ManifestRelativePath Path { get; set; }
     public string SymlinkTarget { get; set; } = string.Empty;
     public byte[] Hash { get; set; } = [];
     public byte Flags { get; set; }
@@ -151,7 +155,7 @@ public sealed class FileManifest
         var chunkParts = ChunkParts.Count <= 20
             ? string.Join(", ", ChunkParts)
             : $"{string.Join(", ", ChunkParts.Take(20))}, [...]";
-        return $"<FileManifest (filename=\"{Filename}\", symlink_target=\"{SymlinkTarget}\", hash={Convert.ToHexString(Hash)}, flags={Flags}, install_tags=[{string.Join(", ", InstallTags)}], chunk_parts=[{chunkParts}], file_size={FileSize})>";
+        return $"<FileManifest (filename=\"{Path}\", symlink_target=\"{SymlinkTarget}\", hash={Convert.ToHexString(Hash)}, flags={Flags}, install_tags=[{string.Join(", ", InstallTags)}], chunk_parts=[{chunkParts}], file_size={FileSize})>";
     }
 }
 

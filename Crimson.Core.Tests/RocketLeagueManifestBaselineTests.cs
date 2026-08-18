@@ -27,7 +27,7 @@ public sealed class RocketLeagueManifestBaselineTests
             manifestFileSize = bytes.LongLength,
             appName = manifest.ManifestMeta.AppName,
             buildVersion = manifest.ManifestMeta.BuildVersion,
-            launchExecutable = manifest.ManifestMeta.LaunchExe,
+            launchExecutable = manifest.ManifestMeta.LaunchExe.Value,
             fileCount = manifest.FileManifestList.Elements.Count,
             chunkCount = manifest.CDL.Elements.Count,
             downloadSize = manifest.CDL.Elements.Sum(chunk => chunk.FileSize),

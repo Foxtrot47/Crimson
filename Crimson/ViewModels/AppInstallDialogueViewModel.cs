@@ -20,6 +20,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
     private readonly InstallManager _installManager;
     private readonly LibraryManager _libraryManager;
     private readonly Storage _storageService;
+    private readonly IApplicationDirectories _directories;
     private readonly ILogger _logger;
     private readonly Dictionary<string, InstallContentSize> _contentSizes = [];
     private long _availableDriveBytes;
@@ -77,12 +78,14 @@ public partial class AppInstallDialogViewModel : ObservableObject
         ILogger logger,
         InstallManager installManager,
         LibraryManager libraryManager,
-        Storage storage)
+        Storage storage,
+        IApplicationDirectories directories)
     {
         _logger = logger;
         _installManager = installManager;
         _libraryManager = libraryManager;
         _storageService = storage;
+        _directories = directories;
     }
 
     public async Task InitializeAsync(Game gameInfo)
@@ -93,7 +96,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
             _gameAppName = gameInfo.AppName;
             GameTitle = gameInfo.AppTitle;
             GameImage = gameInfo.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(gameInfo.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
-            InstallLocation = Path.Combine(_storageService.DefaultInstallPath, gameInfo.AppTitle);
+            InstallLocation = Path.Combine(_directories.DefaultInstallRoot, gameInfo.AppTitle);
 
             // Load available DLCs
             AvailableDlcs.Clear();

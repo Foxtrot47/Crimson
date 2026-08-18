@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using Crimson.Core;
+using Crimson.Infrastructure;
+using Crimson.Platform.Windows;
 using Crimson.Models;
 using Crimson.Repository;
 using Crimson.Utils;
@@ -57,7 +59,7 @@ public sealed class AmongUsLiveLifecycleTests
             .Where(file => !file.Executable && file.FileSize > 0)
             .OrderBy(file => file.FileSize)
             .First();
-        var repairPath = ManifestPath.ResolveUnderRoot(installRoot, repairCandidate.Filename);
+        var repairPath = ManifestPath.ResolveUnderRoot(installRoot, repairCandidate.Path);
         await File.WriteAllTextAsync(repairPath, "intentional live repair corruption");
 
         var repairStatuses = new List<ActionStatus>();
@@ -81,7 +83,7 @@ public sealed class AmongUsLiveLifecycleTests
         Assert.Equal(ActionStatus.Processing, uninstallStatuses[0]);
         Assert.Equal(ActionStatus.Success, uninstallStatuses[^1]);
         foreach (var file in manifest.FileManifestList.Elements)
-            Assert.False(File.Exists(ManifestPath.ResolveUnderRoot(installRoot, file.Filename)));
+            Assert.False(File.Exists(ManifestPath.ResolveUnderRoot(installRoot, file.Path)));
         Assert.Equal(
             InstallState.NotInstalled,
             restarted.Storage.LocalAppStateDictionary[AppName].InstallStatus);
@@ -89,22 +91,38 @@ public sealed class AmongUsLiveLifecycleTests
 
     private static LiveHarness CreateHarness(ILogger logger)
     {
-        var storage = new Storage(logger);
+        var directories = new WindowsApplicationDirectories();
+        var storage = new Storage(logger, directories.DataRoot);
         var oauthClient = CreateClient(TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(5));
         var apiClient = CreateClient(TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10));
         var repositoryContentClient = CreateClient(TimeSpan.FromMinutes(10), TimeSpan.FromSeconds(15));
         var downloadContentClient = CreateClient(TimeSpan.FromMinutes(10), TimeSpan.FromSeconds(15));
-        var authentication = new AuthManager(logger, storage, oauthClient);
+        var authentication = new AuthManager(
+            logger,
+            storage,
+            new WindowsCredentialProtector(),
+            oauthClient);
         var repository = new EpicGamesRepository(
             authentication,
             NullLogger<EpicGamesRepository>.Instance,
             apiClient,
             repositoryContentClient);
-        var library = new LibraryManager(logger, repository, storage, authentication);
+        var library = new LibraryManager(
+            logger,
+            repository,
+            storage,
+            authentication,
+            new WindowsGameProcessRunner());
         var downloads = new DownloadManager(
             NullLogger<DownloadManager>.Instance,
             downloadContentClient);
-        var installation = new InstallManager(logger, library, repository, storage, downloads);
+        var installation = new InstallManager(
+            logger,
+            library,
+            repository,
+            storage,
+            downloads,
+            new InstallFileSystemProbe());
         return new LiveHarness(
             storage,
             authentication,
