@@ -146,6 +146,7 @@ public class InstallManager
                 return;
             }
 
+            _installStopWatch.Reset();
             _installStopWatch.Start();
             _pauseEvent.Set();
 
@@ -1387,14 +1388,27 @@ public class InstallManager
 
     public void ResumeInstall()
     {
+        if (CurrentInstall?.Status != ActionStatus.Paused)
+        {
+            _logger.Warning("No paused installation is available to resume");
+            return;
+        }
 
-        if (CurrentInstall.Status == ActionStatus.Paused)
+        // Workers are only absent after a restart (LoadPendingInstalls); in that case
+        // the pipeline has to be rebuilt. Otherwise the original workers are still
+        // alive and parked on _pauseEvent, so releasing them is enough. Calling
+        // ProcessNext here would spawn a second set of workers over the same queues
+        // and re-invoke _downloadQueue.CompleteAdding().
+        if (_downloadTasks is null || _installTasks is null)
         {
             ProcessNext(true);
-            Thread.Sleep(2000);
+            return;
         }
-        else
-            _logger.Warning("Installation of {appName} is not paused {state}", CurrentInstall.AppName, CurrentInstall.Status);
+
+        _installStopWatch.Start();
+        CurrentInstall.Status = ActionStatus.Processing;
+        _pauseEvent.Set();
+        InstallationStatusChanged?.Invoke(CurrentInstall);
     }
 
     public async Task LoadPendingInstalls()
