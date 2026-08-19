@@ -335,7 +335,14 @@ public class InstallManager
                     _pauseEvent.Wait(_cancellationTokenSource.Token);
 
                     _logger.Debug("ProcessDownloadQueue: Downloading chunk with guid{guid} from {url} to {path}", downloadTask.GuidNum, downloadTask.Url, downloadTask.TempPath);
-                    await _downloadManager.DownloadFileWithFallback(downloadTask.Url, downloadTask.TempPath);
+                    var downloaded = await _downloadManager.DownloadFileWithFallback(
+                        downloadTask.Url,
+                        downloadTask.TempPath,
+                        cancellationToken: _cancellationTokenSource.Token,
+                        expectedSize: downloadTask.ChunkInfo.FileSize);
+                    if (!downloaded)
+                        throw new IOException(
+                            $"Failed to download chunk {downloadTask.GuidNum} from all mirrors");
 
                     UpdateDownloadProgress(downloadTask.ChunkInfo.FileSize);
                     CreateIoTasksForChunk(downloadTask);

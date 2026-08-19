@@ -17,118 +17,115 @@ namespace Crimson.Repository
         private const string LauncherHost = "launcher-public-service-prod06.ol.epicgames.com";
         private const string CatalogHost = "catalog-public-service-prod06.ol.epicgames.com";
         private const string OAuthHost = "account-public-service-prod03.ol.epicgames.com";
-        private const string UserAgent = "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit";
 
-        private readonly HttpClient _httpClient;
+        private readonly HttpClient _apiClient;
+        private readonly HttpClient _contentClient;
         private readonly ILogger _log;
         private readonly AuthManager _authManager;
 
-        public EpicGamesRepository(AuthManager authManager, ILogger logger, HttpClient httpClient)
+        public EpicGamesRepository(
+            AuthManager authManager,
+            ILogger logger,
+            HttpClient apiClient,
+            HttpClient contentClient)
         {
             _log = logger;
             _authManager = authManager;
-            _httpClient = httpClient;
-            _httpClient.DefaultRequestHeaders.Add("User-Agent", UserAgent);
+            _apiClient = apiClient;
+            _contentClient = contentClient;
         }
 
         public async Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId)
         {
-
             _log.Information("FetchGameMetaData: Fetching game metadata");
             var accessToken = await _authManager.GetAccessToken();
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-            // API requests parameters to be in query instead of body
-            var qs = $"?id={catalogItemId}&includeDLCDetails=true&includeMainGameDetails=true&country=US&locale=en";
+            var uri = $"https://{CatalogHost}/catalog/api/shared/namespace/{Uri.EscapeDataString(nameSpace)}/bulk/items?id={Uri.EscapeDataString(catalogItemId)}&includeDLCDetails=true&includeMainGameDetails=true&country=US&locale=en";
 
             try
             {
-                // Make the API call with the form data
-                var httpResponse = await _httpClient.GetAsync($"https://{CatalogHost}/catalog/api/shared/namespace/{nameSpace}/bulk/items{qs}");
-                // Check if the request was successful (status code 200)
-                if (httpResponse.IsSuccessStatusCode)
+                using var request = CreateAuthenticatedRequest(HttpMethod.Get, uri, accessToken);
+                using var response = await _apiClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
                 {
-                    // Parse and use the response content here
-                    var result = await httpResponse.Content.ReadAsStringAsync();
-                    using var document = JsonDocument.Parse(result);
-                    // Get the root object
-                    var root = document.RootElement;
-
-                    // Assuming there's only one property at the root level (dynamic key)
-                    if (!root.EnumerateObject().Any()) return null;
-
-                    // Get the first property dynamically
-                    var firstProperty = root.EnumerateObject().First();
-
-                    // Deserialize the Metadata object
-                    return JsonSerializer.Deserialize<Metadata>(firstProperty.Value.GetRawText());
-                }
-                else
-                {
-                    _log.Warning($"FetchGameMetaData: Error while fetching game assets {httpResponse.StatusCode} {httpResponse.ReasonPhrase}");
+                    _log.Warning(
+                        "FetchGameMetaData failed with HTTP {StatusCode} {ReasonPhrase}",
+                        (int)response.StatusCode,
+                        response.ReasonPhrase);
                     return null;
                 }
+
+                var result = await response.Content.ReadAsStringAsync();
+                using var document = JsonDocument.Parse(result);
+                var firstProperty = document.RootElement.EnumerateObject().FirstOrDefault();
+                return firstProperty.Value.ValueKind == JsonValueKind.Undefined
+                    ? null
+                    : JsonSerializer.Deserialize<Metadata>(firstProperty.Value.GetRawText());
             }
             catch (Exception ex)
             {
-                _log.Error($"RequestTokens: {ex.Message}");
+                _log.Error("FetchGameMetaData failed with {ErrorType}", ex.GetType().Name);
                 return null;
             }
         }
 
         public async Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live")
         {
+            _log.Information("FetchGameAssets: Fetching game assets");
+            var accessToken = await _authManager.GetAccessToken();
+            var uri = $"https://{LauncherHost}/launcher/api/public/assets/{Uri.EscapeDataString(platform)}?label={Uri.EscapeDataString(label)}";
+
             try
             {
-                _log.Information("FetchGameAssets: Fetching game assets");
-                var accessToken = await _authManager.GetAccessToken();
-
-                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-                var httpResponse = await _httpClient.GetAsync($"https://{LauncherHost}/launcher/api/public/assets/{platform}?label={label}");
-
-                if (httpResponse.IsSuccessStatusCode)
+                using var request = CreateAuthenticatedRequest(HttpMethod.Get, uri, accessToken);
+                using var response = await _apiClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
                 {
-                    var result = await httpResponse.Content.ReadAsStringAsync();
-                    return JsonSerializer.Deserialize<IEnumerable<Asset>>(result);
-                }
-                else
-                {
-                    _log.Error($"FetchGameAssets: Error while fetching game assets {httpResponse.StatusCode} {httpResponse.ReasonPhrase}");
+                    _log.Error(
+                        "FetchGameAssets failed with HTTP {StatusCode} {ReasonPhrase}",
+                        (int)response.StatusCode,
+                        response.ReasonPhrase);
                     return null;
                 }
 
+                var result = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<IEnumerable<Asset>>(result);
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                Console.WriteLine(e);
+                _log.Error("FetchGameAssets failed with {ErrorType}", ex.GetType().Name);
                 throw;
             }
-
         }
 
         public async Task<byte[]> GetGameManifest(GetManifestUrlData urlData)
         {
-
-            foreach (var url in urlData.ManifestUrls)
+            foreach (var value in urlData.ManifestUrls)
             {
-                _log.Information($"GetGameManifest: Trying to load manifests from {url}");
-
                 try
                 {
-                    var httpResponse = await _httpClient.GetAsync(url);
-                    if (!httpResponse.IsSuccessStatusCode)
+                    var uri = EpicEndpointPolicy.RequireContentUri(value);
+                    _log.Information(
+                        "GetGameManifest: Trying content endpoint {ManifestUri}",
+                        SensitiveDataRedactor.UriWithoutQuery(uri.AbsoluteUri));
+                    using var response = await _contentClient.GetAsync(uri);
+                    if (!response.IsSuccessStatusCode)
                     {
-                        _log.Error($"Failed to fetch manifests from {url}, trying next url");
+                        _log.Error(
+                            "GetGameManifest failed with HTTP {StatusCode}; trying next endpoint",
+                            (int)response.StatusCode);
                         continue;
                     }
-                    var result = await httpResponse.Content.ReadAsByteArrayAsync();
-                    return result;
+
+                    return await response.Content.ReadAsByteArrayAsync();
                 }
-                catch (Exception e)
+                catch (Exception ex)
                 {
-                    _log.Error($"Failed to fetch manifests from {url}, trying next url");
+                    _log.Error(
+                        "GetGameManifest endpoint failed with {ErrorType}; trying next endpoint",
+                        ex.GetType().Name);
                 }
             }
+
             return null;
         }
 
@@ -136,26 +133,25 @@ namespace Crimson.Repository
         {
             try
             {
-                var accessToken = await _authManager.GetAccessToken();
-                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                var uri = EpicEndpointPolicy.RequireContentUri(url);
+                using var response = await _contentClient.GetAsync(uri);
+                response.EnsureSuccessStatusCode();
 
-                using var response = await _httpClient.GetAsync(url);
-                if (!response.IsSuccessStatusCode)
-                    throw new Exception($"File {url} failed to download");
-
-                // Create the directory if it doesn't exist
                 var directoryPath = Path.GetDirectoryName(destinationPath);
                 if (!string.IsNullOrEmpty(directoryPath))
-                {
                     Directory.CreateDirectory(directoryPath);
-                }
+
                 await using var stream = await response.Content.ReadAsStreamAsync();
-                await using var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                await using var fileStream = new FileStream(
+                    destinationPath,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.None);
                 await stream.CopyToAsync(fileStream);
             }
             catch (Exception ex)
             {
-                _log.Error("Failed to download file}", url);
+                _log.Error("DownloadFile failed with {ErrorType}", ex.GetType().Name);
             }
         }
 
@@ -164,97 +160,112 @@ namespace Crimson.Repository
             try
             {
                 var accessToken = await _authManager.GetAccessToken();
-                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-                using var response = await _httpClient.GetAsync($"https://{OAuthHost}/account/api/oauth/exchange");
+                using var request = CreateAuthenticatedRequest(
+                    HttpMethod.Get,
+                    $"https://{OAuthHost}/account/api/oauth/exchange",
+                    accessToken);
+                using var response = await _apiClient.SendAsync(request);
                 response.EnsureSuccessStatusCode();
-
-                await using var stream = await response.Content.ReadAsStreamAsync();
-                using var reader = new StreamReader(stream);
-                string responseContent = await reader.ReadToEndAsync();
-                return responseContent;
+                return await response.Content.ReadAsStringAsync();
             }
             catch (Exception ex)
             {
-                _log.Error("GetGameToken: {@ex}", ex);
+                _log.Error("GetGameToken failed with {ErrorType}", ex.GetType().Name);
                 return null;
             }
         }
 
-        public async Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live")
+        public async Task<GetManifestUrlData> GetManifestUrls(
+            string nameSpace,
+            string catalogItem,
+            string appName,
+            string platform = "Windows",
+            string label = "Live")
         {
             try
             {
-                _log.Information("GetGameManifest: Fetching game assets");
+                _log.Information("GetGameManifest: Fetching manifest metadata");
                 var accessToken = await _authManager.GetAccessToken();
-
-                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-                var httpResponse = await _httpClient.GetAsync($"https://{LauncherHost}/launcher/api/public/assets/v2/platform/{platform}/namespace/{nameSpace}/catalogItem/{catalogItem}/app/{appName}/label/{label}");
-
-                if (httpResponse.IsSuccessStatusCode)
+                var uri = $"https://{LauncherHost}/launcher/api/public/assets/v2/platform/{Uri.EscapeDataString(platform)}/namespace/{Uri.EscapeDataString(nameSpace)}/catalogItem/{Uri.EscapeDataString(catalogItem)}/app/{Uri.EscapeDataString(appName)}/label/{Uri.EscapeDataString(label)}";
+                using var request = CreateAuthenticatedRequest(HttpMethod.Get, uri, accessToken);
+                using var response = await _apiClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
                 {
-                    var result = await httpResponse.Content.ReadAsStringAsync();
-                    var manifestUrlDatas = JsonSerializer.Deserialize<ManifestUrlData>(result);
-                    if (manifestUrlDatas == null)
-                    {
-                        _log.Error($"GetGameManifest: Failed to parse manifest data from: {result}");
-                        throw new Exception("Failed to retrieve manifest data");
-                    }
-
-                    if (manifestUrlDatas.Elements.Count > 1)
-                    {
-                        _log.Warning($"GetGameManifest: Multiple manifest urls found for {appName}");
-                    }
-
-                    var manifestUrls = new List<string>();
-                    var baseUrls = new List<string>();
-
-                    foreach (var urlData in manifestUrlDatas.Elements[0].Manifests)
-                    {
-                        var baseUrl = urlData.Uri.SubstringBeforeLast("/");
-                        if (!baseUrls.Contains(baseUrl))
-                        {
-                            baseUrls.Add(baseUrl);
-                        }
-
-                        if (urlData.QueryParams != null)
-                        {
-                            var paramsString = string.Join("&", urlData.QueryParams.Select(p => $"{p.Name}={p.Value}"));
-                            manifestUrls.Add($"{urlData.Uri}?{paramsString}");
-                        }
-                        else
-                        {
-                            manifestUrls.Add(urlData.Uri);
-                        }
-                    }
-
-                    return new GetManifestUrlData()
-                    {
-                        BaseUrls = baseUrls,
-                        ManifestUrls = manifestUrls,
-                        ManifestHash = manifestUrlDatas.Elements[0].Hash,
-                    };
-                }
-                else
-                {
-                    _log.Error($"GetGameManifest: Error while fetching game manifest {httpResponse.StatusCode} {httpResponse.ReasonPhrase}");
+                    _log.Error(
+                        "GetGameManifest metadata failed with HTTP {StatusCode} {ReasonPhrase}",
+                        (int)response.StatusCode,
+                        response.ReasonPhrase);
                     return null;
                 }
 
+                var result = await response.Content.ReadAsStringAsync();
+                var data = JsonSerializer.Deserialize<ManifestUrlData>(result);
+                if (data?.Elements == null || data.Elements.Count == 0 || data.Elements[0].Manifests == null)
+                {
+                    _log.Error("GetGameManifest returned invalid manifest metadata");
+                    return null;
+                }
+
+                if (data.Elements.Count > 1)
+                    _log.Warning("GetGameManifest returned multiple manifest entries for {AppName}", appName);
+
+                var manifestUrls = new List<string>();
+                var baseUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var entry in data.Elements[0].Manifests)
+                {
+                    var contentUri = EpicEndpointPolicy.RequireContentUri(entry.Uri);
+                    var builder = new UriBuilder(contentUri);
+                    if (entry.QueryParams is { Count: > 0 })
+                    {
+                        // Emitted verbatim. These carry the CDN signature and Epic already
+                        // delivers them encoded; re-escaping turns %2f into %252f and the CDN
+                        // rejects the request. legendary does the same (core.py, queryParams).
+                        builder.Query = string.Join(
+                            "&",
+                            entry.QueryParams.Select(parameter =>
+                                $"{parameter.Name}={parameter.Value}"));
+                    }
+
+                    var manifestUri = EpicEndpointPolicy.RequireContentUri(builder.Uri.AbsoluteUri);
+                    manifestUrls.Add(manifestUri.AbsoluteUri);
+                    var lastSlash = contentUri.AbsolutePath.LastIndexOf('/');
+                    if (lastSlash > 0)
+                    {
+                        var baseBuilder = new UriBuilder(contentUri)
+                        {
+                            Path = contentUri.AbsolutePath[..lastSlash],
+                            Query = string.Empty,
+                            Fragment = string.Empty
+                        };
+                        baseUrls.Add(baseBuilder.Uri.AbsoluteUri.TrimEnd('/'));
+                    }
+                }
+
+                return new GetManifestUrlData
+                {
+                    BaseUrls = baseUrls.ToList(),
+                    ManifestUrls = manifestUrls,
+                    ManifestHash = data.Elements[0].Hash
+                };
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                _log.Error(e.ToString());
+                _log.Error("GetManifestUrls failed with {ErrorType}", ex.GetType().Name);
                 throw;
             }
         }
+
+        private static HttpRequestMessage CreateAuthenticatedRequest(
+            HttpMethod method,
+            string value,
+            string accessToken)
+        {
+            var request = new HttpRequestMessage(method, EpicEndpointPolicy.RequireApiUri(value));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            return request;
+        }
     }
 
-    public class GetManifestUrlData
-    {
-        public List<string> BaseUrls { get; set; }
-        public List<string> ManifestUrls { get; set; }
-        public string ManifestHash { get; set; }
-    }
 
     public static class StringExtensions
     {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Crimson.Core;
 using Crimson.Models;
 using Serilog;
 
@@ -10,14 +11,16 @@ namespace Crimson.Utils
 {
     public class Storage
     {
-        private static readonly string AppDataPath = $@"{Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)}\Crimson";
-        private static readonly string UserDataFile;
-        private static readonly string GameAssetsFile;
-        private static readonly string MetaDataDirectory;
-        private static readonly string SettingsDataFile;
-        private static readonly string InstallationStateFile;
-        private static readonly string LocalAppStateFile;
-        private static readonly string ManifestPath;
+        private static readonly string AppDataPath = Path.GetFullPath(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Crimson"));
+        private static readonly string UserDataFile = ResolveAppDataPath("user.json");
+        private static readonly string GameAssetsFile = ResolveAppDataPath("assets.json");
+        private static readonly string MetaDataDirectory = ResolveAppDataPath("metadata");
+        private static readonly string SettingsDataFile = ResolveAppDataPath("settings.json");
+        private static readonly string InstallationStateFile = ResolveAppDataPath("install_state.json");
+        private static readonly string LocalAppStateFile = ResolveAppDataPath("localstate.json");
+        private static readonly string ManifestPath = ResolveAppDataPath("manifests");
 
         private Dictionary<string, Game> _gameMetaDataDictionary;
         private Dictionary<string, LocalAppState> _localAppStateDictionary;
@@ -28,16 +31,6 @@ namespace Crimson.Utils
 
         public string DefaultInstallPath => Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
 
-        static Storage()
-        {
-            UserDataFile = $@"{AppDataPath}\user.json";
-            GameAssetsFile = $@"{AppDataPath}\assets.json";
-            MetaDataDirectory = $@"{AppDataPath}\metadata";
-            SettingsDataFile = $@"{AppDataPath}\settings.json";
-            InstallationStateFile = $@"{AppDataPath}\install_state.json";
-            LocalAppStateFile = $@"{AppDataPath}\localstate.json";
-            ManifestPath = $@"{AppDataPath}\manifests";
-        }
 
         public Storage()
         {
@@ -57,16 +50,14 @@ namespace Crimson.Utils
                     {
                         try
                         {
-                            var fileName = Path.GetFileName(file);
-                            var gameName = fileName[..^5];
                             var jsonString = File.ReadAllText(file);
-
                             var gameMetaData = JsonSerializer.Deserialize<Game>(jsonString);
+                            if (gameMetaData == null)
+                                throw new InvalidDataException("Metadata file did not contain a game record.");
 
-                            // Use lock to ensure thread safety when modifying the dictionary
                             lock (metaDataDictionary)
                             {
-                                metaDataDictionary.Add(gameName, gameMetaData);
+                                metaDataDictionary.Add(gameMetaData.AppName, gameMetaData);
                             }
                         }
                         catch (Exception ex)
@@ -215,7 +206,7 @@ namespace Crimson.Utils
             if (!Directory.Exists(MetaDataDirectory))
                 Directory.CreateDirectory(MetaDataDirectory);
 
-            var fileName = $@"{MetaDataDirectory}\{game.AppName}.json";
+            var fileName = ResolveAppDataPath("metadata", $"{game.AppName}.json");
             File.WriteAllText(fileName, jsonString);
 
             // Overwrite existing entry so in-memory state stays current
@@ -277,13 +268,14 @@ namespace Crimson.Utils
 
         public static async Task SaveAppManifest(byte[] manifestBytes, string appName)
         {
-            await File.WriteAllBytesAsync(Path.Join(AppDataPath, $"{appName}.manifest"), manifestBytes);
+            var path = ResolveAppDataPath($"{appName}.manifest");
+            await File.WriteAllBytesAsync(path, manifestBytes);
         }
 
-        public static async Task<byte[]> GetAppManifest(string appName)
+        public static Task<byte[]> GetAppManifest(string appName)
         {
-            var data = await File.ReadAllBytesAsync(Path.Join(AppDataPath, $"{appName}.manifest"));
-            return data;
+            var path = ResolveAppDataPath($"{appName}.manifest");
+            return File.ReadAllBytesAsync(path);
         }
 
         public async Task<System.IO.DriveInfo> GetDriveInfo(string path)
@@ -313,7 +305,7 @@ namespace Crimson.Utils
         {
             try
             {
-                var manifestPath = Path.Join(ManifestPath, $"{appName}_{version}.manifest");
+                var manifestPath = GetManifestCachePath(appName, version);
 
                 if (!File.Exists(manifestPath))
                 {
@@ -334,13 +326,32 @@ namespace Crimson.Utils
         {
             try
             {
-                var manifestPath = Path.Join(ManifestPath, $"{appName}_{version}.manifest");
+                var manifestPath = GetManifestCachePath(appName, version);
                 await File.WriteAllBytesAsync(manifestPath, manifestBytes);
             }
             catch (Exception ex)
             {
                 _logger.Error(ex, "Failed to cache manifest bytes for app: {AppName}", appName);
             }
+        }
+
+        private static string GetManifestCachePath(string appName, string version) => ResolveAppDataPath(
+            "manifests",
+            $"{appName}_{version}.manifest");
+
+        private static string ResolveAppDataPath(params string[] segments)
+        {
+            var pathParts = new string[segments.Length + 1];
+            pathParts[0] = AppDataPath;
+            Array.Copy(segments, 0, pathParts, 1, segments.Length);
+            var candidate = Path.GetFullPath(Path.Combine(pathParts));
+            var relative = Path.GetRelativePath(AppDataPath, candidate);
+            if (relative == ".." ||
+                relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
+                Path.IsPathRooted(relative))
+                throw new InvalidOperationException("Application data path escaped its canonical root.");
+
+            return candidate;
         }
     }
 }
