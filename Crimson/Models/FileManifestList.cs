@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -7,229 +7,200 @@ using System.Text;
 
 namespace Crimson.Models;
 
-public class FileManifestList
+public sealed class FileManifestList
 {
-    public int Version { get; set; }
-    public int Size { get; set; }
-    public int Count { get; set; }
-    public List<FileManifest> Elements { get; set; }
-    private Dictionary<string, int> _pathMap;
+    public int Version { get; internal set; }
+    public int Size { get; internal set; }
+    public int Count { get; internal set; }
+    public List<FileManifest> Elements { get; } = [];
 
-    public FileManifestList()
-    {
-        Version = 0;
-        Size = 0;
-        Count = 0;
-        Elements = new List<FileManifest>();
-        _pathMap = new Dictionary<string, int>();
-    }
+    private Dictionary<string, int>? _pathMap;
 
     public FileManifest GetFileByPath(string path)
     {
-        if (_pathMap.Count == 0)
-            for (var i = 0; i < Elements.Count; i++)
-                _pathMap[Elements[i].Filename] = i;
-
-        if (_pathMap.TryGetValue(path, out var index))
-            return Elements[index];
-        else
-            throw new ArgumentException($"Invalid path! {path}");
+        _pathMap ??= Elements
+            .Select((element, index) => (element.Filename, index))
+            .ToDictionary(item => item.Filename, item => item.index, StringComparer.Ordinal);
+        return _pathMap.TryGetValue(path, out var index)
+            ? Elements[index]
+            : throw new ArgumentException($"Invalid manifest path: {path}", nameof(path));
     }
 
-    public static FileManifestList Read(Stream bio)
+    public static FileManifestList Read(Stream stream) => Read(new EpicBinaryReader(stream));
+
+    internal static FileManifestList Read(EpicBinaryReader reader)
     {
-        var fml = new FileManifestList();
-        var reader = new BinaryReader(bio);
-
-        var fmlStart = bio.Position;
-        fml.Size = reader.ReadInt32();
-        fml.Version = reader.ReadByte();
-        fml.Count = reader.ReadInt32();
-
-        for (var i = 0; i < fml.Count; i++)
+        var start = reader.Position;
+        var end = reader.BeginSection("File manifest list");
+        var list = new FileManifestList
         {
-            var fm = new FileManifest
-            {
-                Filename = ReadFString(reader)
-            };
-            fml.Elements.Add(fm);
+            Size = checked((int)(end - start)),
+            Version = reader.ReadByte(),
+            Count = reader.ReadCount(EpicProtocolLimits.MaximumFileCount, "File")
+        };
+        if (list.Version is < 0 or > 2)
+            throw new InvalidDataException($"File manifest list version {list.Version} is unsupported.");
+
+        // No case-insensitive uniqueness check: Epic builds from case-sensitive trees, so a
+        // Readme.txt/README.txt pair is legal and must not make a title uninstallable.
+        // ReadUnrealString (not ReadUtf8String) because a negative length signals UTF-16.
+        for (var index = 0; index < list.Count; index++)
+        {
+            var filename = reader.ReadUnrealString(EpicProtocolLimits.MaximumPathBytes);
+            if (string.IsNullOrWhiteSpace(filename))
+                throw new InvalidDataException("Manifest filename is empty.");
+
+            list.Elements.Add(new FileManifest { Filename = filename });
         }
 
-        foreach (var fm in fml.Elements) fm.SymlinkTarget = ReadFString(reader);
-        // For files this is actually the SHA1 instead of whatever it is for chunks...
-        foreach (var fm in fml.Elements) fm.Hash = reader.ReadBytes(20);
-        // Flags, the only one I've seen is for executables
-        foreach (var fm in fml.Elements) fm.Flags = reader.ReadByte();
-
-        foreach (var fm in fml.Elements)
+        foreach (var file in list.Elements)
+            file.SymlinkTarget = reader.ReadUnrealString(EpicProtocolLimits.MaximumPathBytes);
+        foreach (var file in list.Elements)
+            file.Hash = reader.ReadBytesExact(20);
+        foreach (var file in list.Elements)
         {
-            var tagCount = reader.ReadInt32();
-            for (var j = 0; j < tagCount; j++) fm.InstallTags.Add(ReadFString(reader));
+            // Unknown flag bits are ignored, not rejected; only bits 0-2 are meaningful.
+            file.Flags = reader.ReadByte();
         }
 
-        // Each file is made up of "Chunk Parts" that can be spread across the "chunk stream"
-        foreach (var fm in fml.Elements)
+        foreach (var file in list.Elements)
         {
-            var partCount = reader.ReadInt32();
-            var offset = 0;
-            for (var j = 0; j < partCount; j++)
+            var tagCount = reader.ReadCount(EpicProtocolLimits.MaximumTagsPerFile, "Install tag");
+            for (var index = 0; index < tagCount; index++)
+                file.InstallTags.Add(reader.ReadUnrealString());
+        }
+
+        long cumulativePartCount = 0;
+        foreach (var file in list.Elements)
+        {
+            var partCount = reader.ReadCount(EpicProtocolLimits.MaximumChunkPartsPerFile, "Chunk part");
+            cumulativePartCount = checked(cumulativePartCount + partCount);
+            if (cumulativePartCount > EpicProtocolLimits.MaximumCumulativeChunkParts)
+                throw new InvalidDataException("Cumulative chunk part count exceeds the supported limit.");
+
+            long fileOffset = 0;
+            for (var index = 0; index < partCount; index++)
             {
-                var chunkPartStart = bio.Position;
-                var chunkPartSize = reader.ReadInt32();
-                var chunkPart = new ChunkPart
+                var partStart = reader.Position;
+                var partSize = reader.ReadInt32();
+                if (partSize < 28)
+                    throw new InvalidDataException("Chunk part section is too small.");
+
+                var partEnd = checked(partStart + partSize);
+                if (partEnd > end)
+                    throw new InvalidDataException("Chunk part extends beyond the file manifest section.");
+                var part = new ChunkPart
                 {
-                    Guid = new int[4]
+                    Guid = [reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32()],
+                    Offset = reader.ReadInt32(),
+                    Size = reader.ReadInt32(),
+                    FileOffset = fileOffset
                 };
-                for (var k = 0; k < 4; k++) chunkPart.Guid[k] = reader.ReadInt32();
+                if (part.Offset < 0 || part.Size < 0 ||
+                    (long)part.Offset + part.Size > EpicProtocolLimits.MaximumChunkBytes)
+                    throw new InvalidDataException("Chunk part range is outside the supported chunk window.");
 
-                chunkPart.Offset = reader.ReadInt32();
-                chunkPart.Size = reader.ReadInt32();
-                chunkPart.FileOffset = offset;
-                fm.ChunkParts.Add(chunkPart);
-                offset += chunkPart.Size;
-
-                // Skipping unread bytes if any
-                var diff = bio.Position - chunkPartStart - chunkPartSize;
-                if (diff > 0) bio.Seek(diff, SeekOrigin.Current);
+                fileOffset = checked(fileOffset + part.Size);
+                file.ChunkParts.Add(part);
+                reader.SkipTo(partEnd, "Chunk part");
             }
+
+            file.FileSize = fileOffset;
         }
 
-        // MD5 hash + MIME type (Manifest feature level 19)
-        if (fml.Version >= 1)
+        if (list.Version >= 1)
         {
-            foreach (var fm in fml.Elements)
+            foreach (var file in list.Elements)
             {
                 var hasMd5 = reader.ReadInt32();
-                if (hasMd5 != 0) fm.HashMd5 = reader.ReadBytes(16);
+                if (hasMd5 is not (0 or 1))
+                    throw new InvalidDataException("File MD5 presence flag is invalid.");
+                if (hasMd5 == 1)
+                    file.HashMd5 = reader.ReadBytesExact(16);
             }
 
-            foreach (var fm in fml.Elements) fm.MimeType = ReadFString(reader);
+            foreach (var file in list.Elements)
+                file.MimeType = reader.ReadUnrealString();
         }
 
-        // SHA256 hash (Manifest feature level 20)
-        if (fml.Version >= 2)
-            foreach (var fm in fml.Elements)
-                fm.HashSha256 = reader.ReadBytes(32);
-
-        // Calculate file size ourselves
-        foreach (var fm in fml.Elements) fm.FileSize = fm.ChunkParts.Sum(c => (long)c.Size);
-
-        var sizeRead = bio.Position - fmlStart;
-        if (sizeRead != fml.Size)
+        if (list.Version >= 2)
         {
-            // Log warning here and seek forward
-            fml.Version = 0;
-            bio.Seek(fml.Size - sizeRead, SeekOrigin.Current);
+            foreach (var file in list.Elements)
+                file.HashSha256 = reader.ReadBytesExact(32);
         }
 
-        return fml;
-    }
-
-    private static string ReadFString(BinaryReader reader)
-    {
-        // Assuming ReadFString reads a length-prefixed string
-        var length = reader.ReadInt32();
-        if (length == 0) return string.Empty;
-
-        var bytes = reader.ReadBytes(length);
-        return Encoding.UTF8.GetString(bytes).TrimEnd('\0');
+        if (!reader.EndSection(end, "File manifest list"))
+            list.Version = 0;
+        return list;
     }
 }
 
-public class FileManifest
+public sealed class FileManifest
 {
-    public string Filename { get; set; }
-    public string SymlinkTarget { get; set; }
-    public byte[] Hash { get; set; }
+    public string Filename { get; set; } = string.Empty;
+    public string SymlinkTarget { get; set; } = string.Empty;
+    public byte[] Hash { get; set; } = [];
     public byte Flags { get; set; }
-    public List<string> InstallTags { get; set; }
-    public List<ChunkPart> ChunkParts { get; set; }
+    public List<string> InstallTags { get; } = [];
+    public List<ChunkPart> ChunkParts { get; } = [];
     public long FileSize { get; set; }
-    public byte[] HashMd5 { get; set; }
-    public string MimeType { get; set; }
-    public byte[] HashSha256 { get; set; }
-
-    public FileManifest()
-    {
-        Filename = string.Empty;
-        SymlinkTarget = string.Empty;
-        Hash = new byte[0];
-        Flags = 0;
-        InstallTags = new List<string>();
-        ChunkParts = new List<ChunkPart>();
-        FileSize = 0;
-        HashMd5 = new byte[0];
-        MimeType = string.Empty;
-        HashSha256 = new byte[0];
-    }
+    public byte[] HashMd5 { get; set; } = [];
+    public string MimeType { get; set; } = string.Empty;
+    public byte[] HashSha256 { get; set; } = [];
 
     public bool ReadOnly => (Flags & 0x1) != 0;
     public bool Compressed => (Flags & 0x2) != 0;
     public bool Executable => (Flags & 0x4) != 0;
-
     public byte[] ShaHash => Hash;
 
     public override string ToString()
     {
-        var chunkPartsStr = ChunkParts.Count <= 20
-            ? string.Join(", ", ChunkParts.Select(cp => cp.ToString()))
-            : string.Join(", ", ChunkParts.Take(20).Select(cp => cp.ToString()) + ", [...]");
-
-        var installTagsStr = string.Join(", ", InstallTags);
-        var hashStr = BitConverter.ToString(Hash).Replace("-", string.Empty);
-
-        return $"<FileManifest (filename=\"{Filename}\", symlink_target=\"{SymlinkTarget}\", " +
-               $"hash={hashStr}, flags={Flags}, install_tags=[{installTagsStr}], " +
-               $"chunk_parts=[{chunkPartsStr}], file_size={FileSize})>";
+        var chunkParts = ChunkParts.Count <= 20
+            ? string.Join(", ", ChunkParts)
+            : $"{string.Join(", ", ChunkParts.Take(20))}, [...]";
+        return $"<FileManifest (filename=\"{Filename}\", symlink_target=\"{SymlinkTarget}\", hash={Convert.ToHexString(Hash)}, flags={Flags}, install_tags=[{string.Join(", ", InstallTags)}], chunk_parts=[{chunkParts}], file_size={FileSize})>";
     }
 }
 
-public class ChunkPart
+public sealed class ChunkPart
 {
     public int[] Guid { get; set; }
     public int Offset { get; set; }
     public int Size { get; set; }
     public long FileOffset { get; set; }
 
-    private string _guidStr;
-    private BigInteger _guidNum;
+    private string? _guidStr;
+    private BigInteger _guidNum = -1;
 
-    public ChunkPart(int[] guid = null, int offset = 0, int size = 0, int fileOffset = 0)
+    public ChunkPart(int[]? guid = null, int offset = 0, int size = 0, int fileOffset = 0)
     {
         Guid = guid ?? new int[4];
         Offset = offset;
         Size = size;
         FileOffset = fileOffset;
-        _guidNum = -1;
     }
 
-    public string GuidStr
-    {
-        get
-        {
-            if (_guidStr == null && Guid != null) _guidStr = string.Join("-", Guid.Select(g => g.ToString("x8")));
-
-            return _guidStr;
-        }
-    }
+    public string GuidStr => _guidStr ??= string.Join("-", Guid.Select(value => value.ToString("x8")));
 
     public BigInteger GuidNum
     {
         get
         {
-            if (_guidNum == -1 && Guid != null)
-                _guidNum = new BigInteger(Guid[3])
-                           + (new BigInteger(Guid[2]) << 32)
-                           + (new BigInteger(Guid[1]) << 64)
-                           + (new BigInteger(Guid[0]) << 96);
+            if (_guidNum == -1)
+            {
+                if (Guid.Length != 4)
+                    throw new InvalidOperationException("Chunk part GUID is not initialized.");
+
+                _guidNum = new BigInteger(unchecked((uint)Guid[3]))
+                           + (new BigInteger(unchecked((uint)Guid[2])) << 32)
+                           + (new BigInteger(unchecked((uint)Guid[1])) << 64)
+                           + (new BigInteger(unchecked((uint)Guid[0])) << 96);
+            }
 
             return _guidNum;
         }
     }
 
-    public override string ToString()
-    {
-        var guidReadable = string.Join("-", Guid.Select(g => g.ToString("x8")));
-        return $"<ChunkPart (guid={guidReadable}, offset={Offset}, size={Size}, file_offset={FileOffset})>";
-    }
+    public override string ToString() =>
+        $"<ChunkPart (guid={GuidStr}, offset={Offset}, size={Size}, file_offset={FileOffset})>";
 }

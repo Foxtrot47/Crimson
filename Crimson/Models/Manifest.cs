@@ -1,230 +1,257 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Buffers;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Ionic.Zlib;
 
 namespace Crimson.Models;
 
-public class Manifest
+public sealed class Manifest
 {
     private const uint HeaderMagic = 0x44BEC00C;
-    private const int DefaultSerializationVersion = 17;
+    private const int ExpectedHeaderSize = 41;
+    // legendary handles feature levels 12 (Unreal Tournament) through 24; anything inside that
+    // band must parse. Narrower bounds rejected manifests the previous parser accepted.
+    private const int MinimumSupportedVersion = 12;
+    private const int MaximumSupportedVersion = 24;
 
-    public int HeaderSize { get; private set; } = 41;
-    public int SizeCompressed { get; private set; } = 0;
-    public int SizeUncompressed { get; private set; } = 0;
-    public byte[] ShaHash { get; private set; } = Array.Empty<byte>();
-    public byte StoredAs { get; private set; } = 0;
-    public int Version { get; private set; } = 18;
-    public byte[] Data { get; private set; } = Array.Empty<byte>();
+    public int HeaderSize { get; private set; } = ExpectedHeaderSize;
+    public int SizeCompressed { get; private set; }
+    public int SizeUncompressed { get; private set; }
+    public byte[] ShaHash { get; private set; } = [];
+    public byte StoredAs { get; private set; }
+    public int Version { get; private set; } = MaximumSupportedVersion;
+    public byte[] Data { get; private set; } = [];
 
-    public ManifestMeta ManifestMeta { get; set; }
-    public CDL CDL { get; set; }
-    public FileManifestList FileManifestList { get; set; }
-    public CustomFields CustomFields { get; set; }
+    public ManifestMeta ManifestMeta { get; internal set; } = null!;
+    public CDL CDL { get; internal set; } = null!;
+    public FileManifestList FileManifestList { get; internal set; } = null!;
+    public CustomFields CustomFields { get; internal set; } = null!;
 
     public bool Compressed => (StoredAs & 0x1) != 0;
 
     public static Manifest ReadAll(byte[] data)
     {
+        if (JsonManifestReader.IsJson(data))
+            return JsonManifestReader.Read(data);
         var manifest = Read(data);
-        using (var stream = new MemoryStream(manifest.Data))
-        {
-            manifest.ManifestMeta = ManifestMeta.Read(new BinaryReader(stream));
-            manifest.CDL = CDL.Read(stream, Convert.ToInt32(manifest.ManifestMeta.FeatureLevel));
-            manifest.FileManifestList = FileManifestList.Read(stream);
-            manifest.CustomFields = CustomFields.Read(stream);
-            var unhandledDataLength = stream.Length - stream.Position;
-            if (unhandledDataLength > 0)
-                Console.WriteLine(
-                    $"Did not read {unhandledDataLength} remaining bytes in manifest! This may not be a problem.");
-        }
-
-        // Throw this away since the raw data is no longer needed
-        manifest.Data = Array.Empty<byte>();
-
+        using var stream = new MemoryStream(manifest.Data, writable: false);
+        var reader = new EpicBinaryReader(stream);
+        manifest.ManifestMeta = ManifestMeta.Read(reader);
+        manifest.CDL = CDL.Read(reader, checked((int)manifest.ManifestMeta.FeatureLevel));
+        manifest.FileManifestList = FileManifestList.Read(reader);
+        manifest.CustomFields = CustomFields.Read(reader);
+        // Trailing sections are expected on newer feature levels (legendary reads an EncryptedData
+        // section this parser does not), so warn rather than reject. Note this is the decompressed
+        // payload; the envelope itself is still checked strictly by EnsureAtEnd above.
+        if (reader.Remaining > 0)
+            Debug.WriteLine(
+                $"Manifest payload has {reader.Remaining} trailing bytes; ignoring unknown sections.");
+        manifest.Data = [];
         return manifest;
     }
 
     public static Manifest Read(byte[] data)
     {
-        using var bio = new MemoryStream(data);
-        if (BitConverter.ToUInt32(ReadBytes(bio, 4), 0) != HeaderMagic)
-            throw new InvalidOperationException("No header magic!");
+        ArgumentNullException.ThrowIfNull(data);
+        if (JsonManifestReader.IsJson(data))
+            return JsonManifestReader.Read(data);
+        if (data.Length < ExpectedHeaderSize)
+            throw new EndOfStreamException("Manifest header is truncated.");
+        if (data.Length > EpicProtocolLimits.MaximumManifestBytes + ExpectedHeaderSize)
+            throw new InvalidDataException("Manifest exceeds the supported size limit.");
+
+        using var stream = new MemoryStream(data, writable: false);
+        var reader = new EpicBinaryReader(stream);
+        if (reader.ReadUInt32() != HeaderMagic)
+            throw new InvalidDataException("Manifest header magic is invalid.");
 
         var manifest = new Manifest
         {
-            HeaderSize = BitConverter.ToInt32(ReadBytes(bio, 4), 0),
-            SizeUncompressed = BitConverter.ToInt32(ReadBytes(bio, 4), 0),
-            SizeCompressed = BitConverter.ToInt32(ReadBytes(bio, 4), 0),
-            ShaHash = ReadBytes(bio, 20),
-            StoredAs = ReadBytes(bio, 1)[0],
-            Version = BitConverter.ToInt32(ReadBytes(bio, 4), 0)
+            HeaderSize = reader.ReadInt32(),
+            SizeUncompressed = reader.ReadInt32(),
+            SizeCompressed = reader.ReadInt32(),
+            ShaHash = reader.ReadBytesExact(20),
+            StoredAs = reader.ReadByte(),
+            Version = reader.ReadInt32()
         };
 
-        if (bio.Position != manifest.HeaderSize)
-        {
-            Console.WriteLine(
-                $"Did not read entire header {bio.Position} != {manifest.HeaderSize}! Header version: {manifest.Version}");
-            bio.Seek(manifest.HeaderSize, SeekOrigin.Begin);
-        }
+        if (manifest.HeaderSize < ExpectedHeaderSize || reader.Position != ExpectedHeaderSize)
+            throw new InvalidDataException("Manifest header size is unsupported.");
+        // Feature level 22+ grows the header; skip whatever this parser does not know about.
+        if (manifest.HeaderSize > ExpectedHeaderSize)
+            reader.SkipTo(manifest.HeaderSize, "Manifest header");
+        if (manifest.Version is < MinimumSupportedVersion or > MaximumSupportedVersion)
+            throw new InvalidDataException($"Manifest version {manifest.Version} is unsupported.");
+        if ((manifest.StoredAs & ~0x1) != 0)
+            throw new InvalidDataException("Manifest storage flags are unsupported.");
+        ValidateSize(manifest.SizeCompressed, "compressed");
+        ValidateSize(manifest.SizeUncompressed, "uncompressed");
+        if (reader.Remaining != manifest.SizeCompressed)
+            throw new InvalidDataException("Manifest compressed size does not match its payload.");
+        if (manifest.Compressed && manifest.SizeUncompressed >
+            Math.Max((long)manifest.SizeCompressed, 1) * EpicProtocolLimits.MaximumManifestDecompressionRatio)
+            throw new InvalidDataException("Manifest decompression ratio exceeds the supported limit.");
 
-        var rawData = ReadBytes(bio, (int)(bio.Length - bio.Position));
-        if (manifest.Compressed)
-        {
-            manifest.Data = Decompress(rawData);
-            var decHash = BitConverter.ToString(SHA1.HashData(manifest.Data)).Replace("-", string.Empty);
-            var hexShaHash = BitConverter.ToString(manifest.ShaHash).Replace("-", string.Empty);
-
-            if (decHash != hexShaHash) throw new InvalidOperationException("Hash does not match!");
-        }
-        else
-        {
-            manifest.Data = rawData;
-        }
+        var storedPayload = reader.ReadBytesExact(manifest.SizeCompressed);
+        manifest.Data = manifest.Compressed
+            ? Decompress(storedPayload, manifest.SizeUncompressed)
+            : storedPayload;
+        if (manifest.Data.Length != manifest.SizeUncompressed)
+            throw new InvalidDataException("Manifest uncompressed size does not match its payload.");
+        // Only compressed manifests carry a populated hash, matching legendary.
+        if (manifest.Compressed &&
+            !CryptographicOperations.FixedTimeEquals(SHA1.HashData(manifest.Data), manifest.ShaHash))
+            throw new InvalidDataException("Manifest payload hash does not match.");
 
         return manifest;
     }
 
-    private static byte[] ReadBytes(Stream stream, int count)
+    private static void ValidateSize(int size, string name)
     {
-        var buffer = new byte[count];
-        stream.Read(buffer, 0, count);
-        return buffer;
+        if (size < 0 || size > EpicProtocolLimits.MaximumManifestBytes)
+            throw new InvalidDataException($"Manifest {name} size is outside the supported range.");
     }
 
-    private static void WriteBytes(Stream stream, byte[] data)
+    private static byte[] Decompress(byte[] data, int expectedSize)
     {
-        stream.Write(data, 0, data.Length);
-    }
-
-    private static byte[] Decompress(byte[] data)
-    {
-        using var compressedStream = new MemoryStream(data);
-        using var decompressedStream = new MemoryStream();
-        using (var zlibStream = new ZlibStream(compressedStream, CompressionMode.Decompress))
+        using var compressedStream = new MemoryStream(data, writable: false);
+        using var zlibStream = new ZlibStream(compressedStream, CompressionMode.Decompress);
+        using var output = new MemoryStream(expectedSize);
+        var buffer = ArrayPool<byte>.Shared.Rent(81_920);
+        try
         {
-            zlibStream.CopyTo(decompressedStream);
-        }
+            var total = 0;
+            while (true)
+            {
+                var read = zlibStream.Read(buffer, 0, buffer.Length);
+                if (read == 0)
+                    break;
 
-        return decompressedStream.ToArray();
+                total = checked(total + read);
+                if (total > expectedSize || total > EpicProtocolLimits.MaximumManifestBytes)
+                    throw new InvalidDataException("Manifest decompressed beyond its declared size.");
+
+                output.Write(buffer, 0, read);
+            }
+
+            if (total != expectedSize)
+                throw new InvalidDataException("Manifest decompressed size does not match its declaration.");
+
+            return output.ToArray();
+        }
+        catch (ZlibException exception)
+        {
+            throw new InvalidDataException("Manifest compressed payload is invalid.", exception);
+        }
+        catch (OverflowException exception)
+        {
+            throw new InvalidDataException("Manifest decompressed size overflowed.", exception);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 }
 
-public class ManifestMeta
+public sealed class ManifestMeta
 {
-    public int MetaSize { get; private set; }
-    public byte DataVersion { get; private set; }
-    public uint FeatureLevel { get; private set; }
-    public bool IsFileData { get; private set; }
-    public uint AppId { get; private set; }
-    public string AppName { get; private set; }
-    public string BuildVersion { get; private set; }
-    public string LaunchExe { get; private set; }
-    public string LaunchCommand { get; private set; }
-    public List<string> PrereqIds { get; private set; }
-    public string PrereqName { get; private set; }
-    public string PrereqPath { get; private set; }
-    public string PrereqArgs { get; private set; }
-    public string UninstallActionPath { get; private set; }
-    public string UninstallActionArgs { get; private set; }
+    public int MetaSize { get; internal set; }
+    public byte DataVersion { get; internal set; }
+    public uint FeatureLevel { get; internal set; }
+    public bool IsFileData { get; internal set; }
+    public uint AppId { get; internal set; }
+    public string AppName { get; internal set; } = string.Empty;
+    public string BuildVersion { get; internal set; } = string.Empty;
+    public string LaunchExe { get; internal set; } = string.Empty;
+    public string LaunchCommand { get; internal set; } = string.Empty;
+    public List<string> PrereqIds { get; internal set; } = [];
+    public string PrereqName { get; internal set; } = string.Empty;
+    public string PrereqPath { get; internal set; } = string.Empty;
+    public string PrereqArgs { get; internal set; } = string.Empty;
+    // Null when the manifest predates DataVersion 2. InstallManager null-checks this before
+    // persisting an uninstaller into localstate.json, so it must not default to empty.
+    public string? UninstallActionPath { get; internal set; }
+    public string UninstallActionArgs { get; internal set; } = string.Empty;
 
-    private string _buildId;
+    private string? _buildId;
 
     public string BuildId
     {
         get
         {
-            if (!string.IsNullOrEmpty(_buildId)) return _buildId;
+            if (!string.IsNullOrEmpty(_buildId))
+                return _buildId;
 
-            using (var sha1 = new SHA1Managed())
+            using var input = new MemoryStream();
+            using (var writer = new BinaryWriter(input, Encoding.UTF8, leaveOpen: true))
             {
-                var hashBytes = sha1.ComputeHash(BitConverter.GetBytes(AppId));
-                hashBytes = CombineArrays(hashBytes, Encoding.UTF8.GetBytes(AppName));
-                hashBytes = CombineArrays(hashBytes, Encoding.UTF8.GetBytes(BuildVersion));
-                hashBytes = CombineArrays(hashBytes, Encoding.UTF8.GetBytes(LaunchExe));
-                hashBytes = CombineArrays(hashBytes, Encoding.UTF8.GetBytes(LaunchCommand));
-
-                _buildId = Convert.ToBase64String(hashBytes).Replace("+", "-").Replace("/", "_").Replace("=", "");
+                writer.Write(AppId);
+                writer.Write(Encoding.UTF8.GetBytes(AppName));
+                writer.Write(Encoding.UTF8.GetBytes(BuildVersion));
+                writer.Write(Encoding.UTF8.GetBytes(LaunchExe));
+                writer.Write(Encoding.UTF8.GetBytes(LaunchCommand));
             }
 
+            _buildId = Convert.ToBase64String(SHA1.HashData(input.ToArray()))
+                .Replace("+", "-", StringComparison.Ordinal)
+                .Replace("/", "_", StringComparison.Ordinal)
+                .Replace("=", string.Empty, StringComparison.Ordinal);
             return _buildId;
         }
     }
 
-    public static ManifestMeta Read(BinaryReader reader)
+    internal static ManifestMeta Read(EpicBinaryReader reader)
     {
+        var start = reader.Position;
+        var end = reader.BeginSection("Manifest metadata", minimumSize: 15);
         var meta = new ManifestMeta
         {
-            MetaSize = reader.ReadInt32(),
+            MetaSize = checked((int)(end - start)),
             DataVersion = reader.ReadByte(),
-            FeatureLevel = reader.ReadUInt32(),
-            IsFileData = reader.ReadByte() == 1,
-            AppId = reader.ReadUInt32(),
-            AppName = ReadFString(reader),
-            BuildVersion = ReadFString(reader),
-            LaunchExe = ReadFString(reader),
-            LaunchCommand = ReadFString(reader)
+            FeatureLevel = reader.ReadUInt32()
         };
+        if (meta.DataVersion > 2)
+            throw new InvalidDataException($"Manifest metadata version {meta.DataVersion} is unsupported.");
+        if (meta.FeatureLevel > 21)
+            throw new InvalidDataException($"Manifest feature level {meta.FeatureLevel} is unsupported.");
 
-        var entries = reader.ReadUInt32();
-        meta.PrereqIds = new List<string>();
-        for (var i = 0; i < entries; i++) meta.PrereqIds.Add(ReadFString(reader));
+        var isFileData = reader.ReadByte();
+        if (isFileData > 1)
+            throw new InvalidDataException("Manifest file-data flag is invalid.");
 
-        meta.PrereqName = ReadFString(reader);
-        meta.PrereqPath = ReadFString(reader);
-        meta.PrereqArgs = ReadFString(reader);
+        meta.IsFileData = isFileData == 1;
+        meta.AppId = reader.ReadUInt32();
+        meta.AppName = reader.ReadUnrealString();
+        meta.BuildVersion = reader.ReadUnrealString();
+        meta.LaunchExe = reader.ReadUnrealString(EpicProtocolLimits.MaximumPathBytes);
+        meta.LaunchCommand = reader.ReadUnrealString();
 
-        if (meta.DataVersion >= 1) meta._buildId = ReadFString(reader);
+        var prereqCount = reader.ReadUInt32();
+        if (prereqCount > 4_096)
+            throw new InvalidDataException("Manifest prerequisite count exceeds the supported limit.");
+        for (var index = 0; index < prereqCount; index++)
+            meta.PrereqIds.Add(reader.ReadUnrealString());
 
+        meta.PrereqName = reader.ReadUnrealString();
+        meta.PrereqPath = reader.ReadUnrealString(EpicProtocolLimits.MaximumPathBytes);
+        meta.PrereqArgs = reader.ReadUnrealString();
+        if (meta.DataVersion >= 1)
+            meta._buildId = reader.ReadUnrealString();
         if (meta.DataVersion >= 2)
         {
-            meta.UninstallActionPath = ReadFString(reader);
-            meta.UninstallActionArgs = ReadFString(reader);
+            meta.UninstallActionPath = reader.ReadUnrealString(EpicProtocolLimits.MaximumPathBytes);
+            meta.UninstallActionArgs = reader.ReadUnrealString();
         }
 
-        var sizeRead = (int)reader.BaseStream.Position;
-        if (sizeRead == meta.MetaSize) return meta;
-
-        Console.WriteLine($"Did not read entire manifest metadata! Version: {meta.DataVersion}, " +
-                          $"{meta.MetaSize - sizeRead} bytes missing, skipping...");
-        reader.BaseStream.Seek(meta.MetaSize - sizeRead, SeekOrigin.Current);
-        // Downgrade version to prevent issues during serialization
-        meta.DataVersion = 0;
-
+        if (!reader.EndSection(end, "Manifest metadata"))
+            meta.DataVersion = 0;
         return meta;
-    }
-
-    private static byte[] CombineArrays(byte[] first, byte[] second)
-    {
-        var result = new byte[first.Length + second.Length];
-        Buffer.BlockCopy(first, 0, result, 0, first.Length);
-        Buffer.BlockCopy(second, 0, result, first.Length, second.Length);
-        return result;
-    }
-
-    private static string ReadFString(BinaryReader reader)
-    {
-        var length = reader.ReadInt32();
-        switch (length)
-        {
-            case < 0:
-                {
-                    length *= -2;
-                    var utf16Bytes = reader.ReadBytes(length - 2);
-                    reader.BaseStream.Seek(2, SeekOrigin.Current); // UTF-16 strings have two-byte null terminators
-                    return Encoding.Unicode.GetString(utf16Bytes);
-                }
-            case > 0:
-                {
-                    var asciiBytes = reader.ReadBytes(length - 1);
-                    reader.BaseStream.Seek(1, SeekOrigin.Current); // Skip string null terminator
-                    return Encoding.ASCII.GetString(asciiBytes);
-                }
-            default:
-                return string.Empty;
-        }
     }
 }
