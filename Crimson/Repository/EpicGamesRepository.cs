@@ -213,7 +213,18 @@ namespace Crimson.Repository
                 var baseUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var entry in data.Elements[0].Manifests)
                 {
-                    var contentUri = EpicEndpointPolicy.RequireContentUri(entry.Uri);
+                    // Skip mirrors on hosts outside the allowlist instead of throwing.
+                    // Epic rotates CDNs, and one unrecognised host used to abort the whole
+                    // manifest-URL resolution and leave the install with no mirrors at all.
+                    if (!Uri.TryCreate(entry.Uri, UriKind.Absolute, out var contentUri) ||
+                        !EpicEndpointPolicy.IsAllowedContentUri(contentUri))
+                    {
+                        _log.Warning(
+                            "Rejected unapproved Epic CDN host {Host}",
+                            contentUri?.Host ?? "invalid");
+                        continue;
+                    }
+
                     var builder = new UriBuilder(contentUri);
                     if (entry.QueryParams is { Count: > 0 })
                     {
@@ -226,8 +237,7 @@ namespace Crimson.Repository
                                 $"{parameter.Name}={parameter.Value}"));
                     }
 
-                    var manifestUri = EpicEndpointPolicy.RequireContentUri(builder.Uri.AbsoluteUri);
-                    manifestUrls.Add(manifestUri.AbsoluteUri);
+                    manifestUrls.Add(builder.Uri.AbsoluteUri);
                     var lastSlash = contentUri.AbsolutePath.LastIndexOf('/');
                     if (lastSlash > 0)
                     {
