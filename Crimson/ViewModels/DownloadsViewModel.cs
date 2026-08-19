@@ -12,7 +12,7 @@ using Serilog;
 
 namespace Crimson.ViewModels;
 
-public partial class DownloadsViewModel : ObservableObject
+public partial class DownloadsViewModel : ObservableObject, IDisposable
 {
 
     private readonly ILogger _log;
@@ -62,14 +62,17 @@ public partial class DownloadsViewModel : ObservableObject
     [ObservableProperty]
     private string _currentDownloadSize = string.Empty;
 
-    public DownloadsViewModel()
+    public DownloadsViewModel(
+        ILogger logger,
+        InstallManager installManager,
+        LibraryManager libraryManager)
     {
-        _log = App.GetService<ILogger>();
+        _log = logger;
         _dispatcherQueue = Windows.System.DispatcherQueue.GetForCurrentThread();
         _log.Information("DownloadsPage: Loading Page");
 
-        _installManager = App.GetService<InstallManager>();
-        _libraryManager = App.GetService<LibraryManager>();
+        _installManager = installManager;
+        _libraryManager = libraryManager;
 
         var gameInQueue = _installManager.CurrentInstall;
         HandleInstallationStatusChanged(gameInQueue);
@@ -279,6 +282,12 @@ public partial class DownloadsViewModel : ObservableObject
         return _dispatcherQueue.TryEnqueue(() => updateAction());
 
     }
+    public void Dispose()
+    {
+        _installManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
+        _installManager.InstallProgressUpdate -= InstallationProgressUpdate;
+    }
+
 }
 
 
