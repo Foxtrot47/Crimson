@@ -52,7 +52,8 @@ public class InstallManager
     private Stopwatch _installStopWatch = new();
     private DateTime _lastUpdateTime = DateTime.MinValue;
     private ManualResetEventSlim _pauseEvent = new ManualResetEventSlim(true);
-
+    private volatile bool _userCancelled;
+    private string? _stoppageReason;
 
     public InstallItem? CurrentInstall { get; private set; }
 
@@ -123,26 +124,30 @@ public class InstallManager
         {
             if (isResuming == false && (CurrentInstall != null || _installQueue.Count <= 0)) return;
 
+            _cancellationTokenSource = new CancellationTokenSource();
+            _userCancelled = false;
+            _stoppageReason = null;
+
             if (!isResuming)
             {
                 await PrepareTasks();
             }
 
-            // PrepareTasks may call HandleInstallationStoppage (e.g. import folder empty),
-            // which sets CurrentInstall = null. Bail out if that happened.
             if (CurrentInstall == null) return;
+            if (_cancellationTokenSource.IsCancellationRequested)
+            {
+                await HandleInstallationStoppage(Volatile.Read(ref _stoppageReason) ?? "Cancel install");
+                return;
+            }
 
             CurrentInstall.Status = ActionStatus.Processing;
             InstallationStatusChanged?.Invoke(CurrentInstall);
 
-            // Reset cancellation token early so HandleInstallationStoppage
-            // correctly distinguishes failure vs user cancellation
-            _cancellationTokenSource = new CancellationTokenSource();
-
-            // Import and Move don't need download/IO workers
             if (CurrentInstall.Action == ActionType.Import || CurrentInstall.Action == ActionType.Move)
             {
                 await UpdateInstalledGameStatus();
+                if (CurrentInstall != null && _cancellationTokenSource.IsCancellationRequested)
+                    await HandleInstallationStoppage(Volatile.Read(ref _stoppageReason) ?? "Cancel install");
                 return;
             }
 
@@ -163,6 +168,12 @@ public class InstallManager
             await Task.WhenAll(_downloadTasks);
             _ioQueue.CompleteAdding();
             await Task.WhenAll(_installTasks);
+
+            if (_cancellationTokenSource.IsCancellationRequested)
+            {
+                await HandleInstallationStoppage(Volatile.Read(ref _stoppageReason) ?? "Cancel install");
+                return;
+            }
 
             await UpdateInstalledGameStatus();
 
@@ -274,7 +285,6 @@ public class InstallManager
                 }
                 else
                 {
-                    // Always salvage what we can — import as Broken so user can Repair
                     _logger.Warning("Import: {Missing}/{Total} files missing for {AppName}. Will import as Broken.",
                         missingFiles.Count, data.FileManifestList.Elements.Count, CurrentInstall.AppName);
                 }
@@ -347,10 +357,15 @@ public class InstallManager
                     UpdateDownloadProgress(downloadTask.ChunkInfo.FileSize);
                     CreateIoTasksForChunk(downloadTask);
                 }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
                 catch (Exception ex)
                 {
                     _logger.Error("ProcessDownloadQueue: Exception: {ex}", ex);
-                    await HandleInstallationStoppage("Download task failed");
+                    RequestStoppage("Download task failed");
+                    return;
                 }
             }
         }
@@ -419,10 +434,15 @@ public class InstallManager
                     }
                     UpdateInstallWriteProgress(ioTask.Size);
                 }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
                 catch (Exception ex)
                 {
                     _logger.Error("ProcessIoQueue: IO task failed with exception {ex}", ex);
-                    await HandleInstallationStoppage("Io Task failed");
+                    RequestStoppage("Io Task failed");
+                    return;
                 }
 
             }
@@ -565,7 +585,6 @@ public class InstallManager
             {
                 case ActionType.Uninstall:
                 {
-                    // No verification needed — files are already deleted
                     localAppState.InstallStatus = InstallState.NotInstalled;
                     localAppState.InstallPath = null;
                     localAppState.Version = null;
@@ -579,7 +598,6 @@ public class InstallManager
 
                 case ActionType.Move:
                 {
-                    // No verification needed — just update the install path
                     localAppState.InstallPath = CurrentInstall.MoveLocation;
                     gameData.LocalAppState = localAppState;
                     _storage.AddToLocalAppState(gameData.AppName, localAppState);
@@ -590,7 +608,6 @@ public class InstallManager
 
                 case ActionType.Import:
                 {
-                    // Files were verified in PrepareTasks — use stored result
                     var manifestBytes = await _storage.GetCachedManifestBytes(CurrentInstall.AppName, gameData.AssetInfos.Windows.BuildVersion);
                     var urlData = await _repository.GetManifestUrls(gameData.AssetInfos.Windows.Namespace,
                         gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
@@ -1102,7 +1119,7 @@ public class InstallManager
             return;
         }
 
-        if (!_cancellationTokenSource.IsCancellationRequested)
+        if (!_userCancelled)
         {
             // propage cancelling status if not done already
             await _cancellationTokenSource.CancelAsync();
@@ -1280,9 +1297,7 @@ public class InstallManager
         }
 
         if (CurrentInstall?.AppName == appName)
-        {
-            Task.Run(() => StopProcessing());
-        }
+            _ = StopProcessing();
 
         var removedItem = _installQueue.RemoveAll(item => item.AppName == appName);
         if (removedItem > 0)
@@ -1345,13 +1360,28 @@ public class InstallManager
         }
     }
 
-    public async Task StopProcessing()
+    public Task StopProcessing()
     {
+        if (CurrentInstall == null)
+        {
+            _logger.Warning("StopProcessing: no active install to cancel");
+            return Task.CompletedTask;
+        }
+
         CurrentInstall.Status = ActionStatus.Cancelling;
         InstallationStatusChanged?.Invoke(CurrentInstall);
 
-        await _cancellationTokenSource.CancelAsync();
-        await HandleInstallationStoppage("Cancel install");
+        _userCancelled = true;
+        _pauseEvent.Set();
+        RequestStoppage("Cancel install");
+        return Task.CompletedTask;
+    }
+
+    private void RequestStoppage(string errorMessage)
+    {
+        Interlocked.CompareExchange(ref _stoppageReason, errorMessage, null);
+        if (!_cancellationTokenSource.IsCancellationRequested)
+            _cancellationTokenSource.Cancel();
     }
 
     private bool IsInstallationInProgress()
