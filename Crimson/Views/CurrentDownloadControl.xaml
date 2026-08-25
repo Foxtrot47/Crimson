@@ -11,7 +11,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel HorizontalAlignment="Left" VerticalAlignment="Center">
             <TextBlock
                 x:Name="EmptyDownloadText"
                 Style="{ThemeResource BodyTextBlockStyle}"
@@ -32,7 +32,7 @@
             <TextBlock
                 x:Name="GameName"
                 Grid.Row="0"
-                Width="300"
+                MaxWidth="260"
                 HorizontalAlignment="Left"
                 Style="{ThemeResource SubtitleTextBlockStyle}"
                 TextTrimming="WordEllipsis"
