@@ -36,12 +36,25 @@
                 BackRequested="NavControl_BackRequested"
                 Background="{ThemeResource SmokeFillColorDefaultBrush}"
                 IsBackEnabled="True"
-                ItemInvoked="NavControl_ItemInvoked">
+                ItemInvoked="NavControl_ItemInvoked"
+                CompactPaneLength="56"
+                OpenPaneLength="340">
+                <NavigationView.Resources>
+                    <!--  Taller pane items than the stock default, to fit game box art.  -->
+                    <x:Double x:Key="NavigationViewItemOnLeftMinHeight">56</x:Double>
+                    <!--
+                        Shared by every row, so it stays near the 16px stock value to keep the
+                        Library, Downloads and Settings glyphs proportioned. Game rows raise it
+                        on themselves in MainWindow.CreateInstalledGameItem.
+                    -->
+                    <x:Double x:Key="NavigationViewItemOnLeftIconBoxHeight">18</x:Double>
+                </NavigationView.Resources>
                 <NavigationView.MenuItems>
                     <NavigationViewItem
                         Content="Library"
                         Icon="Library"
                         Tag="Crimson.Views.LibraryPage" />
+                    <!--  Installed games are appended here by MainWindow.RebuildInstalledMenu.  -->
                 </NavigationView.MenuItems>
 
                 <ScrollViewer>
@@ -49,8 +62,21 @@
                 </ScrollViewer>
 
                 <NavigationView.FooterMenuItems>
-                    <NavigationViewItem Tag="Crimson.Views.DownloadsPage">
-                        <crimson:CurrentDownloadControl />
+                    <!--
+                        NavigationViewItem hides its Content in the ClosedCompact state, so without
+                        an Icon this item rendered blank once the pane collapsed.
+                    -->
+                    <NavigationViewItem
+                        x:Name="DownloadsNavItem"
+                        Tag="Crimson.Views.DownloadsPage"
+                        ToolTipService.ToolTip="No downloads in queue">
+                        <NavigationViewItem.Icon>
+                            <FontIcon Glyph="&#xE896;" />
+                        </NavigationViewItem.Icon>
+                        <NavigationViewItem.InfoBadge>
+                            <InfoBadge x:Name="DownloadInfoBadge" Visibility="Collapsed" />
+                        </NavigationViewItem.InfoBadge>
+                        <crimson:CurrentDownloadControl x:Name="CurrentDownload" />
                     </NavigationViewItem>
                 </NavigationView.FooterMenuItems>
             </NavigationView>
