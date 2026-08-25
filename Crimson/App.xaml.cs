@@ -53,7 +53,7 @@ namespace Crimson
                     _ = Directory.CreateDirectory($@"{appDataPath}\Crimson\logs");
                     var logFilePath = $@"{appDataPath}\Crimson\logs\{DateTime.Now:yyyy-MM-dd}.txt";
 
-                    return new LoggerConfiguration()
+                    var logger = new LoggerConfiguration()
                         .MinimumLevel.Information()
                         .WriteTo.File(
                             logFilePath,
@@ -63,6 +63,12 @@ namespace Crimson
                             outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}"
                         )
                         .CreateLogger();
+
+                    // Storage, MainWindow and others log through Serilog's static Log facade.
+                    // Until this is assigned it resolves to the silent logger, so every one of
+                    // those messages - including caught-exception reports - is discarded.
+                    Log.Logger = logger;
+                    return logger;
                 });
                 services.AddHttpClient("EpicOAuth", ConfigureEpicClient)
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
