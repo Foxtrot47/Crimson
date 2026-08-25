@@ -29,7 +29,9 @@ public static class EpicEndpointPolicy
         ".epicgames.com",
         ".epicgamescdn.com",
         ".akamaized.net",
-        ".cloudfront.net"
+        ".cloudfront.net",
+        // Epic serves egdownload.fastly-edge.com as a manifest base URL.
+        ".fastly-edge.com"
     ];
 
     public static Uri RequireApiUri(string value) => Require(value, IsAllowedApiUri, "Epic API");
