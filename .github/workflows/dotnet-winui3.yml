@@ -44,17 +44,23 @@ jobs:
     - name: Test
       run: dotnet test Crimson.Tests\Crimson.Tests.csproj --no-restore --configuration $env:Configuration -p:Platform=$env:Platform
 
-    # Create the app package by building and packaging the project
-    - name: Create the app package
+    # Unpackaged build, for direct download
+    - name: Publish unpackaged
       run: dotnet publish Crimson\Crimson.csproj -r win-$env:Platform --configuration $env:Configuration -p:Platform=$env:Platform --self-contained true --no-restore
-      env:
-        Appx_Bundle: Never
-        Appx_Package_Build_Mode: SideloadOnly
-        Appx_Package_Dir: Packages/
 
-    # Upload the build output: https://github.com/marketplace/actions/upload-a-build-artifact
     - name: Upload ZIP
       uses: actions/upload-artifact@v4
       with:
         name: Package
         path: Crimson\bin\Release\net10.0-windows10.0.22621.0\win-x64\publish
+
+    # MSIX for Store submission. Microsoft signs Store packages, so this is unsigned.
+    - name: Create the MSIX package
+      run: dotnet build Crimson\Crimson.csproj -r win-$env:Platform --configuration $env:Configuration -p:Platform=$env:Platform -p:EnablePackaging=true
+
+    - name: Upload MSIX
+      uses: actions/upload-artifact@v4
+      with:
+        name: msix-store-package
+        path: artifacts/msix/**
+        if-no-files-found: error
