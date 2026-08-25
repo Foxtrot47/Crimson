@@ -22,8 +22,10 @@ namespace Crimson.Utils
         private static readonly string LocalAppStateFile = ResolveAppDataPath("localstate.json");
         private static readonly string ManifestPath = ResolveAppDataPath("manifests");
 
-        private Dictionary<string, Game> _gameMetaDataDictionary;
-        private Dictionary<string, LocalAppState> _localAppStateDictionary;
+        // Initialised here because the loader's catch swallows exceptions: a throw before these
+        // were assigned used to surface much later as a NullReferenceException.
+        private Dictionary<string, Game> _gameMetaDataDictionary = new();
+        private Dictionary<string, LocalAppState> _localAppStateDictionary = new();
         private ILogger _logger;
 
         public Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
@@ -45,7 +47,9 @@ namespace Crimson.Utils
 
                 var metaDataDictionary = new Dictionary<string, Game>();
 
-                Parallel.ForEach(Directory.EnumerateFiles(MetaDataDirectory),
+                // Only the records this class writes. Unfiltered, any stray file in the directory
+                // is parsed as a game record and fails.
+                Parallel.ForEach(Directory.EnumerateFiles(MetaDataDirectory, "*.json"),
                     new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, (file) =>
                     {
                         try
@@ -63,7 +67,7 @@ namespace Crimson.Utils
                         catch (Exception ex)
                         {
                             // Log detailed exception information
-                            Log.Error($"Error processing file {file}. Exception: {ex}");
+                            _logger.Error($"Error processing file {file}. Exception: {ex}");
                         }
                     });
 
@@ -79,8 +83,10 @@ namespace Crimson.Utils
                 {
                     var jsonString = File.ReadAllText(LocalAppStateFile);
                     if (jsonString != null && jsonString != "")
+                        // Deserialize returns null for a literal "null" payload.
                         _localAppStateDictionary =
-                            JsonSerializer.Deserialize<Dictionary<string, LocalAppState>>(jsonString);
+                            JsonSerializer.Deserialize<Dictionary<string, LocalAppState>>(jsonString)
+                            ?? new Dictionary<string, LocalAppState>();
                     else
                         _localAppStateDictionary = new Dictionary<string, LocalAppState>();
                 }
