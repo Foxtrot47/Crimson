@@ -10,8 +10,6 @@
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
     mc:Ignorable="d">
 
-    <controls:WebView2
-        x:Name="LoginWebView"
-        HorizontalAlignment="Stretch"
-        VerticalAlignment="Stretch" />
+    <!-- The WebView2 is created in code: Close() disposes it permanently, so signing back in needs a new one. -->
+    <Grid x:Name="WebViewHost" />
 </Page>

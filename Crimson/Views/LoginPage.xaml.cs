@@ -1,7 +1,9 @@
 ﻿using System;
 using System.IO;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Crimson.Core;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using Serilog;
@@ -20,6 +22,7 @@ public sealed partial class LoginPage : Page
     private readonly ILogger _log;
     private readonly EpicLoginMessageGate _loginMessageGate = new();
     private const string EpicGamesLauncherVersion = "11.0.1-14907503+++Portal+Release-Live";
+    private WebView2? _loginWebView;
 
     public LoginPage()
     {
@@ -49,7 +52,10 @@ public sealed partial class LoginPage : Page
             };
             """;
 
-        await LoginWebView.ExecuteScriptAsync(jsCode);
+        if (_loginWebView is null)
+            return;
+
+        await _loginWebView.ExecuteScriptAsync(jsCode);
     }
     private async void WebView_WebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
@@ -64,23 +70,82 @@ public sealed partial class LoginPage : Page
     }
     public async void InitWebView()
     {
-        _log.Information("InitWebView: WebView Initializing}");
-        var userDataFolder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Crimson");
-        Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", userDataFolder);
-        await LoginWebView.EnsureCoreWebView2Async();
-        LoginWebView.CoreWebView2.Settings.UserAgent = $"EpicGamesLauncher/{EpicGamesLauncherVersion}";
-        LoginWebView.NavigationStarting += WebView_NavigationStarting;
-        LoginWebView.WebMessageReceived += WebView_WebMessageReceived;
+        _log.Information("InitWebView: WebView Initializing");
+        try
+        {
+            // Signing out and back in lands here a second time, and the previous control
+            // has already been closed, so start from a fresh one.
+            CloseWebView();
 
-        var targetUri = new Uri("https://www.epicgames.com/id/login");
-        LoginWebView.Source = targetUri;
+            // Built explicitly so the profile lands next to the rest of the app data instead
+            // of in a folder derived from the executable's location.
+            var userDataFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Crimson",
+                "webview2");
+            Directory.CreateDirectory(userDataFolder);
+
+            var webView = new WebView2();
+            WebViewHost.Children.Add(webView);
+            _loginWebView = webView;
+
+            // The control has to be loaded before the browser process can be created.
+            // Called on a control added moments ago, EnsureCoreWebView2Async otherwise
+            // returns having done nothing and leaves CoreWebView2 null.
+            await WaitForLoadedAsync(webView);
+
+            var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
+                string.Empty, userDataFolder, new CoreWebView2EnvironmentOptions());
+            await webView.EnsureCoreWebView2Async(environment);
+            if (webView.CoreWebView2 is null)
+            {
+                _log.Error("InitWebView: CoreWebView2 was still null after initialisation");
+                return;
+            }
+
+            webView.CoreWebView2.Settings.UserAgent = $"EpicGamesLauncher/{EpicGamesLauncherVersion}";
+
+            // Epic's own session cookie outlives a sign-out, and the login page would
+            // silently accept it and hand back a fresh exchange code for the account that
+            // just left. Tokens are persisted separately, so nothing is lost by dropping it.
+            webView.CoreWebView2.CookieManager.DeleteAllCookies();
+            webView.NavigationStarting += WebView_NavigationStarting;
+            webView.WebMessageReceived += WebView_WebMessageReceived;
+
+            webView.Source = new Uri("https://www.epicgames.com/id/login");
+        }
+        catch (Exception ex)
+        {
+            // Nothing awaits this method, so an escaping exception would terminate the app.
+            _log.Error(ex, "InitWebView: failed to initialise the login WebView");
+        }
     }
     public void CloseWebView()
     {
-        LoginWebView.NavigationStarting -= WebView_NavigationStarting;
-        LoginWebView.WebMessageReceived -= WebView_WebMessageReceived;
-        LoginWebView.Close();
+        if (_loginWebView is null)
+            return;
+
+        _loginWebView.NavigationStarting -= WebView_NavigationStarting;
+        _loginWebView.WebMessageReceived -= WebView_WebMessageReceived;
+        _loginWebView.Close();
+        WebViewHost.Children.Remove(_loginWebView);
+        _loginWebView = null;
+    }
+
+    private static Task WaitForLoadedAsync(FrameworkElement element)
+    {
+        if (element.IsLoaded)
+            return Task.CompletedTask;
+
+        var loaded = new TaskCompletionSource();
+
+        void OnLoaded(object sender, RoutedEventArgs args)
+        {
+            element.Loaded -= OnLoaded;
+            loaded.TrySetResult();
+        }
+
+        element.Loaded += OnLoaded;
+        return loaded.Task;
     }
 }
