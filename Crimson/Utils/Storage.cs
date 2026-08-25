@@ -22,8 +22,6 @@ namespace Crimson.Utils
         private static readonly string LocalAppStateFile = ResolveAppDataPath("localstate.json");
         private static readonly string ManifestPath = ResolveAppDataPath("manifests");
 
-        // Initialised here because the loader's catch swallows exceptions: a throw before these
-        // were assigned used to surface much later as a NullReferenceException.
         private Dictionary<string, Game> _gameMetaDataDictionary = new();
         private Dictionary<string, LocalAppState> _localAppStateDictionary = new();
         private ILogger _logger;
@@ -47,8 +45,6 @@ namespace Crimson.Utils
 
                 var metaDataDictionary = new Dictionary<string, Game>();
 
-                // Only the records this class writes. Unfiltered, any stray file in the directory
-                // is parsed as a game record and fails.
                 Parallel.ForEach(Directory.EnumerateFiles(MetaDataDirectory, "*.json"),
                     new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, (file) =>
                     {
@@ -71,7 +67,6 @@ namespace Crimson.Utils
                         }
                     });
 
-                // Outside the parallel loop, assign the dictionary to the shared field
                 _gameMetaDataDictionary = metaDataDictionary;
 
                 // Load installed games list
@@ -83,7 +78,6 @@ namespace Crimson.Utils
                 {
                     var jsonString = File.ReadAllText(LocalAppStateFile);
                     if (jsonString != null && jsonString != "")
-                        // Deserialize returns null for a literal "null" payload.
                         _localAppStateDictionary =
                             JsonSerializer.Deserialize<Dictionary<string, LocalAppState>>(jsonString)
                             ?? new Dictionary<string, LocalAppState>();
@@ -124,17 +118,20 @@ namespace Crimson.Utils
             streamWriter.Close();
         }
 
-        public async Task ClearUserData()
+        public Task ClearUserData()
         {
-            try
-            {
-                if (File.Exists(UserDataFile))
-                    File.Delete(UserDataFile);
-            }
-            catch (Exception ex)
-            {
-                _logger.Error(ex, "Failed to clear user data file");
-            }
+            if (File.Exists(UserDataFile))
+                File.Delete(UserDataFile);
+
+            if (File.Exists(GameAssetsFile))
+                File.Delete(GameAssetsFile);
+
+            if (Directory.Exists(MetaDataDirectory))
+                Directory.Delete(MetaDataDirectory, true);
+            Directory.CreateDirectory(MetaDataDirectory);
+
+            _gameMetaDataDictionary.Clear();
+            return Task.CompletedTask;
         }
 
         public async Task<IEnumerable<Asset>> GetGameAssetsData()
