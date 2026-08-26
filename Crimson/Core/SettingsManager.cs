@@ -31,7 +31,8 @@ public class SettingsManager
 
     public string LogsDirectory
     {
-        get => $"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\\Crimson\\logs";
+        // Must match where App.xaml.cs configures Serilog to write, which is LocalApplicationData.
+        get => $"{Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)}\\Crimson\\logs";
     }
 
     private Settings LoadSettings()
