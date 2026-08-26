@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Navigation;
 namespace Crimson.Views;
 
 /// <summary>
@@ -16,6 +17,17 @@ public sealed partial class LibraryPage : Page
     {
         InitializeComponent();
         DataContext = App.GetService<LibraryViewModel>();
+    }
+
+    protected override async void OnNavigatedTo(NavigationEventArgs e)
+    {
+        await ViewModel.OnNavigatedTo(e.Parameter);
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        ViewModel.OnNavigatedFrom();
+        base.OnNavigatedFrom(e);
     }
 
     private void GameButton_Click(object sender, RoutedEventArgs e)
