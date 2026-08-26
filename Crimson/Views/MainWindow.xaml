@@ -54,6 +54,10 @@
                         Content="Library"
                         Icon="Library"
                         Tag="Crimson.Views.LibraryPage" />
+                    <NavigationViewItem
+                        Content="Store"
+                        Icon="Shop"
+                        Tag="Crimson.Views.StorePage" />
                     <!--  Installed games are appended here by MainWindow.RebuildInstalledMenu.  -->
                 </NavigationView.MenuItems>
 

@@ -119,15 +119,16 @@ public sealed partial class MainWindow : Window
     private void NavControl_BackRequested(NavigationView sender,
     NavigationViewBackRequestedEventArgs args)
     {
-        if (!ContentFrame.CanGoBack)
-            return;
-
         // Don't go back if the nav pane is overlayed.
         if (NavControl.IsPaneOpen &&
             NavControl.DisplayMode is NavigationViewDisplayMode.Compact or NavigationViewDisplayMode.Minimal)
             return;
 
-        ContentFrame.GoBack();
+        if (ContentFrame.Content is StorePage storePage && storePage.TryGoBack())
+            return;
+
+        if (ContentFrame.CanGoBack)
+            ContentFrame.GoBack();
     }
 
     private void NavControl_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
