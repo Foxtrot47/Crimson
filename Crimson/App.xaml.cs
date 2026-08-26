@@ -72,9 +72,9 @@ namespace Crimson
                 });
                 services.AddHttpClient("EpicOAuth", ConfigureEpicClient)
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
-                // Only the JSON metadata client gets the Polly pipeline. The OAuth client
-                // must not retry because Epic exchange codes are single-use, and the content
-                // client already has bounded retries plus mirror fallback in DownloadManager.
+                // Only the authenticated JSON metadata client gets the Polly pipeline. OAuth
+                // exchange codes are single-use, content downloads already have bounded retry,
+                // and Store search failures are non-fatal and retried by the next query.
                 services.AddHttpClient("EpicApi", ConfigureEpicClient)
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler)
                     .AddResilienceHandler(
@@ -94,6 +94,8 @@ namespace Crimson
                         });
                 services.AddHttpClient("EpicContent", ConfigureEpicClient)
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
+                services.AddHttpClient("EpicStore", ConfigureEpicStoreClient)
+                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
 
                 services.AddSingleton<Storage>();
                 services.AddSingleton<AuthManager>(provider => new AuthManager(
@@ -104,7 +106,8 @@ namespace Crimson
                     provider.GetRequiredService<AuthManager>(),
                     provider.GetRequiredService<ILogger>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicApi"),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicStore")));
                 services.AddSingleton<LibraryManager>();
                 services.AddSingleton<InstallManager>();
                 services.AddSingleton<DownloadManager>(provider => new DownloadManager(
@@ -125,6 +128,13 @@ namespace Crimson
             client.DefaultRequestHeaders.UserAgent.ParseAdd(
                 "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit");
             client.Timeout = TimeSpan.FromSeconds(100);
+        }
+
+        private static void ConfigureEpicStoreClient(HttpClient client)
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "EpicGamesLauncher/14.0.8-22004686+++Portal+Release-Live");
+            client.Timeout = TimeSpan.FromSeconds(10);
         }
 
         // Redirects are followed: Epic's CDNs answer chunk and manifest requests with 3xx, and

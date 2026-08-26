@@ -21,6 +21,24 @@ public sealed class SecurityContainmentTests
         Assert.Throws<InvalidOperationException>(() => EpicEndpointPolicy.RequireContentUri(value));
     }
 
+    [Theory]
+    [InlineData("http://store.epicgames.com/graphql")]
+    [InlineData("https://store.epicgames.com.evil.test/graphql")]
+    [InlineData("https://user@store.epicgames.com/graphql")]
+    [InlineData("https://store.epicgames.com:444/graphql")]
+    public void StorePolicy_RejectsUnapprovedUris(string value)
+    {
+        Assert.Throws<InvalidOperationException>(() => EpicEndpointPolicy.RequireStoreUri(value));
+    }
+
+    [Fact]
+    public void StorePolicy_AllowsLauncherGraphQlHost()
+    {
+        var uri = EpicEndpointPolicy.RequireStoreUri("https://launcher.store.epicgames.com/graphql");
+
+        Assert.Equal("launcher.store.epicgames.com", uri.Host);
+    }
+
     [Fact]
     public void LoginMessageGate_ValidatesOriginSchemaBoundsAndReplay()
     {

@@ -161,6 +161,10 @@ public sealed class ManagerCharacterizationTests
         public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live") =>
             throw new NotSupportedException();
 
+        public Task<IReadOnlyList<StoreSearchResult>> SearchStore(
+            string query,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
         public Task<byte[]> GetGameManifest(GetManifestUrlData urlData) =>
             throw new NotSupportedException();
 
