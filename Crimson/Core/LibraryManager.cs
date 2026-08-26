@@ -32,6 +32,17 @@ public class LibraryManager
         _storeRepository = repository;
         _storage = storage;
         _authManager = authManager;
+        _authManager.AuthStatusChanged += OnAuthStatusChanged;
+    }
+
+    private void OnAuthStatusChanged(object sender, AuthStatusChangedEventArgs e)
+    {
+        if (e.NewStatus != AuthenticationStatus.LoggedOut)
+            return;
+
+        // Without this the cache window below would hand the next account to sign in
+        // the library belonging to the one that just left.
+        _lastUpdateDateTime = DateTime.MinValue;
     }
 
     /// <summary>
