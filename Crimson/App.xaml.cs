@@ -64,17 +64,11 @@ namespace Crimson
                         )
                         .CreateLogger();
 
-                    // Storage, MainWindow and others log through Serilog's static Log facade.
-                    // Until this is assigned it resolves to the silent logger, so every one of
-                    // those messages - including caught-exception reports - is discarded.
                     Log.Logger = logger;
                     return logger;
                 });
                 services.AddHttpClient("EpicOAuth", ConfigureEpicClient)
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
-                // Only the authenticated JSON metadata client gets the Polly pipeline. OAuth
-                // exchange codes are single-use, content downloads already have bounded retry,
-                // and Store search failures are non-fatal and retried by the next query.
                 services.AddHttpClient("EpicApi", ConfigureEpicClient)
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler)
                     .AddResilienceHandler(
@@ -137,9 +131,6 @@ namespace Crimson
             client.Timeout = TimeSpan.FromSeconds(10);
         }
 
-        // Redirects are followed: Epic's CDNs answer chunk and manifest requests with 3xx, and
-        // nothing in the download path inspects Location. Cookies stay off. The bearer token is
-        // kept off redirect-prone requests by using a separate content client, not by blocking 3xx.
         private static HttpMessageHandler CreateSecureHttpHandler() => new HttpClientHandler
         {
             AllowAutoRedirect = true,

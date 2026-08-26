@@ -30,11 +30,6 @@ public sealed partial class LoginPage : Page
     }
     private async void WebView_NavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
     {
-        // Injected on every navigation, and navigation is never cancelled. The login flow
-        // legitimately visits captcha and third-party SSO origins, and ExecuteScriptAsync here
-        // targets the *currently loaded* document rather than e.Uri, so filtering on e.Uri would
-        // skip the Epic document that actually needs the shim. Containment is enforced where the
-        // secret arrives instead: EpicLoginMessageGate checks the origin of the inbound message.
         const string jsCode = """
             window.ue = {
                 signinprompt: {
@@ -72,17 +67,12 @@ public sealed partial class LoginPage : Page
         _log.Information("InitWebView: WebView Initializing");
         try
         {
-            // Signing out and back in lands here a second time, and the previous control
-            // has already been closed, so start from a fresh one.
             CloseWebView();
 
             var webView = new WebView2();
             WebViewHost.Children.Add(webView);
             _loginWebView = webView;
 
-            // The control has to be loaded before the browser process can be created.
-            // Called on a control added moments ago, EnsureCoreWebView2Async otherwise
-            // returns having done nothing and leaves CoreWebView2 null.
             await WebViewEnvironmentFactory.WaitForLoadedAsync(webView);
 
             var environment = await WebViewEnvironmentFactory.CreateAsync();
@@ -95,9 +85,6 @@ public sealed partial class LoginPage : Page
 
             webView.CoreWebView2.Settings.UserAgent = $"EpicGamesLauncher/{EpicGamesLauncherVersion}";
 
-            // Epic's own session cookie outlives a sign-out, and the login page would
-            // silently accept it and hand back a fresh exchange code for the account that
-            // just left. Tokens are persisted separately, so nothing is lost by dropping it.
             webView.CoreWebView2.CookieManager.DeleteAllCookies();
             webView.NavigationStarting += WebView_NavigationStarting;
             webView.WebMessageReceived += WebView_WebMessageReceived;
@@ -106,7 +93,6 @@ public sealed partial class LoginPage : Page
         }
         catch (Exception ex)
         {
-            // Nothing awaits this method, so an escaping exception would terminate the app.
             _log.Error(ex, "InitWebView: failed to initialise the login WebView");
         }
     }

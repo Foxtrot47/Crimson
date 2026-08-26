@@ -3,10 +3,10 @@ using Crimson.Core;
 using Crimson.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Serilog;
 
 namespace Crimson.Views;
 
-// Status of the current install, reduced to what the collapsed navigation pane can show.
 public sealed class DownloadSummary
 {
     public bool HasActiveDownload { get; init; }
@@ -16,15 +16,15 @@ public sealed class DownloadSummary
 
 public sealed partial class CurrentDownloadControl : UserControl
 {
-    // Raised on the UI thread. The hosting NavigationViewItem drives its tooltip and info badge
-    // from this, both of which outlive the pane collapsing and hiding this control's content.
     public event Action<DownloadSummary>? SummaryChanged;
 
+    private readonly ILogger _log;
     private readonly LibraryManager _libraryManager;
     private readonly InstallManager _installManager;
     public CurrentDownloadControl()
     {
         InitializeComponent();
+        _log = App.GetService<ILogger>();
         _installManager = App.GetService<InstallManager>();
         _libraryManager = App.GetService<LibraryManager>();
 
@@ -35,8 +35,6 @@ public sealed partial class CurrentDownloadControl : UserControl
 
     }
 
-    // The constructor publishes a summary before any host can have subscribed, so a host that
-    // cares about the startup state calls this after wiring up.
     public void PublishCurrentSummary() => HandleInstallationStatusChanged(_installManager.CurrentInstall);
 
     // Handing Installtion State Change
@@ -68,7 +66,7 @@ public sealed partial class CurrentDownloadControl : UserControl
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex.ToString());
+            _log.Error(ex, "Failed to update download status");
         }
     }
 
@@ -137,7 +135,7 @@ public sealed partial class CurrentDownloadControl : UserControl
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex.ToString());
+            _log.Error(ex, "Failed to update download progress");
         }
     }
 
@@ -152,24 +150,23 @@ public sealed partial class CurrentDownloadControl : UserControl
             {
                 HasActiveDownload = true,
                 ProgressPercentage = percentage,
-                ToolTip = $"{title} \u2014 {percentage}%"
+                ToolTip = $"{title} - {percentage}%"
             },
             ActionStatus.Paused => new DownloadSummary
             {
                 HasActiveDownload = true,
                 ProgressPercentage = percentage,
-                ToolTip = $"{title} \u2014 paused at {percentage}%"
+                ToolTip = $"{title} - paused at {percentage}%"
             },
-            ActionStatus.Success => new DownloadSummary { ToolTip = $"{title} \u2014 {label.ToLowerInvariant()} completed" },
-            ActionStatus.Failed => new DownloadSummary { ToolTip = $"{title} \u2014 {label.ToLowerInvariant()} failed" },
-            ActionStatus.Cancelled => new DownloadSummary { ToolTip = $"{title} \u2014 {label.ToLowerInvariant()} cancelled" },
+            ActionStatus.Success => new DownloadSummary { ToolTip = $"{title} - {label.ToLowerInvariant()} completed" },
+            ActionStatus.Failed => new DownloadSummary { ToolTip = $"{title} - {label.ToLowerInvariant()} failed" },
+            ActionStatus.Cancelled => new DownloadSummary { ToolTip = $"{title} - {label.ToLowerInvariant()} cancelled" },
             _ => new DownloadSummary { ToolTip = title }
         };
 
         SummaryChanged?.Invoke(summary);
     }
 
-    // Human-readable name for an action, shared with the navigation pane rows.
     public static string GetActionLabel(ActionType action) => action switch
     {
         ActionType.Install => "Installation",

@@ -11,10 +11,13 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="32" />
+            <RowDefinition Height="40" />
             <RowDefinition />
         </Grid.RowDefinitions>
-        <Grid x:Name="AppTitleBar" Grid.Row="0">
+        <Grid
+            x:Name="AppTitleBar"
+            Grid.Row="0"
+            Background="{ThemeResource SmokeFillColorDefaultBrush}">
             <Image
                 Width="16"
                 Height="16"
@@ -29,6 +32,93 @@
                 Text="Crimson"
                 TextWrapping="NoWrap" />
         </Grid>
+        <AutoSuggestBox
+            x:Name="GlobalSearchBox"
+            Grid.Row="0"
+            MaxWidth="520"
+            Margin="120,4,160,4"
+            HorizontalAlignment="Stretch"
+            Canvas.ZIndex="1"
+            PlaceholderText="Search your library"
+            QuerySubmitted="GlobalSearchBox_QuerySubmitted"
+            TextChanged="GlobalSearchBox_TextChanged"
+            TextMemberPath="DisplayText">
+            <AutoSuggestBox.QueryIcon>
+                <SymbolIcon Symbol="Find" />
+            </AutoSuggestBox.QueryIcon>
+            <AutoSuggestBox.ItemTemplate>
+                <DataTemplate>
+                    <Grid MinHeight="52">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="40" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border
+                                Width="32"
+                                Height="42"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                CornerRadius="4">
+                                <Grid>
+                                    <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
+                                    <FontIcon FontSize="18" Glyph="{Binding IconGlyph}" />
+                                </Grid>
+                            </Border>
+                            <StackPanel
+                                Grid.Column="1"
+                                Margin="12,0,0,0"
+                                VerticalAlignment="Center"
+                                Spacing="2">
+                                <TextBlock
+                                    Text="{Binding DisplayText}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <TextBlock
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding Subtitle}"
+                                    TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Grid>
+                        <Grid Visibility="{Binding SkeletonVisibility}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="40" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border
+                                Width="32"
+                                Height="42"
+                                Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                CornerRadius="4">
+                                <ProgressRing
+                                    Width="18"
+                                    Height="18"
+                                    IsActive="True" />
+                            </Border>
+                            <StackPanel
+                                Grid.Column="1"
+                                Margin="12,0,0,0"
+                                VerticalAlignment="Center"
+                                Spacing="7">
+                                <Border
+                                    Width="180"
+                                    Height="12"
+                                    HorizontalAlignment="Left"
+                                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                    CornerRadius="6" />
+                                <Border
+                                    Width="110"
+                                    Height="9"
+                                    HorizontalAlignment="Left"
+                                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                    CornerRadius="5" />
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </DataTemplate>
+            </AutoSuggestBox.ItemTemplate>
+        </AutoSuggestBox>
 
         <Grid Grid.Row="1">
             <NavigationView
@@ -48,6 +138,10 @@
                         on themselves in MainWindow.CreateInstalledGameItem.
                     -->
                     <x:Double x:Key="NavigationViewItemOnLeftIconBoxHeight">18</x:Double>
+                    <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
+                    <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="Transparent" />
+                    <Thickness x:Key="NavigationViewContentGridBorderThickness">0</Thickness>
+                    <CornerRadius x:Key="NavigationViewContentGridCornerRadius">0</CornerRadius>
                 </NavigationView.Resources>
                 <NavigationView.MenuItems>
                     <NavigationViewItem
@@ -55,6 +149,7 @@
                         Icon="Library"
                         Tag="Crimson.Views.LibraryPage" />
                     <NavigationViewItem
+                        x:Name="StoreNavItem"
                         Content="Store"
                         Icon="Shop"
                         Tag="Crimson.Views.StorePage" />

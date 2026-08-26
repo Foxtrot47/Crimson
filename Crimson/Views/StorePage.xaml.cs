@@ -18,6 +18,7 @@ public sealed partial class StorePage : Page
     private readonly ILogger _log = App.GetService<ILogger>();
     private readonly LibraryManager _libraryManager = App.GetService<LibraryManager>();
     private bool _cancelledLauncherNavigation;
+    private Uri _targetUri = StoreUri;
     private CoreWebView2Environment? _environment;
     private WebView2? _storeWebView;
     private bool _ownershipRefreshed;
@@ -36,8 +37,21 @@ public sealed partial class StorePage : Page
         return true;
     }
 
+    public void Open(Uri uri)
+    {
+        if (!EpicEndpointPolicy.IsAllowedStoreUri(uri))
+            return;
+
+        _targetUri = uri;
+        if (_storeWebView?.CoreWebView2 is not null)
+            _storeWebView.Source = _targetUri;
+    }
+
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
+        _targetUri = e.Parameter is Uri uri && EpicEndpointPolicy.IsAllowedStoreUri(uri)
+            ? uri
+            : StoreUri;
         await InitializeWebViewAsync();
     }
 
@@ -85,7 +99,7 @@ public sealed partial class StorePage : Page
             webView.NavigationCompleted += StoreNavigationCompleted;
             webView.CoreWebView2.DownloadStarting += StoreDownloadStarting;
             webView.CoreWebView2.NewWindowRequested += StoreNewWindowRequested;
-            webView.Source = StoreUri;
+            webView.Source = _targetUri;
         }
         catch (Exception ex)
         {
@@ -243,6 +257,18 @@ public sealed partial class StorePage : Page
         return null;
     }
 
+    internal static Uri CreateSearchUri(string query)
+    {
+        var escapedQuery = Uri.EscapeDataString(query.Trim());
+        return new Uri($"https://store.epicgames.com/en-US/browse?q={escapedQuery}&sortBy=relevancy&sortDir=DESC&count=40");
+    }
+
+    internal static Uri CreateProductUri(string productSlug)
+    {
+        var escapedSlug = Uri.EscapeDataString(productSlug.Trim('/'));
+        return new Uri(StoreUri, $"en-US/p/{escapedSlug}");
+    }
+
     private async void RetryButton_Click(object sender, RoutedEventArgs e)
     {
         CloseWebView();
@@ -276,5 +302,4 @@ public sealed partial class StorePage : Page
         webView.Close();
         WebViewHost.Children.Remove(webView);
     }
-
 }

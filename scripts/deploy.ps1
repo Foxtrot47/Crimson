@@ -3,14 +3,7 @@
     Builds a test-signed MSIX and installs it over the running app.
 
 .DESCRIPTION
-    Installing force-closes Crimson, which would abort an in-flight download and
-    leave partial chunks behind, so this refuses to run while a game is
-    installing, updating or repairing. Override with -Force only when you know
-    the transfer is finished or paused.
-
-    localstate.json is read as text on purpose. It is written by System.Text.Json
-    in snake_case and can contain empty object keys, which Windows PowerShell's
-    ConvertFrom-Json rejects outright.
+    Refuses to replace Crimson while a transfer appears active unless -Force is used.
 #>
 [CmdletBinding()]
 param(
@@ -24,7 +17,6 @@ $repo = Split-Path -Parent $PSScriptRoot
 $pfn = 'Foxtrot47.CrimsonLauncher_t4mcqp6q26c0g'
 $stateFile = Join-Path $env:LOCALAPPDATA 'Crimson\localstate.json'
 
-# InstallState values that mean a transfer is in flight (LocalAppState.cs).
 $busy = @{ 1 = 'Installing'; 6 = 'Repairing'; 8 = 'Updating' }
 
 function Test-DownloadActive {
@@ -36,7 +28,6 @@ function Test-DownloadActive {
         if ($busy.ContainsKey($code)) { return "install_status=$code ($($busy[$code]))" }
     }
 
-    # A status can lag behind reality, so also look for chunks being written now.
     foreach ($m in [regex]::Matches($raw, '"install_path"\s*:\s*"((?:[^"\\]|\\.)*)"')) {
         $path = $m.Groups[1].Value -replace '\\\\', '\'
         if ([string]::IsNullOrWhiteSpace($path)) { continue }
@@ -72,10 +63,6 @@ $pkg = Get-ChildItem (Join-Path $repo 'artifacts\msix-test') -Recurse -Filter *.
        Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $pkg) { Write-Host 'no .msix produced' -ForegroundColor Red; exit 1 }
 
-# Rebuilding without bumping the version produces a package with the same identity
-# but different content, which deployment rejects with 0x80073CFB. Removing first is
-# the deterministic fix. It cannot lose user data: the app is full trust, so AppData
-# is not virtualized and %LOCALAPPDATA%\Crimson lives outside the package container.
 $existing = Get-AppxPackage -Name 'Foxtrot47.CrimsonLauncher'
 if ($existing) {
     Write-Host "==> removing $($existing.PackageFullName)" -ForegroundColor Cyan

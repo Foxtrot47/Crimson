@@ -2,11 +2,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Repository;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -22,12 +25,8 @@ namespace Crimson.Views;
 /// </summary>
 public sealed partial class MainWindow : Window
 {
-    // Game rows only. The pane's shared icon size stays near stock so the Library, Downloads
-    // and Settings glyphs keep their normal proportions.
     private const int GameIconBoxHeight = 36;
 
-    // Overridden only on the row running an action, so its progress fill survives hover and
-    // selection while every other row keeps the normal highlight.
     private static readonly string[] ProgressBackgroundKeys =
     [
         "NavigationViewItemBackground",
@@ -38,7 +37,6 @@ public sealed partial class MainWindow : Window
         "NavigationViewItemBackgroundSelectedPressed"
     ];
 
-    // Marks a navigation item that opens a specific game's page.
     private const string GameNavTagPrefix = "game:";
 
     public bool IsLoggedIn;
@@ -46,20 +44,20 @@ public sealed partial class MainWindow : Window
     private readonly AuthManager _authManager;
     private readonly InstallManager _installManager;
     private readonly LibraryManager _libraryManager;
+    private readonly IStoreRepository _storeRepository;
 
     private List<Game> _libraryCache = new();
+    private CancellationTokenSource? _storeSearchCancellation;
     private string? _currentGameAppName;
 
-    // GameStatusUpdated fires several times per install and a rebuild drops the selection, so
-    // the menu is only rebuilt when this changes.
-    private string _installedMenuSignature = string.Empty;
+    private List<(string AppName, string AppTitle, InstallState? Status)> _installedMenuSnapshot = [];
+    private string? _installedMenuActiveAppName;
 
     private readonly Dictionary<string, GameNavEntry> _gameNavEntries = new(StringComparer.Ordinal);
     private InstallItem? _activeInstall;
     private string? _decoratedAppName;
     private DownloadSummary? _lastDownloadSummary;
 
-    // The parts of one game's pane row that a running action updates.
     private sealed class GameNavEntry
     {
         public required NavigationViewItem Item { get; init; }
@@ -71,6 +69,19 @@ public sealed partial class MainWindow : Window
         public required InfoBadge Badge { get; init; }
         public required LinearGradientBrush? ProgressBrush { get; init; }
         public required bool CanLaunch { get; init; }
+    }
+
+    private sealed class SearchSuggestion
+    {
+        public required string DisplayText { get; init; }
+        public required string Subtitle { get; init; }
+        public string? AppName { get; init; }
+        public string? StoreQuery { get; init; }
+        public string? StoreProductSlug { get; init; }
+        public ImageSource? Thumbnail { get; init; }
+        public string? IconGlyph { get; init; }
+        public bool IsLoading { get; init; }
+        public Visibility SkeletonVisibility { get; init; } = Visibility.Collapsed;
     }
 
     WindowsSystemDispatcherQueueHelper _mWsdqHelper;
@@ -86,10 +97,13 @@ public sealed partial class MainWindow : Window
         TrySetSystemBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        GlobalSearchBox.Loaded += (_, _) => UpdateTitleBarInteractiveRegion();
+        GlobalSearchBox.SizeChanged += (_, _) => UpdateTitleBarInteractiveRegion();
 
         _authManager = App.GetService<AuthManager>();
         _installManager = App.GetService<InstallManager>();
         _libraryManager = App.GetService<LibraryManager>();
+        _storeRepository = App.GetService<IStoreRepository>();
         _log = App.GetService<ILogger>();
 
         _libraryManager.LibraryUpdated += LibraryUpdatedHandler;
@@ -97,14 +111,10 @@ public sealed partial class MainWindow : Window
         CurrentDownload.SummaryChanged += OnDownloadSummaryChanged;
         _installManager.InstallationStatusChanged += InstallationStatusChangedHandler;
         _installManager.InstallProgressUpdate += InstallProgressUpdateHandler;
-        // Badges only show on a collapsed pane, so re-evaluate them whenever it toggles.
         NavControl.PaneOpened += (_, _) => UpdateBadgeVisibility();
         NavControl.PaneClosed += (_, _) => UpdateBadgeVisibility();
         NavControl.DisplayModeChanged += (_, _) => UpdateBadgeVisibility();
-        // CurrentDownload published its first summary in its own constructor, before
-        // SummaryChanged was attached above.
         CurrentDownload.PublishCurrentSummary();
-        // An action may already be running, so seed rather than wait for the next event.
         _activeInstall = IsActionRunning(_installManager.CurrentInstall) ? _installManager.CurrentInstall : null;
         RebuildInstalledMenu();
 
@@ -131,6 +141,226 @@ public sealed partial class MainWindow : Window
             ContentFrame.GoBack();
     }
 
+    private void UpdateTitleBarInteractiveRegion()
+    {
+        if (!ExtendsContentIntoTitleBar || GlobalSearchBox.XamlRoot is null)
+            return;
+
+        var inputSource = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
+        if (GlobalSearchBox.Visibility != Visibility.Visible ||
+            GlobalSearchBox.ActualWidth <= 0 ||
+            GlobalSearchBox.ActualHeight <= 0)
+        {
+            inputSource.SetRegionRects(NonClientRegionKind.Passthrough, []);
+            return;
+        }
+
+        var scale = GlobalSearchBox.XamlRoot.RasterizationScale;
+        var bounds = GlobalSearchBox.TransformToVisual(null).TransformBounds(
+            new Windows.Foundation.Rect(0, 0, GlobalSearchBox.ActualWidth, GlobalSearchBox.ActualHeight));
+        inputSource.SetRegionRects(
+            NonClientRegionKind.Passthrough,
+            [new Windows.Graphics.RectInt32(
+                (int)Math.Round(bounds.X * scale),
+                (int)Math.Round(bounds.Y * scale),
+                (int)Math.Round(bounds.Width * scale),
+                (int)Math.Round(bounds.Height * scale))]);
+    }
+
+    private void GlobalSearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput)
+            BeginSearch(sender.Text);
+    }
+
+    private void BeginSearch(string value)
+    {
+        CancelStoreSearch();
+
+        var query = NormalizeSearchQuery(value);
+        var shouldSearchStore = query.Length >= 2;
+        UpdateSearchSuggestions(query, showStoreLoading: shouldSearchStore);
+        if (!shouldSearchStore)
+            return;
+
+        var cancellationSource = new CancellationTokenSource();
+        _storeSearchCancellation = cancellationSource;
+        _ = LoadStoreSearchSuggestionsAsync(query, cancellationSource);
+    }
+
+    private async Task LoadStoreSearchSuggestionsAsync(
+        string query,
+        CancellationTokenSource cancellationSource)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(400), cancellationSource.Token);
+            var results = await _storeRepository.SearchStore(query, cancellationSource.Token);
+            if (ReferenceEquals(_storeSearchCancellation, cancellationSource) &&
+                string.Equals(NormalizeSearchQuery(GlobalSearchBox.Text), query, StringComparison.Ordinal))
+                UpdateSearchSuggestions(query, results);
+        }
+        catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_storeSearchCancellation, cancellationSource))
+                _storeSearchCancellation = null;
+            cancellationSource.Dispose();
+        }
+    }
+
+    private void GlobalSearchBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        if (args.ChosenSuggestion is SearchSuggestion { IsLoading: true })
+            return;
+
+        var query = NormalizeSearchQuery(args.QueryText);
+        if (query.Length == 0)
+            return;
+
+        var suggestion = args.ChosenSuggestion as SearchSuggestion
+                         ?? GetLocalSearchSuggestions(query).FirstOrDefault()
+                         ?? CreateStoreSearchSuggestion(query);
+
+        ClearGlobalSearch();
+        if (suggestion.AppName is not null)
+        {
+            NavigateToGame(suggestion.AppName, new EntranceNavigationTransitionInfo());
+            return;
+        }
+
+        if (suggestion.StoreProductSlug is not null)
+            NavigateToStore(StorePage.CreateProductUri(suggestion.StoreProductSlug));
+        else
+            NavigateToStore(StorePage.CreateSearchUri(suggestion.StoreQuery!));
+    }
+
+    private void UpdateSearchSuggestions(
+        string query,
+        IReadOnlyList<StoreSearchResult>? storeResults = null,
+        bool showStoreLoading = false)
+    {
+        if (query.Length == 0)
+        {
+            GlobalSearchBox.ItemsSource = null;
+            return;
+        }
+
+        var suggestions = GetLocalSearchSuggestions(query);
+        if (storeResults is not null)
+        {
+            suggestions.AddRange(storeResults.Select(result => new SearchSuggestion
+            {
+                DisplayText = result.Title,
+                Subtitle = "Epic Games Store",
+                StoreProductSlug = result.ProductSlug,
+                Thumbnail = CreateSearchThumbnail(result.ImageUrl)
+            }));
+        }
+        else if (showStoreLoading)
+        {
+            for (var i = 0; i < 3; i++)
+                suggestions.Add(CreateStoreLoadingSuggestion());
+        }
+
+        suggestions.Add(CreateStoreSearchSuggestion(query));
+        GlobalSearchBox.ItemsSource = suggestions;
+    }
+
+    private List<SearchSuggestion> GetLocalSearchSuggestions(string query)
+    {
+        return _libraryCache
+            .Where(game => game.Metadata is not null && !game.IsDlc())
+            .Where(game =>
+                (game.AppTitle?.Contains(query, StringComparison.CurrentCultureIgnoreCase) ?? false) ||
+                game.AppName.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(game => game.AppTitle?.StartsWith(query, StringComparison.CurrentCultureIgnoreCase) == true ? 0 : 1)
+            .ThenBy(game => game.AppTitle, StringComparer.CurrentCultureIgnoreCase)
+            .Take(5)
+            .Select(game => new SearchSuggestion
+            {
+                DisplayText = string.IsNullOrWhiteSpace(game.AppTitle) ? game.AppName : game.AppTitle,
+                Subtitle = "In your library",
+                AppName = game.AppName,
+                Thumbnail = CreateSearchThumbnail(game)
+            })
+            .ToList();
+    }
+
+    private static ImageSource? CreateSearchThumbnail(Game game)
+    {
+        var url = game.Metadata?.KeyImages?
+            .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
+                  ?? game.Metadata?.KeyImages?
+                      .FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
+        return CreateSearchThumbnail(url);
+    }
+
+    private static ImageSource? CreateSearchThumbnail(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return new BitmapImage
+        {
+            DecodePixelType = DecodePixelType.Logical,
+            DecodePixelHeight = 84,
+            UriSource = uri
+        };
+    }
+
+    private static SearchSuggestion CreateStoreLoadingSuggestion() => new()
+    {
+        DisplayText = string.Empty,
+        Subtitle = string.Empty,
+        IsLoading = true,
+        SkeletonVisibility = Visibility.Visible
+    };
+
+    private static SearchSuggestion CreateStoreSearchSuggestion(string query) => new()
+    {
+        DisplayText = $"Search Epic Games Store for “{query}”",
+        Subtitle = "View all Store results",
+        StoreQuery = query,
+        IconGlyph = "\uE719"
+    };
+
+    private void NavigateToStore(Uri uri)
+    {
+        NavControl.SelectedItem = StoreNavItem;
+        if (ContentFrame.Content is StorePage storePage)
+        {
+            storePage.Open(uri);
+            return;
+        }
+
+        _currentGameAppName = null;
+        ContentFrame.Navigate(typeof(StorePage), uri, new EntranceNavigationTransitionInfo());
+    }
+
+    private void ClearGlobalSearch()
+    {
+        CancelStoreSearch();
+        GlobalSearchBox.Text = string.Empty;
+        GlobalSearchBox.ItemsSource = null;
+    }
+
+    private static string NormalizeSearchQuery(string value)
+    {
+        var query = value.Trim();
+        return query.Length > 100 ? query[..100] : query;
+    }
+
+    private void CancelStoreSearch()
+    {
+        var cancellationSource = _storeSearchCancellation;
+        _storeSearchCancellation = null;
+        cancellationSource?.Cancel();
+    }
+
     private void NavControl_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
         if (args.IsSettingsInvoked == true)
@@ -139,7 +369,6 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // The original code called Tag.ToString() unguarded, which throws on an item without one.
         if (args.InvokedItemContainer?.Tag is not string tag || tag.Length == 0)
             return;
 
@@ -152,8 +381,6 @@ public sealed partial class MainWindow : Window
         NavControl_Navigate(Type.GetType(tag), args.RecommendedNavigationTransitionInfo);
     }
 
-    // Unlike NavControl_Navigate this allows repeat navigation to GameInfoPage: every game is
-    // the same page type with a different parameter, so only the game already shown is skipped.
     private void NavigateToGame(string appName, NavigationTransitionInfo transitionInfo)
     {
         if (Equals(ContentFrame.CurrentSourcePageType, typeof(GameInfoPage)) &&
@@ -172,6 +399,8 @@ public sealed partial class MainWindow : Window
         {
             _libraryCache = snapshot;
             RebuildInstalledMenu();
+            if (!string.IsNullOrWhiteSpace(GlobalSearchBox.Text))
+                BeginSearch(GlobalSearchBox.Text);
         });
     }
 
@@ -191,9 +420,7 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    // Rebuilds the installed-game entries that sit directly in the pane. The play button is only
-    // offered for states LaunchApp accepts, so a game mid-install is listed but cannot start.
-    private void RebuildInstalledMenu()
+    private void RebuildInstalledMenu(bool force = false)
     {
         var activeAppName = _activeInstall?.AppName;
         var installed = _libraryCache
@@ -202,18 +429,16 @@ public sealed partial class MainWindow : Window
             .OrderBy(game => game.AppTitle, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
-        // Install state and the running action are both in the signature: a row has to be rebuilt
-        // when it gains or loses its progress fill, not only when the set of games changes.
-        var signature = string.Join("\u001f",
-                            installed.Select(game =>
-                                $"{game.AppName}\u001e{game.AppTitle}\u001e{game.LocalAppState?.InstallStatus}"))
-                        + "\u001d" + activeAppName;
-        if (signature == _installedMenuSignature)
+        var snapshot = installed
+            .Select(game => (game.AppName, game.AppTitle, game.LocalAppState?.InstallStatus))
+            .ToList();
+        if (!force && snapshot.SequenceEqual(_installedMenuSnapshot) &&
+            string.Equals(activeAppName, _installedMenuActiveAppName, StringComparison.Ordinal))
             return;
-        _installedMenuSignature = signature;
+        _installedMenuSnapshot = snapshot;
+        _installedMenuActiveAppName = activeAppName;
         _gameNavEntries.Clear();
 
-        // Drop only the entries this method owns; the static items keep their position.
         for (var i = NavControl.MenuItems.Count - 1; i >= 0; i--)
         {
             if (NavControl.MenuItems[i] is NavigationViewItem { Tag: string tag } &&
@@ -224,12 +449,9 @@ public sealed partial class MainWindow : Window
         foreach (var game in installed)
             NavControl.MenuItems.Add(CreateInstalledGameItem(game));
 
-        // The rows were just recreated, so re-apply whatever the running action was showing.
         ApplyInstallVisual(_activeInstall);
     }
 
-    // A game earns a row when it is on disk, and also while an action runs against it: a
-    // first-time install has to be visible for its progress to be worth reporting.
     private static bool IsPaneListed(Game game, string? activeAppName) =>
         string.Equals(game.AppName, activeAppName, StringComparison.Ordinal) ||
         game.LocalAppState?.InstallStatus is InstallState.Installed or InstallState.NeedUpdate
@@ -253,7 +475,6 @@ public sealed partial class MainWindow : Window
         };
         Grid.SetColumn(titleBlock, 0);
 
-        // Takes the play button's place while an action runs against this game.
         var actionIcon = new FontIcon { FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         var progressText = new TextBlock
         {
@@ -278,14 +499,11 @@ public sealed partial class MainWindow : Window
             Margin = new Thickness(4, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Visibility = canLaunch ? Visibility.Visible : Visibility.Collapsed,
-            // A null Background would stop the padded area from hit-testing.
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderThickness = new Thickness(0)
         };
         ToolTipService.SetToolTip(playButton, $"Play {title}");
         playButton.Click += (_, _) => LaunchGame(appName, title);
-        // Without this the tap also reaches the NavigationViewItem and navigates to the game
-        // page, so pressing play would both launch and navigate.
         playButton.Tapped += (_, e) => e.Handled = true;
         Grid.SetColumn(playButton, 2);
 
@@ -297,7 +515,6 @@ public sealed partial class MainWindow : Window
         layout.Children.Add(statusPanel);
         layout.Children.Add(playButton);
 
-        // Only shown on a collapsed pane, where the item template hides the row's content.
         var badge = new InfoBadge { Visibility = Visibility.Collapsed };
         var progressBrush = isActive ? CreateProgressBrush() : null;
 
@@ -308,9 +525,6 @@ public sealed partial class MainWindow : Window
             Icon = CreateGameIcon(game),
             InfoBadge = badge
         };
-        // One theme resource sizes the icon Viewbox for every row, so raising it on the
-        // NavigationView inflates the Library and Settings glyphs too. Scoping the override to
-        // this item keeps box art legible without touching them.
         item.Resources["NavigationViewItemOnLeftIconBoxHeight"] = (double)GameIconBoxHeight;
         if (progressBrush is not null)
         {
@@ -336,8 +550,6 @@ public sealed partial class MainWindow : Window
         return item;
     }
 
-    // The set of rows can change here: an install that just started needs one, and a finished
-    // uninstall no longer qualifies for one.
     private void InstallationStatusChangedHandler(InstallItem? installItem)
     {
         DispatcherQueue.TryEnqueue(() =>
@@ -348,8 +560,6 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    // Never rebuilds the menu: ticks arrive many times a second and recreating the rows would
-    // refetch every icon.
     private void InstallProgressUpdateHandler(InstallItem? installItem)
     {
         if (installItem is null) return;
@@ -360,14 +570,10 @@ public sealed partial class MainWindow : Window
         installItem?.Status is ActionStatus.Pending or ActionStatus.OnGoing or ActionStatus.Processing
             or ActionStatus.Paused or ActionStatus.Cancelling;
 
-    // Pushes an action's glyph, percentage and fill onto the matching row, and returns every
-    // other row to its idle state.
     private void ApplyInstallVisual(InstallItem? installItem)
     {
         var activeAppName = IsActionRunning(installItem) ? installItem!.AppName : null;
 
-        // Only disturb rows when the decorated row actually changes; a rebuild already recreates
-        // every row idle.
         if (!string.Equals(_decoratedAppName, activeAppName, StringComparison.Ordinal))
         {
             if (_decoratedAppName is not null &&
@@ -393,8 +599,8 @@ public sealed partial class MainWindow : Window
         SetProgressFill(target.ProgressBrush, percent);
         ToolTipService.SetToolTip(target.Item,
             installItem.Status == ActionStatus.Paused
-                ? $"{target.Title} \u2014 {label} paused at {percent}%"
-                : $"{target.Title} \u2014 {label} {percent}%");
+                ? $"{target.Title} - {label} paused at {percent}%"
+                : $"{target.Title} - {label} {percent}%");
     }
 
     private static void ResetEntry(GameNavEntry entry)
@@ -406,7 +612,6 @@ public sealed partial class MainWindow : Window
         ToolTipService.SetToolTip(entry.Item, entry.Title);
     }
 
-    // Segoe MDL2 glyph naming the action, or the reason it is not currently advancing.
     private static string GetActionGlyph(ActionType action, ActionStatus status) => status switch
     {
         ActionStatus.Paused => "\uE769",
@@ -423,13 +628,9 @@ public sealed partial class MainWindow : Window
         }
     };
 
-    // Left-to-right fill used as the row background, in the colour the pane already uses for
-    // hover and selection. The two middle stops share an offset, so the fill ends on a hard edge
-    // at the progress point.
     private static LinearGradientBrush CreateProgressBrush()
     {
         var fill = GetSelectionFillColor();
-        // Double alpha at the far left leaves a hint of gradient without a second colour.
         var lead = Windows.UI.Color.FromArgb((byte)Math.Min(255, fill.A * 2), fill.R, fill.G, fill.B);
 
         var brush = new LinearGradientBrush
@@ -444,16 +645,12 @@ public sealed partial class MainWindow : Window
         return brush;
     }
 
-    // Colour the item presenter uses for its hover and selected states. The literal is the
-    // dark-theme value, reached only if the theme resource cannot be resolved.
     private static Windows.UI.Color GetSelectionFillColor() =>
         Application.Current.Resources.TryGetValue("SubtleFillColorSecondaryBrush", out var value) &&
         value is SolidColorBrush brush
             ? brush.Color
             : Windows.UI.Color.FromArgb(0x0F, 0xFF, 0xFF, 0xFF);
 
-    // Moves the fill edge. Mutating the live brush keeps the row's style intact, which replacing
-    // the brush would not.
     private static void SetProgressFill(LinearGradientBrush? brush, int percent)
     {
         if (brush is null) return;
@@ -462,23 +659,16 @@ public sealed partial class MainWindow : Window
         brush.GradientStops[2].Offset = offset;
     }
 
-    // Builds the pane icon for a game, or null when it has no usable artwork, which leaves the
-    // item without an icon rather than showing a broken one.
     private static IconElement? CreateGameIcon(Game game)
     {
         var keyImages = game.Metadata?.KeyImages;
         if (keyImages is null) return null;
 
-        // DieselGameBoxTall is the one image every record in the library carries.
-        // DieselGameBoxLogo covers well under a fifth of them, and mixing wide transparent
-        // wordmarks into a column of 3:4 box art makes the pane less uniform, not more.
         var url = keyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
                   ?? keyImages.FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
 
         if (string.IsNullOrEmpty(url)) return null;
 
-        // The source art is 1200x1600. Decoding that for a row icon wastes memory and resamples
-        // poorly; the decode hint has to be set before UriSource kicks off the download.
         var bitmap = new BitmapImage
         {
             DecodePixelType = DecodePixelType.Logical,
@@ -486,16 +676,12 @@ public sealed partial class MainWindow : Window
         };
         bitmap.UriSource = new Uri(url);
 
-        // The square box gives every row the same icon footprint; ImageIcon fits the art
-        // Uniform inside it, so portrait and landscape sources still line up.
         return new ImageIcon { Source = bitmap, Width = GameIconBoxHeight, Height = GameIconBoxHeight };
     }
 
     private void LaunchGame(string appName, string title)
     {
         _log.Information("MainWindow: Launching {Title} ({AppName}) from the navigation pane", title, appName);
-        // LaunchApp blocks on Process.WaitForExit for the lifetime of the game, so it must not
-        // run on the UI thread. It logs its own failures and does not throw.
         _ = Task.Run(() => _libraryManager.LaunchApp(appName));
     }
 
@@ -507,8 +693,6 @@ public sealed partial class MainWindow : Window
         UpdateBadgeVisibility();
     }
 
-    // While the pane is open both badges only repeat what is already legible beside them: the
-    // game row spells out its percentage and the footer draws a full progress bar.
     private void UpdateBadgeVisibility()
     {
         var collapsed = !NavControl.IsPaneOpen;
@@ -548,6 +732,9 @@ public sealed partial class MainWindow : Window
                 break;
 
             case AuthenticationStatus.LoggedOut:
+                _libraryCache.Clear();
+                RebuildInstalledMenu(force: true);
+                ClearGlobalSearch();
                 NavControl.Visibility = Visibility.Collapsed;
                 LoginPage.Visibility = Visibility.Visible;
                 LoginPage.InitWebView();
@@ -569,8 +756,6 @@ public sealed partial class MainWindow : Window
 
                 _installManager.LoadPendingInstalls();
 
-                // GetLibraryData serves a cached list for 20 minutes without raising
-                // LibraryUpdated, so the pane has to seed itself rather than wait for the event.
                 Task.Run(async () =>
                 {
                     try
@@ -642,9 +827,9 @@ public sealed partial class MainWindow : Window
         this.Activated -= Window_Activated;
         _mConfigurationSource = null;
 
-        // LibraryManager is a singleton and outlives this window.
         _libraryManager.LibraryUpdated -= LibraryUpdatedHandler;
         _libraryManager.GameStatusUpdated -= GameStatusUpdatedHandler;
+        CancelStoreSearch();
         CurrentDownload.SummaryChanged -= OnDownloadSummaryChanged;
         _installManager.InstallationStatusChanged -= InstallationStatusChangedHandler;
         _installManager.InstallProgressUpdate -= InstallProgressUpdateHandler;
