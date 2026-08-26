@@ -40,8 +40,11 @@ public class LibraryManager
         if (e.NewStatus != AuthenticationStatus.LoggedOut)
             return;
 
-        // Without this the cache window below would hand the next account to sign in
-        // the library belonging to the one that just left.
+        InvalidateCache();
+    }
+
+    public void InvalidateCache()
+    {
         _lastUpdateDateTime = DateTime.MinValue;
     }
 
@@ -59,8 +62,7 @@ public class LibraryManager
         if (!dataNeedsUpdate)
             return _storage.GameMetaDataDictionary.Values.ToList();
 
-        // Update the library data
-        await UpdateLibraryData(forceUpdate);
+        await UpdateLibraryData(refreshAssets: true, forceMetadataUpdate: forceUpdate);
         // Optionally, you can update the last update timestamp here
         _lastUpdateDateTime = DateTime.Now;
 
@@ -173,10 +175,10 @@ public class LibraryManager
     /// <summary>
     ///  Updates library data and triggers LibraryUpdated event
     /// </summary>
-    /// <param name="forceUpdate"></param>
-    /// <param name="updateAssets"></param>
+    /// <param name="refreshAssets"></param>
+    /// <param name="forceMetadataUpdate"></param>
     /// <returns></returns>
-    private async Task UpdateLibraryData(bool forceUpdate = false, bool updateAssets = true)
+    private async Task UpdateLibraryData(bool refreshAssets, bool forceMetadataUpdate)
     {
         try
         {
@@ -188,7 +190,7 @@ public class LibraryManager
             }
 
             var gameAssetsList = gameAssets?.ToList() ?? new List<Asset>();
-            if (forceUpdate || gameAssetsList.Count < 1)
+            if (refreshAssets || gameAssetsList.Count < 1)
             {
                 _log.Error("UpdateLibraryData: No existing game assets data, updating");
 
@@ -224,7 +226,7 @@ public class LibraryManager
                     gameMetaDataDictionary.Add(asset.AppName, game);
                 }
 
-                if (!updateAssets || (game != null && !forceUpdate && !assetUpdated)) continue;
+                if (game != null && !forceMetadataUpdate && !assetUpdated) continue;
                 _log.Information($"Scheduling metadata update for {asset.AppName}");
                 fetchList.Add(new FetchListItem()
                 {

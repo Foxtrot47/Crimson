@@ -20,6 +20,7 @@ public sealed partial class StorePage : Page
     private bool _cancelledLauncherNavigation;
     private CoreWebView2Environment? _environment;
     private WebView2? _storeWebView;
+    private bool _ownershipRefreshed;
 
     public StorePage()
     {
@@ -42,7 +43,8 @@ public sealed partial class StorePage : Page
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
-        _libraryManager.InvalidateCache();
+        if (!_ownershipRefreshed)
+            _libraryManager.InvalidateCache();
         StorePopupWindow.CloseAll();
         CloseWebView();
         base.OnNavigatedFrom(e);
@@ -175,6 +177,7 @@ public sealed partial class StorePage : Page
         {
             _libraryManager.InvalidateCache();
             var games = await _libraryManager.GetLibraryData();
+            _ownershipRefreshed = true;
             var game = games.FirstOrDefault(candidate =>
                 (catalogItemId is not null &&
                  string.Equals(candidate.AssetInfos?.Windows?.CatalogItemId, catalogItemId, StringComparison.OrdinalIgnoreCase) &&
