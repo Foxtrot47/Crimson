@@ -1,8 +1,7 @@
 ﻿using System;
-using System.IO;
 using System.Text.Json;
-using System.Threading.Tasks;
 using Crimson.Core;
+using Crimson.Utils;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
@@ -77,14 +76,6 @@ public sealed partial class LoginPage : Page
             // has already been closed, so start from a fresh one.
             CloseWebView();
 
-            // Built explicitly so the profile lands next to the rest of the app data instead
-            // of in a folder derived from the executable's location.
-            var userDataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Crimson",
-                "webview2");
-            Directory.CreateDirectory(userDataFolder);
-
             var webView = new WebView2();
             WebViewHost.Children.Add(webView);
             _loginWebView = webView;
@@ -92,10 +83,9 @@ public sealed partial class LoginPage : Page
             // The control has to be loaded before the browser process can be created.
             // Called on a control added moments ago, EnsureCoreWebView2Async otherwise
             // returns having done nothing and leaves CoreWebView2 null.
-            await WaitForLoadedAsync(webView);
+            await WebViewEnvironmentFactory.WaitForLoadedAsync(webView);
 
-            var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
-                string.Empty, userDataFolder, new CoreWebView2EnvironmentOptions());
+            var environment = await WebViewEnvironmentFactory.CreateAsync();
             await webView.EnsureCoreWebView2Async(environment);
             if (webView.CoreWebView2 is null)
             {
@@ -130,22 +120,5 @@ public sealed partial class LoginPage : Page
         _loginWebView.Close();
         WebViewHost.Children.Remove(_loginWebView);
         _loginWebView = null;
-    }
-
-    private static Task WaitForLoadedAsync(FrameworkElement element)
-    {
-        if (element.IsLoaded)
-            return Task.CompletedTask;
-
-        var loaded = new TaskCompletionSource();
-
-        void OnLoaded(object sender, RoutedEventArgs args)
-        {
-            element.Loaded -= OnLoaded;
-            loaded.TrySetResult();
-        }
-
-        element.Loaded += OnLoaded;
-        return loaded.Task;
     }
 }
