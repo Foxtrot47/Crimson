@@ -33,7 +33,8 @@
         <AppxPackageDir Condition="'$(EnableTestSigning)' == 'true'">$(MSBuildThisFileDirectory)..\artifacts\msix-test\</AppxPackageDir>
         <AppxBundle>Never</AppxBundle>
         <AppxBundlePlatforms>x64</AppxBundlePlatforms>
-        <UapAppxPackageBuildMode>StoreUpload</UapAppxPackageBuildMode>
+        <UapAppxPackageBuildMode Condition="'$(UapAppxPackageBuildMode)' == '' and '$(EnableTestSigning)' == 'true'">SideloadOnly</UapAppxPackageBuildMode>
+        <UapAppxPackageBuildMode Condition="'$(UapAppxPackageBuildMode)' == '' and '$(EnableTestSigning)' != 'true'">StoreUpload</UapAppxPackageBuildMode>
         <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
         <!--
           Symbol packages need mspdbcmf.exe from the VS C++ tools, which the .NET SDK
