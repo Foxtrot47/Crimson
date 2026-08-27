@@ -44,7 +44,7 @@ public class SettingsManager
         }
         catch (Exception ex)
         {
-            _logger.LogWarning("LoadSettings: Exception: {ex}", ex);
+            _logger.LogWarning(ex, "LoadSettings failed");
             return new Settings();
         }
     }

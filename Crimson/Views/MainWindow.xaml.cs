@@ -719,7 +719,7 @@ public sealed partial class MainWindow : Window
     }
     private void UpdateUIBasedOnAuthenticationStatus(AuthenticationStatus authStatus)
     {
-        Log.Information($"Auth status: {authStatus}");
+        Log.Information("Auth status: {AuthStatus}", authStatus);
 
         switch (authStatus)
         {

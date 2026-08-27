@@ -62,8 +62,7 @@ namespace Crimson.Utils
                         }
                         catch (Exception ex)
                         {
-                            // Log detailed exception information
-                            _logger.Error($"Error processing file {file}. Exception: {ex}");
+                            _logger.Error(ex, "Error processing metadata file {File}", file);
                         }
                     });
 
@@ -87,7 +86,7 @@ namespace Crimson.Utils
             }
             catch (Exception ex)
             {
-                Log.Error(ex.ToString());
+                _logger.Error(ex, "Failed to initialize storage");
             }
         }
 
@@ -152,7 +151,7 @@ namespace Crimson.Utils
             }
             catch (Exception ex)
             {
-                Log.Error(ex.ToString());
+                _logger.Error(ex, "Failed to load game assets");
                 return null;
             }
         }
@@ -171,7 +170,7 @@ namespace Crimson.Utils
             }
             catch (Exception ex)
             {
-                Log.Error(ex.ToString());
+                _logger.Error(ex, "Failed to save game assets");
             }
         }
 

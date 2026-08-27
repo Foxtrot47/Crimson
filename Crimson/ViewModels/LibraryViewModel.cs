@@ -74,7 +74,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
                         //InstallState = game.State,
                         Image = Util.GetBitmapImage(game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
                     };
-                    _log.Information($"UpdateLibrary: Adding {item.Name} to Library");
+                    _log.Debug("UpdateLibrary: Adding {AppName} to library", item.Name);
                     GamesList.Add(item);
                 }
                 GamesList = GamesList.OrderBy(item => item.Title).ToList();
@@ -85,7 +85,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         }
         catch (Exception ex)
         {
-            _log.Error(ex.ToString());
+            _log.Error(ex, "UpdateLibrary failed");
         }
     }
 }

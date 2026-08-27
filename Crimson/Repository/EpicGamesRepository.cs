@@ -75,7 +75,7 @@ namespace Crimson.Repository
 
         public async Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId)
         {
-            _log.Information("FetchGameMetaData: Fetching game metadata");
+            _log.Debug("FetchGameMetaData: Fetching game metadata");
             var accessToken = await _authManager.GetAccessToken();
             var uri = $"https://{CatalogHost}/catalog/api/shared/namespace/{Uri.EscapeDataString(nameSpace)}/bulk/items?id={Uri.EscapeDataString(catalogItemId)}&includeDLCDetails=true&includeMainGameDetails=true&country=US&locale=en";
 

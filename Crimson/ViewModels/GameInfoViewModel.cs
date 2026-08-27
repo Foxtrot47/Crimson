@@ -184,7 +184,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         }
         catch (Exception ex)
         {
-            _log.LogError(ex.ToString());
+            _log.LogError(ex, "HandleInstallationStatusChanged failed");
         }
     }
 
