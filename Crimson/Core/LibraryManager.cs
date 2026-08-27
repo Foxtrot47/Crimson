@@ -32,6 +32,20 @@ public class LibraryManager
         _storeRepository = repository;
         _storage = storage;
         _authManager = authManager;
+        _authManager.AuthStatusChanged += OnAuthStatusChanged;
+    }
+
+    private void OnAuthStatusChanged(object sender, AuthStatusChangedEventArgs e)
+    {
+        if (e.NewStatus != AuthenticationStatus.LoggedOut)
+            return;
+
+        InvalidateCache();
+    }
+
+    public void InvalidateCache()
+    {
+        _lastUpdateDateTime = DateTime.MinValue;
     }
 
     /// <summary>
@@ -48,8 +62,7 @@ public class LibraryManager
         if (!dataNeedsUpdate)
             return _storage.GameMetaDataDictionary.Values.ToList();
 
-        // Update the library data
-        await UpdateLibraryData(forceUpdate);
+        await UpdateLibraryData(refreshAssets: true, forceMetadataUpdate: forceUpdate);
         // Optionally, you can update the last update timestamp here
         _lastUpdateDateTime = DateTime.Now;
 
@@ -94,14 +107,14 @@ public class LibraryManager
         {
             if (appName == null) return;
 
-            _log.Information("LaunchApp: Trying to launch app: {@appName}", appName);
+            _log.Information("LaunchApp: Trying to launch app: {AppName}", appName);
 
             if (_storage.LocalAppStateDictionary.TryGetValue(appName, out var gameInfo))
             {
                 var metaData = _storage.GetGameMetaData(appName);
                 if (metaData == null)
                 {
-                    _log.Warning("LaunchApp: Trying to launch game not owned {@game}", appName);
+                    _log.Warning("LaunchApp: Trying to launch game not owned {AppName}", appName);
                     return;
                 }
 
@@ -155,17 +168,17 @@ public class LibraryManager
         }
         catch (Exception ex)
         {
-            _log.Fatal("LaunchApp: Exception: {@ex}", ex);
+            _log.Error(ex, "LaunchApp failed");
         }
     }
 
     /// <summary>
     ///  Updates library data and triggers LibraryUpdated event
     /// </summary>
-    /// <param name="forceUpdate"></param>
-    /// <param name="updateAssets"></param>
+    /// <param name="refreshAssets"></param>
+    /// <param name="forceMetadataUpdate"></param>
     /// <returns></returns>
-    private async Task UpdateLibraryData(bool forceUpdate = false, bool updateAssets = true)
+    private async Task UpdateLibraryData(bool refreshAssets, bool forceMetadataUpdate)
     {
         try
         {
@@ -177,9 +190,9 @@ public class LibraryManager
             }
 
             var gameAssetsList = gameAssets?.ToList() ?? new List<Asset>();
-            if (forceUpdate || gameAssetsList.Count < 1)
+            if (refreshAssets || gameAssetsList.Count < 1)
             {
-                _log.Error("UpdateLibraryData: No existing game assets data, updating");
+                _log.Information("UpdateLibraryData: No cached game assets; refreshing");
 
                 var assets = (await _storeRepository.FetchGameAssets()).ToList();
                 if (assets.Count < 1)
@@ -213,8 +226,8 @@ public class LibraryManager
                     gameMetaDataDictionary.Add(asset.AppName, game);
                 }
 
-                if (!updateAssets || (game != null && !forceUpdate && !assetUpdated)) continue;
-                _log.Information($"Scheduling metadata update for {asset.AppName}");
+                if (game != null && !forceMetadataUpdate && !assetUpdated) continue;
+                _log.Debug("Scheduling metadata update for {AppName}", asset.AppName);
                 fetchList.Add(new FetchListItem()
                 {
                     AppName = asset.AppName,
@@ -259,7 +272,7 @@ public class LibraryManager
         }
         catch (Exception ex)
         {
-            _log.Error(ex.ToString());
+            _log.Error(ex, "UpdateLibraryData failed");
         }
     }
 

@@ -12,7 +12,8 @@
 - Play Games (without ownership verification)
 
 ## Downloads
-There are not stable builds at the moment, you have build it yourself
+
+Tagged releases provide a portable ZIP and a self-signed MSIX on the GitHub Releases page. The portable build needs no certificate. Before installing the MSIX, import the matching `.cer` into the current user's **Trusted People** certificate store. Crimson is a full-trust desktop application.
 
 ## Development
 

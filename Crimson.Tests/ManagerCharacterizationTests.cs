@@ -61,6 +61,21 @@ public sealed class ManagerCharacterizationTests
     }
 
     [Fact]
+    public async Task InstallManager_StopProcessingLeavesTeardownToProcessor()
+    {
+        var manager = InstallManagerWith();
+        var install = new InstallItem("active", ActionType.Install, "C:\\active");
+        SetCurrentInstall(manager, install);
+
+        await manager.StopProcessing();
+
+        var cancellation = GetPrivateField<CancellationTokenSource>(manager, "_cancellationTokenSource");
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.Same(install, manager.CurrentInstall);
+        Assert.Equal(ActionStatus.Cancelling, install.Status);
+    }
+
+    [Fact]
     public void InstallManager_HistoryReturnsLatestEntryPerGameInStableOrder()
     {
         var manager = InstallManagerWith();
@@ -145,6 +160,10 @@ public sealed class ManagerCharacterizationTests
 
         public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live") =>
             throw new NotSupportedException();
+
+        public Task<IReadOnlyList<StoreSearchResult>> SearchStore(
+            string query,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<byte[]> GetGameManifest(GetManifestUrlData urlData) =>
             throw new NotSupportedException();

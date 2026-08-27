@@ -10,10 +10,47 @@
         <PublishProfile>win-x64.pubxml</PublishProfile>
 		<UseWinUI>true</UseWinUI>
 		<AssemblyName>Crimson</AssemblyName>
-        <EnableMsixTooling>true</EnableMsixTooling>        
-		<WindowsPackageType>None</WindowsPackageType>
+        <EnableMsixTooling>true</EnableMsixTooling>
 		<UseRidGraph>true</UseRidGraph>
         <Nullable>enable</Nullable>
+
+        <!--
+          Packaging is opt-in so the default build stays unpackaged and F5 keeps working.
+          Store package: dotnet publish ... -p:EnablePackaging=true
+        -->
+        <EnablePackaging Condition="'$(EnablePackaging)' == ''">false</EnablePackaging>
+        <WindowsPackageType Condition="'$(EnablePackaging)' != 'true'">None</WindowsPackageType>
+        <WindowsPackageType Condition="'$(EnablePackaging)' == 'true'">MSIX</WindowsPackageType>
+    </PropertyGroup>
+
+    <!--
+      Store submissions are signed by Microsoft, so no certificate is needed here.
+      Set -p:EnableTestSigning=true to sign with a local cert for sideload testing.
+    -->
+    <PropertyGroup Condition="'$(EnablePackaging)' == 'true'">
+        <!-- Test-signed builds go elsewhere so a sideload package is never mistaken for the Store one. -->
+        <AppxPackageDir Condition="'$(EnableTestSigning)' != 'true'">$(MSBuildThisFileDirectory)..\artifacts\msix\</AppxPackageDir>
+        <AppxPackageDir Condition="'$(EnableTestSigning)' == 'true'">$(MSBuildThisFileDirectory)..\artifacts\msix-test\</AppxPackageDir>
+        <AppxBundle>Never</AppxBundle>
+        <AppxBundlePlatforms>x64</AppxBundlePlatforms>
+        <UapAppxPackageBuildMode Condition="'$(UapAppxPackageBuildMode)' == '' and '$(EnableTestSigning)' == 'true'">SideloadOnly</UapAppxPackageBuildMode>
+        <UapAppxPackageBuildMode Condition="'$(UapAppxPackageBuildMode)' == '' and '$(EnableTestSigning)' != 'true'">StoreUpload</UapAppxPackageBuildMode>
+        <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
+        <!--
+          Symbol packages need mspdbcmf.exe from the VS C++ tools, which the .NET SDK
+          alone does not provide. Opt in with -p:AppxSymbolPackageEnabled=true on a machine
+          that has them; without it the build fails rather than warns.
+        -->
+        <AppxSymbolPackageEnabled Condition="'$(AppxSymbolPackageEnabled)' == ''">false</AppxSymbolPackageEnabled>
+        <AppxPackageSigningEnabled Condition="'$(EnableTestSigning)' != 'true'">false</AppxPackageSigningEnabled>
+        <AppxPackageSigningEnabled Condition="'$(EnableTestSigning)' == 'true'">true</AppxPackageSigningEnabled>
+        <!--
+          Pass the signing certificate per machine, e.g.
+            -p:EnableTestSigning=true -p:PackageCertificateThumbprint=<sha1>
+          The certificate subject must equal Identity/@Publisher exactly or signing fails.
+        -->
+        <PackageCertificateKeyFile Condition="'$(EnableTestSigning)' == 'true'"></PackageCertificateKeyFile>
+        <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
     </PropertyGroup>
 
     <ItemGroup>

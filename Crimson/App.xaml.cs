@@ -53,7 +53,7 @@ namespace Crimson
                     _ = Directory.CreateDirectory($@"{appDataPath}\Crimson\logs");
                     var logFilePath = $@"{appDataPath}\Crimson\logs\{DateTime.Now:yyyy-MM-dd}.txt";
 
-                    return new LoggerConfiguration()
+                    var logger = new LoggerConfiguration()
                         .MinimumLevel.Information()
                         .WriteTo.File(
                             logFilePath,
@@ -63,12 +63,12 @@ namespace Crimson
                             outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}"
                         )
                         .CreateLogger();
+
+                    Log.Logger = logger;
+                    return logger;
                 });
                 services.AddHttpClient("EpicOAuth", ConfigureEpicClient)
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
-                // Only the JSON metadata client gets the Polly pipeline. The OAuth client
-                // must not retry because Epic exchange codes are single-use, and the content
-                // client already has bounded retries plus mirror fallback in DownloadManager.
                 services.AddHttpClient("EpicApi", ConfigureEpicClient)
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler)
                     .AddResilienceHandler(
@@ -88,6 +88,8 @@ namespace Crimson
                         });
                 services.AddHttpClient("EpicContent", ConfigureEpicClient)
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
+                services.AddHttpClient("EpicStore", ConfigureEpicStoreClient)
+                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
 
                 services.AddSingleton<Storage>();
                 services.AddSingleton<AuthManager>(provider => new AuthManager(
@@ -98,7 +100,8 @@ namespace Crimson
                     provider.GetRequiredService<AuthManager>(),
                     provider.GetRequiredService<ILogger>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicApi"),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicStore")));
                 services.AddSingleton<LibraryManager>();
                 services.AddSingleton<InstallManager>();
                 services.AddSingleton<DownloadManager>(provider => new DownloadManager(
@@ -121,9 +124,13 @@ namespace Crimson
             client.Timeout = TimeSpan.FromSeconds(100);
         }
 
-        // Redirects are followed: Epic's CDNs answer chunk and manifest requests with 3xx, and
-        // nothing in the download path inspects Location. Cookies stay off. The bearer token is
-        // kept off redirect-prone requests by using a separate content client, not by blocking 3xx.
+        private static void ConfigureEpicStoreClient(HttpClient client)
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "EpicGamesLauncher/14.0.8-22004686+++Portal+Release-Live");
+            client.Timeout = TimeSpan.FromSeconds(10);
+        }
+
         private static HttpMessageHandler CreateSecureHttpHandler() => new HttpClientHandler
         {
             AllowAutoRedirect = true,

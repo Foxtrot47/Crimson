@@ -24,22 +24,34 @@ public static class EpicEndpointPolicy
         "accounts.epicgames.com"
     };
 
+    private static readonly HashSet<string> StoreHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "launcher.store.epicgames.com",
+        "store.epicgames.com"
+    };
+
     private static readonly string[] ContentHostSuffixes =
     [
         ".epicgames.com",
         ".epicgamescdn.com",
         ".akamaized.net",
-        ".cloudfront.net"
+        ".cloudfront.net",
+        // Epic serves egdownload.fastly-edge.com as a manifest base URL.
+        ".fastly-edge.com"
     ];
 
     public static Uri RequireApiUri(string value) => Require(value, IsAllowedApiUri, "Epic API");
 
     public static Uri RequireContentUri(string value) => Require(value, IsAllowedContentUri, "Epic content");
 
+    public static Uri RequireStoreUri(string value) => Require(value, IsAllowedStoreUri, "Epic Store");
+
     public static bool IsAllowedLoginOrigin(string? value) =>
         TryGetHttpsUri(value, out var uri) && LoginHosts.Contains(uri.Host);
 
     public static bool IsAllowedApiUri(Uri uri) => IsHttps(uri) && ApiHosts.Contains(uri.Host);
+
+    public static bool IsAllowedStoreUri(Uri uri) => IsHttps(uri) && StoreHosts.Contains(uri.Host);
 
     public static bool IsAllowedContentUri(Uri uri) => IsHttps(uri) &&
         ContentHostSuffixes.Any(suffix => uri.Host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));

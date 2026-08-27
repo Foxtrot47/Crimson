@@ -118,7 +118,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
             var historyItemsNames = _installManager.GetHistoryItemsNames();
             if (historyItemsNames == null || historyItemsNames.Count < 1) return;
 
-            _log.Information("FetchHistoryItemsList: History Items: {HistoryItems}", historyItemsNames);
+            _log.Debug("FetchHistoryItemsList: Loaded {Count} history items", historyItemsNames.Count);
             HistoryItems.Clear();
 
             ObservableCollection<DownloadManagerItem> itemList = new();
@@ -166,7 +166,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
                 DownloadProgressBarIndeterminate = true;
 
                 var gameInfo = _libraryManager.GetGameInfo(installItem.AppName);
-                _log.Debug("HandleInstallationStatusChanged: Game Info: {GameInfo}", gameInfo);
+                _log.Debug("HandleInstallationStatusChanged: Loaded {AppName}", gameInfo.AppName);
                 CurrentInstallItem = new DownloadManagerItem
                 {
                     Name = gameInfo.AppName,
@@ -243,14 +243,13 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
             if (installItem == null) return;
 
             if (installItem.Status != ActionStatus.Processing) return;
-            var result = UpdateUIProperties(() =>
+            _ = UpdateUIProperties(() =>
             {
                 DownloadProgressBarIndeterminate = false;
                 DownloadProgressBarValue = Convert.ToDouble(installItem.ProgressPercentage);
                 CurrentDownloadSize = $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
                 CurrentDownloadSpeed = $@"{installItem.DownloadSpeedRawMiB} MiB/s";
             });
-            _log.Debug("InstallationProgressUpdate: Progress Updated: {Result}", installItem.WrittenSizeMiB);
         }
         catch (Exception ex)
         {

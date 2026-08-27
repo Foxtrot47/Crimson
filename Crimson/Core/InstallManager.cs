@@ -52,7 +52,8 @@ public class InstallManager
     private Stopwatch _installStopWatch = new();
     private DateTime _lastUpdateTime = DateTime.MinValue;
     private ManualResetEventSlim _pauseEvent = new ManualResetEventSlim(true);
-
+    private volatile bool _userCancelled;
+    private string? _stoppageReason;
 
     public InstallItem? CurrentInstall { get; private set; }
 
@@ -101,13 +102,13 @@ public class InstallManager
         if (item.Action != ActionType.Install && item.Action != ActionType.Import &&
             (gameData.LocalAppState == null || gameData.LocalAppState?.InstallStatus == InstallState.NotInstalled))
         {
-            _logger.Warning($"AddToQueue: {item.AppName} is not installed, cannot {item.Action.ToString()}");
+            _logger.Warning("AddToQueue: {AppName} is not installed, cannot {Action}", item.AppName, item.Action);
             return;
         }
 
         if (item.Action != ActionType.Repair && item.Action != ActionType.Uninstall && gameData.LocalAppState?.InstallStatus == InstallState.Broken)
         {
-            _logger.Warning($"AddToQueue: {item.AppName} is broken, forcing repair");
+            _logger.Warning("AddToQueue: {AppName} is broken, forcing repair", item.AppName);
             item.Action = ActionType.Repair;
         }
 
@@ -123,26 +124,30 @@ public class InstallManager
         {
             if (isResuming == false && (CurrentInstall != null || _installQueue.Count <= 0)) return;
 
+            _cancellationTokenSource = new CancellationTokenSource();
+            _userCancelled = false;
+            _stoppageReason = null;
+
             if (!isResuming)
             {
                 await PrepareTasks();
             }
 
-            // PrepareTasks may call HandleInstallationStoppage (e.g. import folder empty),
-            // which sets CurrentInstall = null. Bail out if that happened.
             if (CurrentInstall == null) return;
+            if (_cancellationTokenSource.IsCancellationRequested)
+            {
+                await HandleInstallationStoppage(Volatile.Read(ref _stoppageReason) ?? "Cancel install");
+                return;
+            }
 
             CurrentInstall.Status = ActionStatus.Processing;
             InstallationStatusChanged?.Invoke(CurrentInstall);
 
-            // Reset cancellation token early so HandleInstallationStoppage
-            // correctly distinguishes failure vs user cancellation
-            _cancellationTokenSource = new CancellationTokenSource();
-
-            // Import and Move don't need download/IO workers
             if (CurrentInstall.Action == ActionType.Import || CurrentInstall.Action == ActionType.Move)
             {
                 await UpdateInstalledGameStatus();
+                if (CurrentInstall != null && _cancellationTokenSource.IsCancellationRequested)
+                    await HandleInstallationStoppage(Volatile.Read(ref _stoppageReason) ?? "Cancel install");
                 return;
             }
 
@@ -164,12 +169,18 @@ public class InstallManager
             _ioQueue.CompleteAdding();
             await Task.WhenAll(_installTasks);
 
+            if (_cancellationTokenSource.IsCancellationRequested)
+            {
+                await HandleInstallationStoppage(Volatile.Read(ref _stoppageReason) ?? "Cancel install");
+                return;
+            }
+
             await UpdateInstalledGameStatus();
 
         }
         catch (Exception ex)
         {
-            _logger.Error("ProcessNext: {Exception}", ex);
+            _logger.Error(ex, "ProcessNext failed");
             await HandleInstallationStoppage("An error occurred during installation");
         }
     }
@@ -240,7 +251,6 @@ public class InstallManager
                         TaskType = IoTaskType.Delete,
                         Size = fileManifest.FileSize,
                     };
-                    _logger.Debug("ProcessNext: Adding ioTask: {task}", task);
                     _ioQueue.Add(task);
                 }
             }
@@ -274,7 +284,6 @@ public class InstallManager
                 }
                 else
                 {
-                    // Always salvage what we can — import as Broken so user can Repair
                     _logger.Warning("Import: {Missing}/{Total} files missing for {AppName}. Will import as Broken.",
                         missingFiles.Count, data.FileManifestList.Elements.Count, CurrentInstall.AppName);
                 }
@@ -334,7 +343,6 @@ public class InstallManager
 
                     _pauseEvent.Wait(_cancellationTokenSource.Token);
 
-                    _logger.Debug("ProcessDownloadQueue: Downloading chunk with guid{guid} from {url} to {path}", downloadTask.GuidNum, downloadTask.Url, downloadTask.TempPath);
                     var downloaded = await _downloadManager.DownloadFileWithFallback(
                         downloadTask.Url,
                         downloadTask.TempPath,
@@ -347,10 +355,15 @@ public class InstallManager
                     UpdateDownloadProgress(downloadTask.ChunkInfo.FileSize);
                     CreateIoTasksForChunk(downloadTask);
                 }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
                 catch (Exception ex)
                 {
-                    _logger.Error("ProcessDownloadQueue: Exception: {ex}", ex);
-                    await HandleInstallationStoppage("Download task failed");
+                    _logger.Error(ex, "ProcessDownloadQueue failed");
+                    RequestStoppage("Download task failed");
+                    return;
                 }
             }
         }
@@ -392,7 +405,6 @@ public class InstallManager
                     GuidNum = part.GuidNum,
                     SourceChunkGuidNum = downloadTask.GuidNum
                 };
-                _logger.Debug("ProcessDownloadQueue: Adding ioTask {task}", task);
                 _ioQueue.Add(task);
             }
         }
@@ -419,10 +431,15 @@ public class InstallManager
                     }
                     UpdateInstallWriteProgress(ioTask.Size);
                 }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
                 catch (Exception ex)
                 {
-                    _logger.Error("ProcessIoQueue: IO task failed with exception {ex}", ex);
-                    await HandleInstallationStoppage("Io Task failed");
+                    _logger.Error(ex, "ProcessIoQueue: IO task failed");
+                    RequestStoppage("Io Task failed");
+                    return;
                 }
 
             }
@@ -446,14 +463,11 @@ public class InstallManager
 
         var compressedChunkData = await File.ReadAllBytesAsync(ioTask.SourceFilePath);
         var chunk = Chunk.ReadBuffer(compressedChunkData);
-        _logger.Debug("ProcessIoQueue: Reading chunk buffers from {source} finished", ioTask.SourceFilePath);
-
         lock (fileLock)
         {
             using var fileStream = new FileStream(ioTask.DestinationFilePath, FileMode.OpenOrCreate,
             FileAccess.Write, FileShare.None);
 
-            _logger.Debug("ProcessIoQueue: Seeking {seek}bytes on file {destination}", ioTask.FileOffset, ioTask.DestinationFilePath);
             fileStream.Seek(ioTask.FileOffset, SeekOrigin.Begin);
 
             // Since chunk offset is a long we cannot use it directly in File stream write or read
@@ -466,8 +480,6 @@ public class InstallManager
             const int bufferSize = 4096;
             var buffer = new byte[bufferSize];
 
-            _logger.Debug("ProcessIoQueue: Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
-
             while (remainingBytesToWrite > 0)
             {
                 var bytesToRead = (int)Math.Min(bufferSize, remainingBytesToWrite);
@@ -478,7 +490,6 @@ public class InstallManager
             }
 
             fileStream.Flush();
-            _logger.Debug("ProcessIoQueue: Finished Writing {size}bytes to {file}", ioTask.Size, ioTask.DestinationFilePath);
         }
 
         // Check for references to the chunk and decrement by one
@@ -487,7 +498,6 @@ public class InstallManager
             (key) => 0, // Not expected to be called as the key should exist
             (key, oldValue) =>
             {
-                _logger.Debug("ProcessIoQueue: decrementing reference count of {GuidNum} by 1. Current value:{oldValue}", ioTask.GuidNum, oldValue);
                 return oldValue - 1;
             }
         );
@@ -496,7 +506,6 @@ public class InstallManager
         if (newCount <= 0 && _chunkPartReferences.TryRemove(ioTask.GuidNum, out _))
         {
             _completedChunks.Add(ioTask.SourceChunkGuidNum);
-            _logger.Debug("ProcessIoQueue: Deleting chunk file {file}", ioTask.SourceFilePath);
             // Delete the file if successfully removed
             File.Delete(ioTask.SourceFilePath);
         }
@@ -521,7 +530,7 @@ public class InstallManager
     {
         if (CurrentInstall == null)
         {
-            _logger.Fatal("UpdateInstalledGameStatus: Current Install is null. Shits bad");
+            _logger.Error("UpdateInstalledGameStatus: Current install is null");
             return;
         }
 
@@ -555,7 +564,7 @@ public class InstallManager
                 }
                 else
                 {
-                    _logger.Fatal("UpdateInstalledGameStatus: Found no installed game data for app name: {AppName}",
+                    _logger.Error("UpdateInstalledGameStatus: Found no installed game data for {AppName}",
                         CurrentInstall.AppName);
                     throw new Exception("Invalid installed game data");
                 }
@@ -565,7 +574,6 @@ public class InstallManager
             {
                 case ActionType.Uninstall:
                 {
-                    // No verification needed — files are already deleted
                     localAppState.InstallStatus = InstallState.NotInstalled;
                     localAppState.InstallPath = null;
                     localAppState.Version = null;
@@ -579,7 +587,6 @@ public class InstallManager
 
                 case ActionType.Move:
                 {
-                    // No verification needed — just update the install path
                     localAppState.InstallPath = CurrentInstall.MoveLocation;
                     gameData.LocalAppState = localAppState;
                     _storage.AddToLocalAppState(gameData.AppName, localAppState);
@@ -590,7 +597,6 @@ public class InstallManager
 
                 case ActionType.Import:
                 {
-                    // Files were verified in PrepareTasks — use stored result
                     var manifestBytes = await _storage.GetCachedManifestBytes(CurrentInstall.AppName, gameData.AssetInfos.Windows.BuildVersion);
                     var urlData = await _repository.GetManifestUrls(gameData.AssetInfos.Windows.Namespace,
                         gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
@@ -714,7 +720,7 @@ public class InstallManager
         }
         catch (Exception ex)
         {
-            _logger.Fatal("UpdateInstalledGameStatus: Exception {ex}", ex);
+            _logger.Error(ex, "UpdateInstalledGameStatus failed");
 
             if (CurrentInstall != null)
             {
@@ -749,7 +755,7 @@ public class InstallManager
                     // Check if file exists and add to list if it doesn't
                     if (!File.Exists(filePath))
                     {
-                        _logger.Warning("VerifyFiles: MISSING {Filename}", manifest.Filename);
+                        _logger.Debug("VerifyFiles: Missing {Filename}", manifest.Filename);
                         invalidFilesBag.Add(manifest);
                         return;
                     }
@@ -759,7 +765,7 @@ public class InstallManager
                     if (fileSha1 != expectedHash)
                     {
                         var fileInfo = new FileInfo(filePath);
-                        _logger.Warning("VerifyFiles: HASH MISMATCH {Filename} (size={Size}, expected={Expected}, actual={Actual})",
+                        _logger.Debug("VerifyFiles: Hash mismatch {Filename} (size={Size}, expected={Expected}, actual={Actual})",
                             manifest.Filename, fileInfo.Length, expectedHash, fileSha1);
                         invalidFilesBag.Add(manifest);
                     }
@@ -806,7 +812,6 @@ public class InstallManager
                         new List<FileManifest>() { fileManifest });
                 }
 
-                _logger.Debug("ProcessDownloadQueue: New file reference for chunk {GuidNum} filename:{filename}", chunkPart.GuidNum, fileManifest.Filename);
                 // keep track of files count to which the parts of chunk must be copied to
                 _chunkPartReferences.AddOrUpdate(
                     chunkPart.GuidNum,
@@ -828,7 +833,6 @@ public class InstallManager
                     GuidNum = chunkInfo.GuidNum,
                     ChunkInfo = chunkInfo
                 };
-                _logger.Debug("ProcessNext: Adding new download task {@task}", newTask);
                 chunkDownloadList.Add(chunkInfo);
                 _downloadQueue.Add(newTask);
 
@@ -848,7 +852,6 @@ public class InstallManager
                 var filePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename);
                 EnsureDirectoryExists(filePath);
                 File.Create(filePath).Dispose();
-                _logger.Debug("GetChunksToDownload: Created empty file {Path}", filePath);
             }
         }
     }
@@ -1037,7 +1040,6 @@ public class InstallManager
                 var filePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename);
                 EnsureDirectoryExists(filePath);
                 File.Create(filePath).Dispose();
-                _logger.Debug("GetChunksToDownloadFiltered: Created empty file {Path}", filePath);
             }
         }
     }
@@ -1102,7 +1104,7 @@ public class InstallManager
             return;
         }
 
-        if (!_cancellationTokenSource.IsCancellationRequested)
+        if (!_userCancelled)
         {
             // propage cancelling status if not done already
             await _cancellationTokenSource.CancelAsync();
@@ -1140,7 +1142,7 @@ public class InstallManager
             CurrentInstall.Status = ActionStatus.Cancelled;
             _installHistory.Add(CurrentInstall);
             InstallationStatusChanged?.Invoke(CurrentInstall);
-            _logger.Error("Installation cancelled");
+            _logger.Information("Installation cancelled");
         }
         CurrentInstall = null;
 
@@ -1164,11 +1166,11 @@ public class InstallManager
     /// <returns></returns>
     public async Task<(double totalDownloadSizeMb, double totalWriteSizeMb)> GetGameDownloadInstallSizes(string appName)
     {
-        _logger.Information($"GetGameDownloadInstallSizes: Getting game manifest of {appName}");
+        _logger.Information("GetGameDownloadInstallSizes: Getting game manifest for {AppName}", appName);
 
         var manifestData = await GetManifestDataWithCaching(appName);
 
-        _logger.Information($"GetGameDownloadInstallSizes: parsing game manifest of {appName}");
+        _logger.Information("GetGameDownloadInstallSizes: Parsing game manifest for {AppName}", appName);
         var manifest = Manifest.ReadAll(manifestData);
         var chunkDownloadList = new List<ChunkInfo>();
         var addedChunkGuids = new HashSet<BigInteger>();
@@ -1202,7 +1204,8 @@ public class InstallManager
             }
             totalWriteSizeBytes += fileManifest.FileSize;
         }
-        _logger.Information($"GetGameDownloadInstallSizes: parsing total download size as {totalDownloadSizeBytes} Bytes and write size as {totalWriteSizeBytes} Bytes");
+        _logger.Information("GetGameDownloadInstallSizes: Download size {DownloadBytes} bytes and write size {WriteBytes} bytes",
+            totalDownloadSizeBytes, totalWriteSizeBytes);
         return (totalDownloadSizeBytes, totalWriteSizeBytes);
     }
 
@@ -1232,7 +1235,7 @@ public class InstallManager
 
             if (urlData == null)
             {
-                _logger.Error($"GetGameManifest: Failed to get manifest urls for {appName}");
+                _logger.Error("GetGameManifest: Failed to get manifest URLs for {AppName}", appName);
                 throw new Exception("Cannot fetch manifest data");
             }
 
@@ -1280,9 +1283,7 @@ public class InstallManager
         }
 
         if (CurrentInstall?.AppName == appName)
-        {
-            Task.Run(() => StopProcessing());
-        }
+            _ = StopProcessing();
 
         var removedItem = _installQueue.RemoveAll(item => item.AppName == appName);
         if (removedItem > 0)
@@ -1340,18 +1341,33 @@ public class InstallManager
         }
         catch (Exception ex)
         {
-            _logger.Error($"An error occurred: {ex.Message}");
+            _logger.Error(ex, "Failed to check write permissions for {Path}", folderPath);
             return false;
         }
     }
 
-    public async Task StopProcessing()
+    public Task StopProcessing()
     {
+        if (CurrentInstall == null)
+        {
+            _logger.Warning("StopProcessing: no active install to cancel");
+            return Task.CompletedTask;
+        }
+
         CurrentInstall.Status = ActionStatus.Cancelling;
         InstallationStatusChanged?.Invoke(CurrentInstall);
 
-        await _cancellationTokenSource.CancelAsync();
-        await HandleInstallationStoppage("Cancel install");
+        _userCancelled = true;
+        _pauseEvent.Set();
+        RequestStoppage("Cancel install");
+        return Task.CompletedTask;
+    }
+
+    private void RequestStoppage(string errorMessage)
+    {
+        Interlocked.CompareExchange(ref _stoppageReason, errorMessage, null);
+        if (!_cancellationTokenSource.IsCancellationRequested)
+            _cancellationTokenSource.Cancel();
     }
 
     private bool IsInstallationInProgress()

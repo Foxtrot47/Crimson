@@ -59,7 +59,8 @@
                 <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Accounts" />
 
                 <toolkit:SettingsCard
-                    Description="This will log you out from current account and restart the launcher"
+                    Command="{x:Bind ViewModel.LogoutCommand}"
+                    Description="This will log you out from the current account and return to the sign-in screen"
                     Header="Logout"
                     IsClickEnabled="True" />
 

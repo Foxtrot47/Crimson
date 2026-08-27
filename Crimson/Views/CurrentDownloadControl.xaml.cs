@@ -3,16 +3,28 @@ using Crimson.Core;
 using Crimson.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Serilog;
 
 namespace Crimson.Views;
 
+public sealed class DownloadSummary
+{
+    public bool HasActiveDownload { get; init; }
+    public int ProgressPercentage { get; init; }
+    public string ToolTip { get; init; } = "No downloads in queue";
+}
+
 public sealed partial class CurrentDownloadControl : UserControl
 {
+    public event Action<DownloadSummary>? SummaryChanged;
+
+    private readonly ILogger _log;
     private readonly LibraryManager _libraryManager;
     private readonly InstallManager _installManager;
     public CurrentDownloadControl()
     {
         InitializeComponent();
+        _log = App.GetService<ILogger>();
         _installManager = App.GetService<InstallManager>();
         _libraryManager = App.GetService<LibraryManager>();
 
@@ -23,20 +35,22 @@ public sealed partial class CurrentDownloadControl : UserControl
 
     }
 
+    public void PublishCurrentSummary() => HandleInstallationStatusChanged(_installManager.CurrentInstall);
+
     // Handing Installtion State Change
     // This function is never run on UI Thread
     // So always make sure to use Dispatcher Queue to update UI thread
-    private void HandleInstallationStatusChanged(InstallItem installItem)
+    private void HandleInstallationStatusChanged(InstallItem? installItem)
     {
         try
         {
-            var game = installItem;
-            if (game == null)
+            if (installItem == null)
             {
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     EmptyDownloadText.Visibility = Visibility.Visible;
                     DownloadStatus.Visibility = Visibility.Collapsed;
+                    SummaryChanged?.Invoke(new DownloadSummary());
                 });
                 return;
             }
@@ -47,11 +61,12 @@ public sealed partial class CurrentDownloadControl : UserControl
             DispatcherQueue.TryEnqueue(() =>
             {
                 UpdateStatus(installItem, gameInfo.AppTitle);
+                RaiseSummary(installItem, gameInfo.AppTitle);
             });
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex.ToString());
+            _log.Error(ex, "Failed to update download status");
         }
     }
 
@@ -102,7 +117,7 @@ public sealed partial class CurrentDownloadControl : UserControl
         }
     }
 
-    private void InstallationProgressUpdate(InstallItem installItem)
+    private void InstallationProgressUpdate(InstallItem? installItem)
     {
         try
         {
@@ -115,15 +130,44 @@ public sealed partial class CurrentDownloadControl : UserControl
                 DownloadedSize.Text =
                     $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
                 DownloadSpeed.Text = $@"{installItem.DownloadSpeedRawMiB} MB/s";
+                RaiseSummary(installItem, GameName.Text);
             });
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex.ToString());
+            _log.Error(ex, "Failed to update download progress");
         }
     }
 
-    private static string GetActionLabel(ActionType action) => action switch
+    private void RaiseSummary(InstallItem installItem, string title)
+    {
+        var percentage = Math.Clamp(installItem.ProgressPercentage, 0, 100);
+        var label = GetActionLabel(installItem.Action);
+
+        var summary = installItem.Status switch
+        {
+            ActionStatus.Processing => new DownloadSummary
+            {
+                HasActiveDownload = true,
+                ProgressPercentage = percentage,
+                ToolTip = $"{title} - {percentage}%"
+            },
+            ActionStatus.Paused => new DownloadSummary
+            {
+                HasActiveDownload = true,
+                ProgressPercentage = percentage,
+                ToolTip = $"{title} - paused at {percentage}%"
+            },
+            ActionStatus.Success => new DownloadSummary { ToolTip = $"{title} - {label.ToLowerInvariant()} completed" },
+            ActionStatus.Failed => new DownloadSummary { ToolTip = $"{title} - {label.ToLowerInvariant()} failed" },
+            ActionStatus.Cancelled => new DownloadSummary { ToolTip = $"{title} - {label.ToLowerInvariant()} cancelled" },
+            _ => new DownloadSummary { ToolTip = title }
+        };
+
+        SummaryChanged?.Invoke(summary);
+    }
+
+    public static string GetActionLabel(ActionType action) => action switch
     {
         ActionType.Install => "Installation",
         ActionType.Update => "Update",

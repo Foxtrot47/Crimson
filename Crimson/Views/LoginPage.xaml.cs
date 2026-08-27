@@ -1,7 +1,8 @@
 ﻿using System;
-using System.IO;
 using System.Text.Json;
 using Crimson.Core;
+using Crimson.Utils;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using Serilog;
@@ -20,6 +21,7 @@ public sealed partial class LoginPage : Page
     private readonly ILogger _log;
     private readonly EpicLoginMessageGate _loginMessageGate = new();
     private const string EpicGamesLauncherVersion = "11.0.1-14907503+++Portal+Release-Live";
+    private WebView2? _loginWebView;
 
     public LoginPage()
     {
@@ -28,11 +30,6 @@ public sealed partial class LoginPage : Page
     }
     private async void WebView_NavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
     {
-        // Injected on every navigation, and navigation is never cancelled. The login flow
-        // legitimately visits captcha and third-party SSO origins, and ExecuteScriptAsync here
-        // targets the *currently loaded* document rather than e.Uri, so filtering on e.Uri would
-        // skip the Epic document that actually needs the shim. Containment is enforced where the
-        // secret arrives instead: EpicLoginMessageGate checks the origin of the inbound message.
         const string jsCode = """
             window.ue = {
                 signinprompt: {
@@ -49,7 +46,10 @@ public sealed partial class LoginPage : Page
             };
             """;
 
-        await LoginWebView.ExecuteScriptAsync(jsCode);
+        if (_loginWebView is null)
+            return;
+
+        await _loginWebView.ExecuteScriptAsync(jsCode);
     }
     private async void WebView_WebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
@@ -64,23 +64,47 @@ public sealed partial class LoginPage : Page
     }
     public async void InitWebView()
     {
-        _log.Information("InitWebView: WebView Initializing}");
-        var userDataFolder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Crimson");
-        Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", userDataFolder);
-        await LoginWebView.EnsureCoreWebView2Async();
-        LoginWebView.CoreWebView2.Settings.UserAgent = $"EpicGamesLauncher/{EpicGamesLauncherVersion}";
-        LoginWebView.NavigationStarting += WebView_NavigationStarting;
-        LoginWebView.WebMessageReceived += WebView_WebMessageReceived;
+        _log.Information("InitWebView: WebView Initializing");
+        try
+        {
+            CloseWebView();
 
-        var targetUri = new Uri("https://www.epicgames.com/id/login");
-        LoginWebView.Source = targetUri;
+            var webView = new WebView2();
+            WebViewHost.Children.Add(webView);
+            _loginWebView = webView;
+
+            await WebViewEnvironmentFactory.WaitForLoadedAsync(webView);
+
+            var environment = await WebViewEnvironmentFactory.CreateAsync();
+            await webView.EnsureCoreWebView2Async(environment);
+            if (webView.CoreWebView2 is null)
+            {
+                _log.Error("InitWebView: CoreWebView2 was still null after initialisation");
+                return;
+            }
+
+            webView.CoreWebView2.Settings.UserAgent = $"EpicGamesLauncher/{EpicGamesLauncherVersion}";
+
+            webView.CoreWebView2.CookieManager.DeleteAllCookies();
+            webView.NavigationStarting += WebView_NavigationStarting;
+            webView.WebMessageReceived += WebView_WebMessageReceived;
+
+            webView.Source = new Uri("https://www.epicgames.com/id/login");
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "InitWebView: failed to initialise the login WebView");
+        }
     }
     public void CloseWebView()
     {
-        LoginWebView.NavigationStarting -= WebView_NavigationStarting;
-        LoginWebView.WebMessageReceived -= WebView_WebMessageReceived;
-        LoginWebView.Close();
+        if (_loginWebView is null)
+            return;
+
+        _loginWebView.NavigationStarting -= WebView_NavigationStarting;
+        _loginWebView.WebMessageReceived -= WebView_WebMessageReceived;
+        _loginWebView.Close();
+        WebViewHost.Children.Remove(_loginWebView);
+        _loginWebView = null;
     }
 }

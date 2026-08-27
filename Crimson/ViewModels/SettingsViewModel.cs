@@ -9,6 +9,7 @@ namespace Crimson.ViewModels
     public partial class SettingsViewModel : ObservableObject
     {
         private readonly SettingsManager _settingsManager;
+        private readonly AuthManager _authManager;
 
         public bool MicaEnabled
         {
@@ -37,9 +38,16 @@ namespace Crimson.ViewModels
         [ObservableProperty]
         private bool _advancedSettingsExpanded;
 
-        public SettingsViewModel(SettingsManager settingsManager)
+        public SettingsViewModel(SettingsManager settingsManager, AuthManager authManager)
         {
             _settingsManager = settingsManager;
+            _authManager = authManager;
+        }
+
+        [RelayCommand]
+        private async Task Logout()
+        {
+            await _authManager.Logout();
         }
 
         private async Task SaveSettingsAsync()

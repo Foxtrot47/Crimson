@@ -4,16 +4,17 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Crimson.Core;
+using Crimson.Interfaces;
 using Crimson.Models;
 using Crimson.Views;
 using Serilog;
 
 namespace Crimson.ViewModels;
 
-public partial class LibraryViewModel : ObservableObject
+public partial class LibraryViewModel : ObservableObject, INavigationAware
 {
     [ObservableProperty]
-    private static List<LibraryItem> s_gamesList;
+    private List<LibraryItem> _gamesList;
 
     [ObservableProperty]
     private bool _loadingFinished = false;
@@ -35,18 +36,22 @@ public partial class LibraryViewModel : ObservableObject
     {
         _log = App.GetService<ILogger>();
         _libraryManager = App.GetService<LibraryManager>();
-        _log.Information("LibraryPage: Loading Page");
-
-
-        Task.Run(async () =>
-        {
-            var games = await _libraryManager.GetLibraryData();
-            UpdateLibrary(games);
-        });
-
-        _libraryManager.LibraryUpdated += UpdateLibrary;
-        _log.Information("LibraryPage: Loading finished");
         _dispatcherQueue = Windows.System.DispatcherQueue.GetForCurrentThread();
+    }
+
+    public async Task OnNavigatedTo(object parameter)
+    {
+        _log.Information("LibraryPage: Loading Page");
+        _libraryManager.LibraryUpdated += UpdateLibrary;
+
+        var games = await _libraryManager.GetLibraryData();
+        UpdateLibrary(games);
+        _log.Information("LibraryPage: Loading finished");
+    }
+
+    public void OnNavigatedFrom()
+    {
+        _libraryManager.LibraryUpdated -= UpdateLibrary;
     }
 
     private void UpdateLibrary(IEnumerable<Game> games)
@@ -58,7 +63,7 @@ public partial class LibraryViewModel : ObservableObject
 
             _dispatcherQueue.TryEnqueue(() =>
             {
-                S_gamesList = new List<LibraryItem>();
+                GamesList = new List<LibraryItem>();
                 foreach (var game in games)
                 {
                     if (game.IsDlc()) continue;
@@ -69,10 +74,10 @@ public partial class LibraryViewModel : ObservableObject
                         //InstallState = game.State,
                         Image = Util.GetBitmapImage(game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
                     };
-                    _log.Information($"UpdateLibrary: Adding {item.Name} to Library");
-                    S_gamesList.Add(item);
+                    _log.Debug("UpdateLibrary: Adding {AppName} to library", item.Name);
+                    GamesList.Add(item);
                 }
-                S_gamesList = S_gamesList.OrderBy(item => item.Title).ToList();
+                GamesList = GamesList.OrderBy(item => item.Title).ToList();
                 ShowLoadingScreen = false;
                 ShowAppGrid = true;
             });
@@ -80,7 +85,7 @@ public partial class LibraryViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            _log.Error(ex.ToString());
+            _log.Error(ex, "UpdateLibrary failed");
         }
     }
 }

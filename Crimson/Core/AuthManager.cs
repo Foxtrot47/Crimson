@@ -241,8 +241,8 @@ public class AuthManager
     public async Task Logout()
     {
         _log.Information("Logout: Logging out");
-        _authenticationStatus = AuthenticationStatus.LoggedOut;
         await _storage.ClearUserData();
+        _authenticationStatus = AuthenticationStatus.LoggedOut;
         OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
     }
 

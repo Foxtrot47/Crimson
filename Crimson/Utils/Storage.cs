@@ -22,8 +22,8 @@ namespace Crimson.Utils
         private static readonly string LocalAppStateFile = ResolveAppDataPath("localstate.json");
         private static readonly string ManifestPath = ResolveAppDataPath("manifests");
 
-        private Dictionary<string, Game> _gameMetaDataDictionary;
-        private Dictionary<string, LocalAppState> _localAppStateDictionary;
+        private Dictionary<string, Game> _gameMetaDataDictionary = new();
+        private Dictionary<string, LocalAppState> _localAppStateDictionary = new();
         private ILogger _logger;
 
         public Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
@@ -45,7 +45,7 @@ namespace Crimson.Utils
 
                 var metaDataDictionary = new Dictionary<string, Game>();
 
-                Parallel.ForEach(Directory.EnumerateFiles(MetaDataDirectory),
+                Parallel.ForEach(Directory.EnumerateFiles(MetaDataDirectory, "*.json"),
                     new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, (file) =>
                     {
                         try
@@ -62,12 +62,10 @@ namespace Crimson.Utils
                         }
                         catch (Exception ex)
                         {
-                            // Log detailed exception information
-                            Log.Error($"Error processing file {file}. Exception: {ex}");
+                            _logger.Error(ex, "Error processing metadata file {File}", file);
                         }
                     });
 
-                // Outside the parallel loop, assign the dictionary to the shared field
                 _gameMetaDataDictionary = metaDataDictionary;
 
                 // Load installed games list
@@ -80,14 +78,15 @@ namespace Crimson.Utils
                     var jsonString = File.ReadAllText(LocalAppStateFile);
                     if (jsonString != null && jsonString != "")
                         _localAppStateDictionary =
-                            JsonSerializer.Deserialize<Dictionary<string, LocalAppState>>(jsonString);
+                            JsonSerializer.Deserialize<Dictionary<string, LocalAppState>>(jsonString)
+                            ?? new Dictionary<string, LocalAppState>();
                     else
                         _localAppStateDictionary = new Dictionary<string, LocalAppState>();
                 }
             }
             catch (Exception ex)
             {
-                Log.Error(ex.ToString());
+                _logger.Error(ex, "Failed to initialize storage");
             }
         }
 
@@ -118,17 +117,20 @@ namespace Crimson.Utils
             streamWriter.Close();
         }
 
-        public async Task ClearUserData()
+        public Task ClearUserData()
         {
-            try
-            {
-                if (File.Exists(UserDataFile))
-                    File.Delete(UserDataFile);
-            }
-            catch (Exception ex)
-            {
-                _logger.Error(ex, "Failed to clear user data file");
-            }
+            if (File.Exists(UserDataFile))
+                File.Delete(UserDataFile);
+
+            if (File.Exists(GameAssetsFile))
+                File.Delete(GameAssetsFile);
+
+            if (Directory.Exists(MetaDataDirectory))
+                Directory.Delete(MetaDataDirectory, true);
+            Directory.CreateDirectory(MetaDataDirectory);
+
+            _gameMetaDataDictionary.Clear();
+            return Task.CompletedTask;
         }
 
         public async Task<IEnumerable<Asset>> GetGameAssetsData()
@@ -149,7 +151,7 @@ namespace Crimson.Utils
             }
             catch (Exception ex)
             {
-                Log.Error(ex.ToString());
+                _logger.Error(ex, "Failed to load game assets");
                 return null;
             }
         }
@@ -168,7 +170,7 @@ namespace Crimson.Utils
             }
             catch (Exception ex)
             {
-                Log.Error(ex.ToString());
+                _logger.Error(ex, "Failed to save game assets");
             }
         }
 
