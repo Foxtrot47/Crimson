@@ -13,13 +13,7 @@ using Windows.Graphics.Imaging;
 
 namespace Crimson.Core;
 
-public enum GameShortcutLocation
-{
-    Desktop,
-    StartMenu
-}
-
-public sealed class GameShortcutManager
+public sealed class GameShortcutManager : IGameShortcutManager
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _log;

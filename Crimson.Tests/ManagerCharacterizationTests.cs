@@ -186,8 +186,13 @@ public sealed class ManagerCharacterizationTests
         var storage = StorageWith(games);
         var library = LibraryManagerWith(storage);
         var downloads = new DownloadManager(_logger, new HttpClient());
-        var shortcuts = new GameShortcutManager(new HttpClient(), _logger);
-        return new InstallManager(_logger, library, new UnusedStoreRepository(), storage, downloads, shortcuts);
+        return new InstallManager(
+            _logger,
+            library,
+            new UnusedStoreRepository(),
+            storage,
+            downloads,
+            new UnusedGameShortcutManager());
     }
 
     private Storage StorageWith(params Game[] games)
@@ -249,6 +254,16 @@ public sealed class ManagerCharacterizationTests
 
     private static void SetPrivateField(object instance, string name, object value) =>
         instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(instance, value);
+
+    private sealed class UnusedGameShortcutManager : IGameShortcutManager
+    {
+        public Task CreateAsync(Game game, GameShortcutLocation location) =>
+            throw new NotSupportedException();
+
+        public void Remove(Game game)
+        {
+        }
+    }
 
     private sealed class UnusedStoreRepository : IStoreRepository
     {

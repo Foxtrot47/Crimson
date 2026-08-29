@@ -26,7 +26,7 @@ public class InstallManager
     private readonly ILogger _logger;
     private readonly LibraryManager _libraryManager;
     private readonly DownloadManager _downloadManager;
-    private readonly GameShortcutManager _shortcutManager;
+    private readonly IGameShortcutManager _shortcutManager;
     private readonly IStoreRepository _repository;
     private readonly Storage _storage;
 
@@ -59,7 +59,7 @@ public class InstallManager
     public InstallItem? CurrentInstall { get; private set; }
 
     public InstallManager(ILogger logger, LibraryManager libraryManager, IStoreRepository repository, Storage storage,
-        DownloadManager downloadManager, GameShortcutManager shortcutManager)
+        DownloadManager downloadManager, IGameShortcutManager shortcutManager)
     {
         _logger = logger;
         _libraryManager = libraryManager;

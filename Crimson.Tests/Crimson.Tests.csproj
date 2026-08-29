@@ -30,6 +30,7 @@
     <Compile Include="..\Crimson\Core\DownloadManager.cs" Link="Production\Core\DownloadManager.cs" />
     <Compile Include="..\Crimson\Core\GameLaunchRequest.cs" Link="Production\Core\GameLaunchRequest.cs" />
     <Compile Include="..\Crimson\Core\GameShortcutManager.cs" Link="Production\Core\GameShortcutManager.cs" />
+    <Compile Include="..\Crimson\Core\IGameShortcutManager.cs" Link="Production\Core\IGameShortcutManager.cs" />
     <Compile Include="..\Crimson\Core\GameShortcutNaming.cs" Link="Production\Core\GameShortcutNaming.cs" />
     <Compile Include="..\Crimson\Core\InstallManager.cs" Link="Production\Core\InstallManager.cs" />
     <Compile Include="..\Crimson\Core\LibraryManager.cs" Link="Production\Core\LibraryManager.cs" />
