@@ -24,6 +24,8 @@ public class InstallItem(string appName, ActionType action, string location)
     public DateTime CreatedTime { get; set; }
     public ActionStatus Status { get; set; } = ActionStatus.Pending;
     public string StatusMessage { get; set; }
+    public bool CreateDesktopShortcut { get; set; }
+    public bool CreateStartMenuShortcut { get; set; }
 }
 
 public enum ActionType

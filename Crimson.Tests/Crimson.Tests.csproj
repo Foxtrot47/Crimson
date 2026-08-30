@@ -28,6 +28,9 @@
   <ItemGroup>
     <Compile Include="..\Crimson\Core\AuthManager.cs" Link="Production\Core\AuthManager.cs" />
     <Compile Include="..\Crimson\Core\DownloadManager.cs" Link="Production\Core\DownloadManager.cs" />
+    <Compile Include="..\Crimson\Core\GameLaunchRequest.cs" Link="Production\Core\GameLaunchRequest.cs" />
+    <Compile Include="..\Crimson\Core\GameShortcutManager.cs" Link="Production\Core\GameShortcutManager.cs" />
+    <Compile Include="..\Crimson\Core\GameShortcutNaming.cs" Link="Production\Core\GameShortcutNaming.cs" />
     <Compile Include="..\Crimson\Core\InstallManager.cs" Link="Production\Core\InstallManager.cs" />
     <Compile Include="..\Crimson\Core\LibraryManager.cs" Link="Production\Core\LibraryManager.cs" />
     <Compile Include="..\Crimson\Core\SecurityPolicy.cs" Link="Production\Core\SecurityPolicy.cs" />
