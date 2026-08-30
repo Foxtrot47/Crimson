@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Crimson.Core;
@@ -122,6 +124,43 @@ public sealed class ManagerCharacterizationTests
         Assert.True(cancellation.IsCancellationRequested);
         Assert.Same(install, manager.CurrentInstall);
         Assert.Equal(ActionStatus.Cancelling, install.Status);
+    }
+
+    [Fact]
+    public void InstallManager_QueuesIoTasksFromConcurrentDownloads()
+    {
+        const int taskCount = 2_000;
+        var manager = InstallManagerWith();
+        SetCurrentInstall(manager, new InstallItem("active", ActionType.Install, Path.GetTempPath()));
+        var manifests = GetPrivateField<ConcurrentDictionary<BigInteger, List<FileManifest>>>(
+            manager,
+            "_chunkToFileManifestsDictionary");
+        var createIoTasks = typeof(InstallManager).GetMethod(
+            "CreateIoTasksForChunk",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var downloadTasks = Enumerable.Range(1, taskCount).Select(index =>
+        {
+            var part = new ChunkPart([index, 0, 0, 0], size: 1);
+            var manifest = new FileManifest { Filename = $"file-{index}.bin" };
+            manifest.ChunkParts.Add(part);
+            manifests[part.GuidNum] = [manifest];
+            return new DownloadTask
+            {
+                Url = string.Empty,
+                GuidNum = part.GuidNum,
+                TempPath = $"chunk-{index}",
+                ChunkInfo = null!
+            };
+        }).ToList();
+
+        var failure = Record.Exception(() => Parallel.ForEach(
+            downloadTasks,
+            new ParallelOptions { MaxDegreeOfParallelism = 12 },
+            task => createIoTasks.Invoke(manager, [task])));
+
+        Assert.Null(failure);
+        var ioQueue = GetPrivateField<BlockingCollection<IoTask>>(manager, "_ioQueue");
+        Assert.Equal(taskCount, ioQueue.Count);
     }
 
     [Fact]

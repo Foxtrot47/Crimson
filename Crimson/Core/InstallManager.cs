@@ -36,7 +36,7 @@ public class InstallManager
     private readonly ConcurrentDictionary<string, object> _fileLocksConcurrentDictionary = new();
     private ConcurrentDictionary<BigInteger, List<FileManifest>> _chunkToFileManifestsDictionary = new();
     private ConcurrentDictionary<BigInteger, int> _chunkPartReferences = new();
-    private readonly HashSet<string> _ioQueueTaskSet = [];
+    private readonly ConcurrentDictionary<string, byte> _ioQueueTaskSet = new();
     private readonly JsonSerializerOptions _jsonSerializerOptions;
 
     private readonly object _installItemLock = new();
@@ -389,11 +389,8 @@ public class InstallManager
 
                 // mandatory check to prevent duplicate io tasks
                 var ioTaskHashString = $"{fileManifest.Filename}.{part.GuidNum}.{part.FileOffset}";
-                if (_ioQueueTaskSet.Contains(ioTaskHashString))
-                {
+                if (!_ioQueueTaskSet.TryAdd(ioTaskHashString, 0))
                     continue;
-                }
-                _ioQueueTaskSet.Add(ioTaskHashString);
 
                 var task = new IoTask()
                 {
