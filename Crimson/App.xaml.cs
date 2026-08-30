@@ -132,6 +132,7 @@ namespace Crimson
                 services.AddSingleton<IGameShortcutManager>(provider => new GameShortcutManager(
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
                     provider.GetRequiredService<ILogger>()));
+                services.AddSingleton<IInstallPermissionChecker, FileSystemInstallPermissionChecker>();
                 services.AddSingleton<InstallManager>();
                 services.AddSingleton<DownloadManager>(provider => new DownloadManager(
                     provider.GetRequiredService<ILogger>(),

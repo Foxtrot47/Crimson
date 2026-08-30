@@ -6,8 +6,6 @@ using System.IO;
 using System.IO.Pipes;
 using System.Linq;
 using System.Numerics;
-using System.Security.AccessControl;
-using System.Security.Principal;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,6 +25,7 @@ public class InstallManager
     private readonly LibraryManager _libraryManager;
     private readonly DownloadManager _downloadManager;
     private readonly IGameShortcutManager _shortcutManager;
+    private readonly IInstallPermissionChecker _permissionChecker;
     private readonly IStoreRepository _repository;
     private readonly Storage _storage;
 
@@ -59,13 +58,20 @@ public class InstallManager
 
     public InstallItem? CurrentInstall { get; private set; }
 
-    public InstallManager(ILogger logger, LibraryManager libraryManager, IStoreRepository repository, Storage storage,
-        DownloadManager downloadManager, IGameShortcutManager shortcutManager)
+    public InstallManager(
+        ILogger logger,
+        LibraryManager libraryManager,
+        IStoreRepository repository,
+        Storage storage,
+        DownloadManager downloadManager,
+        IGameShortcutManager shortcutManager,
+        IInstallPermissionChecker permissionChecker)
     {
         _logger = logger;
         _libraryManager = libraryManager;
         _downloadManager = downloadManager;
         _shortcutManager = shortcutManager;
+        _permissionChecker = permissionChecker;
         CurrentInstall = null;
         _repository = repository;
         _storage = storage;
@@ -200,12 +206,13 @@ public class InstallManager
                 _installQueue.RemoveAt(0);
             }
 
-            if (CurrentInstall == null) return;
+            var currentInstall = CurrentInstall;
+            if (currentInstall == null) return;
             _logger.Information("ProcessNext: Processing {Action} of {AppName}. Game Location {Location} ",
-                CurrentInstall.Action, CurrentInstall.AppName, CurrentInstall.Location);
+                currentInstall.Action, currentInstall.AppName, currentInstall.Location);
 
-            var manifestData = await GetManifestDataWithCaching(CurrentInstall.AppName);
-            var gameData = _libraryManager.GetGameInfo(CurrentInstall.AppName);
+            var manifestData = await GetManifestDataWithCaching(currentInstall.AppName);
+            var gameData = _libraryManager.GetGameInfo(currentInstall.AppName);
 
             _logger.Information("ProcessNext: Parsing game manifest");
             var data = Manifest.ReadAll(manifestData);
@@ -213,21 +220,28 @@ public class InstallManager
             // TODO Handle stats if game is installed
 
 
-            if (CurrentInstall.Action == ActionType.Install)
+            if (currentInstall.Action == ActionType.Install)
             {
                 // create CurrentInstall.folder if it doesn't exist
-                if (!Directory.Exists(CurrentInstall.Location))
+                if (!Directory.Exists(currentInstall.Location))
                 {
-                    Directory.CreateDirectory(CurrentInstall.Location);
-                    _logger.Debug("Folder created at: {location}", CurrentInstall.Location);
+                    Directory.CreateDirectory(currentInstall.Location);
+                    _logger.Debug("Folder created at: {location}", currentInstall.Location);
                 }
             }
 
-            if (!HasFolderWritePermissions(CurrentInstall.Location))
+            var permission = _permissionChecker.Check(currentInstall.Location);
+            if (!permission.CanWrite)
+            {
+                _logger.Warning(
+                    "Install location write check failed with {ErrorType}; cleanup result {CleanupErrorType}",
+                    permission.ErrorType,
+                    permission.CleanupErrorType);
                 throw new UnauthorizedAccessException("No write permissions to install location");
+            }
 
             ResetQueues();
-            await PrepareTasksForAction(CurrentInstall, gameData, data, downloadedChunks);
+            await PrepareTasksForAction(currentInstall, gameData, data, downloadedChunks);
         }
         catch (Exception ex)
         {
@@ -236,19 +250,23 @@ public class InstallManager
         }
     }
 
-    private async Task PrepareTasksForAction(InstallItem install, Game game, Manifest data, List<BigInteger> downloadedChunks)
+    private async Task PrepareTasksForAction(
+        InstallItem install,
+        Game gameData,
+        Manifest data,
+        List<BigInteger> downloadedChunks)
     {
         switch (install.Action)
         {
             case ActionType.Install:
-                await _downloadManager.InitializeMirrors(game.BaseUrls);
+                await _downloadManager.InitializeMirrors(gameData.BaseUrls);
                 GetChunksToDownload(data, downloadedChunks);
                 break;
             case ActionType.Update:
-                await PrepareUpdateTasks(game, data);
+                await PrepareUpdateTasks(gameData, data);
                 break;
             case ActionType.Repair:
-                await PrepareRepairTasks(game, data);
+                await PrepareRepairTasks(gameData, data);
                 break;
             case ActionType.Uninstall:
                 PrepareUninstallTasks(install, data);
@@ -1410,41 +1428,6 @@ public class InstallManager
         }
         result.Reverse();
         return result;
-    }
-
-    private bool HasFolderWritePermissions(string folderPath)
-    {
-        try
-        {
-            // Create a DirectoryInfo object representing the specified directory.
-            var directoryInfo = new DirectoryInfo(folderPath);
-
-            // Get the access control list for the folder
-            var directorySecurity = directoryInfo.GetAccessControl();
-
-            // Get the access rules for the current user and their groups
-            var currentUser = WindowsIdentity.GetCurrent();
-            var principal = new WindowsPrincipal(currentUser);
-
-            var hasWritePermissions = directorySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
-                .Cast<FileSystemAccessRule>()
-                .Any(rule =>
-                    (currentUser.User.Equals(rule.IdentityReference) ||
-                     principal.IsInRole((SecurityIdentifier)rule.IdentityReference)) &&
-                    rule.AccessControlType == AccessControlType.Allow &&
-                    (rule.FileSystemRights & FileSystemRights.Write) == FileSystemRights.Write);
-
-            return hasWritePermissions;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Failed to check write permissions for {Path}", folderPath);
-            return false;
-        }
     }
 
     public Task StopProcessing()
