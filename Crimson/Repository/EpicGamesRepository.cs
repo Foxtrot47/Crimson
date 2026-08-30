@@ -309,71 +309,20 @@ namespace Crimson.Repository
                 using var response = await _apiClient.SendAsync(request);
                 if (!response.IsSuccessStatusCode)
                 {
-                    _log.Error(
-                        "GetGameManifest metadata failed with HTTP {StatusCode} {ReasonPhrase}",
-                        (int)response.StatusCode,
-                        response.ReasonPhrase);
+                    LogManifestMetadataFailure(response);
                     return null;
                 }
 
-                var result = await response.Content.ReadAsStringAsync();
-                var data = JsonSerializer.Deserialize<ManifestUrlData>(result);
-                if (data?.Elements == null || data.Elements.Count == 0 || data.Elements[0].Manifests == null)
-                {
-                    _log.Error("GetGameManifest returned invalid manifest metadata");
+                var manifest = await ReadManifestEntryAsync(response, appName);
+                if (manifest is null)
                     return null;
-                }
 
-                if (data.Elements.Count > 1)
-                    _log.Warning("GetGameManifest returned multiple manifest entries for {AppName}", appName);
-
-                var manifestUrls = new List<string>();
-                var baseUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var entry in data.Elements[0].Manifests)
-                {
-                    // Skip mirrors on hosts outside the allowlist instead of throwing.
-                    // Epic rotates CDNs, and one unrecognised host used to abort the whole
-                    // manifest-URL resolution and leave the install with no mirrors at all.
-                    if (!Uri.TryCreate(entry.Uri, UriKind.Absolute, out var contentUri) ||
-                        !EpicEndpointPolicy.IsAllowedContentUri(contentUri))
-                    {
-                        _log.Warning(
-                            "Rejected unapproved Epic CDN host {Host}",
-                            contentUri?.Host ?? "invalid");
-                        continue;
-                    }
-
-                    var builder = new UriBuilder(contentUri);
-                    if (entry.QueryParams is { Count: > 0 })
-                    {
-                        // Emitted verbatim. These carry the CDN signature and Epic already
-                        // delivers them encoded; re-escaping turns %2f into %252f and the CDN
-                        // rejects the request. legendary does the same (core.py, queryParams).
-                        builder.Query = string.Join(
-                            "&",
-                            entry.QueryParams.Select(parameter =>
-                                $"{parameter.Name}={parameter.Value}"));
-                    }
-
-                    manifestUrls.Add(builder.Uri.AbsoluteUri);
-                    var lastSlash = contentUri.AbsolutePath.LastIndexOf('/');
-                    if (lastSlash > 0)
-                    {
-                        var baseBuilder = new UriBuilder(contentUri)
-                        {
-                            Path = contentUri.AbsolutePath[..lastSlash],
-                            Query = string.Empty,
-                            Fragment = string.Empty
-                        };
-                        baseUrls.Add(baseBuilder.Uri.AbsoluteUri.TrimEnd('/'));
-                    }
-                }
-
+                var (manifestUrls, baseUrls) = BuildManifestUrls(manifest.Manifests);
                 return new GetManifestUrlData
                 {
-                    BaseUrls = baseUrls.ToList(),
+                    BaseUrls = baseUrls,
                     ManifestUrls = manifestUrls,
-                    ManifestHash = data.Elements[0].Hash
+                    ManifestHash = manifest.Hash
                 };
             }
             catch (Exception ex)
@@ -381,6 +330,99 @@ namespace Crimson.Repository
                 _log.Error("GetManifestUrls failed with {ErrorType}", ex.GetType().Name);
                 throw;
             }
+        }
+
+        private void LogManifestMetadataFailure(HttpResponseMessage response)
+        {
+            response.Headers.TryGetValues("x-epic-error-name", out var errorNames);
+            _log.Error(
+                "GetGameManifest metadata failed with HTTP {StatusCode} {ReasonPhrase}: {EpicError}",
+                (int)response.StatusCode,
+                response.ReasonPhrase,
+                errorNames?.FirstOrDefault() ?? "unknown");
+        }
+
+        private async Task<Element?> ReadManifestEntryAsync(HttpResponseMessage response, string appName)
+        {
+            var result = await response.Content.ReadAsStringAsync();
+            var data = JsonSerializer.Deserialize<ManifestUrlData>(result);
+            if (data?.Elements is not { Count: > 0 } || data.Elements[0].Manifests is null)
+            {
+                _log.Error("GetGameManifest returned invalid manifest metadata");
+                return null;
+            }
+
+            if (data.Elements.Count > 1)
+                _log.Warning("GetGameManifest returned multiple manifest entries for {AppName}", appName);
+            return data.Elements[0];
+        }
+
+        private (List<string> ManifestUrls, List<string> BaseUrls) BuildManifestUrls(
+            IEnumerable<ManifestList> manifests)
+        {
+            var manifestUrls = new List<string>();
+            var baseUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var manifest in manifests)
+            {
+                if (!TryBuildManifestUrl(manifest, out var manifestUrl, out var baseUrl))
+                    continue;
+
+                manifestUrls.Add(manifestUrl);
+                if (baseUrl is not null)
+                    baseUrls.Add(baseUrl);
+            }
+
+            return (manifestUrls, baseUrls.ToList());
+        }
+
+        private bool TryBuildManifestUrl(
+            ManifestList manifest,
+            out string manifestUrl,
+            out string? baseUrl)
+        {
+            manifestUrl = string.Empty;
+            baseUrl = null;
+            if (!Uri.TryCreate(manifest.Uri, UriKind.Absolute, out var contentUri) ||
+                !EpicEndpointPolicy.IsAllowedContentUri(contentUri))
+            {
+                _log.Warning(
+                    "Rejected unapproved Epic CDN host {Host}",
+                    contentUri?.Host ?? "invalid");
+                return false;
+            }
+
+            var builder = new UriBuilder(contentUri);
+            ApplyManifestQuery(builder, manifest.QueryParams);
+            manifestUrl = builder.Uri.AbsoluteUri;
+            baseUrl = GetManifestBaseUrl(contentUri);
+            return true;
+        }
+
+        private static void ApplyManifestQuery(UriBuilder builder, IReadOnlyCollection<QueryParam>? queryParams)
+        {
+            if (queryParams is not { Count: > 0 })
+                return;
+
+            // Epic supplies pre-encoded CDN signatures. Re-escaping them changes %2f to
+            // %252f and invalidates the request.
+            builder.Query = string.Join(
+                "&",
+                queryParams.Select(parameter => $"{parameter.Name}={parameter.Value}"));
+        }
+
+        private static string? GetManifestBaseUrl(Uri contentUri)
+        {
+            var lastSlash = contentUri.AbsolutePath.LastIndexOf('/');
+            if (lastSlash <= 0)
+                return null;
+
+            var builder = new UriBuilder(contentUri)
+            {
+                Path = contentUri.AbsolutePath[..lastSlash],
+                Query = string.Empty,
+                Fragment = string.Empty
+            };
+            return builder.Uri.AbsoluteUri.TrimEnd('/');
         }
 
         private static HttpRequestMessage CreateAuthenticatedRequest(
