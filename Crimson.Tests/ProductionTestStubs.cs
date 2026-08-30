@@ -1,14 +1,5 @@
 using System.Security.Cryptography;
 
-namespace Crimson
-{
-    public static class App
-    {
-        public static T GetService<T>() => throw new InvalidOperationException(
-            "App services are unavailable in headless characterization tests.");
-    }
-}
-
 namespace Crimson.Core
 {
     public static class Util

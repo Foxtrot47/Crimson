@@ -88,12 +88,15 @@ public partial class AppInstallDialogViewModel : ObservableObject
     public event Func<Task<string>> FolderPickerRequested;
 
     public AppInstallDialogViewModel(
-        ILogger logger, InstallManager installManager, LibraryManager libraryManager)
+        ILogger logger,
+        InstallManager installManager,
+        LibraryManager libraryManager,
+        Storage storage)
     {
         _logger = logger;
         _installManager = installManager;
         _libraryManager = libraryManager;
-        _storageService = new Storage();
+        _storageService = storage;
         _dispatcherQueue = Windows.System.DispatcherQueue.GetForCurrentThread();
     }
 
