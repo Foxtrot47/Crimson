@@ -13,6 +13,7 @@
         <EnableMsixTooling>true</EnableMsixTooling>
 		<UseRidGraph>true</UseRidGraph>
         <Nullable>enable</Nullable>
+        <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
 
         <!--
           Packaging is opt-in so the default build stays unpackaged and F5 keeps working.
