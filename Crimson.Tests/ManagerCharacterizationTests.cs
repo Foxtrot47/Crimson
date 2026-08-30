@@ -147,7 +147,8 @@ public sealed class ManagerCharacterizationTests
         var storage = StorageWith(games);
         var library = LibraryManagerWith(storage);
         var downloads = new DownloadManager(_logger, new HttpClient());
-        return new InstallManager(_logger, library, new UnusedStoreRepository(), storage, downloads);
+        var shortcuts = new GameShortcutManager(new HttpClient(), _logger);
+        return new InstallManager(_logger, library, new UnusedStoreRepository(), storage, downloads, shortcuts);
     }
 
     private Storage StorageWith(params Game[] games)
