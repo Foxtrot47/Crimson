@@ -68,6 +68,20 @@ public partial class AppInstallDialogViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasDlcs;
 
+    private bool _createDesktopShortcut;
+    public bool CreateDesktopShortcut
+    {
+        get => _createDesktopShortcut;
+        set => SetProperty(ref _createDesktopShortcut, value);
+    }
+
+    private bool _createStartMenuShortcut;
+    public bool CreateStartMenuShortcut
+    {
+        get => _createStartMenuShortcut;
+        set => SetProperty(ref _createStartMenuShortcut, value);
+    }
+
     public ObservableCollection<DlcOption> AvailableDlcs { get; } = new();
 
     public event Action RequestClose;
@@ -127,6 +141,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
         CanInstall = false;
         IsDriveSpaceVisible = false;
         HasDlcs = false;
+        CreateDesktopShortcut = false;
+        CreateStartMenuShortcut = false;
         AvailableDlcs.Clear();
         TotalDownloadSize = "0 B";
         TotalInstallSize = "0 B";
@@ -196,7 +212,11 @@ public partial class AppInstallDialogViewModel : ObservableObject
         RequestClose?.Invoke();
 
         // Queue base game install
-        _installManager.AddToQueue(new InstallItem(_gameAppName, ActionType.Install, InstallLocation));
+        _installManager.AddToQueue(new InstallItem(_gameAppName, ActionType.Install, InstallLocation)
+        {
+            CreateDesktopShortcut = CreateDesktopShortcut,
+            CreateStartMenuShortcut = CreateStartMenuShortcut
+        });
         _logger.Information("GameInfoViewModel: Added {Game} to Installation Queue", GameTitle);
 
         // Queue selected DLCs (install to same base path)

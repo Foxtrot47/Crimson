@@ -1,6 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Repository;
 using Crimson.Utils;
@@ -10,9 +14,12 @@ using H.NotifyIcon;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Http.Resilience;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppLifecycle;
 using Polly;
 using Serilog;
+using Windows.ApplicationModel.Activation;
 
 namespace Crimson
 {
@@ -31,6 +38,14 @@ namespace Crimson
             get;
         }
         public static bool HandleClosedEvents { get; set; } = true;
+        internal static AppActivationArguments? InitialActivationArguments { get; set; }
+
+        private static readonly object ActivationLock = new();
+        private static readonly Queue<AppActivationArguments> EarlyActivations = new();
+        private static App? _currentInstance;
+        private readonly Queue<AppActivationArguments> _pendingActivations = new();
+        private readonly DispatcherQueue _dispatcherQueue;
+        private readonly SemaphoreSlim _authenticationGate = new(1, 1);
 
         /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
@@ -39,6 +54,13 @@ namespace Crimson
         public App()
         {
             InitializeComponent();
+            _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+            lock (ActivationLock)
+            {
+                _currentInstance = this;
+                while (EarlyActivations.TryDequeue(out var activation))
+                    _pendingActivations.Enqueue(activation);
+            }
             this.UnhandledException += App_UnhandledException;
 
             Host = Microsoft.Extensions.Hosting.Host.
@@ -103,6 +125,9 @@ namespace Crimson
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicStore")));
                 services.AddSingleton<LibraryManager>();
+                services.AddSingleton<GameShortcutManager>(provider => new GameShortcutManager(
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
+                    provider.GetRequiredService<ILogger>()));
                 services.AddSingleton<InstallManager>();
                 services.AddSingleton<DownloadManager>(provider => new DownloadManager(
                     provider.GetRequiredService<ILogger>(),
@@ -143,11 +168,109 @@ namespace Crimson
         /// will be used such as when the application is launched to open a specific file.
         /// </summary>
         /// <param name="args">Details about the launch request and process.</param>
-        protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+        protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
             m_window = new MainWindow();
-            m_window.Activate();
             m_window.Closed += OnExit;
+
+            var activationArguments = InitialActivationArguments;
+            InitialActivationArguments = null;
+            if (activationArguments is not null && TryGetLaunchAppName(activationArguments, out var appName))
+                await LaunchFromShortcutAsync(appName);
+            else
+            {
+                ShowMainWindow();
+                await EnsureAuthenticationAsync();
+            }
+
+            while (_pendingActivations.TryDequeue(out var pending))
+                await ProcessActivationAsync(pending);
+        }
+
+        internal static void RouteActivation(AppActivationArguments arguments)
+        {
+            lock (ActivationLock)
+            {
+                if (_currentInstance is null)
+                {
+                    EarlyActivations.Enqueue(arguments);
+                    return;
+                }
+
+                _currentInstance.HandleActivation(arguments);
+            }
+        }
+
+        private void HandleActivation(AppActivationArguments arguments)
+        {
+            _dispatcherQueue.TryEnqueue(async () =>
+            {
+                if (m_window is null)
+                {
+                    _pendingActivations.Enqueue(arguments);
+                    return;
+                }
+
+                await ProcessActivationAsync(arguments);
+            });
+        }
+
+        private async Task ProcessActivationAsync(AppActivationArguments arguments)
+        {
+            if (TryGetLaunchAppName(arguments, out var appName))
+                await LaunchFromShortcutAsync(appName);
+            else
+                ShowMainWindow();
+        }
+
+        private static bool TryGetLaunchAppName(AppActivationArguments arguments, out string appName)
+        {
+            if (arguments.Kind == ExtendedActivationKind.Protocol &&
+                arguments.Data is IProtocolActivatedEventArgs protocolArguments)
+                return GameLaunchRequest.TryParse(protocolArguments.Uri, out appName);
+
+            if (arguments.Data is ILaunchActivatedEventArgs launchArguments)
+                return GameLaunchRequest.TryParseCommandLine(launchArguments.Arguments, out appName);
+
+            appName = string.Empty;
+            return false;
+        }
+
+        private async Task LaunchFromShortcutAsync(string appName)
+        {
+            var authenticationStatus = await EnsureAuthenticationAsync();
+            if (authenticationStatus == AuthenticationStatus.LoggedIn)
+            {
+                var libraryManager = GetService<LibraryManager>();
+                var library = await libraryManager.GetLibraryData();
+                if (library.Any(game => game.AppName == appName) &&
+                    await libraryManager.LaunchApp(appName))
+                    return;
+            }
+
+            ShowMainWindow();
+        }
+
+        private async Task<AuthenticationStatus> EnsureAuthenticationAsync()
+        {
+            await _authenticationGate.WaitAsync();
+            try
+            {
+                var authManager = GetService<AuthManager>();
+                return authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn
+                    ? AuthenticationStatus.LoggedIn
+                    : await authManager.CheckAuthStatus();
+            }
+            finally
+            {
+                _authenticationGate.Release();
+            }
+        }
+
+        private void ShowMainWindow()
+        {
+            m_window?.Show();
+            m_window?.Activate();
         }
 
         protected void OnExit(object sender, WindowEventArgs args)
@@ -159,11 +282,11 @@ namespace Crimson
             }
         }
 
-        private Window m_window;
+        private Window? m_window;
 
         public Window GetWindow()
         {
-            return m_window;
+            return m_window ?? throw new InvalidOperationException("The main window has not been created.");
         }
         public static T GetService<T>() where T : class
         {

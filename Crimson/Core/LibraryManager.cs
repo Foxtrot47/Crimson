@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -6,6 +7,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Models;
 using Crimson.Repository;
@@ -25,6 +27,8 @@ public class LibraryManager
     public event Action<Game> GameStatusUpdated;
 
     private DateTime _lastUpdateDateTime = DateTime.MinValue;
+    private readonly SemaphoreSlim _updateGate = new(1, 1);
+    private IReadOnlySet<string> _ownedAppNames = new HashSet<string>();
 
     public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager)
     {
@@ -40,6 +44,7 @@ public class LibraryManager
         if (e.NewStatus != AuthenticationStatus.LoggedOut)
             return;
 
+        _ownedAppNames = new HashSet<string>();
         InvalidateCache();
     }
 
@@ -55,19 +60,33 @@ public class LibraryManager
     /// <returns></returns>
     public async Task<IEnumerable<Game>> GetLibraryData(bool forceUpdate = false)
     {
-        // Only update library data if it's been more than 20 minutes since last update
-        var dataNeedsUpdate = forceUpdate || (_lastUpdateDateTime == DateTime.MinValue) ||
-                              (DateTime.Now - _lastUpdateDateTime > TimeSpan.FromMinutes(20));
+        await _updateGate.WaitAsync();
+        try
+        {
+            var dataNeedsUpdate = forceUpdate || _lastUpdateDateTime == DateTime.MinValue ||
+                                  DateTime.Now - _lastUpdateDateTime > TimeSpan.FromMinutes(20);
+            if (!dataNeedsUpdate)
+                return GetOwnedGames();
 
-        if (!dataNeedsUpdate)
-            return _storage.GameMetaDataDictionary.Values.ToList();
+            var updatedLibrary = await UpdateLibraryData(refreshAssets: true, forceMetadataUpdate: forceUpdate);
+            if (updatedLibrary is not null)
+            {
+                _ownedAppNames = updatedLibrary.Select(game => game.AppName).ToHashSet(StringComparer.Ordinal);
+                _lastUpdateDateTime = DateTime.Now;
+            }
 
-        await UpdateLibraryData(refreshAssets: true, forceMetadataUpdate: forceUpdate);
-        // Optionally, you can update the last update timestamp here
-        _lastUpdateDateTime = DateTime.Now;
-
-        return _storage.GameMetaDataDictionary.Values.ToList();
+            return GetOwnedGames();
+        }
+        finally
+        {
+            _updateGate.Release();
+        }
     }
+
+    private List<Game> GetOwnedGames() => _storage.GameMetaDataDictionary
+        .Where(entry => _ownedAppNames.Contains(entry.Key))
+        .Select(entry => entry.Value)
+        .ToList();
 
     public Game GetGameInfo(string name)
     {
@@ -101,74 +120,185 @@ public class LibraryManager
         GameStatusUpdated?.Invoke(game);
     }
 
-    public async Task LaunchApp(string appName)
+    public async Task<bool> LaunchApp(string appName)
     {
+        string? ownershipTokenPath = null;
         try
         {
-            if (appName == null) return;
+            var launchContext = GetLaunchContext(appName);
+            if (launchContext is null)
+                return false;
 
-            _log.Information("LaunchApp: Trying to launch app: {AppName}", appName);
+            var (gameInfo, game) = launchContext.Value;
+            var credentials = await GetLaunchCredentialsAsync(appName);
+            if (credentials is null)
+                return false;
 
-            if (_storage.LocalAppStateDictionary.TryGetValue(appName, out var gameInfo))
-            {
-                var metaData = _storage.GetGameMetaData(appName);
-                if (metaData == null)
-                {
-                    _log.Warning("LaunchApp: Trying to launch game not owned {AppName}", appName);
-                    return;
-                }
+            if (gameInfo.RequiresOt)
+                ownershipTokenPath = await CreateOwnershipTokenFileAsync(game);
 
-                if (metaData.LocalAppState?.InstallStatus != InstallState.Installed &&
-                    metaData.LocalAppState?.InstallStatus != InstallState.NeedUpdate)
-                {
-                    Log.Warning("LaunchApp: Trying to launch game not installed");
-                    return;
-                }
-
-                if (metaData.IsDlc())
-                {
-                    _log.Warning("LaunchApp: launching DLC's is not yet supported");
-                    return;
-                }
-
-                var responseData = await _storeRepository.GetGameToken();
-                var responseObject = JsonSerializer.Deserialize<GameTokenResponse>(responseData);
-                var userData = await _authManager.GetUserData();
-
-                var parameters = new List<string>();
-                parameters.Add($"-AUTH_LOGIN=unused");
-                parameters.Add($"-AUTH_PASSWORD={responseObject.Code}");
-                parameters.Add("-AUTH_TYPE=exchangecode");
-                parameters.Add($"-epicapp={gameInfo.AppName}");
-                parameters.Add("-epicenv=Prod");
-
-                parameters.Add("-EpicPortal");
-                parameters.Add($"-epicusername=\"{userData.DisplayName}\"");
-                parameters.Add($"-epicuserid={userData.AccountId}");
-                parameters.Add($"-epicsandboxid={metaData.AssetInfos.Windows.Namespace}");
-                parameters.Add("-epiclocale=en");
-
-                string arguments = string.Join(" ", parameters);
-
-                // Create a new process start info
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = Path.Join(gameInfo.InstallPath, gameInfo.Executable),
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    WorkingDirectory = gameInfo.InstallPath
-                };
-
-                // Create and start the process
-                using var process = new Process { StartInfo = startInfo };
-                process.Start();
-                process.WaitForExit();
-                process.Dispose();
-            }
+            var (exchangeCode, userData) = credentials.Value;
+            return StartGame(gameInfo, game, exchangeCode, userData, ownershipTokenPath);
         }
         catch (Exception ex)
         {
+            DeleteOwnershipToken(ownershipTokenPath);
             _log.Error(ex, "LaunchApp failed");
+            return false;
+        }
+    }
+
+    private (LocalAppState State, Game Game)? GetLaunchContext(string appName)
+    {
+        if (string.IsNullOrWhiteSpace(appName) ||
+            !_storage.LocalAppStateDictionary.TryGetValue(appName, out var gameInfo))
+            return null;
+
+        _log.Information("LaunchApp: Trying to launch app: {AppName}", appName);
+        var game = _storage.GetGameMetaData(appName);
+        return CanLaunch(game) ? (gameInfo, game!) : null;
+    }
+
+    private async Task<(string ExchangeCode, UserData User)?> GetLaunchCredentialsAsync(string appName)
+    {
+        var responseData = await _storeRepository.GetGameToken();
+        var userData = await _authManager.GetUserData();
+        var gameToken = string.IsNullOrWhiteSpace(responseData)
+            ? null
+            : JsonSerializer.Deserialize<GameTokenResponse>(responseData);
+        if (gameToken is not null && !string.IsNullOrWhiteSpace(gameToken.Code) && userData is not null)
+            return (gameToken.Code, userData);
+
+        _log.Error("LaunchApp: Failed to obtain launch credentials for {AppName}", appName);
+        return null;
+    }
+
+    private bool StartGame(
+        LocalAppState gameInfo,
+        Game game,
+        string exchangeCode,
+        UserData userData,
+        string? ownershipTokenPath)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = Path.Join(gameInfo.InstallPath, gameInfo.Executable),
+            Arguments = BuildLaunchArguments(gameInfo, game, exchangeCode, userData, ownershipTokenPath),
+            UseShellExecute = false,
+            WorkingDirectory = gameInfo.InstallPath
+        };
+
+        var process = new Process { StartInfo = startInfo };
+        if (!process.Start())
+        {
+            process.Dispose();
+            DeleteOwnershipToken(ownershipTokenPath);
+            return false;
+        }
+
+        if (ownershipTokenPath is null)
+            process.Dispose();
+        else
+            _ = DeleteOwnershipTokenAfterExitAsync(process, ownershipTokenPath);
+        return true;
+    }
+
+    private bool CanLaunch(Game? game)
+    {
+        if (game is null)
+        {
+            _log.Warning("LaunchApp: Trying to launch a game that is not owned");
+            return false;
+        }
+
+        if (game.LocalAppState?.InstallStatus is not InstallState.Installed and not InstallState.NeedUpdate)
+        {
+            _log.Warning("LaunchApp: Trying to launch a game that is not installed");
+            return false;
+        }
+
+        if (game.IsDlc())
+        {
+            _log.Warning("LaunchApp: Launching DLC is not yet supported");
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task<string> CreateOwnershipTokenFileAsync(Game game)
+    {
+        var token = await _storeRepository.GetOwnershipToken(
+            game.AssetInfos.Windows.Namespace,
+            game.AssetInfos.Windows.CatalogItemId);
+        if (token is null || token.Length == 0)
+            throw new InvalidOperationException("The ownership token could not be obtained.");
+
+        var directory = Path.Combine(Path.GetTempPath(), "Crimson", "ownership-tokens");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, $"{Guid.NewGuid():N}.ovt");
+        await File.WriteAllBytesAsync(path, token);
+        return path;
+    }
+
+    internal static string BuildLaunchArguments(
+        LocalAppState gameInfo,
+        Game game,
+        string exchangeCode,
+        UserData userData,
+        string? ownershipTokenPath)
+    {
+        var parameters = new List<string>();
+        if (!string.IsNullOrWhiteSpace(gameInfo.LaunchParameters))
+            parameters.Add(gameInfo.LaunchParameters);
+        var additionalCommandLine = game.Metadata.CustomAttributes?.AdditionalCommandLine?.Value;
+        if (!string.IsNullOrWhiteSpace(additionalCommandLine))
+            parameters.Add(additionalCommandLine);
+
+        parameters.Add("-AUTH_LOGIN=unused");
+        parameters.Add($"-AUTH_PASSWORD={exchangeCode}");
+        parameters.Add("-AUTH_TYPE=exchangecode");
+        parameters.Add($"-epicapp={gameInfo.AppName}");
+        parameters.Add("-epicenv=Prod");
+        if (!string.IsNullOrWhiteSpace(ownershipTokenPath))
+            parameters.Add($"-epicovt=\"{ownershipTokenPath}\"");
+        parameters.Add("-EpicPortal");
+        parameters.Add($"-epicusername=\"{userData.DisplayName}\"");
+        parameters.Add($"-epicuserid={userData.AccountId}");
+        parameters.Add("-epiclocale=en");
+        parameters.Add($"-epicsandboxid={game.AssetInfos.Windows.Namespace}");
+        return string.Join(" ", parameters);
+    }
+
+    private async Task DeleteOwnershipTokenAfterExitAsync(Process process, string path)
+    {
+        try
+        {
+            await process.WaitForExitAsync();
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Failed while waiting to remove an ownership token");
+        }
+        finally
+        {
+            process.Dispose();
+            DeleteOwnershipToken(path);
+        }
+    }
+
+    private void DeleteOwnershipToken(string? path)
+    {
+        if (path is null)
+            return;
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Failed to remove an ownership token file");
         }
     }
 
@@ -178,102 +308,118 @@ public class LibraryManager
     /// <param name="refreshAssets"></param>
     /// <param name="forceMetadataUpdate"></param>
     /// <returns></returns>
-    private async Task UpdateLibraryData(bool refreshAssets, bool forceMetadataUpdate)
+    private async Task<IReadOnlyList<Game>?> UpdateLibraryData(bool refreshAssets, bool forceMetadataUpdate)
     {
         try
         {
-            var metadataUpdated = false;
-            var gameAssets = await _storage.GetGameAssetsData();
-            if (gameAssets == null)
-            {
-                _log.Information("UpdateLibraryData: No cached game assets found");
-            }
+            var gameAssets = await GetGameAssetsAsync(refreshAssets);
+            if (gameAssets is null)
+                return null;
 
-            var gameAssetsList = gameAssets?.ToList() ?? new List<Asset>();
-            if (refreshAssets || gameAssetsList.Count < 1)
-            {
-                _log.Information("UpdateLibraryData: No cached game assets; refreshing");
+            var fetchList = GetMetadataFetchList(gameAssets, forceMetadataUpdate);
+            await FetchMetadataAsync(fetchList, gameAssets);
 
-                var assets = (await _storeRepository.FetchGameAssets()).ToList();
-                if (assets.Count < 1)
-                {
-                    _log.Error("GetLibraryData: Error while fetching game assets");
-                    return;
-                }
-                await _storage.SaveGameAssetsData(assets);
-                gameAssetsList = assets.ToList();
-            }
-
-            var fetchList = new List<FetchListItem>();
-            var gameMetaDataDictionary = new Dictionary<string, Models.Game>();
-
-            foreach (var asset in gameAssetsList)
-            {
-                // skip adding unreal engine assets
-                var pattern = @".*UE.*Windows";
-
-                // Check if the asset namespace or build version contains the pattern
-                if (asset.Namespace.Contains("ue") || Regex.IsMatch(asset.BuildVersion, pattern))
-                {
-                    continue;
-                }
-
-                var game = _storage.GetGameMetaData(asset.AppName);
-                var assetUpdated = false;
-                if (game != null)
-                {
-                    assetUpdated = asset.BuildVersion != game.AssetInfos.Windows.BuildVersion;
-                    gameMetaDataDictionary.Add(asset.AppName, game);
-                }
-
-                if (game != null && !forceMetadataUpdate && !assetUpdated) continue;
-                _log.Debug("Scheduling metadata update for {AppName}", asset.AppName);
-                fetchList.Add(new FetchListItem()
-                {
-                    AppName = asset.AppName,
-                    NameSpace = asset.Namespace,
-                    CatalogItemId = asset.CatalogItemId
-                });
-            }
-
-            var options = new ParallelOptions()
-            {
-                MaxDegreeOfParallelism = Environment.ProcessorCount
-            };
-            // Only update metadata if there are any updates or if forced
-            await Parallel.ForEachAsync(fetchList, options, async (item, token) =>
-            {
-                var egFetchGameMetaData = await _storeRepository.FetchGameMetaData(item.NameSpace, item.CatalogItemId);
-
-                // ignore if no metadata can be fetched
-                if (egFetchGameMetaData == null) return;
-                var gameMetaData = new Models.Game()
-                {
-                    AppName = item.AppName,
-                    AppTitle = egFetchGameMetaData.Title,
-                    AssetInfos = new AssetInfos()
-                    {
-                        Windows = gameAssetsList.FirstOrDefault(asset => asset.AppName == item.AppName),
-                    },
-                    Metadata = egFetchGameMetaData
-                };
-                _storage.SaveMetaData(gameMetaData);
-            });
-
-            // Hydrate LocalAppState for all games and check for updates
             _storage.HydrateAllLocalAppStates();
-            CheckForGameUpdates(gameAssetsList);
+            CheckForGameUpdates(gameAssets);
 
-            gameMetaDataDictionary = _storage.GameMetaDataDictionary;
-
-            // Sort _gameData by name
+            var ownedGames = SelectOwnedGames(gameAssets, _storage.GameMetaDataDictionary);
             _log.Information("UpdateLibraryAsync: Library updated");
-            LibraryUpdated?.Invoke(gameMetaDataDictionary.Values.ToList());
+            LibraryUpdated?.Invoke(ownedGames);
+            return ownedGames;
         }
         catch (Exception ex)
         {
             _log.Error(ex, "UpdateLibraryData failed");
+            return null;
         }
+    }
+
+    private async Task<List<Asset>?> GetGameAssetsAsync(bool refreshAssets)
+    {
+        var cachedAssets = (await _storage.GetGameAssetsData())?.ToList() ?? [];
+        if (!refreshAssets && cachedAssets.Count > 0)
+            return cachedAssets;
+
+        _log.Information("UpdateLibraryData: Refreshing game assets");
+        var assets = (await _storeRepository.FetchGameAssets())?.ToList();
+        if (assets is null || assets.Count == 0)
+        {
+            _log.Error("GetLibraryData: Error while fetching game assets");
+            return null;
+        }
+
+        await _storage.SaveGameAssetsData(assets);
+        return assets;
+    }
+
+    private List<FetchListItem> GetMetadataFetchList(
+        IReadOnlyList<Asset> gameAssets,
+        bool forceMetadataUpdate)
+    {
+        var fetchList = new List<FetchListItem>();
+        foreach (var asset in gameAssets)
+        {
+            if (IsUnrealEngineAsset(asset))
+                continue;
+
+            var game = _storage.GetGameMetaData(asset.AppName);
+            var assetUpdated = game is not null &&
+                asset.BuildVersion != game.AssetInfos.Windows.BuildVersion;
+            if (game is not null && !forceMetadataUpdate && !assetUpdated)
+                continue;
+
+            _log.Debug("Scheduling metadata update for {AppName}", asset.AppName);
+            fetchList.Add(new FetchListItem
+            {
+                AppName = asset.AppName,
+                NameSpace = asset.Namespace,
+                CatalogItemId = asset.CatalogItemId
+            });
+        }
+
+        return fetchList;
+    }
+
+    private async Task FetchMetadataAsync(
+        IEnumerable<FetchListItem> fetchList,
+        IReadOnlyList<Asset> gameAssets)
+    {
+        var fetchedGames = new ConcurrentBag<Game>();
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+        await Parallel.ForEachAsync(fetchList, options, async (item, _) =>
+        {
+            var metadata = await _storeRepository.FetchGameMetaData(item.NameSpace, item.CatalogItemId);
+            if (metadata is null)
+                return;
+
+            fetchedGames.Add(new Game
+            {
+                AppName = item.AppName,
+                AppTitle = metadata.Title,
+                AssetInfos = new AssetInfos
+                {
+                    Windows = gameAssets.First(asset => asset.AppName == item.AppName)
+                },
+                Metadata = metadata
+            });
+        });
+
+        foreach (var game in fetchedGames)
+            _storage.SaveMetaData(game);
+    }
+
+    private static bool IsUnrealEngineAsset(Asset asset) =>
+        asset.Namespace.Contains("ue") || Regex.IsMatch(asset.BuildVersion, @".*UE.*Windows");
+
+    internal static IReadOnlyList<Game> SelectOwnedGames(
+        IEnumerable<Asset> assets,
+        IReadOnlyDictionary<string, Game> metadata)
+    {
+        var ownedAppNames = assets.Select(asset => asset.AppName).ToHashSet(StringComparer.Ordinal);
+        return metadata
+            .Where(entry => ownedAppNames.Contains(entry.Key))
+            .Select(entry => entry.Value)
+            .ToList();
     }
 
     /// <summary>

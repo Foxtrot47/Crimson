@@ -26,6 +26,7 @@ public class InstallManager
     private readonly ILogger _logger;
     private readonly LibraryManager _libraryManager;
     private readonly DownloadManager _downloadManager;
+    private readonly GameShortcutManager _shortcutManager;
     private readonly IStoreRepository _repository;
     private readonly Storage _storage;
 
@@ -35,7 +36,7 @@ public class InstallManager
     private readonly ConcurrentDictionary<string, object> _fileLocksConcurrentDictionary = new();
     private ConcurrentDictionary<BigInteger, List<FileManifest>> _chunkToFileManifestsDictionary = new();
     private ConcurrentDictionary<BigInteger, int> _chunkPartReferences = new();
-    private readonly HashSet<string> _ioQueueTaskSet = [];
+    private readonly ConcurrentDictionary<string, byte> _ioQueueTaskSet = new();
     private readonly JsonSerializerOptions _jsonSerializerOptions;
 
     private readonly object _installItemLock = new();
@@ -58,11 +59,12 @@ public class InstallManager
     public InstallItem? CurrentInstall { get; private set; }
 
     public InstallManager(ILogger logger, LibraryManager libraryManager, IStoreRepository repository, Storage storage,
-        DownloadManager downloadManager)
+        DownloadManager downloadManager, GameShortcutManager shortcutManager)
     {
         _logger = logger;
         _libraryManager = libraryManager;
         _downloadManager = downloadManager;
+        _shortcutManager = shortcutManager;
         CurrentInstall = null;
         _repository = repository;
         _storage = storage;
@@ -387,11 +389,8 @@ public class InstallManager
 
                 // mandatory check to prevent duplicate io tasks
                 var ioTaskHashString = $"{fileManifest.Filename}.{part.GuidNum}.{part.FileOffset}";
-                if (_ioQueueTaskSet.Contains(ioTaskHashString))
-                {
+                if (!_ioQueueTaskSet.TryAdd(ioTaskHashString, 0))
                     continue;
-                }
-                _ioQueueTaskSet.Add(ioTaskHashString);
 
                 var task = new IoTask()
                 {
@@ -528,7 +527,8 @@ public class InstallManager
     /// <exception cref="ArgumentOutOfRangeException"></exception>
     private async Task UpdateInstalledGameStatus()
     {
-        if (CurrentInstall == null)
+        var install = CurrentInstall;
+        if (install is null)
         {
             _logger.Error("UpdateInstalledGameStatus: Current install is null");
             return;
@@ -539,197 +539,269 @@ public class InstallManager
             if (!IsInstallationInProgress())
                 return;
 
-            // Only delay for actions that used download/IO workers
-            if (CurrentInstall.Action != ActionType.Import && CurrentInstall.Action != ActionType.Move)
-            {
-                await Task.Delay(2000);
-                await _cancellationTokenSource.CancelAsync();
-            }
-            _installStopWatch.Reset();
-
-            var gameData = _libraryManager.GetGameInfo(CurrentInstall.AppName);
-            if (gameData == null)
-            {
-                _logger.Error("UpdateInstalledGameStatus: Found no game data for app name: {AppName}",
-                    CurrentInstall.AppName);
-                throw new Exception("Invalid game data");
-            }
-
-            // For Import, create LocalAppState if it doesn't exist yet
-            if (!_storage.LocalAppStateDictionary.TryGetValue(CurrentInstall.AppName, out var localAppState))
-            {
-                if (CurrentInstall.Action == ActionType.Import)
-                {
-                    localAppState = new LocalAppState { AppName = CurrentInstall.AppName };
-                }
-                else
-                {
-                    _logger.Error("UpdateInstalledGameStatus: Found no installed game data for {AppName}",
-                        CurrentInstall.AppName);
-                    throw new Exception("Invalid installed game data");
-                }
-            }
-
-            switch (CurrentInstall.Action)
-            {
-                case ActionType.Uninstall:
-                {
-                    localAppState.InstallStatus = InstallState.NotInstalled;
-                    localAppState.InstallPath = null;
-                    localAppState.Version = null;
-                    localAppState.Executable = null;
-                    gameData.LocalAppState = localAppState;
-                    _storage.AddToLocalAppState(gameData.AppName, localAppState);
-                    _libraryManager.UpdateGameInfo(gameData);
-                    _logger.Information("UpdateInstalledGameStatus: Uninstall complete for {AppName}", CurrentInstall.AppName);
-                    break;
-                }
-
-                case ActionType.Move:
-                {
-                    localAppState.InstallPath = CurrentInstall.MoveLocation;
-                    gameData.LocalAppState = localAppState;
-                    _storage.AddToLocalAppState(gameData.AppName, localAppState);
-                    _libraryManager.UpdateGameInfo(gameData);
-                    _logger.Information("UpdateInstalledGameStatus: Move complete for {AppName}", CurrentInstall.AppName);
-                    break;
-                }
-
-                case ActionType.Import:
-                {
-                    var manifestBytes = await _storage.GetCachedManifestBytes(CurrentInstall.AppName, gameData.AssetInfos.Windows.BuildVersion);
-                    var urlData = await _repository.GetManifestUrls(gameData.AssetInfos.Windows.Namespace,
-                        gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
-
-                    if (urlData == null)
-                    {
-                        _logger.Error("UpdateInstalledGameStatus: Failed to get manifest urls for {AppName}", CurrentInstall.AppName);
-                        throw new Exception("Cannot fetch manifest data");
-                    }
-
-                    if (manifestBytes == null || manifestBytes.Length < 1)
-                    {
-                        manifestBytes = await _repository.GetGameManifest(urlData);
-                        await _storage.CacheManifestBytes(CurrentInstall.AppName, gameData.AssetInfos.Windows.BuildVersion, manifestBytes);
-                    }
-                    var manifestData = Manifest.ReadAll(manifestBytes);
-
-                    var canRunOffLine = gameData.Metadata?.CustomAttributes?.CanRunOffline?.Value == "true";
-                    var requireOwnerShipToken = gameData.Metadata?.CustomAttributes?.OwnershipToken?.Value == "true";
-
-                    localAppState.InstallStatus = (_importVerificationResult != null && _importVerificationResult.Count > 0)
-                        ? InstallState.Broken
-                        : InstallState.Installed;
-                    localAppState.BaseUrls = gameData.BaseUrls;
-                    localAppState.CanRunOffline = canRunOffLine;
-                    localAppState.Executable = manifestData.ManifestMeta.LaunchExe;
-                    localAppState.InstallPath = CurrentInstall.Location;
-                    localAppState.LaunchParameters = manifestData.ManifestMeta.LaunchCommand;
-                    localAppState.RequiresOt = requireOwnerShipToken;
-                    localAppState.Version = manifestData.ManifestMeta.BuildVersion;
-                    localAppState.Title = gameData.AppTitle;
-
-                    if (manifestData.ManifestMeta.UninstallActionPath != null)
-                    {
-                        localAppState.Uninstaller = new Dictionary<string, string>
-                        {
-                            { manifestData.ManifestMeta.UninstallActionPath, manifestData.ManifestMeta.UninstallActionArgs }
-                        };
-                    }
-
-                    gameData.LocalAppState = localAppState;
-                    _storage.AddToLocalAppState(gameData.AppName, localAppState);
-                    _libraryManager.UpdateGameInfo(gameData);
-
-                    var totalFiles = manifestData.FileManifestList.Elements.Count;
-                    var missingCount = _importVerificationResult?.Count ?? 0;
-                    CurrentInstall.StatusMessage = $"Verified {totalFiles} files: {totalFiles - missingCount} found, {missingCount} missing";
-
-                    _importVerificationResult = null;
-                    _logger.Information("UpdateInstalledGameStatus: Import complete for {AppName}, status: {Status}",
-                        CurrentInstall.AppName, localAppState.InstallStatus);
-                    break;
-                }
-
-                default: // Install, Update, Repair
-                {
-                    var manifestBytes = await _storage.GetCachedManifestBytes(CurrentInstall.AppName, gameData.AssetInfos.Windows.BuildVersion);
-                    var urlData = await _repository.GetManifestUrls(gameData.AssetInfos.Windows.Namespace,
-                        gameData.AssetInfos.Windows.CatalogItemId, gameData.AppName);
-
-                    if (urlData == null)
-                    {
-                        _logger.Error("UpdateInstalledGameStatus: Failed to get manifest urls for {AppName}", CurrentInstall.AppName);
-                        throw new Exception("Cannot fetch manifest data");
-                    }
-
-                    if (manifestBytes == null || manifestBytes.Length < 1)
-                    {
-                        manifestBytes = await _repository.GetGameManifest(urlData);
-                        await _storage.CacheManifestBytes(CurrentInstall.AppName, gameData.AssetInfos.Windows.BuildVersion, manifestBytes);
-                    }
-                    var manifestData = Manifest.ReadAll(manifestBytes);
-
-                    // Verify all the files
-                    var invalidFilesList = await VerifyFiles(CurrentInstall.Location, manifestData.FileManifestList.Elements);
-
-                    var canRunOffLine = gameData.Metadata?.CustomAttributes?.CanRunOffline?.Value == "true";
-                    var requireOwnerShipToken = gameData.Metadata?.CustomAttributes?.OwnershipToken?.Value == "true";
-
-                    if (invalidFilesList.Count > 0)
-                    {
-                        _logger.Warning("UpdateInstalledGameStatus: {Count} files failed verification for {AppName}. Marking as Broken.",
-                            invalidFilesList.Count, CurrentInstall.AppName);
-                        localAppState.InstallStatus = InstallState.Broken;
-                    }
-                    else
-                    {
-                        _logger.Information("UpdateInstalledGameStatus: Verification successful for {appName}", CurrentInstall.AppName);
-                        localAppState.InstallStatus = InstallState.Installed;
-                    }
-
-                    localAppState.BaseUrls = gameData.BaseUrls;
-                    localAppState.CanRunOffline = canRunOffLine;
-                    localAppState.Executable = manifestData.ManifestMeta.LaunchExe;
-                    localAppState.InstallPath = CurrentInstall.Location;
-                    localAppState.LaunchParameters = manifestData.ManifestMeta.LaunchCommand;
-                    localAppState.RequiresOt = requireOwnerShipToken;
-                    localAppState.Version = manifestData.ManifestMeta.BuildVersion;
-                    localAppState.Title = gameData.AppTitle;
-
-                    if (manifestData.ManifestMeta.UninstallActionPath != null)
-                    {
-                        localAppState.Uninstaller = new Dictionary<string, string>
-                        {
-                            { manifestData.ManifestMeta.UninstallActionPath, manifestData.ManifestMeta.UninstallActionArgs }
-                        };
-                    }
-
-                    gameData.LocalAppState = localAppState;
-                    _storage.AddToLocalAppState(gameData.AppName, localAppState);
-                    _libraryManager.UpdateGameInfo(gameData);
-                    break;
-                }
-            }
-
-            CurrentInstall.Status = ActionStatus.Success;
-            _installHistory.Add(CurrentInstall);
-            InstallationStatusChanged?.Invoke(CurrentInstall);
-            CurrentInstall = null;
-            ProcessNext();
+            await StopInstallWorkersAsync(install);
+            var game = GetInstalledGame(install);
+            var localAppState = GetLocalAppState(install);
+            await ApplyCompletedActionAsync(install, game, localAppState);
+            await CreateRequestedShortcutsAsync(install, game, localAppState);
+            CompleteInstallation(install);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "UpdateInstalledGameStatus failed");
+            FailCurrentInstallation(ex);
+        }
+    }
 
-            if (CurrentInstall != null)
+    private async Task StopInstallWorkersAsync(InstallItem install)
+    {
+        if (install.Action is not ActionType.Import and not ActionType.Move)
+        {
+            await Task.Delay(2000);
+            await _cancellationTokenSource.CancelAsync();
+        }
+
+        _installStopWatch.Reset();
+    }
+
+    private Game GetInstalledGame(InstallItem install)
+    {
+        var game = _libraryManager.GetGameInfo(install.AppName);
+        if (game is not null)
+            return game;
+
+        _logger.Error(
+            "UpdateInstalledGameStatus: Found no game data for app name: {AppName}",
+            install.AppName);
+        throw new Exception("Invalid game data");
+    }
+
+    private LocalAppState GetLocalAppState(InstallItem install)
+    {
+        if (_storage.LocalAppStateDictionary.TryGetValue(install.AppName, out var localAppState))
+            return localAppState;
+        if (install.Action == ActionType.Import)
+            return new LocalAppState { AppName = install.AppName };
+
+        _logger.Error(
+            "UpdateInstalledGameStatus: Found no installed game data for {AppName}",
+            install.AppName);
+        throw new Exception("Invalid installed game data");
+    }
+
+    private async Task ApplyCompletedActionAsync(
+        InstallItem install,
+        Game game,
+        LocalAppState localAppState)
+    {
+        switch (install.Action)
+        {
+            case ActionType.Uninstall:
+                CompleteUninstall(install, game, localAppState);
+                break;
+            case ActionType.Move:
+                CompleteMove(install, game, localAppState);
+                break;
+            case ActionType.Import:
+                await CompleteImportAsync(install, game, localAppState);
+                break;
+            default:
+                await CompleteInstallAsync(install, game, localAppState);
+                break;
+        }
+    }
+
+    private void CompleteUninstall(InstallItem install, Game game, LocalAppState localAppState)
+    {
+        localAppState.InstallStatus = InstallState.NotInstalled;
+        localAppState.InstallPath = null;
+        localAppState.Version = null;
+        localAppState.Executable = null;
+        SaveLocalAppState(game, localAppState);
+        TryRemoveShortcuts(game);
+        _logger.Information(
+            "UpdateInstalledGameStatus: Uninstall complete for {AppName}",
+            install.AppName);
+    }
+
+    private void CompleteMove(InstallItem install, Game game, LocalAppState localAppState)
+    {
+        localAppState.InstallPath = install.MoveLocation;
+        SaveLocalAppState(game, localAppState);
+        _logger.Information(
+            "UpdateInstalledGameStatus: Move complete for {AppName}",
+            install.AppName);
+    }
+
+    private async Task CompleteImportAsync(
+        InstallItem install,
+        Game game,
+        LocalAppState localAppState)
+    {
+        var manifest = await GetManifestAsync(install, game);
+        localAppState.InstallStatus = _importVerificationResult is { Count: > 0 }
+            ? InstallState.Broken
+            : InstallState.Installed;
+        ApplyManifestState(install, game, localAppState, manifest);
+        SaveLocalAppState(game, localAppState);
+
+        var totalFiles = manifest.FileManifestList.Elements.Count;
+        var missingCount = _importVerificationResult?.Count ?? 0;
+        install.StatusMessage =
+            $"Verified {totalFiles} files: {totalFiles - missingCount} found, {missingCount} missing";
+        _importVerificationResult = null;
+        _logger.Information(
+            "UpdateInstalledGameStatus: Import complete for {AppName}, status: {Status}",
+            install.AppName,
+            localAppState.InstallStatus);
+    }
+
+    private async Task CompleteInstallAsync(
+        InstallItem install,
+        Game game,
+        LocalAppState localAppState)
+    {
+        var manifest = await GetManifestAsync(install, game);
+        var invalidFiles = await VerifyFiles(install.Location, manifest.FileManifestList.Elements);
+        SetVerificationStatus(install, localAppState, invalidFiles.Count);
+        ApplyManifestState(install, game, localAppState, manifest);
+        SaveLocalAppState(game, localAppState);
+    }
+
+    private async Task<Manifest> GetManifestAsync(InstallItem install, Game game)
+    {
+        var buildVersion = game.AssetInfos.Windows.BuildVersion;
+        var manifestBytes = await _storage.GetCachedManifestBytes(install.AppName, buildVersion);
+        var urlData = await _repository.GetManifestUrls(
+            game.AssetInfos.Windows.Namespace,
+            game.AssetInfos.Windows.CatalogItemId,
+            game.AppName);
+        if (urlData is null)
+        {
+            _logger.Error(
+                "UpdateInstalledGameStatus: Failed to get manifest urls for {AppName}",
+                install.AppName);
+            throw new Exception("Cannot fetch manifest data");
+        }
+
+        if (manifestBytes is null || manifestBytes.Length < 1)
+        {
+            manifestBytes = await _repository.GetGameManifest(urlData);
+            await _storage.CacheManifestBytes(install.AppName, buildVersion, manifestBytes);
+        }
+
+        return Manifest.ReadAll(manifestBytes);
+    }
+
+    private void SetVerificationStatus(
+        InstallItem install,
+        LocalAppState localAppState,
+        int invalidFileCount)
+    {
+        if (invalidFileCount > 0)
+        {
+            _logger.Warning(
+                "UpdateInstalledGameStatus: {Count} files failed verification for {AppName}. Marking as Broken.",
+                invalidFileCount,
+                install.AppName);
+            localAppState.InstallStatus = InstallState.Broken;
+            return;
+        }
+
+        _logger.Information(
+            "UpdateInstalledGameStatus: Verification successful for {AppName}",
+            install.AppName);
+        localAppState.InstallStatus = InstallState.Installed;
+    }
+
+    private static void ApplyManifestState(
+        InstallItem install,
+        Game game,
+        LocalAppState localAppState,
+        Manifest manifest)
+    {
+        localAppState.BaseUrls = game.BaseUrls;
+        localAppState.CanRunOffline = game.Metadata?.CustomAttributes?.CanRunOffline?.Value == "true";
+        localAppState.Executable = manifest.ManifestMeta.LaunchExe;
+        localAppState.InstallPath = install.Location;
+        localAppState.LaunchParameters = manifest.ManifestMeta.LaunchCommand;
+        localAppState.RequiresOt = game.Metadata?.CustomAttributes?.OwnershipToken?.Value == "true";
+        localAppState.Version = manifest.ManifestMeta.BuildVersion;
+        localAppState.Title = game.AppTitle;
+
+        if (manifest.ManifestMeta.UninstallActionPath is not null)
+        {
+            localAppState.Uninstaller = new Dictionary<string, string>
             {
-                CurrentInstall.Status = ActionStatus.Failed;
-                _installHistory.Add(CurrentInstall);
-                InstallationStatusChanged?.Invoke(CurrentInstall);
-            }
-            CurrentInstall = null;
-            ProcessNext();
+                { manifest.ManifestMeta.UninstallActionPath, manifest.ManifestMeta.UninstallActionArgs }
+            };
+        }
+    }
+
+    private void SaveLocalAppState(Game game, LocalAppState localAppState)
+    {
+        game.LocalAppState = localAppState;
+        _storage.AddToLocalAppState(game.AppName, localAppState);
+        _libraryManager.UpdateGameInfo(game);
+    }
+
+    private void CompleteInstallation(InstallItem install)
+    {
+        install.Status = ActionStatus.Success;
+        _installHistory.Add(install);
+        InstallationStatusChanged?.Invoke(install);
+        CurrentInstall = null;
+        ProcessNext();
+    }
+
+    private void FailCurrentInstallation(Exception exception)
+    {
+        _logger.Error(exception, "UpdateInstalledGameStatus failed");
+        if (CurrentInstall is not null)
+        {
+            CurrentInstall.Status = ActionStatus.Failed;
+            _installHistory.Add(CurrentInstall);
+            InstallationStatusChanged?.Invoke(CurrentInstall);
+        }
+
+        CurrentInstall = null;
+        ProcessNext();
+    }
+
+    private void TryRemoveShortcuts(Game game)
+    {
+        try
+        {
+            _shortcutManager.Remove(game);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to remove shortcuts for {AppName}", game.AppName);
+        }
+    }
+
+    private async Task CreateRequestedShortcutsAsync(
+        InstallItem install,
+        Game game,
+        LocalAppState localAppState)
+    {
+        if (install.Action != ActionType.Install || localAppState.InstallStatus != InstallState.Installed)
+            return;
+
+        if (install.CreateStartMenuShortcut)
+            await TryCreateShortcutAsync(game, GameShortcutLocation.StartMenu);
+        if (install.CreateDesktopShortcut)
+            await TryCreateShortcutAsync(game, GameShortcutLocation.Desktop);
+    }
+
+    private async Task TryCreateShortcutAsync(Game game, GameShortcutLocation location)
+    {
+        try
+        {
+            await _shortcutManager.CreateAsync(game, location);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to create {Location} shortcut for {AppName}", location, game.AppName);
         }
     }
 

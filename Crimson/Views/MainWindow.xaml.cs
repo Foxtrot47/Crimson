@@ -119,11 +119,7 @@ public sealed partial class MainWindow : Window
         RebuildInstalledMenu();
 
         IsLoggedIn = false;
-        Task.Run(async () =>
-        {
-            _authManager.AuthStatusChanged += AuthStatusChangedHandler;
-            await _authManager.CheckAuthStatus();
-        });
+        _authManager.AuthStatusChanged += AuthStatusChangedHandler;
     }
 
     private void NavControl_BackRequested(NavigationView sender,
@@ -760,7 +756,7 @@ public sealed partial class MainWindow : Window
                 {
                     try
                     {
-                        LibraryUpdatedHandler(await _libraryManager.GetLibraryData());
+                        await _libraryManager.GetLibraryData();
                     }
                     catch (Exception ex)
                     {

@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Crimson.Core;
@@ -26,6 +28,55 @@ public sealed class ManagerCharacterizationTests
         Assert.Equal([matchingDlc], manager.GetDlcsForGame("base"));
         Assert.Empty(manager.GetDlcsForGame("matching-dlc"));
         Assert.Empty(manager.GetDlcsForGame("missing"));
+    }
+
+    [Fact]
+    public void LibraryManager_FiltersCachedMetadataByCurrentOwnership()
+    {
+        var owned = Game("owned");
+        var stale = Game("stale");
+        var metadata = new Dictionary<string, Game>
+        {
+            [owned.AppName] = owned,
+            [stale.AppName] = stale
+        };
+        var assets = new[]
+        {
+            Asset(owned.AppName),
+            Asset("metadata-not-fetched")
+        };
+
+        var games = LibraryManager.SelectOwnedGames(assets, metadata);
+
+        Assert.Equal([owned], games);
+    }
+
+    [Fact]
+    public void LibraryManager_BuildsAuthenticatedLaunchArguments()
+    {
+        var game = Game("owned");
+        game.Metadata.CustomAttributes = new CustomAttributes
+        {
+            AdditionalCommandLine = new AdditionalCommandLine { Value = "-from-metadata" }
+        };
+        var state = game.LocalAppState!;
+        state.LaunchParameters = "-from-manifest";
+        var user = new UserData { AccountId = "account", DisplayName = "Player Name" };
+
+        var arguments = LibraryManager.BuildLaunchArguments(
+            state,
+            game,
+            "exchange-code",
+            user,
+            "C:\\Temp\\game.ovt");
+
+        Assert.Contains("-from-manifest", arguments);
+        Assert.Contains("-from-metadata", arguments);
+        Assert.Contains("-AUTH_PASSWORD=exchange-code", arguments);
+        Assert.Contains("-epicapp=owned", arguments);
+        Assert.Contains("-epicovt=\"C:\\Temp\\game.ovt\"", arguments);
+        Assert.Contains("-epicuserid=account", arguments);
+        Assert.Contains("-epicsandboxid=synthetic", arguments);
     }
 
     [Fact]
@@ -76,6 +127,43 @@ public sealed class ManagerCharacterizationTests
     }
 
     [Fact]
+    public void InstallManager_QueuesIoTasksFromConcurrentDownloads()
+    {
+        const int taskCount = 2_000;
+        var manager = InstallManagerWith();
+        SetCurrentInstall(manager, new InstallItem("active", ActionType.Install, Path.GetTempPath()));
+        var manifests = GetPrivateField<ConcurrentDictionary<BigInteger, List<FileManifest>>>(
+            manager,
+            "_chunkToFileManifestsDictionary");
+        var createIoTasks = typeof(InstallManager).GetMethod(
+            "CreateIoTasksForChunk",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var downloadTasks = Enumerable.Range(1, taskCount).Select(index =>
+        {
+            var part = new ChunkPart([index, 0, 0, 0], size: 1);
+            var manifest = new FileManifest { Filename = $"file-{index}.bin" };
+            manifest.ChunkParts.Add(part);
+            manifests[part.GuidNum] = [manifest];
+            return new DownloadTask
+            {
+                Url = string.Empty,
+                GuidNum = part.GuidNum,
+                TempPath = $"chunk-{index}",
+                ChunkInfo = null!
+            };
+        }).ToList();
+
+        var failure = Record.Exception(() => Parallel.ForEach(
+            downloadTasks,
+            new ParallelOptions { MaxDegreeOfParallelism = 12 },
+            task => createIoTasks.Invoke(manager, [task])));
+
+        Assert.Null(failure);
+        var ioQueue = GetPrivateField<BlockingCollection<IoTask>>(manager, "_ioQueue");
+        Assert.Equal(taskCount, ioQueue.Count);
+    }
+
+    [Fact]
     public void InstallManager_HistoryReturnsLatestEntryPerGameInStableOrder()
     {
         var manager = InstallManagerWith();
@@ -98,7 +186,8 @@ public sealed class ManagerCharacterizationTests
         var storage = StorageWith(games);
         var library = LibraryManagerWith(storage);
         var downloads = new DownloadManager(_logger, new HttpClient());
-        return new InstallManager(_logger, library, new UnusedStoreRepository(), storage, downloads);
+        var shortcuts = new GameShortcutManager(new HttpClient(), _logger);
+        return new InstallManager(_logger, library, new UnusedStoreRepository(), storage, downloads, shortcuts);
     }
 
     private Storage StorageWith(params Game[] games)
@@ -111,6 +200,14 @@ public sealed class ManagerCharacterizationTests
         SetPrivateField(storage, "_logger", _logger);
         return storage;
     }
+
+    private static Asset Asset(string appName) => new()
+    {
+        AppName = appName,
+        BuildVersion = "1.0.0",
+        CatalogItemId = appName,
+        Namespace = "synthetic"
+    };
 
     private static Game Game(
         string appName,
@@ -172,6 +269,9 @@ public sealed class ManagerCharacterizationTests
             throw new NotSupportedException();
 
         public Task<string> GetGameToken() => throw new NotSupportedException();
+
+        public Task<byte[]?> GetOwnershipToken(string nameSpace, string catalogItemId) =>
+            throw new NotSupportedException();
 
         public Task<GetManifestUrlData> GetManifestUrls(
             string nameSpace,
