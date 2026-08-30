@@ -42,10 +42,9 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     public async Task OnNavigatedTo(object parameter)
     {
         _log.Information("LibraryPage: Loading Page");
-        _libraryManager.LibraryUpdated += UpdateLibrary;
-
         var games = await _libraryManager.GetLibraryData();
         UpdateLibrary(games);
+        _libraryManager.LibraryUpdated += UpdateLibrary;
         _log.Information("LibraryPage: Loading finished");
     }
 
