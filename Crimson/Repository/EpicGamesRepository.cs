@@ -18,6 +18,7 @@ namespace Crimson.Repository
     {
         private const string LauncherHost = "launcher-public-service-prod06.ol.epicgames.com";
         private const string CatalogHost = "catalog-public-service-prod06.ol.epicgames.com";
+        private const string EcommerceHost = "ecommerceintegration-public-service-ecomprod02.ol.epicgames.com";
         private const string OAuthHost = "account-public-service-prod03.ol.epicgames.com";
         private const string StoreSearchUrl = "https://launcher.store.epicgames.com/graphql";
         private const string StoreSearchQuery = """
@@ -260,6 +261,34 @@ namespace Crimson.Repository
             catch (Exception ex)
             {
                 _log.Error("GetGameToken failed with {ErrorType}", ex.GetType().Name);
+                return null;
+            }
+        }
+
+        public async Task<byte[]?> GetOwnershipToken(string nameSpace, string catalogItemId)
+        {
+            try
+            {
+                var accessToken = await _authManager.GetAccessToken();
+                var userData = await _authManager.GetUserData();
+                var uri = $"https://{EcommerceHost}/ecommerceintegration/api/public/platforms/EPIC/identities/{Uri.EscapeDataString(userData.AccountId)}/ownershipToken";
+                using var request = CreateAuthenticatedRequest(HttpMethod.Post, uri, accessToken);
+                request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["nsCatalogItemId"] = $"{nameSpace}:{catalogItemId}"
+                });
+                using var response = await _apiClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _log.Error("GetOwnershipToken failed with HTTP {StatusCode}", (int)response.StatusCode);
+                    return null;
+                }
+
+                return await response.Content.ReadAsByteArrayAsync();
+            }
+            catch (Exception ex)
+            {
+                _log.Error("GetOwnershipToken failed with {ErrorType}", ex.GetType().Name);
                 return null;
             }
         }

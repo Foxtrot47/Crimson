@@ -21,5 +21,7 @@ public interface IStoreRepository
 
     public Task<string> GetGameToken();
 
+    public Task<byte[]?> GetOwnershipToken(string nameSpace, string catalogItemId);
+
     public Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live");
 }

@@ -120,74 +120,185 @@ public class LibraryManager
         GameStatusUpdated?.Invoke(game);
     }
 
-    public async Task LaunchApp(string appName)
+    public async Task<bool> LaunchApp(string appName)
     {
+        string? ownershipTokenPath = null;
         try
         {
-            if (appName == null) return;
+            var launchContext = GetLaunchContext(appName);
+            if (launchContext is null)
+                return false;
 
-            _log.Information("LaunchApp: Trying to launch app: {AppName}", appName);
+            var (gameInfo, game) = launchContext.Value;
+            var credentials = await GetLaunchCredentialsAsync(appName);
+            if (credentials is null)
+                return false;
 
-            if (_storage.LocalAppStateDictionary.TryGetValue(appName, out var gameInfo))
-            {
-                var metaData = _storage.GetGameMetaData(appName);
-                if (metaData == null)
-                {
-                    _log.Warning("LaunchApp: Trying to launch game not owned {AppName}", appName);
-                    return;
-                }
+            if (gameInfo.RequiresOt)
+                ownershipTokenPath = await CreateOwnershipTokenFileAsync(game);
 
-                if (metaData.LocalAppState?.InstallStatus != InstallState.Installed &&
-                    metaData.LocalAppState?.InstallStatus != InstallState.NeedUpdate)
-                {
-                    Log.Warning("LaunchApp: Trying to launch game not installed");
-                    return;
-                }
-
-                if (metaData.IsDlc())
-                {
-                    _log.Warning("LaunchApp: launching DLC's is not yet supported");
-                    return;
-                }
-
-                var responseData = await _storeRepository.GetGameToken();
-                var responseObject = JsonSerializer.Deserialize<GameTokenResponse>(responseData);
-                var userData = await _authManager.GetUserData();
-
-                var parameters = new List<string>();
-                parameters.Add($"-AUTH_LOGIN=unused");
-                parameters.Add($"-AUTH_PASSWORD={responseObject.Code}");
-                parameters.Add("-AUTH_TYPE=exchangecode");
-                parameters.Add($"-epicapp={gameInfo.AppName}");
-                parameters.Add("-epicenv=Prod");
-
-                parameters.Add("-EpicPortal");
-                parameters.Add($"-epicusername=\"{userData.DisplayName}\"");
-                parameters.Add($"-epicuserid={userData.AccountId}");
-                parameters.Add($"-epicsandboxid={metaData.AssetInfos.Windows.Namespace}");
-                parameters.Add("-epiclocale=en");
-
-                string arguments = string.Join(" ", parameters);
-
-                // Create a new process start info
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = Path.Join(gameInfo.InstallPath, gameInfo.Executable),
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    WorkingDirectory = gameInfo.InstallPath
-                };
-
-                // Create and start the process
-                using var process = new Process { StartInfo = startInfo };
-                process.Start();
-                process.WaitForExit();
-                process.Dispose();
-            }
+            var (exchangeCode, userData) = credentials.Value;
+            return StartGame(gameInfo, game, exchangeCode, userData, ownershipTokenPath);
         }
         catch (Exception ex)
         {
+            DeleteOwnershipToken(ownershipTokenPath);
             _log.Error(ex, "LaunchApp failed");
+            return false;
+        }
+    }
+
+    private (LocalAppState State, Game Game)? GetLaunchContext(string appName)
+    {
+        if (string.IsNullOrWhiteSpace(appName) ||
+            !_storage.LocalAppStateDictionary.TryGetValue(appName, out var gameInfo))
+            return null;
+
+        _log.Information("LaunchApp: Trying to launch app: {AppName}", appName);
+        var game = _storage.GetGameMetaData(appName);
+        return CanLaunch(game) ? (gameInfo, game!) : null;
+    }
+
+    private async Task<(string ExchangeCode, UserData User)?> GetLaunchCredentialsAsync(string appName)
+    {
+        var responseData = await _storeRepository.GetGameToken();
+        var userData = await _authManager.GetUserData();
+        var gameToken = string.IsNullOrWhiteSpace(responseData)
+            ? null
+            : JsonSerializer.Deserialize<GameTokenResponse>(responseData);
+        if (gameToken is not null && !string.IsNullOrWhiteSpace(gameToken.Code) && userData is not null)
+            return (gameToken.Code, userData);
+
+        _log.Error("LaunchApp: Failed to obtain launch credentials for {AppName}", appName);
+        return null;
+    }
+
+    private bool StartGame(
+        LocalAppState gameInfo,
+        Game game,
+        string exchangeCode,
+        UserData userData,
+        string? ownershipTokenPath)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = Path.Join(gameInfo.InstallPath, gameInfo.Executable),
+            Arguments = BuildLaunchArguments(gameInfo, game, exchangeCode, userData, ownershipTokenPath),
+            UseShellExecute = false,
+            WorkingDirectory = gameInfo.InstallPath
+        };
+
+        var process = new Process { StartInfo = startInfo };
+        if (!process.Start())
+        {
+            process.Dispose();
+            DeleteOwnershipToken(ownershipTokenPath);
+            return false;
+        }
+
+        if (ownershipTokenPath is null)
+            process.Dispose();
+        else
+            _ = DeleteOwnershipTokenAfterExitAsync(process, ownershipTokenPath);
+        return true;
+    }
+
+    private bool CanLaunch(Game? game)
+    {
+        if (game is null)
+        {
+            _log.Warning("LaunchApp: Trying to launch a game that is not owned");
+            return false;
+        }
+
+        if (game.LocalAppState?.InstallStatus is not InstallState.Installed and not InstallState.NeedUpdate)
+        {
+            _log.Warning("LaunchApp: Trying to launch a game that is not installed");
+            return false;
+        }
+
+        if (game.IsDlc())
+        {
+            _log.Warning("LaunchApp: Launching DLC is not yet supported");
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task<string> CreateOwnershipTokenFileAsync(Game game)
+    {
+        var token = await _storeRepository.GetOwnershipToken(
+            game.AssetInfos.Windows.Namespace,
+            game.AssetInfos.Windows.CatalogItemId);
+        if (token is null || token.Length == 0)
+            throw new InvalidOperationException("The ownership token could not be obtained.");
+
+        var directory = Path.Combine(Path.GetTempPath(), "Crimson", "ownership-tokens");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, $"{Guid.NewGuid():N}.ovt");
+        await File.WriteAllBytesAsync(path, token);
+        return path;
+    }
+
+    internal static string BuildLaunchArguments(
+        LocalAppState gameInfo,
+        Game game,
+        string exchangeCode,
+        UserData userData,
+        string? ownershipTokenPath)
+    {
+        var parameters = new List<string>();
+        if (!string.IsNullOrWhiteSpace(gameInfo.LaunchParameters))
+            parameters.Add(gameInfo.LaunchParameters);
+        var additionalCommandLine = game.Metadata.CustomAttributes?.AdditionalCommandLine?.Value;
+        if (!string.IsNullOrWhiteSpace(additionalCommandLine))
+            parameters.Add(additionalCommandLine);
+
+        parameters.Add("-AUTH_LOGIN=unused");
+        parameters.Add($"-AUTH_PASSWORD={exchangeCode}");
+        parameters.Add("-AUTH_TYPE=exchangecode");
+        parameters.Add($"-epicapp={gameInfo.AppName}");
+        parameters.Add("-epicenv=Prod");
+        if (!string.IsNullOrWhiteSpace(ownershipTokenPath))
+            parameters.Add($"-epicovt=\"{ownershipTokenPath}\"");
+        parameters.Add("-EpicPortal");
+        parameters.Add($"-epicusername=\"{userData.DisplayName}\"");
+        parameters.Add($"-epicuserid={userData.AccountId}");
+        parameters.Add("-epiclocale=en");
+        parameters.Add($"-epicsandboxid={game.AssetInfos.Windows.Namespace}");
+        return string.Join(" ", parameters);
+    }
+
+    private async Task DeleteOwnershipTokenAfterExitAsync(Process process, string path)
+    {
+        try
+        {
+            await process.WaitForExitAsync();
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Failed while waiting to remove an ownership token");
+        }
+        finally
+        {
+            process.Dispose();
+            DeleteOwnershipToken(path);
+        }
+    }
+
+    private void DeleteOwnershipToken(string? path)
+    {
+        if (path is null)
+            return;
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Failed to remove an ownership token file");
         }
     }
 
