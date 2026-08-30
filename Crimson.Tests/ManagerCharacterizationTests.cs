@@ -50,6 +50,34 @@ public sealed class ManagerCharacterizationTests
     }
 
     [Fact]
+    public void LibraryManager_BuildsAuthenticatedLaunchArguments()
+    {
+        var game = Game("owned");
+        game.Metadata.CustomAttributes = new CustomAttributes
+        {
+            AdditionalCommandLine = new AdditionalCommandLine { Value = "-from-metadata" }
+        };
+        var state = game.LocalAppState!;
+        state.LaunchParameters = "-from-manifest";
+        var user = new UserData { AccountId = "account", DisplayName = "Player Name" };
+
+        var arguments = LibraryManager.BuildLaunchArguments(
+            state,
+            game,
+            "exchange-code",
+            user,
+            "C:\\Temp\\game.ovt");
+
+        Assert.Contains("-from-manifest", arguments);
+        Assert.Contains("-from-metadata", arguments);
+        Assert.Contains("-AUTH_PASSWORD=exchange-code", arguments);
+        Assert.Contains("-epicapp=owned", arguments);
+        Assert.Contains("-epicovt=\"C:\\Temp\\game.ovt\"", arguments);
+        Assert.Contains("-epicuserid=account", arguments);
+        Assert.Contains("-epicsandboxid=synthetic", arguments);
+    }
+
+    [Fact]
     public void InstallManager_QueuesValidActionsAndPreservesOrder()
     {
         var installable = Game("installable");
@@ -201,6 +229,9 @@ public sealed class ManagerCharacterizationTests
             throw new NotSupportedException();
 
         public Task<string> GetGameToken() => throw new NotSupportedException();
+
+        public Task<byte[]?> GetOwnershipToken(string nameSpace, string catalogItemId) =>
+            throw new NotSupportedException();
 
         public Task<GetManifestUrlData> GetManifestUrls(
             string nameSpace,
