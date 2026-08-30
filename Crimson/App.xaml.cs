@@ -71,9 +71,9 @@ namespace Crimson
                 services.AddSingleton<SettingsManager>();
                 services.AddSingleton<ILogger>(provider =>
                 {
-                    var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                    _ = Directory.CreateDirectory($@"{appDataPath}\Crimson\logs");
-                    var logFilePath = $@"{appDataPath}\Crimson\logs\{DateTime.Now:yyyy-MM-dd}.txt";
+                    var logDirectory = Path.Combine(GetAppDataPath(), "logs");
+                    _ = Directory.CreateDirectory(logDirectory);
+                    var logFilePath = Path.Combine(logDirectory, $"{DateTime.Now:yyyy-MM-dd}.txt");
 
                     var logger = new LoggerConfiguration()
                         .MinimumLevel.Information()
@@ -113,7 +113,9 @@ namespace Crimson
                 services.AddHttpClient("EpicStore", ConfigureEpicStoreClient)
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
 
-                services.AddSingleton<Storage>();
+                services.AddSingleton<Storage>(provider => new Storage(
+                    provider.GetRequiredService<ILogger>(),
+                    GetAppDataPath()));
                 services.AddSingleton<AuthManager>(provider => new AuthManager(
                     provider.GetRequiredService<ILogger>(),
                     provider.GetRequiredService<Storage>(),
@@ -141,6 +143,10 @@ namespace Crimson
             }).
             Build();
         }
+
+        private static string GetAppDataPath() => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Crimson");
 
         private static void ConfigureEpicClient(HttpClient client)
         {

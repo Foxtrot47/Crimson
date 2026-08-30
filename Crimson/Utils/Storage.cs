@@ -11,16 +11,14 @@ namespace Crimson.Utils
 {
     public class Storage
     {
-        private static readonly string AppDataPath = Path.GetFullPath(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Crimson"));
-        private static readonly string UserDataFile = ResolveAppDataPath("user.json");
-        private static readonly string GameAssetsFile = ResolveAppDataPath("assets.json");
-        private static readonly string MetaDataDirectory = ResolveAppDataPath("metadata");
-        private static readonly string SettingsDataFile = ResolveAppDataPath("settings.json");
-        private static readonly string InstallationStateFile = ResolveAppDataPath("install_state.json");
-        private static readonly string LocalAppStateFile = ResolveAppDataPath("localstate.json");
-        private static readonly string ManifestPath = ResolveAppDataPath("manifests");
+        private readonly string AppDataPath;
+        private readonly string UserDataFile;
+        private readonly string GameAssetsFile;
+        private readonly string MetaDataDirectory;
+        private readonly string SettingsDataFile;
+        private readonly string InstallationStateFile;
+        private readonly string LocalAppStateFile;
+        private readonly string ManifestPath;
 
         private Dictionary<string, Game> _gameMetaDataDictionary = new();
         private Dictionary<string, LocalAppState> _localAppStateDictionary = new();
@@ -31,63 +29,82 @@ namespace Crimson.Utils
 
         public string DefaultInstallPath => Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
 
-
         public Storage()
+            : this(Log.Logger, GetDefaultAppDataPath())
         {
-            _logger = App.GetService<ILogger>();
+        }
+
+        public Storage(ILogger logger, string appDataPath)
+        {
+            ArgumentNullException.ThrowIfNull(logger);
+            ArgumentException.ThrowIfNullOrWhiteSpace(appDataPath);
+
+            _logger = logger;
+            AppDataPath = Path.GetFullPath(appDataPath);
+            UserDataFile = ResolveAppDataPath("user.json");
+            GameAssetsFile = ResolveAppDataPath("assets.json");
+            MetaDataDirectory = ResolveAppDataPath("metadata");
+            SettingsDataFile = ResolveAppDataPath("settings.json");
+            InstallationStateFile = ResolveAppDataPath("install_state.json");
+            LocalAppStateFile = ResolveAppDataPath("localstate.json");
+            ManifestPath = ResolveAppDataPath("manifests");
+
+            InitializeStorage();
+        }
+
+        private void InitializeStorage()
+        {
             try
             {
-                if (!Directory.Exists(MetaDataDirectory))
-                    Directory.CreateDirectory(MetaDataDirectory);
-
-                if (!Directory.Exists(ManifestPath))
-                    Directory.CreateDirectory(ManifestPath);
-
-                var metaDataDictionary = new Dictionary<string, Game>();
-
-                Parallel.ForEach(Directory.EnumerateFiles(MetaDataDirectory, "*.json"),
-                    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, (file) =>
-                    {
-                        try
-                        {
-                            var jsonString = File.ReadAllText(file);
-                            var gameMetaData = JsonSerializer.Deserialize<Game>(jsonString);
-                            if (gameMetaData == null)
-                                throw new InvalidDataException("Metadata file did not contain a game record.");
-
-                            lock (metaDataDictionary)
-                            {
-                                metaDataDictionary.Add(gameMetaData.AppName, gameMetaData);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.Error(ex, "Error processing metadata file {File}", file);
-                        }
-                    });
-
-                _gameMetaDataDictionary = metaDataDictionary;
-
-                // Load installed games list
-                if (!File.Exists(LocalAppStateFile))
-                {
-                    _localAppStateDictionary = new Dictionary<string, LocalAppState>();
-                }
-                else
-                {
-                    var jsonString = File.ReadAllText(LocalAppStateFile);
-                    if (jsonString != null && jsonString != "")
-                        _localAppStateDictionary =
-                            JsonSerializer.Deserialize<Dictionary<string, LocalAppState>>(jsonString)
-                            ?? new Dictionary<string, LocalAppState>();
-                    else
-                        _localAppStateDictionary = new Dictionary<string, LocalAppState>();
-                }
+                Directory.CreateDirectory(MetaDataDirectory);
+                Directory.CreateDirectory(ManifestPath);
+                _gameMetaDataDictionary = LoadMetadata();
+                _localAppStateDictionary = LoadLocalAppStates();
             }
             catch (Exception ex)
             {
                 _logger.Error(ex, "Failed to initialize storage");
             }
+        }
+
+        private Dictionary<string, Game> LoadMetadata()
+        {
+            var metadata = new Dictionary<string, Game>();
+            Parallel.ForEach(
+                Directory.EnumerateFiles(MetaDataDirectory, "*.json"),
+                new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                file =>
+                {
+                    try
+                    {
+                        var json = File.ReadAllText(file);
+                        var game = JsonSerializer.Deserialize<Game>(json);
+                        if (game is null)
+                            throw new InvalidDataException("Metadata file did not contain a game record.");
+
+                        lock (metadata)
+                        {
+                            metadata.Add(game.AppName, game);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error(ex, "Error processing metadata file {File}", file);
+                    }
+                });
+            return metadata;
+        }
+
+        private Dictionary<string, LocalAppState> LoadLocalAppStates()
+        {
+            if (!File.Exists(LocalAppStateFile))
+                return [];
+
+            var json = File.ReadAllText(LocalAppStateFile);
+            if (string.IsNullOrEmpty(json))
+                return [];
+
+            return JsonSerializer.Deserialize<Dictionary<string, LocalAppState>>(json) ?? [];
         }
 
         public async Task<UserData> GetUserData()
@@ -270,13 +287,13 @@ namespace Crimson.Utils
 
         public static async Task SaveAppManifest(byte[] manifestBytes, string appName)
         {
-            var path = ResolveAppDataPath($"{appName}.manifest");
+            var path = ResolveDefaultAppDataPath($"{appName}.manifest");
             await File.WriteAllBytesAsync(path, manifestBytes);
         }
 
         public static Task<byte[]> GetAppManifest(string appName)
         {
-            var path = ResolveAppDataPath($"{appName}.manifest");
+            var path = ResolveDefaultAppDataPath($"{appName}.manifest");
             return File.ReadAllBytesAsync(path);
         }
 
@@ -337,17 +354,27 @@ namespace Crimson.Utils
             }
         }
 
-        private static string GetManifestCachePath(string appName, string version) => ResolveAppDataPath(
+        private string GetManifestCachePath(string appName, string version) => ResolveAppDataPath(
             "manifests",
             $"{appName}_{version}.manifest");
 
-        private static string ResolveAppDataPath(params string[] segments)
+        private string ResolveAppDataPath(params string[] segments) =>
+            ResolvePath(AppDataPath, segments);
+
+        private static string ResolveDefaultAppDataPath(params string[] segments) =>
+            ResolvePath(GetDefaultAppDataPath(), segments);
+
+        private static string GetDefaultAppDataPath() => Path.GetFullPath(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Crimson"));
+
+        private static string ResolvePath(string root, params string[] segments)
         {
             var pathParts = new string[segments.Length + 1];
-            pathParts[0] = AppDataPath;
+            pathParts[0] = root;
             Array.Copy(segments, 0, pathParts, 1, segments.Length);
             var candidate = Path.GetFullPath(Path.Combine(pathParts));
-            var relative = Path.GetRelativePath(AppDataPath, candidate);
+            var relative = Path.GetRelativePath(root, candidate);
             if (relative == ".." ||
                 relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
                 Path.IsPathRooted(relative))
