@@ -617,6 +617,7 @@ public class InstallManager
         localAppState.Version = null;
         localAppState.Executable = null;
         SaveLocalAppState(game, localAppState);
+        TryRemoveShortcuts(game);
         _logger.Information(
             "UpdateInstalledGameStatus: Uninstall complete for {AppName}",
             install.AppName);
@@ -764,6 +765,18 @@ public class InstallManager
 
         CurrentInstall = null;
         ProcessNext();
+    }
+
+    private void TryRemoveShortcuts(Game game)
+    {
+        try
+        {
+            _shortcutManager.Remove(game);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to remove shortcuts for {AppName}", game.AppName);
+        }
     }
 
     private async Task CreateRequestedShortcutsAsync(
