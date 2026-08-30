@@ -196,7 +196,8 @@ public sealed class ManagerCharacterizationTests
             new UnusedStoreRepository(),
             storage,
             downloads,
-            new UnusedGameShortcutManager());
+            new UnusedGameShortcutManager(),
+            new AllowInstallPermissionChecker());
     }
 
     private Storage StorageWith(params Game[] games)
@@ -267,6 +268,11 @@ public sealed class ManagerCharacterizationTests
         public void Remove(Game game)
         {
         }
+    }
+
+    private sealed class AllowInstallPermissionChecker : IInstallPermissionChecker
+    {
+        public InstallPermissionCheckResult Check(string folderPath) => new(true);
     }
 
     private sealed class UnusedStoreRepository : IStoreRepository

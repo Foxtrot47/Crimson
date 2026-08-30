@@ -34,6 +34,7 @@
     <Compile Include="..\Crimson\Core\IGameShortcutManager.cs" Link="Production\Core\IGameShortcutManager.cs" />
     <Compile Include="..\Crimson\Core\GameShortcutNaming.cs" Link="Production\Core\GameShortcutNaming.cs" />
     <Compile Include="..\Crimson\Core\ICredentialProtector.cs" Link="Production\Core\ICredentialProtector.cs" />
+    <Compile Include="..\Crimson\Core\IInstallPermissionChecker.cs" Link="Production\Core\IInstallPermissionChecker.cs" />
     <Compile Include="..\Crimson\Core\InstallManager.cs" Link="Production\Core\InstallManager.cs" />
     <Compile Include="..\Crimson\Core\LibraryManager.cs" Link="Production\Core\LibraryManager.cs" />
     <Compile Include="..\Crimson\Core\SecurityPolicy.cs" Link="Production\Core\SecurityPolicy.cs" />
@@ -42,6 +43,7 @@
     <Compile Include="..\Crimson\Repository\GetManifestUrlData.cs" Link="Production\Repository\GetManifestUrlData.cs" />
     <Compile Include="..\Crimson\Utils\BigIntegerJsonConverter.cs" Link="Production\Utils\BigIntegerJsonConverter.cs" />
     <Compile Include="..\Crimson\Utils\Encryption.cs" Link="Production\Utils\Encryption.cs" />
+    <Compile Include="..\Crimson\Utils\FileSystemInstallPermissionChecker.cs" Link="Production\Utils\FileSystemInstallPermissionChecker.cs" />
     <Compile Include="..\Crimson\Utils\RollingHash.cs" Link="Production\Utils\RollingHash.cs" />
     <Compile Include="..\Crimson\Utils\Storage.cs" Link="Production\Utils\Storage.cs" />
   </ItemGroup>

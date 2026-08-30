@@ -6,8 +6,6 @@ using System.IO;
 using System.IO.Pipes;
 using System.Linq;
 using System.Numerics;
-using System.Security.AccessControl;
-using System.Security.Principal;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,6 +25,7 @@ public class InstallManager
     private readonly LibraryManager _libraryManager;
     private readonly DownloadManager _downloadManager;
     private readonly IGameShortcutManager _shortcutManager;
+    private readonly IInstallPermissionChecker _permissionChecker;
     private readonly IStoreRepository _repository;
     private readonly Storage _storage;
 
@@ -58,13 +57,20 @@ public class InstallManager
 
     public InstallItem? CurrentInstall { get; private set; }
 
-    public InstallManager(ILogger logger, LibraryManager libraryManager, IStoreRepository repository, Storage storage,
-        DownloadManager downloadManager, IGameShortcutManager shortcutManager)
+    public InstallManager(
+        ILogger logger,
+        LibraryManager libraryManager,
+        IStoreRepository repository,
+        Storage storage,
+        DownloadManager downloadManager,
+        IGameShortcutManager shortcutManager,
+        IInstallPermissionChecker permissionChecker)
     {
         _logger = logger;
         _libraryManager = libraryManager;
         _downloadManager = downloadManager;
         _shortcutManager = shortcutManager;
+        _permissionChecker = permissionChecker;
         CurrentInstall = null;
         _repository = repository;
         _storage = storage;
@@ -197,12 +203,13 @@ public class InstallManager
                 _installQueue.RemoveAt(0);
             }
 
-            if (CurrentInstall == null) return;
+            var currentInstall = CurrentInstall;
+            if (currentInstall == null) return;
             _logger.Information("ProcessNext: Processing {Action} of {AppName}. Game Location {Location} ",
-                CurrentInstall.Action, CurrentInstall.AppName, CurrentInstall.Location);
+                currentInstall.Action, currentInstall.AppName, currentInstall.Location);
 
-            var manifestData = await GetManifestDataWithCaching(CurrentInstall.AppName);
-            var gameData = _libraryManager.GetGameInfo(CurrentInstall.AppName);
+            var manifestData = await GetManifestDataWithCaching(currentInstall.AppName);
+            var gameData = _libraryManager.GetGameInfo(currentInstall.AppName);
 
             _logger.Information("ProcessNext: Parsing game manifest");
             var data = Manifest.ReadAll(manifestData);
@@ -210,114 +217,136 @@ public class InstallManager
             // TODO Handle stats if game is installed
 
 
-            if (CurrentInstall.Action == ActionType.Install)
+            if (currentInstall.Action == ActionType.Install)
             {
                 // create CurrentInstall.folder if it doesn't exist
-                if (!Directory.Exists(CurrentInstall.Location))
+                if (!Directory.Exists(currentInstall.Location))
                 {
-                    Directory.CreateDirectory(CurrentInstall.Location);
-                    _logger.Debug("Folder created at: {location}", CurrentInstall.Location);
+                    Directory.CreateDirectory(currentInstall.Location);
+                    _logger.Debug("Folder created at: {location}", currentInstall.Location);
                 }
             }
 
-            if (!HasFolderWritePermissions(CurrentInstall.Location))
+            var permission = _permissionChecker.Check(currentInstall.Location);
+            if (!permission.CanWrite)
             {
+                _logger.Warning(
+                    "Install location write check failed with {ErrorType}; cleanup result {CleanupErrorType}",
+                    permission.ErrorType,
+                    permission.CleanupErrorType);
                 await HandleInstallationStoppage("No write permissions to install location");
                 return;
             }
 
             ResetQueues();
-
-            if (CurrentInstall.Action == ActionType.Install)
-            {
-                await _downloadManager.InitializeMirrors(gameData.BaseUrls);
-                GetChunksToDownload(data, downloadedChunks);
-            }
-            else if (CurrentInstall.Action == ActionType.Update)
-            {
-                await PrepareUpdateTasks(gameData, data);
-            }
-            else if (CurrentInstall.Action == ActionType.Repair)
-            {
-                await PrepareRepairTasks(gameData, data);
-            }
-            else if (CurrentInstall.Action == ActionType.Uninstall)
-            {
-                foreach (var fileManifest in data.FileManifestList.Elements)
-                {
-                    CurrentInstall.TotalWriteSizeMb += fileManifest.FileSize / 1024.0 / 1024.0;
-
-                    var task = new IoTask()
-                    {
-                        DestinationFilePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename),
-                        TaskType = IoTaskType.Delete,
-                        Size = fileManifest.FileSize,
-                    };
-                    _ioQueue.Add(task);
-                }
-            }
-            else if (CurrentInstall.Action == ActionType.Import)
-            {
-                if (!Directory.Exists(CurrentInstall.Location))
-                {
-                    await HandleInstallationStoppage("Import folder does not exist");
-                    return;
-                }
-
-                // Import only checks file existence, not SHA1 hashes.
-                // Hash verification would fail if the installed version differs from latest.
-                // Users can run Verify/Repair separately after import if needed.
-                var missingFiles = new List<FileManifest>();
-                foreach (var fileManifest in data.FileManifestList.Elements)
-                {
-                    var filePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename);
-                    if (!File.Exists(filePath))
-                    {
-                        missingFiles.Add(fileManifest);
-                    }
-                }
-
-                _importVerificationResult = missingFiles;
-
-                if (missingFiles.Count == 0)
-                {
-                    _logger.Information("Import: All {Total} files found for {AppName}",
-                        data.FileManifestList.Elements.Count, CurrentInstall.AppName);
-                }
-                else
-                {
-                    _logger.Warning("Import: {Missing}/{Total} files missing for {AppName}. Will import as Broken.",
-                        missingFiles.Count, data.FileManifestList.Elements.Count, CurrentInstall.AppName);
-                }
-            }
-            else if (CurrentInstall.Action == ActionType.Move)
-            {
-                var sourceDrive = Path.GetPathRoot(CurrentInstall.Location);
-                var destDrive = Path.GetPathRoot(CurrentInstall.MoveLocation);
-
-                if (!string.Equals(sourceDrive, destDrive, StringComparison.OrdinalIgnoreCase))
-                {
-                    await HandleInstallationStoppage("Cross-drive moves are not supported. Please uninstall and reinstall to the new location.");
-                    return;
-                }
-
-                if (Directory.Exists(CurrentInstall.MoveLocation))
-                {
-                    await HandleInstallationStoppage("Destination directory already exists");
-                    return;
-                }
-
-                _logger.Information("Move: Moving {AppName} from {Src} to {Dest}",
-                    CurrentInstall.AppName, CurrentInstall.Location, CurrentInstall.MoveLocation);
-                Directory.Move(CurrentInstall.Location, CurrentInstall.MoveLocation);
-                _logger.Information("Move: Successfully moved {AppName}", CurrentInstall.AppName);
-            }
+            await PrepareTasksForAction(currentInstall, gameData, data, downloadedChunks);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "PrepareTasks: Exception occured while preparing tasks");
             throw;
         }
+    }
+
+    private async Task PrepareTasksForAction(
+        InstallItem install,
+        Game gameData,
+        Manifest data,
+        List<BigInteger> downloadedChunks)
+    {
+        switch (install.Action)
+        {
+            case ActionType.Install:
+                await _downloadManager.InitializeMirrors(gameData.BaseUrls);
+                GetChunksToDownload(data, downloadedChunks);
+                break;
+            case ActionType.Update:
+                await PrepareUpdateTasks(gameData, data);
+                break;
+            case ActionType.Repair:
+                await PrepareRepairTasks(gameData, data);
+                break;
+            case ActionType.Uninstall:
+                PrepareUninstallTasks(install, data);
+                break;
+            case ActionType.Import:
+                await PrepareImportTasks(install, data);
+                break;
+            case ActionType.Move:
+                await PrepareMoveTasks(install);
+                break;
+        }
+    }
+
+    private void PrepareUninstallTasks(InstallItem install, Manifest data)
+    {
+        foreach (var fileManifest in data.FileManifestList.Elements)
+        {
+            install.TotalWriteSizeMb += fileManifest.FileSize / 1024.0 / 1024.0;
+
+            _ioQueue.Add(new IoTask
+            {
+                DestinationFilePath = Path.Combine(install.Location, fileManifest.Filename),
+                TaskType = IoTaskType.Delete,
+                Size = fileManifest.FileSize,
+            });
+        }
+    }
+
+    private async Task PrepareImportTasks(InstallItem install, Manifest data)
+    {
+        if (!Directory.Exists(install.Location))
+        {
+            await HandleInstallationStoppage("Import folder does not exist");
+            return;
+        }
+
+        // Import only checks file existence, not SHA1 hashes.
+        // Hash verification would fail if the installed version differs from latest.
+        // Users can run Verify/Repair separately after import if needed.
+        var missingFiles = new List<FileManifest>();
+        foreach (var fileManifest in data.FileManifestList.Elements)
+        {
+            var filePath = Path.Combine(install.Location, fileManifest.Filename);
+            if (!File.Exists(filePath))
+                missingFiles.Add(fileManifest);
+        }
+
+        _importVerificationResult = missingFiles;
+
+        if (missingFiles.Count == 0)
+        {
+            _logger.Information("Import: All {Total} files found for {AppName}",
+                data.FileManifestList.Elements.Count, install.AppName);
+        }
+        else
+        {
+            _logger.Warning("Import: {Missing}/{Total} files missing for {AppName}. Will import as Broken.",
+                missingFiles.Count, data.FileManifestList.Elements.Count, install.AppName);
+        }
+    }
+
+    private async Task PrepareMoveTasks(InstallItem install)
+    {
+        var sourceDrive = Path.GetPathRoot(install.Location);
+        var destDrive = Path.GetPathRoot(install.MoveLocation);
+
+        if (!string.Equals(sourceDrive, destDrive, StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleInstallationStoppage("Cross-drive moves are not supported. Please uninstall and reinstall to the new location.");
+            return;
+        }
+
+        if (Directory.Exists(install.MoveLocation))
+        {
+            await HandleInstallationStoppage("Destination directory already exists");
+            return;
+        }
+
+        _logger.Information("Move: Moving {AppName} from {Src} to {Dest}",
+            install.AppName, install.Location, install.MoveLocation);
+        Directory.Move(install.Location, install.MoveLocation);
+        _logger.Information("Move: Successfully moved {AppName}", install.AppName);
     }
 
     private void ResetQueues()
@@ -1381,41 +1410,6 @@ public class InstallManager
         }
         result.Reverse();
         return result;
-    }
-
-    private bool HasFolderWritePermissions(string folderPath)
-    {
-        try
-        {
-            // Create a DirectoryInfo object representing the specified directory.
-            var directoryInfo = new DirectoryInfo(folderPath);
-
-            // Get the access control list for the folder
-            var directorySecurity = directoryInfo.GetAccessControl();
-
-            // Get the access rules for the current user and their groups
-            var currentUser = WindowsIdentity.GetCurrent();
-            var principal = new WindowsPrincipal(currentUser);
-
-            var hasWritePermissions = directorySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
-                .Cast<FileSystemAccessRule>()
-                .Any(rule =>
-                    (currentUser.User.Equals(rule.IdentityReference) ||
-                     principal.IsInRole((SecurityIdentifier)rule.IdentityReference)) &&
-                    rule.AccessControlType == AccessControlType.Allow &&
-                    (rule.FileSystemRights & FileSystemRights.Write) == FileSystemRights.Write);
-
-            return hasWritePermissions;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Failed to check write permissions for {Path}", folderPath);
-            return false;
-        }
     }
 
     public Task StopProcessing()
