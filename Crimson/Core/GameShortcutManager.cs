@@ -23,16 +23,38 @@ public sealed class GameShortcutManager
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _log;
+    private readonly string _desktopDirectory;
+    private readonly string _startMenuDirectory;
     private readonly string _iconDirectory;
 
     public GameShortcutManager(HttpClient httpClient, ILogger log)
+        : this(
+            httpClient,
+            log,
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
+                "Programs",
+                "Crimson Games"),
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Crimson",
+                "shortcut-icons"))
+    {
+    }
+
+    internal GameShortcutManager(
+        HttpClient httpClient,
+        ILogger log,
+        string desktopDirectory,
+        string startMenuDirectory,
+        string iconDirectory)
     {
         _httpClient = httpClient;
         _log = log;
-        _iconDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Crimson",
-            "shortcut-icons");
+        _desktopDirectory = desktopDirectory;
+        _startMenuDirectory = startMenuDirectory;
+        _iconDirectory = iconDirectory;
     }
 
     public async Task CreateAsync(Game game, GameShortcutLocation location)
@@ -43,15 +65,33 @@ public sealed class GameShortcutManager
         CreateShellLink(path, game, iconPath);
     }
 
+    public void Remove(Game game)
+    {
+        TryDeleteFile(GetShortcutPath(game, GameShortcutLocation.StartMenu), game.AppName);
+        TryDeleteFile(GetShortcutPath(game, GameShortcutLocation.Desktop), game.AppName);
+        TryDeleteFile(
+            Path.Combine(_iconDirectory, "games", GameShortcutNaming.GetIconFileName(game.AppName)),
+            game.AppName);
+    }
+
     private string GetShortcutPath(Game game, GameShortcutLocation location)
     {
         var directory = location == GameShortcutLocation.Desktop
-            ? Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)
-            : Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
-                "Programs",
-                "Crimson Games");
+            ? _desktopDirectory
+            : _startMenuDirectory;
         return Path.Combine(directory, GameShortcutNaming.GetShortcutFileName(game.AppTitle));
+    }
+
+    private void TryDeleteFile(string path, string appName)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Failed to remove shortcut artifact {Path} for {AppName}", path, appName);
+        }
     }
 
     private async Task<string> GetIconPathAsync(Game game)

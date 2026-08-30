@@ -2,6 +2,7 @@ using Crimson.Core;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Crimson.Models;
+using Serilog;
 
 namespace Crimson.Tests;
 
@@ -132,6 +133,61 @@ public sealed class GameLaunchRequestTests
         finally
         {
             File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void ShortcutArtifactsCanBeRemoved()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"crimson-shortcuts-{Guid.NewGuid():N}");
+        var desktopDirectory = Path.Combine(root, "desktop");
+        var startMenuDirectory = Path.Combine(root, "start");
+        var iconDirectory = Path.Combine(root, "icons");
+        var game = new Game
+        {
+            AppName = "TestGame",
+            AppTitle = "Test Game",
+            AssetInfos = null!,
+            Metadata = null!
+        };
+        var shortcutName = GameShortcutNaming.GetShortcutFileName(game.AppTitle);
+        var desktopShortcut = Path.Combine(desktopDirectory, shortcutName);
+        var startMenuShortcut = Path.Combine(startMenuDirectory, shortcutName);
+        var iconPath = Path.Combine(
+            iconDirectory,
+            "games",
+            GameShortcutNaming.GetIconFileName(game.AppName));
+        var unrelatedShortcut = Path.Combine(startMenuDirectory, "Other Game.lnk");
+
+        Directory.CreateDirectory(desktopDirectory);
+        Directory.CreateDirectory(startMenuDirectory);
+        Directory.CreateDirectory(Path.GetDirectoryName(iconPath)!);
+        File.WriteAllText(desktopShortcut, string.Empty);
+        File.WriteAllText(startMenuShortcut, string.Empty);
+        File.WriteAllText(iconPath, string.Empty);
+        File.WriteAllText(unrelatedShortcut, string.Empty);
+
+        using var client = new HttpClient();
+        using var logger = new LoggerConfiguration().CreateLogger();
+        var manager = new GameShortcutManager(
+            client,
+            logger,
+            desktopDirectory,
+            startMenuDirectory,
+            iconDirectory);
+
+        try
+        {
+            manager.Remove(game);
+
+            Assert.False(File.Exists(desktopShortcut));
+            Assert.False(File.Exists(startMenuShortcut));
+            Assert.False(File.Exists(iconPath));
+            Assert.True(File.Exists(unrelatedShortcut));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
         }
     }
 
