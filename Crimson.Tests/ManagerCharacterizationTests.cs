@@ -177,7 +177,11 @@ public sealed class ManagerCharacterizationTests
 
     private LibraryManager LibraryManagerWith(Storage storage)
     {
-        var auth = new AuthManager(_logger, storage, new HttpClient());
+        var auth = new AuthManager(
+            _logger,
+            storage,
+            new TestCredentialProtector(),
+            new HttpClient());
         return new LibraryManager(_logger, new UnusedStoreRepository(), storage, auth);
     }
 

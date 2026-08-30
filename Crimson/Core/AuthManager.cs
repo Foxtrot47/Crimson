@@ -17,6 +17,7 @@ public class AuthManager
 {
     private readonly ILogger _log;
     private readonly Storage _storage;
+    private readonly ICredentialProtector _credentialProtector;
 
     private AuthenticationStatus _authenticationStatus;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
@@ -37,10 +38,15 @@ public class AuthManager
     public AuthenticationStatus AuthenticationStatus => _authenticationStatus;
 
 
-    public AuthManager(ILogger log, Storage storage, HttpClient httpClient)
+    public AuthManager(
+        ILogger log,
+        Storage storage,
+        ICredentialProtector credentialProtector,
+        HttpClient httpClient)
     {
         _log = log;
         _storage = storage;
+        _credentialProtector = credentialProtector;
         _httpClient = httpClient;
     }
 
@@ -68,8 +74,8 @@ public class AuthManager
                 throw new Exception("CheckAuthStatus: Failed to parse user data");
             }
 
-            userData.AccessToken = KeyManager.DecryptString(userData.AccessToken);
-            userData.RefreshToken = KeyManager.DecryptString(userData.RefreshToken);
+            userData.AccessToken = _credentialProtector.Unprotect(userData.AccessToken);
+            userData.RefreshToken = _credentialProtector.Unprotect(userData.RefreshToken);
 
             // check if the refresh token expiry date is in the past and if it is then log the user out
             var refreshExpiryDate = DateTimeOffset.Parse(userData.RefreshExpiresAt);
@@ -97,8 +103,8 @@ public class AuthManager
 
                 // Keep plain access token for verification
                 var plainAccessToken = newData.AccessToken;
-                newData.AccessToken = KeyManager.EncryptString(newData.AccessToken);
-                newData.RefreshToken = KeyManager.EncryptString(newData.RefreshToken);
+                newData.AccessToken = _credentialProtector.Protect(newData.AccessToken);
+                newData.RefreshToken = _credentialProtector.Protect(newData.RefreshToken);
                 await _storage.SaveUserData(newData);
 
                 if (!await VerifyAccessToken(plainAccessToken))
@@ -152,8 +158,8 @@ public class AuthManager
                 return;
             }
 
-            userData.AccessToken = KeyManager.EncryptString(userData.AccessToken);
-            userData.RefreshToken = KeyManager.EncryptString(userData.RefreshToken);
+            userData.AccessToken = _credentialProtector.Protect(userData.AccessToken);
+            userData.RefreshToken = _credentialProtector.Protect(userData.RefreshToken);
             _log.Information("RequestTokens: Tokens successfully encrypted");
 
             await _storage.SaveUserData(userData);
@@ -183,8 +189,8 @@ public class AuthManager
             var userData = await _storage.GetUserData();
             if (userData == null) return null;
 
-            var plainAccessToken = KeyManager.DecryptString(userData.AccessToken);
-            var plainRefreshToken = KeyManager.DecryptString(userData.RefreshToken);
+            var plainAccessToken = _credentialProtector.Unprotect(userData.AccessToken);
+            var plainRefreshToken = _credentialProtector.Unprotect(userData.RefreshToken);
 
             var expiryDate = DateTimeOffset.Parse(userData.ExpiresAt);
             if (expiryDate < DateTimeOffset.UtcNow + TokenRefreshBuffer)
@@ -210,8 +216,8 @@ public class AuthManager
                 }
 
                 plainAccessToken = newData.AccessToken;
-                newData.AccessToken = KeyManager.EncryptString(newData.AccessToken);
-                newData.RefreshToken = KeyManager.EncryptString(newData.RefreshToken);
+                newData.AccessToken = _credentialProtector.Protect(newData.AccessToken);
+                newData.RefreshToken = _credentialProtector.Protect(newData.RefreshToken);
                 await _storage.SaveUserData(newData);
             }
 

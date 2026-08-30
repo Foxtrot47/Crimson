@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 
 namespace Crimson.Core
 {
@@ -13,14 +14,21 @@ namespace Crimson.Core
     }
 }
 
-namespace Crimson.Utils
+namespace Crimson.Tests
 {
-    public static class KeyManager
+    internal sealed class TestCredentialProtector : Crimson.Core.ICredentialProtector
     {
-        public static string EncryptString(string value) => throw new InvalidOperationException(
-            "Credential encryption is unavailable in headless characterization tests.");
+        private const string Prefix = "test-protected:";
 
-        public static string DecryptString(string value) => throw new InvalidOperationException(
-            "Credential encryption is unavailable in headless characterization tests.");
+        public string Protect(string value) =>
+            Prefix + Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+
+        public string Unprotect(string protectedValue)
+        {
+            if (!protectedValue.StartsWith(Prefix, StringComparison.Ordinal))
+                return protectedValue;
+
+            return Encoding.UTF8.GetString(Convert.FromBase64String(protectedValue[Prefix.Length..]));
+        }
     }
 }

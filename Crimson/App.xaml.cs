@@ -116,9 +116,11 @@ namespace Crimson
                 services.AddSingleton<Storage>(provider => new Storage(
                     provider.GetRequiredService<ILogger>(),
                     GetAppDataPath()));
+                services.AddSingleton<ICredentialProtector, WindowsCredentialProtector>();
                 services.AddSingleton<AuthManager>(provider => new AuthManager(
                     provider.GetRequiredService<ILogger>(),
                     provider.GetRequiredService<Storage>(),
+                    provider.GetRequiredService<ICredentialProtector>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicOAuth")));
                 services.AddSingleton<IStoreRepository>(provider => new EpicGamesRepository(
                     provider.GetRequiredService<AuthManager>(),
