@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -6,6 +7,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Models;
 using Crimson.Repository;
@@ -25,6 +27,8 @@ public class LibraryManager
     public event Action<Game> GameStatusUpdated;
 
     private DateTime _lastUpdateDateTime = DateTime.MinValue;
+    private readonly SemaphoreSlim _updateGate = new(1, 1);
+    private IReadOnlySet<string> _ownedAppNames = new HashSet<string>();
 
     public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager)
     {
@@ -40,6 +44,7 @@ public class LibraryManager
         if (e.NewStatus != AuthenticationStatus.LoggedOut)
             return;
 
+        _ownedAppNames = new HashSet<string>();
         InvalidateCache();
     }
 
@@ -55,19 +60,33 @@ public class LibraryManager
     /// <returns></returns>
     public async Task<IEnumerable<Game>> GetLibraryData(bool forceUpdate = false)
     {
-        // Only update library data if it's been more than 20 minutes since last update
-        var dataNeedsUpdate = forceUpdate || (_lastUpdateDateTime == DateTime.MinValue) ||
-                              (DateTime.Now - _lastUpdateDateTime > TimeSpan.FromMinutes(20));
+        await _updateGate.WaitAsync();
+        try
+        {
+            var dataNeedsUpdate = forceUpdate || _lastUpdateDateTime == DateTime.MinValue ||
+                                  DateTime.Now - _lastUpdateDateTime > TimeSpan.FromMinutes(20);
+            if (!dataNeedsUpdate)
+                return GetOwnedGames();
 
-        if (!dataNeedsUpdate)
-            return _storage.GameMetaDataDictionary.Values.ToList();
+            var updatedLibrary = await UpdateLibraryData(refreshAssets: true, forceMetadataUpdate: forceUpdate);
+            if (updatedLibrary is not null)
+            {
+                _ownedAppNames = updatedLibrary.Select(game => game.AppName).ToHashSet(StringComparer.Ordinal);
+                _lastUpdateDateTime = DateTime.Now;
+            }
 
-        await UpdateLibraryData(refreshAssets: true, forceMetadataUpdate: forceUpdate);
-        // Optionally, you can update the last update timestamp here
-        _lastUpdateDateTime = DateTime.Now;
-
-        return _storage.GameMetaDataDictionary.Values.ToList();
+            return GetOwnedGames();
+        }
+        finally
+        {
+            _updateGate.Release();
+        }
     }
+
+    private List<Game> GetOwnedGames() => _storage.GameMetaDataDictionary
+        .Where(entry => _ownedAppNames.Contains(entry.Key))
+        .Select(entry => entry.Value)
+        .ToList();
 
     public Game GetGameInfo(string name)
     {
@@ -178,102 +197,118 @@ public class LibraryManager
     /// <param name="refreshAssets"></param>
     /// <param name="forceMetadataUpdate"></param>
     /// <returns></returns>
-    private async Task UpdateLibraryData(bool refreshAssets, bool forceMetadataUpdate)
+    private async Task<IReadOnlyList<Game>?> UpdateLibraryData(bool refreshAssets, bool forceMetadataUpdate)
     {
         try
         {
-            var metadataUpdated = false;
-            var gameAssets = await _storage.GetGameAssetsData();
-            if (gameAssets == null)
-            {
-                _log.Information("UpdateLibraryData: No cached game assets found");
-            }
+            var gameAssets = await GetGameAssetsAsync(refreshAssets);
+            if (gameAssets is null)
+                return null;
 
-            var gameAssetsList = gameAssets?.ToList() ?? new List<Asset>();
-            if (refreshAssets || gameAssetsList.Count < 1)
-            {
-                _log.Information("UpdateLibraryData: No cached game assets; refreshing");
+            var fetchList = GetMetadataFetchList(gameAssets, forceMetadataUpdate);
+            await FetchMetadataAsync(fetchList, gameAssets);
 
-                var assets = (await _storeRepository.FetchGameAssets()).ToList();
-                if (assets.Count < 1)
-                {
-                    _log.Error("GetLibraryData: Error while fetching game assets");
-                    return;
-                }
-                await _storage.SaveGameAssetsData(assets);
-                gameAssetsList = assets.ToList();
-            }
-
-            var fetchList = new List<FetchListItem>();
-            var gameMetaDataDictionary = new Dictionary<string, Models.Game>();
-
-            foreach (var asset in gameAssetsList)
-            {
-                // skip adding unreal engine assets
-                var pattern = @".*UE.*Windows";
-
-                // Check if the asset namespace or build version contains the pattern
-                if (asset.Namespace.Contains("ue") || Regex.IsMatch(asset.BuildVersion, pattern))
-                {
-                    continue;
-                }
-
-                var game = _storage.GetGameMetaData(asset.AppName);
-                var assetUpdated = false;
-                if (game != null)
-                {
-                    assetUpdated = asset.BuildVersion != game.AssetInfos.Windows.BuildVersion;
-                    gameMetaDataDictionary.Add(asset.AppName, game);
-                }
-
-                if (game != null && !forceMetadataUpdate && !assetUpdated) continue;
-                _log.Debug("Scheduling metadata update for {AppName}", asset.AppName);
-                fetchList.Add(new FetchListItem()
-                {
-                    AppName = asset.AppName,
-                    NameSpace = asset.Namespace,
-                    CatalogItemId = asset.CatalogItemId
-                });
-            }
-
-            var options = new ParallelOptions()
-            {
-                MaxDegreeOfParallelism = Environment.ProcessorCount
-            };
-            // Only update metadata if there are any updates or if forced
-            await Parallel.ForEachAsync(fetchList, options, async (item, token) =>
-            {
-                var egFetchGameMetaData = await _storeRepository.FetchGameMetaData(item.NameSpace, item.CatalogItemId);
-
-                // ignore if no metadata can be fetched
-                if (egFetchGameMetaData == null) return;
-                var gameMetaData = new Models.Game()
-                {
-                    AppName = item.AppName,
-                    AppTitle = egFetchGameMetaData.Title,
-                    AssetInfos = new AssetInfos()
-                    {
-                        Windows = gameAssetsList.FirstOrDefault(asset => asset.AppName == item.AppName),
-                    },
-                    Metadata = egFetchGameMetaData
-                };
-                _storage.SaveMetaData(gameMetaData);
-            });
-
-            // Hydrate LocalAppState for all games and check for updates
             _storage.HydrateAllLocalAppStates();
-            CheckForGameUpdates(gameAssetsList);
+            CheckForGameUpdates(gameAssets);
 
-            gameMetaDataDictionary = _storage.GameMetaDataDictionary;
-
-            // Sort _gameData by name
+            var ownedGames = SelectOwnedGames(gameAssets, _storage.GameMetaDataDictionary);
             _log.Information("UpdateLibraryAsync: Library updated");
-            LibraryUpdated?.Invoke(gameMetaDataDictionary.Values.ToList());
+            LibraryUpdated?.Invoke(ownedGames);
+            return ownedGames;
         }
         catch (Exception ex)
         {
             _log.Error(ex, "UpdateLibraryData failed");
+            return null;
         }
+    }
+
+    private async Task<List<Asset>?> GetGameAssetsAsync(bool refreshAssets)
+    {
+        var cachedAssets = (await _storage.GetGameAssetsData())?.ToList() ?? [];
+        if (!refreshAssets && cachedAssets.Count > 0)
+            return cachedAssets;
+
+        _log.Information("UpdateLibraryData: Refreshing game assets");
+        var assets = (await _storeRepository.FetchGameAssets())?.ToList();
+        if (assets is null || assets.Count == 0)
+        {
+            _log.Error("GetLibraryData: Error while fetching game assets");
+            return null;
+        }
+
+        await _storage.SaveGameAssetsData(assets);
+        return assets;
+    }
+
+    private List<FetchListItem> GetMetadataFetchList(
+        IReadOnlyList<Asset> gameAssets,
+        bool forceMetadataUpdate)
+    {
+        var fetchList = new List<FetchListItem>();
+        foreach (var asset in gameAssets)
+        {
+            if (IsUnrealEngineAsset(asset))
+                continue;
+
+            var game = _storage.GetGameMetaData(asset.AppName);
+            var assetUpdated = game is not null &&
+                asset.BuildVersion != game.AssetInfos.Windows.BuildVersion;
+            if (game is not null && !forceMetadataUpdate && !assetUpdated)
+                continue;
+
+            _log.Debug("Scheduling metadata update for {AppName}", asset.AppName);
+            fetchList.Add(new FetchListItem
+            {
+                AppName = asset.AppName,
+                NameSpace = asset.Namespace,
+                CatalogItemId = asset.CatalogItemId
+            });
+        }
+
+        return fetchList;
+    }
+
+    private async Task FetchMetadataAsync(
+        IEnumerable<FetchListItem> fetchList,
+        IReadOnlyList<Asset> gameAssets)
+    {
+        var fetchedGames = new ConcurrentBag<Game>();
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+        await Parallel.ForEachAsync(fetchList, options, async (item, _) =>
+        {
+            var metadata = await _storeRepository.FetchGameMetaData(item.NameSpace, item.CatalogItemId);
+            if (metadata is null)
+                return;
+
+            fetchedGames.Add(new Game
+            {
+                AppName = item.AppName,
+                AppTitle = metadata.Title,
+                AssetInfos = new AssetInfos
+                {
+                    Windows = gameAssets.First(asset => asset.AppName == item.AppName)
+                },
+                Metadata = metadata
+            });
+        });
+
+        foreach (var game in fetchedGames)
+            _storage.SaveMetaData(game);
+    }
+
+    private static bool IsUnrealEngineAsset(Asset asset) =>
+        asset.Namespace.Contains("ue") || Regex.IsMatch(asset.BuildVersion, @".*UE.*Windows");
+
+    internal static IReadOnlyList<Game> SelectOwnedGames(
+        IEnumerable<Asset> assets,
+        IReadOnlyDictionary<string, Game> metadata)
+    {
+        var ownedAppNames = assets.Select(asset => asset.AppName).ToHashSet(StringComparer.Ordinal);
+        return metadata
+            .Where(entry => ownedAppNames.Contains(entry.Key))
+            .Select(entry => entry.Value)
+            .ToList();
     }
 
     /// <summary>

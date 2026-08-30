@@ -760,7 +760,7 @@ public sealed partial class MainWindow : Window
                 {
                     try
                     {
-                        LibraryUpdatedHandler(await _libraryManager.GetLibraryData());
+                        await _libraryManager.GetLibraryData();
                     }
                     catch (Exception ex)
                     {

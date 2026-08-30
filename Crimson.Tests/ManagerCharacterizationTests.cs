@@ -29,6 +29,27 @@ public sealed class ManagerCharacterizationTests
     }
 
     [Fact]
+    public void LibraryManager_FiltersCachedMetadataByCurrentOwnership()
+    {
+        var owned = Game("owned");
+        var stale = Game("stale");
+        var metadata = new Dictionary<string, Game>
+        {
+            [owned.AppName] = owned,
+            [stale.AppName] = stale
+        };
+        var assets = new[]
+        {
+            Asset(owned.AppName),
+            Asset("metadata-not-fetched")
+        };
+
+        var games = LibraryManager.SelectOwnedGames(assets, metadata);
+
+        Assert.Equal([owned], games);
+    }
+
+    [Fact]
     public void InstallManager_QueuesValidActionsAndPreservesOrder()
     {
         var installable = Game("installable");
@@ -111,6 +132,14 @@ public sealed class ManagerCharacterizationTests
         SetPrivateField(storage, "_logger", _logger);
         return storage;
     }
+
+    private static Asset Asset(string appName) => new()
+    {
+        AppName = appName,
+        BuildVersion = "1.0.0",
+        CatalogItemId = appName,
+        Namespace = "synthetic"
+    };
 
     private static Game Game(
         string appName,
