@@ -2,7 +2,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 namespace Crimson.Views;
 
@@ -53,12 +52,4 @@ public sealed partial class LibraryPage : Page
 
         return parent as Frame;
     }
-}
-
-public class LibraryItem
-{
-    public string Name { get; set; }
-    public string Title { get; set; }
-    public BitmapImage Image { get; set; }
-    //public Game.InstallState InstallState { get; set; }
 }

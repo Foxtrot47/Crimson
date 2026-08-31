@@ -4,14 +4,15 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:local="using:Crimson.Views"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:utils="using:Crimson.Utils"
+    xmlns:viewModels="using:Crimson.ViewModels"
     mc:Ignorable="d">
 
     <Grid x:Name="GamesGrid" HorizontalAlignment="Center">
         <Grid.Resources>
             <UniformGridLayout x:Name="UniformGridLayout" />
-            <DataTemplate x:Key="GameCardTemplate" x:DataType="local:LibraryItem">
+            <DataTemplate x:Key="GameCardTemplate" x:DataType="viewModels:LibraryItem">
                 <Button
                     Padding="16,16,16,16"
                     Background="Transparent"
@@ -24,7 +25,7 @@
                             Height="300"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Source="{x:Bind Image}"
+                            Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}"
                             Stretch="UniformToFill" />
                         <TextBlock
                             MaxWidth="200"
@@ -63,5 +64,6 @@
 
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <utils:ImageUrlConverter x:Key="ImageUrlConverter" />
     </Page.Resources>
 </Page>
