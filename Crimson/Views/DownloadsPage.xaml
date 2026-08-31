@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:local="using:Crimson.Views"
+    xmlns:local="using:Crimson.ViewModels"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:utils="using:Crimson.Utils"
@@ -21,7 +21,7 @@
                 CornerRadius="10"
                 Visibility="{x:Bind ViewModel.ShowCurrentDownload, Converter={StaticResource BoolToVisibilityConverter}, Mode=TwoWay}">
                 <StackPanel Orientation="Horizontal" Spacing="20">
-                    <Image Height="200" Source="{x:Bind ViewModel.CurrentInstallItemImageSource, Mode=TwoWay}" />
+                    <Image Height="200" Source="{x:Bind ViewModel.CurrentInstallItemImageUrl, Converter={StaticResource ImageUrlConverter}, Mode=OneWay}" />
                     <StackPanel Orientation="Vertical">
                         <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.CurrentInstallItemName, Mode=TwoWay}" />
                         <StackPanel Orientation="Horizontal" Spacing="30">
@@ -87,7 +87,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="20">
                                 <Image
                                     Height="150"
-                                    Source="{x:Bind Image}"
+                                    Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}"
                                     Stretch="UniformToFill" />
                                 <TextBlock
                                     VerticalAlignment="Center"
@@ -119,7 +119,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="20">
                                 <Image
                                     Height="150"
-                                    Source="{x:Bind Image}"
+                                    Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}"
                                     Stretch="UniformToFill" />
                                 <TextBlock
                                     VerticalAlignment="Center"
@@ -144,5 +144,6 @@
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <utils:BoolToInverseVisibilityConverter x:Key="BoolToInverseVisibilityConverter" />
+        <utils:ImageUrlConverter x:Key="ImageUrlConverter" />
     </Page.Resources>
 </Page>

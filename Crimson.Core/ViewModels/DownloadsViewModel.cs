@@ -6,8 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Models;
-using Crimson.Views;
-using Microsoft.UI.Xaml.Media.Imaging;
+using Crimson.Utils;
 using Serilog;
 
 namespace Crimson.ViewModels;
@@ -51,7 +50,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     private string _currentInstallItemName = string.Empty;
 
     [ObservableProperty]
-    private BitmapImage? _currentInstallItemImageSource;
+    private string? _currentInstallItemImageUrl;
 
     [ObservableProperty]
     private string _currentInstallAction = string.Empty;
@@ -101,7 +100,8 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
                 {
                     Name = queueItemName,
                     Title = gameInfo.AppTitle,
-                    Image = Util.GetBitmapImage(gameInfo.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                    ImageUrl = gameInfo.Metadata.KeyImages
+                        .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
                 });
 
             }
@@ -133,7 +133,8 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
                 {
                     Name = historyItemName,
                     Title = gameInfo.AppTitle,
-                    Image = Util.GetBitmapImage(gameInfo.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                    ImageUrl = gameInfo.Metadata.KeyImages
+                        .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
                 });
             }
             HistoryItems = itemList;
@@ -173,11 +174,11 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
                     Name = gameInfo.AppName,
                     Title = gameInfo.AppTitle,
                     InstallState = gameInfo.LocalAppState?.InstallStatus ?? InstallState.NotInstalled,
-                    Image = Util.GetBitmapImage(gameInfo.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")
-                        ?.Url)
+                    ImageUrl = gameInfo.Metadata.KeyImages
+                        .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
                 };
                 CurrentInstallItemName = CurrentInstallItem.Title;
-                CurrentInstallItemImageSource = CurrentInstallItem.Image;
+                CurrentInstallItemImageUrl = CurrentInstallItem.ImageUrl;
 
                 _log.Information("HandleInstallationStatusChanged: Installation Status: {Status}", installItem.Status);
                 switch (installItem.Status)
@@ -186,14 +187,14 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
                         DownloadProgressBarIndeterminate = false;
                         DownloadProgressBarValue = Convert.ToDouble(installItem.ProgressPercentage);
                         CurrentInstallAction = $@"{installItem.Action}ing";
-                        CurrentDownloadSize = $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
+                        CurrentDownloadSize = $@"{StorageSizeFormatter.FormatMebibytes(installItem.WrittenSizeMiB)} of {StorageSizeFormatter.FormatMebibytes(installItem.TotalWriteSizeMb)}";
                         CurrentDownloadSpeed = $"{installItem.DownloadSpeedRawMiB} MiB /s";
                         break;
                     case ActionStatus.Paused:
                         DownloadProgressBarIndeterminate = false;
                         DownloadProgressBarValue = Convert.ToDouble(installItem.ProgressPercentage);
                         CurrentInstallAction = "Paused";
-                        CurrentDownloadSize = $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
+                        CurrentDownloadSize = $@"{StorageSizeFormatter.FormatMebibytes(installItem.WrittenSizeMiB)} of {StorageSizeFormatter.FormatMebibytes(installItem.TotalWriteSizeMb)}";
                         CurrentDownloadSpeed = string.Empty;
                         break;
                     case ActionStatus.Cancelling:
@@ -248,7 +249,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
             {
                 DownloadProgressBarIndeterminate = false;
                 DownloadProgressBarValue = Convert.ToDouble(installItem.ProgressPercentage);
-                CurrentDownloadSize = $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
+                CurrentDownloadSize = $@"{StorageSizeFormatter.FormatMebibytes(installItem.WrittenSizeMiB)} of {StorageSizeFormatter.FormatMebibytes(installItem.TotalWriteSizeMb)}";
                 CurrentDownloadSpeed = $@"{installItem.DownloadSpeedRawMiB} MiB/s";
             });
         }
