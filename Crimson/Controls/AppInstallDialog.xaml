@@ -25,7 +25,7 @@
                     <Image
                         Width="64"
                         Height="64"
-                        Source="{x:Bind ViewModel.GameImage, Mode=OneWay}" />
+                        Source="{x:Bind ViewModel.GameImageUrl, Converter={StaticResource ImageUrlConverter}, Mode=OneWay}" />
                     <StackPanel>
                         <TextBlock
                             FontSize="24"
@@ -207,5 +207,6 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <converters:BoolToInverseVisibilityConverter x:Key="BoolToInverseVisibilityConverter" />
         <converters:DriveSpaceColorConverter x:Key="DriveSpaceColorConverter" />
+        <converters:ImageUrlConverter x:Key="ImageUrlConverter" />
     </UserControl.Resources>
 </UserControl>

@@ -9,7 +9,6 @@ using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Utils;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
 
 namespace Crimson.ViewModels;
@@ -28,7 +27,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
     private string _gameTitle;
 
     [ObservableProperty]
-    private BitmapImage _gameImage;
+    private string? _gameImageUrl;
 
     [ObservableProperty]
     private string _installLocation;
@@ -106,7 +105,9 @@ public partial class AppInstallDialogViewModel : ObservableObject
             Activate();
             _gameAppName = gameInfo.AppName;
             GameTitle = gameInfo.AppTitle;
-            GameImage = gameInfo.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBox") != null ? new BitmapImage(new Uri(gameInfo.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url)) : null;
+            GameImageUrl = gameInfo.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBox") != null
+                ? gameInfo.Metadata.KeyImages.FirstOrDefault(i => i.Type == "DieselGameBoxTall").Url
+                : null;
             InstallLocation = Path.Combine(_storageService.DefaultInstallPath, gameInfo.AppTitle);
 
             // Load available DLCs
