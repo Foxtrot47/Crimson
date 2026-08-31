@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
+    <PackageReference Include="Serilog" Version="4.4.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Crimson.Tests\DownloadManagerTests.cs" Link="DownloadManagerTests.cs" />
+    <Compile Include="..\Crimson.Tests\FileHashTests.cs" Link="FileHashTests.cs" />
+    <Compile Include="..\Crimson.Tests\GlobalUsings.cs" Link="GlobalUsings.cs" />
+    <Compile Include="..\Crimson.Tests\InstallPermissionCheckerTests.cs" Link="InstallPermissionCheckerTests.cs" />
+    <Compile Include="..\Crimson.Tests\ManifestParsingTests.cs" Link="ManifestParsingTests.cs" />
+    <Compile Include="..\Crimson.Tests\ParserAdversaryTests.cs" Link="ParserAdversaryTests.cs" />
+    <Compile Include="..\Crimson.Tests\ProductionTestStubs.cs" Link="ProductionTestStubs.cs" />
+    <Compile Include="..\Crimson.Tests\SecurityContainmentTests.cs" Link="SecurityContainmentTests.cs" />
+    <Compile Include="..\Crimson.Tests\StorageSizeFormatterTests.cs" Link="StorageSizeFormatterTests.cs" />
+    <Compile Include="..\Crimson.Tests\StorageTests.cs" Link="StorageTests.cs" />
+    <Compile Include="..\Crimson.Tests\StoreSearchResultTests.cs" Link="StoreSearchResultTests.cs" />
+  </ItemGroup>
+
+</Project>
