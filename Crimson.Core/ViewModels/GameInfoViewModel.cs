@@ -9,7 +9,6 @@ using Crimson.Interfaces;
 using Crimson.Models;
 using Crimson.Utils;
 using Microsoft.Extensions.Logging;
-using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace Crimson.ViewModels;
 
@@ -53,7 +52,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     private double _progressValue;
 
     [ObservableProperty]
-    private BitmapImage _titleImage;
+    private string? _titleImageUrl;
 
     // Event for showing install dialog
     public event Func<Task> ShowInstallDialogRequested;
@@ -82,7 +81,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
         Game = _libraryManager.GetGameInfo((string)appName);
         var gameImage = Game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBox");
-        TitleImage = gameImage != null ? new BitmapImage(new Uri(gameImage.Url)) : null;
+        TitleImageUrl = gameImage?.Url;
 
         CheckGameStatus(Game);
 

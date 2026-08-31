@@ -7,6 +7,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Crimson"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:utils="using:Crimson.Utils"
     mc:Ignorable="d">
 
     <Grid>
@@ -137,7 +138,7 @@
                     BorderBrush="Black"
                     BorderThickness="1"
                     CornerRadius="10">
-                    <Image Source="{x:Bind ViewModel.TitleImage, Mode=OneWay}" Stretch="UniformToFill" />
+                    <Image Source="{x:Bind ViewModel.TitleImageUrl, Converter={StaticResource ImageUrlConverter}, Mode=OneWay}" Stretch="UniformToFill" />
                 </Border>
             </StackPanel>
         </Grid>
@@ -147,5 +148,6 @@
     </Grid>
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <utils:ImageUrlConverter x:Key="ImageUrlConverter" />
     </Page.Resources>
 </Page>
