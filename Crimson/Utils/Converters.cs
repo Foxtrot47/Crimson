@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml;
 using CommunityToolkit.WinUI.Converters;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace Crimson.Utils;
 
@@ -24,6 +25,21 @@ public class BoolToInverseVisibilityConverter : BoolToObjectConverter
     {
         TrueValue = Visibility.Collapsed;
         FalseValue = Visibility.Visible;
+    }
+}
+
+public class ImageUrlConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        return value is string imageUrl && !string.IsNullOrWhiteSpace(imageUrl)
+            ? new BitmapImage(new Uri(imageUrl))
+            : null!;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
     }
 }
 

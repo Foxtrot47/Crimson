@@ -7,7 +7,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Crimson.Core;
 using Crimson.Interfaces;
 using Crimson.Models;
-using Crimson.Views;
 using Serilog;
 
 namespace Crimson.ViewModels;
@@ -84,7 +83,8 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
                         Name = game.AppName,
                         Title = game.AppTitle,
                         //InstallState = game.State,
-                        Image = Util.GetBitmapImage(game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url)
+                        ImageUrl = game.Metadata.KeyImages
+                            .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
                     };
                     _log.Debug("UpdateLibrary: Adding {AppName} to library", item.Name);
                     GamesList.Add(item);
