@@ -21,8 +21,8 @@ jobs:
         with:
           dotnet-version: 10.0.400
 
-      - name: Build portable core
-        run: dotnet build Crimson.Core/Crimson.Core.csproj --configuration Release --nologo
+      - name: Test portable core
+        run: dotnet test Crimson.Core.Tests/Crimson.Core.Tests.csproj --configuration Release --nologo
 
   build:
     runs-on: windows-latest
