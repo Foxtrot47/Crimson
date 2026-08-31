@@ -69,6 +69,7 @@ namespace Crimson
             ConfigureServices((context, services) =>
             {
                 services.AddSingleton<IUiDispatcher>(new WindowsUiDispatcher(_dispatcherQueue));
+                services.AddSingleton<IFolderLauncher, WindowsFolderLauncher>();
                 services.AddSingleton<ILogger>(provider =>
                 {
                     var logDirectory = Path.Combine(GetAppDataPath(), "logs");

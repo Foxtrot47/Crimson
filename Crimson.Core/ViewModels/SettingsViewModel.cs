@@ -2,7 +2,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
-using System.Diagnostics;
 
 namespace Crimson.ViewModels
 {
@@ -10,6 +9,7 @@ namespace Crimson.ViewModels
     {
         private readonly SettingsManager _settingsManager;
         private readonly AuthManager _authManager;
+        private readonly IFolderLauncher _folderLauncher;
 
         public bool MicaEnabled
         {
@@ -38,10 +38,14 @@ namespace Crimson.ViewModels
         [ObservableProperty]
         private bool _advancedSettingsExpanded;
 
-        public SettingsViewModel(SettingsManager settingsManager, AuthManager authManager)
+        public SettingsViewModel(
+            SettingsManager settingsManager,
+            AuthManager authManager,
+            IFolderLauncher folderLauncher)
         {
             _settingsManager = settingsManager;
             _authManager = authManager;
+            _folderLauncher = folderLauncher;
         }
 
         [RelayCommand]
@@ -58,11 +62,7 @@ namespace Crimson.ViewModels
         [RelayCommand]
         private void OpenLogsDirectory()
         {
-            Process.Start(new ProcessStartInfo
-            {
-                UseShellExecute = true,
-                FileName = _settingsManager.LogsDirectory,
-            });
+            _folderLauncher.Open(_settingsManager.LogsDirectory);
         }
     }
 }
