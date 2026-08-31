@@ -12,6 +12,7 @@ namespace Crimson.Utils
     public class Storage
     {
         private readonly string AppDataPath;
+        private readonly string DefaultInstallDirectory;
         private readonly string UserDataFile;
         private readonly string GameAssetsFile;
         private readonly string MetaDataDirectory;
@@ -27,20 +28,17 @@ namespace Crimson.Utils
         public Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
         public Dictionary<string, LocalAppState> LocalAppStateDictionary => _localAppStateDictionary;
 
-        public string DefaultInstallPath => Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        public string DefaultInstallPath => DefaultInstallDirectory;
 
-        public Storage()
-            : this(Log.Logger, GetDefaultAppDataPath())
-        {
-        }
-
-        public Storage(ILogger logger, string appDataPath)
+        public Storage(ILogger logger, string appDataPath, string defaultInstallPath)
         {
             ArgumentNullException.ThrowIfNull(logger);
             ArgumentException.ThrowIfNullOrWhiteSpace(appDataPath);
+            ArgumentException.ThrowIfNullOrWhiteSpace(defaultInstallPath);
 
             _logger = logger;
             AppDataPath = Path.GetFullPath(appDataPath);
+            DefaultInstallDirectory = Path.GetFullPath(defaultInstallPath);
             UserDataFile = ResolveAppDataPath("user.json");
             GameAssetsFile = ResolveAppDataPath("assets.json");
             MetaDataDirectory = ResolveAppDataPath("metadata");
@@ -285,18 +283,6 @@ namespace Crimson.Utils
 
         }
 
-        public static async Task SaveAppManifest(byte[] manifestBytes, string appName)
-        {
-            var path = ResolveDefaultAppDataPath($"{appName}.manifest");
-            await File.WriteAllBytesAsync(path, manifestBytes);
-        }
-
-        public static Task<byte[]> GetAppManifest(string appName)
-        {
-            var path = ResolveDefaultAppDataPath($"{appName}.manifest");
-            return File.ReadAllBytesAsync(path);
-        }
-
         public async Task<System.IO.DriveInfo> GetDriveInfo(string path)
         {
             try
@@ -360,13 +346,6 @@ namespace Crimson.Utils
 
         private string ResolveAppDataPath(params string[] segments) =>
             ResolvePath(AppDataPath, segments);
-
-        private static string ResolveDefaultAppDataPath(params string[] segments) =>
-            ResolvePath(GetDefaultAppDataPath(), segments);
-
-        private static string GetDefaultAppDataPath() => Path.GetFullPath(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Crimson"));
 
         private static string ResolvePath(string root, params string[] segments)
         {

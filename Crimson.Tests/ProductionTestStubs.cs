@@ -1,18 +1,4 @@
-using System.Security.Cryptography;
 using System.Text;
-
-namespace Crimson.Core
-{
-    public static class Util
-    {
-        public static string CalculateSHA1(string filePath)
-        {
-            using var sha1 = SHA1.Create();
-            using var stream = File.OpenRead(filePath);
-            return Convert.ToHexString(sha1.ComputeHash(stream)).ToLowerInvariant();
-        }
-    }
-}
 
 namespace Crimson.Tests
 {

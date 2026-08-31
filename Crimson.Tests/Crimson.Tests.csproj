@@ -27,17 +27,11 @@
     <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
   </ItemGroup>
 
-  <!-- Manager sources remain linked until their platform dependencies are extracted. -->
+  <!-- Platform implementations remain linked until they have portable substitutes. -->
   <ItemGroup>
-    <Compile Include="..\Crimson\Core\AuthManager.cs" Link="Production\Core\AuthManager.cs" />
-    <Compile Include="..\Crimson\Core\DownloadManager.cs" Link="Production\Core\DownloadManager.cs" />
     <Compile Include="..\Crimson\Core\GameShortcutManager.cs" Link="Production\Core\GameShortcutManager.cs" />
     <Compile Include="..\Crimson\Core\GameShortcutNaming.cs" Link="Production\Core\GameShortcutNaming.cs" />
-    <Compile Include="..\Crimson\Core\InstallManager.cs" Link="Production\Core\InstallManager.cs" />
-    <Compile Include="..\Crimson\Core\LibraryManager.cs" Link="Production\Core\LibraryManager.cs" />
     <Compile Include="..\Crimson\Utils\Encryption.cs" Link="Production\Utils\Encryption.cs" />
-    <Compile Include="..\Crimson\Utils\FileSystemInstallPermissionChecker.cs" Link="Production\Utils\FileSystemInstallPermissionChecker.cs" />
-    <Compile Include="..\Crimson\Utils\Storage.cs" Link="Production\Utils\Storage.cs" />
   </ItemGroup>
 
 </Project>

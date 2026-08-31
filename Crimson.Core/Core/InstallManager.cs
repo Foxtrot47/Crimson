@@ -861,7 +861,7 @@ public class InstallManager
                         return;
                     }
 
-                    var fileSha1 = Util.CalculateSHA1(filePath);
+                    var fileSha1 = FileHash.ComputeSha1(filePath);
                     var expectedHash = BitConverter.ToString(manifest.ShaHash).Replace("-", "").ToLowerInvariant();
                     if (fileSha1 != expectedHash)
                     {

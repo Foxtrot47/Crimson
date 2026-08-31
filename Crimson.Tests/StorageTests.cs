@@ -1,5 +1,7 @@
+using Crimson.Core;
 using Crimson.Models;
 using Crimson.Utils;
+using Microsoft.Extensions.Logging.Abstractions;
 using Serilog;
 
 namespace Crimson.Tests;
@@ -14,7 +16,7 @@ public sealed class StorageTests : IDisposable
     [Fact]
     public async Task UsesInjectedApplicationDataPath()
     {
-        var storage = new Storage(_logger, _appDataPath);
+        var storage = new Storage(_logger, _appDataPath, _appDataPath);
 
         await storage.SaveSettingsData("test settings");
 
@@ -22,12 +24,29 @@ public sealed class StorageTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_appDataPath, "settings.json")));
         Assert.True(Directory.Exists(Path.Combine(_appDataPath, "metadata")));
         Assert.True(Directory.Exists(Path.Combine(_appDataPath, "manifests")));
+        Assert.Equal(Path.GetFullPath(_appDataPath), storage.DefaultInstallPath);
+    }
+
+    [Fact]
+    public void SettingsManagerUsesInjectedPlatformPaths()
+    {
+        var installPath = Path.Combine(_appDataPath, "games");
+        var logsPath = Path.Combine(_appDataPath, "logs");
+        var storage = new Storage(_logger, _appDataPath, installPath);
+        var settings = new SettingsManager(
+            storage,
+            NullLogger<SettingsManager>.Instance,
+            installPath,
+            logsPath);
+
+        Assert.Equal(installPath, settings.DefaultInstallLocation);
+        Assert.Equal(logsPath, settings.LogsDirectory);
     }
 
     [Fact]
     public void RejectsMetadataPathOutsideInjectedRoot()
     {
-        var storage = new Storage(_logger, _appDataPath);
+        var storage = new Storage(_logger, _appDataPath, _appDataPath);
         var fileName = $"escape-{Guid.NewGuid():N}";
         var outsidePath = Path.Combine(Directory.GetParent(_appDataPath)!.FullName, $"{fileName}.json");
         var game = new Game

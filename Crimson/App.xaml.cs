@@ -69,7 +69,6 @@ namespace Crimson
             ConfigureServices((context, services) =>
             {
                 services.AddSingleton<IUiDispatcher>(new WindowsUiDispatcher(_dispatcherQueue));
-                services.AddSingleton<SettingsManager>();
                 services.AddSingleton<ILogger>(provider =>
                 {
                     var logDirectory = Path.Combine(GetAppDataPath(), "logs");
@@ -116,7 +115,13 @@ namespace Crimson
 
                 services.AddSingleton<Storage>(provider => new Storage(
                     provider.GetRequiredService<ILogger>(),
-                    GetAppDataPath()));
+                    GetAppDataPath(),
+                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)));
+                services.AddSingleton<SettingsManager>(provider => new SettingsManager(
+                    provider.GetRequiredService<Storage>(),
+                    provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<SettingsManager>>(),
+                    @"C:\Games\",
+                    Path.Combine(GetAppDataPath(), "logs")));
                 services.AddSingleton<ICredentialProtector, WindowsCredentialProtector>();
                 services.AddSingleton<AuthManager>(provider => new AuthManager(
                     provider.GetRequiredService<ILogger>(),
