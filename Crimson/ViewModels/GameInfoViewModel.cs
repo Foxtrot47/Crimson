@@ -19,7 +19,7 @@ namespace Crimson.ViewModels;
 /// </summary>
 public partial class GameInfoViewModel : ObservableObject, INavigationAware
 {
-    private readonly Windows.System.DispatcherQueue _dispatcherQueue;
+    private readonly IUiDispatcher _uiDispatcher;
     private readonly InstallManager _installer;
     private readonly LibraryManager _libraryManager;
     private readonly Storage _storage;
@@ -65,9 +65,10 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     public GameInfoViewModel(ILogger<GameInfoViewModel> logger,
             InstallManager installer,
             LibraryManager libraryManager,
-            Storage storage)
+            Storage storage,
+            IUiDispatcher uiDispatcher)
     {
-        _dispatcherQueue = Windows.System.DispatcherQueue.GetForCurrentThread();
+        _uiDispatcher = uiDispatcher;
         _log = logger;
         _installer = installer;
         _libraryManager = libraryManager;
@@ -156,7 +157,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         try
         {
             if (installItem == null || installItem.AppName != Game.AppName) return;
-            _dispatcherQueue.TryEnqueue(() =>
+            _uiDispatcher.TryEnqueue(() =>
             {
                 _log.LogInformation("GameInfoPage: Installation Status Changed for {Game}", installItem.AppName);
                 switch (installItem.Status)
@@ -194,7 +195,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _log.LogInformation("GameInfoPage: Game Status Changed for {Game}", updatedGame.AppTitle);
         Game = updatedGame;
 
-        _dispatcherQueue.TryEnqueue(() =>
+        _uiDispatcher.TryEnqueue(() =>
         {
             PrimaryActionButtonGlyph = "";
             IsProgressRingVisible = false;

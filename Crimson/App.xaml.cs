@@ -68,6 +68,7 @@ namespace Crimson
             UseContentRoot(AppContext.BaseDirectory).
             ConfigureServices((context, services) =>
             {
+                services.AddSingleton<IUiDispatcher>(new WindowsUiDispatcher(_dispatcherQueue));
                 services.AddSingleton<SettingsManager>();
                 services.AddSingleton<ILogger>(provider =>
                 {

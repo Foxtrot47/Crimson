@@ -31,15 +31,18 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
 
     private readonly ILogger _log;
     private readonly LibraryManager _libraryManager;
-    private readonly Windows.System.DispatcherQueue _dispatcherQueue;
+    private readonly IUiDispatcher _uiDispatcher;
     private int _navigationGeneration;
     private Action<IEnumerable<Game>>? _libraryUpdatedHandler;
 
-    public LibraryViewModel()
+    public LibraryViewModel(
+        ILogger logger,
+        LibraryManager libraryManager,
+        IUiDispatcher uiDispatcher)
     {
-        _log = App.GetService<ILogger>();
-        _libraryManager = App.GetService<LibraryManager>();
-        _dispatcherQueue = Windows.System.DispatcherQueue.GetForCurrentThread();
+        _log = logger;
+        _libraryManager = libraryManager;
+        _uiDispatcher = uiDispatcher;
     }
 
     public async Task OnNavigatedTo(object parameter)
@@ -69,7 +72,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
             _log.Information("UpdateLibrary: Updating Library Page");
             if (games == null || generation != Volatile.Read(ref _navigationGeneration)) return;
 
-            _dispatcherQueue.TryEnqueue(() =>
+            _uiDispatcher.TryEnqueue(() =>
             {
                 if (generation != Volatile.Read(ref _navigationGeneration)) return;
                 GamesList = new List<LibraryItem>();
