@@ -1,6 +1,7 @@
 ﻿using System;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Utils;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Serilog;
@@ -86,14 +87,14 @@ public sealed partial class CurrentDownloadControl : UserControl
                 ProgressBar.IsIndeterminate = false;
                 ProgressBar.Value = installItem.ProgressPercentage;
                 DownloadedSize.Text =
-                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
+                    $@"{StorageSizeFormatter.FormatMebibytes(installItem.WrittenSizeMiB)} of {StorageSizeFormatter.FormatMebibytes(installItem.TotalWriteSizeMb)}";
                 DownloadSpeed.Text = $@"{installItem.DownloadSpeedRawMiB} MB/s";
                 break;
             case ActionStatus.Paused:
                 ProgressBar.IsIndeterminate = false;
                 ProgressBar.Value = installItem.ProgressPercentage;
                 DownloadedSize.Text =
-                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
+                    $@"{StorageSizeFormatter.FormatMebibytes(installItem.WrittenSizeMiB)} of {StorageSizeFormatter.FormatMebibytes(installItem.TotalWriteSizeMb)}";
                 DownloadSpeed.Text = "Paused";
                 break;
             case ActionStatus.Success:
@@ -128,7 +129,7 @@ public sealed partial class CurrentDownloadControl : UserControl
             {
                 ProgressBar.Value = installItem.ProgressPercentage;
                 DownloadedSize.Text =
-                    $@"{Util.ConvertMiBToGiBOrMiB(installItem.WrittenSizeMiB)} of {Util.ConvertMiBToGiBOrMiB(installItem.TotalWriteSizeMb)}";
+                    $@"{StorageSizeFormatter.FormatMebibytes(installItem.WrittenSizeMiB)} of {StorageSizeFormatter.FormatMebibytes(installItem.TotalWriteSizeMb)}";
                 DownloadSpeed.Text = $@"{installItem.DownloadSpeedRawMiB} MB/s";
                 RaiseSummary(installItem, GameName.Text);
             });
