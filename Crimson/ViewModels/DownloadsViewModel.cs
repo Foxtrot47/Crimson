@@ -18,7 +18,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     private readonly ILogger _log;
     private readonly InstallManager _installManager;
     private readonly LibraryManager _libraryManager;
-    private readonly Windows.System.DispatcherQueue _dispatcherQueue;
+    private readonly IUiDispatcher _uiDispatcher;
 
     [ObservableProperty]
     private DownloadManagerItem _currentInstallItem = new DownloadManagerItem();
@@ -65,10 +65,11 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     public DownloadsViewModel(
         ILogger logger,
         InstallManager installManager,
-        LibraryManager libraryManager)
+        LibraryManager libraryManager,
+        IUiDispatcher uiDispatcher)
     {
         _log = logger;
-        _dispatcherQueue = Windows.System.DispatcherQueue.GetForCurrentThread();
+        _uiDispatcher = uiDispatcher;
         _log.Information("DownloadsPage: Loading Page");
 
         _installManager = installManager;
@@ -278,7 +279,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 
     private bool UpdateUIProperties(Action updateAction)
     {
-        return _dispatcherQueue.TryEnqueue(() => updateAction());
+        return _uiDispatcher.TryEnqueue(updateAction);
 
     }
     public void Dispose()

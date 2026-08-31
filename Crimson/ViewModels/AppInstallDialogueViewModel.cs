@@ -9,10 +9,8 @@ using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Utils;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
-using Windows.System;
 
 namespace Crimson.ViewModels;
 
@@ -22,7 +20,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
     private readonly LibraryManager _libraryManager;
     private readonly Storage _storageService;
     private readonly ILogger _logger;
-    private readonly Windows.System.DispatcherQueue _dispatcherQueue;
+    private readonly IUiDispatcher _uiDispatcher;
 
     private string _gameAppName;
 
@@ -91,13 +89,14 @@ public partial class AppInstallDialogViewModel : ObservableObject
         ILogger logger,
         InstallManager installManager,
         LibraryManager libraryManager,
-        Storage storage)
+        Storage storage,
+        IUiDispatcher uiDispatcher)
     {
         _logger = logger;
         _installManager = installManager;
         _libraryManager = libraryManager;
         _storageService = storage;
-        _dispatcherQueue = Windows.System.DispatcherQueue.GetForCurrentThread();
+        _uiDispatcher = uiDispatcher;
     }
 
     public async Task InitializeAsync(Game gameInfo)
@@ -158,7 +157,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
     private async Task LoadGameContent(string appName)
     {
         var (downloadSize, installSize) = await _installManager.GetGameDownloadInstallSizes(appName);
-        _dispatcherQueue.TryEnqueue(() =>
+        _uiDispatcher.TryEnqueue(() =>
         {
             TotalDownloadSize = FormatSize(downloadSize);
             TotalInstallSize = FormatSize(installSize);
@@ -171,7 +170,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
         try
         {
             var driveInfo = await _storageService.GetDriveInfo(InstallLocation);
-            _dispatcherQueue.TryEnqueue(() =>
+            _uiDispatcher.TryEnqueue(() =>
             {
                 IsDriveSpaceVisible = true;
                 var usedSpace = driveInfo.TotalSize - driveInfo.AvailableFreeSpace;
