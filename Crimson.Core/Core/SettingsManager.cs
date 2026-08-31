@@ -11,13 +11,24 @@ public class SettingsManager
 {
     private readonly Storage _storage;
     private readonly ILogger<SettingsManager> _logger;
+    private readonly string _defaultInstallLocation;
+    private readonly string _logsDirectory;
 
     private Settings Settings { get; set; }
 
-    public SettingsManager(Storage storage, ILogger<SettingsManager> logger)
+    public SettingsManager(
+        Storage storage,
+        ILogger<SettingsManager> logger,
+        string defaultInstallLocation,
+        string logsDirectory)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(defaultInstallLocation);
+        ArgumentException.ThrowIfNullOrWhiteSpace(logsDirectory);
+
         _storage = storage;
         _logger = logger;
+        _defaultInstallLocation = defaultInstallLocation;
+        _logsDirectory = logsDirectory;
         Settings = LoadSettings();
     }
 
@@ -25,15 +36,11 @@ public class SettingsManager
 
     public string DefaultInstallLocation
     {
-        get => Settings.DefaultInstallLocation ?? "C:\\Games\\";
+        get => Settings.DefaultInstallLocation ?? _defaultInstallLocation;
         set { Settings.DefaultInstallLocation = value; }
     }
 
-    public string LogsDirectory
-    {
-        // Must match where App.xaml.cs configures Serilog to write, which is LocalApplicationData.
-        get => $"{Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)}\\Crimson\\logs";
-    }
+    public string LogsDirectory => _logsDirectory;
 
     private Settings LoadSettings()
     {
