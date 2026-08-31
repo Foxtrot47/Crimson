@@ -52,7 +52,7 @@ if ($active) {
 }
 
 Write-Host '==> building test-signed MSIX' -ForegroundColor Cyan
-& dotnet build (Join-Path $repo 'Crimson\Crimson.csproj') `
+& dotnet build (Join-Path $repo 'Crimson.WinUI\Crimson.WinUI.csproj') `
     -c Release -r win-x64 -p:Platform=x64 `
     -p:EnablePackaging=true -p:EnableTestSigning=true `
     -p:PackageCertificateThumbprint=$Thumbprint `

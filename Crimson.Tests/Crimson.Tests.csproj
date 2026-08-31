@@ -29,9 +29,9 @@
 
   <!-- Platform implementations remain linked until they have portable substitutes. -->
   <ItemGroup>
-    <Compile Include="..\Crimson\Core\GameShortcutManager.cs" Link="Production\Core\GameShortcutManager.cs" />
-    <Compile Include="..\Crimson\Core\GameShortcutNaming.cs" Link="Production\Core\GameShortcutNaming.cs" />
-    <Compile Include="..\Crimson\Utils\Encryption.cs" Link="Production\Utils\Encryption.cs" />
+    <Compile Include="..\Crimson.WinUI\Core\GameShortcutManager.cs" Link="Production\Core\GameShortcutManager.cs" />
+    <Compile Include="..\Crimson.WinUI\Core\GameShortcutNaming.cs" Link="Production\Core\GameShortcutNaming.cs" />
+    <Compile Include="..\Crimson.WinUI\Utils\Encryption.cs" Link="Production\Utils\Encryption.cs" />
   </ItemGroup>
 
 </Project>
