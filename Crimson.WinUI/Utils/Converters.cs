@@ -2,6 +2,7 @@
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml;
 using CommunityToolkit.WinUI.Converters;
+using Crimson.ViewModels;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 
@@ -36,6 +37,23 @@ public class ImageUrlConverter : IValueConverter
             ? new BitmapImage(new Uri(imageUrl))
             : null!;
     }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class GamePrimaryActionGlyphConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language) => value switch
+    {
+        GamePrimaryAction.Install => "\uE896",
+        GamePrimaryAction.Play => "\uE768",
+        GamePrimaryAction.Update => "\uE777",
+        GamePrimaryAction.Repair => "\uE90F",
+        _ => string.Empty
+    };
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
     {

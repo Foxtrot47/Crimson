@@ -37,7 +37,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     private string _primaryActionButtonText;
 
     [ObservableProperty]
-    private string _primaryActionButtonGlyph;
+    private GamePrimaryAction _primaryAction;
 
     [ObservableProperty]
     private bool _isPrimaryActionEnabled = true;
@@ -196,40 +196,44 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
         _uiDispatcher.TryEnqueue(() =>
         {
-            PrimaryActionButtonGlyph = "";
             IsProgressRingVisible = false;
             IsPrimaryActionEnabled = true;
-
-            if (Game.LocalAppState == null || Game.LocalAppState?.InstallStatus == InstallState.NotInstalled)
+            PrimaryAction = GetPrimaryAction(Game.LocalAppState?.InstallStatus);
+            if (PrimaryAction is GamePrimaryAction.Install)
             {
                 PrimaryActionButtonText = "Install";
-                PrimaryActionButtonGlyph = "\uE896";
                 IsInstalled = false;
                 IsImportVisible = true;
                 return;
             }
 
             IsImportVisible = false;
-            switch (Game.LocalAppState?.InstallStatus)
+            switch (PrimaryAction)
             {
-                case InstallState.Installed:
+                case GamePrimaryAction.Play:
                     PrimaryActionButtonText = "Play";
-                    PrimaryActionButtonGlyph = "\uE768";
                     IsInstalled = true;
                     break;
-                case InstallState.NeedUpdate:
+                case GamePrimaryAction.Update:
                     PrimaryActionButtonText = "Update";
-                    PrimaryActionButtonGlyph = "\uE777";
                     IsInstalled = true;
                     break;
-                case InstallState.Broken:
+                case GamePrimaryAction.Repair:
                     PrimaryActionButtonText = "Repair";
-                    PrimaryActionButtonGlyph = "\uE90F";
                     IsInstalled = true;
                     break;
             }
         });
     }
+
+    internal static GamePrimaryAction GetPrimaryAction(InstallState? installState) => installState switch
+    {
+        null or InstallState.NotInstalled => GamePrimaryAction.Install,
+        InstallState.Installed => GamePrimaryAction.Play,
+        InstallState.NeedUpdate => GamePrimaryAction.Update,
+        InstallState.Broken => GamePrimaryAction.Repair,
+        _ => GamePrimaryAction.None
+    };
 
     public void OnNavigatedFrom()
     {

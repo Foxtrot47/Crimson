@@ -73,7 +73,7 @@
                                 IsIndeterminate="{x:Bind ViewModel.IsProgressRingIndeterminate, Mode=OneWay}"
                                 Visibility="{x:Bind ViewModel.IsProgressRingVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
                                 Value="{x:Bind ViewModel.ProgressValue, Mode=OneWay}" />
-                            <FontIcon Glyph="{x:Bind ViewModel.PrimaryActionButtonGlyph, Mode=OneWay}" />
+                            <FontIcon Glyph="{x:Bind ViewModel.PrimaryAction, Mode=OneWay, Converter={StaticResource GamePrimaryActionGlyphConverter}}" />
                             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.PrimaryActionButtonText, Mode=OneWay}" />
                         </StackPanel>
                     </Button>
@@ -148,6 +148,7 @@
     </Grid>
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <utils:GamePrimaryActionGlyphConverter x:Key="GamePrimaryActionGlyphConverter" />
         <utils:ImageUrlConverter x:Key="ImageUrlConverter" />
     </Page.Resources>
 </Page>

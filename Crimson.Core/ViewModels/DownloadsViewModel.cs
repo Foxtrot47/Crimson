@@ -146,93 +146,116 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     }
 
 
-    // Handing Installation State Change
-    // This function is never run on UI Thread
-    // So always make sure to use Dispatcher Queue to update UI thread
-    private void HandleInstallationStatusChanged(InstallItem installItem)
+    private void HandleInstallationStatusChanged(InstallItem? installItem)
     {
         try
         {
-            UpdateUIProperties(() =>
-            {
-                _log.Information("HandleInstallationStatusChanged: Handling Installation Status Change");
-                FetchQueueItemsList();
-                FetchHistoryItemsList();
-                if (installItem == null)
-                {
-                    _log.Information("HandleInstallationStatusChanged: No installation in progress");
-                    ShowCurrentDownload = false;
-                    return;
-                }
-                ShowCurrentDownload = true;
-                DownloadProgressBarIndeterminate = true;
-
-                var gameInfo = _libraryManager.GetGameInfo(installItem.AppName);
-                _log.Debug("HandleInstallationStatusChanged: Loaded {AppName}", gameInfo.AppName);
-                CurrentInstallItem = new DownloadManagerItem
-                {
-                    Name = gameInfo.AppName,
-                    Title = gameInfo.AppTitle,
-                    InstallState = gameInfo.LocalAppState?.InstallStatus ?? InstallState.NotInstalled,
-                    ImageUrl = gameInfo.Metadata.KeyImages
-                        .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
-                };
-                CurrentInstallItemName = CurrentInstallItem.Title;
-                CurrentInstallItemImageUrl = CurrentInstallItem.ImageUrl;
-
-                _log.Information("HandleInstallationStatusChanged: Installation Status: {Status}", installItem.Status);
-                switch (installItem.Status)
-                {
-                    case ActionStatus.Processing:
-                        DownloadProgressBarIndeterminate = false;
-                        DownloadProgressBarValue = Convert.ToDouble(installItem.ProgressPercentage);
-                        CurrentInstallAction = $@"{installItem.Action}ing";
-                        CurrentDownloadSize = $@"{StorageSizeFormatter.FormatMebibytes(installItem.WrittenSizeMiB)} of {StorageSizeFormatter.FormatMebibytes(installItem.TotalWriteSizeMb)}";
-                        CurrentDownloadSpeed = $"{installItem.DownloadSpeedRawMiB} MiB /s";
-                        break;
-                    case ActionStatus.Paused:
-                        DownloadProgressBarIndeterminate = false;
-                        DownloadProgressBarValue = Convert.ToDouble(installItem.ProgressPercentage);
-                        CurrentInstallAction = "Paused";
-                        CurrentDownloadSize = $@"{StorageSizeFormatter.FormatMebibytes(installItem.WrittenSizeMiB)} of {StorageSizeFormatter.FormatMebibytes(installItem.TotalWriteSizeMb)}";
-                        CurrentDownloadSpeed = string.Empty;
-                        break;
-                    case ActionStatus.Cancelling:
-                        DownloadProgressBarIndeterminate = true;
-                        CurrentInstallAction = "Cancelling";
-                        CurrentDownloadSize = string.Empty;
-                        CurrentDownloadSpeed = string.Empty;
-                        break;
-                    case ActionStatus.Success:
-                    case ActionStatus.Failed:
-                    case ActionStatus.Cancelled:
-                        ShowCurrentDownload = false;
-                        break;
-                }
-
-                if (installItem.Status == ActionStatus.Paused)
-                {
-                    ShowResumeButton = true;
-                    ShowPauseButton = false;
-                }
-                else if (installItem.Status == ActionStatus.Processing)
-                {
-                    ShowResumeButton = false;
-                    ShowPauseButton = true;
-                    EnablePauseButton = true;
-                }
-                else
-                {
-                    ShowResumeButton = false;
-                    ShowPauseButton = true;
-                    EnablePauseButton = false;
-                }
-            });
+            UpdateUIProperties(() => RefreshAndApplyStatus(installItem));
         }
         catch (Exception ex)
         {
             _log.Error(ex, "Exception in HandleInstallationStatusChanged");
         }
+    }
+
+    private void RefreshAndApplyStatus(InstallItem? installItem)
+    {
+        _log.Information("HandleInstallationStatusChanged: Handling Installation Status Change");
+        FetchQueueItemsList();
+        FetchHistoryItemsList();
+        if (installItem == null)
+        {
+            _log.Information("HandleInstallationStatusChanged: No installation in progress");
+            ShowCurrentDownload = false;
+            return;
+        }
+
+        ShowCurrentDownload = true;
+        DownloadProgressBarIndeterminate = true;
+        SetCurrentInstallItem(installItem);
+        ApplyInstallationStatus(installItem);
+        UpdatePauseResumeControls(installItem.Status);
+    }
+
+    private void SetCurrentInstallItem(InstallItem installItem)
+    {
+        var gameInfo = _libraryManager.GetGameInfo(installItem.AppName);
+        _log.Debug("HandleInstallationStatusChanged: Loaded {AppName}", gameInfo.AppName);
+        CurrentInstallItem = new DownloadManagerItem
+        {
+            Name = gameInfo.AppName,
+            Title = gameInfo.AppTitle,
+            InstallState = gameInfo.LocalAppState?.InstallStatus ?? InstallState.NotInstalled,
+            ImageUrl = gameInfo.Metadata.KeyImages
+                .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
+        };
+        CurrentInstallItemName = CurrentInstallItem.Title;
+        CurrentInstallItemImageUrl = CurrentInstallItem.ImageUrl;
+    }
+
+    private void ApplyInstallationStatus(InstallItem installItem)
+    {
+        _log.Information("HandleInstallationStatusChanged: Installation Status: {Status}", installItem.Status);
+        switch (installItem.Status)
+        {
+            case ActionStatus.Processing:
+                ApplyProcessingState(installItem);
+                break;
+            case ActionStatus.Paused:
+                ApplyPausedState(installItem);
+                break;
+            case ActionStatus.Cancelling:
+                ApplyCancellingState();
+                break;
+            case ActionStatus.Success:
+            case ActionStatus.Failed:
+            case ActionStatus.Cancelled:
+                ShowCurrentDownload = false;
+                break;
+        }
+    }
+
+    private void ApplyProcessingState(InstallItem installItem)
+    {
+        DownloadProgressBarIndeterminate = false;
+        DownloadProgressBarValue = Convert.ToDouble(installItem.ProgressPercentage);
+        CurrentInstallAction = $@"{installItem.Action}ing";
+        CurrentDownloadSize = FormatProgressSize(installItem);
+        CurrentDownloadSpeed = $"{installItem.DownloadSpeedRawMiB} MiB /s";
+    }
+
+    private void ApplyPausedState(InstallItem installItem)
+    {
+        DownloadProgressBarIndeterminate = false;
+        DownloadProgressBarValue = Convert.ToDouble(installItem.ProgressPercentage);
+        CurrentInstallAction = "Paused";
+        CurrentDownloadSize = FormatProgressSize(installItem);
+        CurrentDownloadSpeed = string.Empty;
+    }
+
+    private void ApplyCancellingState()
+    {
+        DownloadProgressBarIndeterminate = true;
+        CurrentInstallAction = "Cancelling";
+        CurrentDownloadSize = string.Empty;
+        CurrentDownloadSpeed = string.Empty;
+    }
+
+    private static string FormatProgressSize(InstallItem installItem) =>
+        $@"{StorageSizeFormatter.FormatMebibytes(installItem.WrittenSizeMiB)} of {StorageSizeFormatter.FormatMebibytes(installItem.TotalWriteSizeMb)}";
+
+    private void UpdatePauseResumeControls(ActionStatus status)
+    {
+        if (status == ActionStatus.Paused)
+        {
+            ShowResumeButton = true;
+            ShowPauseButton = false;
+            return;
+        }
+
+        ShowResumeButton = false;
+        ShowPauseButton = true;
+        EnablePauseButton = status == ActionStatus.Processing;
     }
 
     private void InstallationProgressUpdate(InstallItem installItem)
@@ -263,7 +286,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     private void CancelInstall()
     {
         _log.Information("CancelInstallButton_OnClick: Cancelling Installation");
-        _installManager.CancelInstall(_currentInstallItem.Name);
+        _installManager.CancelInstall(CurrentInstallItem.Name);
     }
 
     [RelayCommand]
