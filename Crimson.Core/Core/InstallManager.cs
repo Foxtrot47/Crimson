@@ -316,12 +316,14 @@ public class InstallManager
 
     private void PrepareMoveTasks(InstallItem install)
     {
-        if (!string.Equals(Path.GetPathRoot(install.Location), Path.GetPathRoot(install.MoveLocation), StringComparison.OrdinalIgnoreCase))
-            throw new IOException("Cross-drive moves are not supported. Please uninstall and reinstall to the new location.");
+        if (!_storage.AreOnSameVolume(install.Location, install.MoveLocation))
+            throw new IOException("Cross-volume moves are not supported. Please uninstall and reinstall to the new location.");
+
         if (Directory.Exists(install.MoveLocation))
             throw new IOException("Destination directory already exists");
 
-        _logger.Information("Move: Moving {AppName} from {Src} to {Dest}", install.AppName, install.Location, install.MoveLocation);
+        _logger.Information("Move: Moving {AppName} from {Src} to {Dest}",
+            install.AppName, install.Location, install.MoveLocation);
         Directory.Move(install.Location, install.MoveLocation);
         _logger.Information("Move: Successfully moved {AppName}", install.AppName);
     }
@@ -1291,41 +1293,31 @@ public class InstallManager
 
         _logger.Information("GetGameDownloadInstallSizes: Parsing game manifest for {AppName}", appName);
         var manifest = Manifest.ReadAll(manifestData);
-        var chunkDownloadList = new List<ChunkInfo>();
-        var addedChunkGuids = new HashSet<BigInteger>();
+        var (totalDownloadSizeBytes, totalWriteSizeBytes) = CalculateManifestSizes(manifest);
+        _logger.Information("GetGameDownloadInstallSizes: Download size {DownloadBytes} bytes and write size {WriteBytes} bytes",
+            totalDownloadSizeBytes, totalWriteSizeBytes);
+        return (totalDownloadSizeBytes, totalWriteSizeBytes);
+    }
 
-        double totalDownloadSizeBytes = 0;
-        double totalWriteSizeBytes = 0;
+    internal static (double DownloadBytes, double WriteBytes) CalculateManifestSizes(Manifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        var addedChunkGuids = new HashSet<BigInteger>();
+        double downloadBytes = 0;
+        double writeBytes = 0;
 
         foreach (var fileManifest in manifest.FileManifestList.Elements)
         {
             foreach (var chunkPart in fileManifest.ChunkParts)
             {
-                if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidNum, out var fileManifests))
-                {
-                    fileManifests.Add(fileManifest);
-                    _chunkToFileManifestsDictionary[chunkPart.GuidNum] = fileManifests;
-                }
-                else
-                {
-                    _ = _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidNum,
-                        new List<FileManifest>() { fileManifest });
-                }
-
-                if (!addedChunkGuids.Contains(chunkPart.GuidNum))
-                {
-                    var chunkInfo = manifest.CDL.GetChunkByGuidNum(chunkPart.GuidNum);
-                    chunkDownloadList.Add(chunkInfo);
-                    addedChunkGuids.Add(chunkPart.GuidNum);
-
-                    totalDownloadSizeBytes += chunkInfo.FileSize;
-                }
+                if (addedChunkGuids.Add(chunkPart.GuidNum))
+                    downloadBytes += manifest.CDL.GetChunkByGuidNum(chunkPart.GuidNum).FileSize;
             }
-            totalWriteSizeBytes += fileManifest.FileSize;
+
+            writeBytes += fileManifest.FileSize;
         }
-        _logger.Information("GetGameDownloadInstallSizes: Download size {DownloadBytes} bytes and write size {WriteBytes} bytes",
-            totalDownloadSizeBytes, totalWriteSizeBytes);
-        return (totalDownloadSizeBytes, totalWriteSizeBytes);
+
+        return (downloadBytes, writeBytes);
     }
 
     private async Task<byte[]> GetManifestDataWithCaching(string appName)
