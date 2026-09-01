@@ -26,18 +26,4 @@
     <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Include="..\Crimson.Tests\DownloadManagerTests.cs" Link="DownloadManagerTests.cs" />
-    <Compile Include="..\Crimson.Tests\FileHashTests.cs" Link="FileHashTests.cs" />
-    <Compile Include="..\Crimson.Tests\GlobalUsings.cs" Link="GlobalUsings.cs" />
-    <Compile Include="..\Crimson.Tests\InstallPermissionCheckerTests.cs" Link="InstallPermissionCheckerTests.cs" />
-    <Compile Include="..\Crimson.Tests\ManifestParsingTests.cs" Link="ManifestParsingTests.cs" />
-    <Compile Include="..\Crimson.Tests\ParserAdversaryTests.cs" Link="ParserAdversaryTests.cs" />
-    <Compile Include="..\Crimson.Tests\ProductionTestStubs.cs" Link="ProductionTestStubs.cs" />
-    <Compile Include="..\Crimson.Tests\SecurityContainmentTests.cs" Link="SecurityContainmentTests.cs" />
-    <Compile Include="..\Crimson.Tests\StorageSizeFormatterTests.cs" Link="StorageSizeFormatterTests.cs" />
-    <Compile Include="..\Crimson.Tests\StorageTests.cs" Link="StorageTests.cs" />
-    <Compile Include="..\Crimson.Tests\StoreSearchResultTests.cs" Link="StoreSearchResultTests.cs" />
-  </ItemGroup>
-
 </Project>

@@ -97,6 +97,10 @@ function Set-PackageVersion {
 
 function Invoke-ReleaseTests {
   Invoke-Checked 'dotnet' @(
+    'test', (Join-Path $repo 'Crimson.Core.Tests\Crimson.Core.Tests.csproj'),
+    '-c', 'Release', '--nologo', '-v', 'minimal'
+  )
+  Invoke-Checked 'dotnet' @(
     'restore', (Join-Path $repo 'Crimson.sln'),
     '-r', 'win-x64', '-p:Platform=x64', '-p:PublishReadyToRun=true',
     '--nologo', '-v', 'minimal'
