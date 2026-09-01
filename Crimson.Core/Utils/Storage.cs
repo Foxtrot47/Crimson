@@ -24,19 +24,25 @@ namespace Crimson.Utils
         private Dictionary<string, Game> _gameMetaDataDictionary = new();
         private Dictionary<string, LocalAppState> _localAppStateDictionary = new();
         private ILogger _logger;
+        private readonly IFileSystemVolumeResolver _volumeResolver;
 
         public Dictionary<string, Game> GameMetaDataDictionary => _gameMetaDataDictionary;
         public Dictionary<string, LocalAppState> LocalAppStateDictionary => _localAppStateDictionary;
 
         public string DefaultInstallPath => DefaultInstallDirectory;
 
-        public Storage(ILogger logger, string appDataPath, string defaultInstallPath)
+        public Storage(
+            ILogger logger,
+            string appDataPath,
+            string defaultInstallPath,
+            IFileSystemVolumeResolver? volumeResolver = null)
         {
             ArgumentNullException.ThrowIfNull(logger);
             ArgumentException.ThrowIfNullOrWhiteSpace(appDataPath);
             ArgumentException.ThrowIfNullOrWhiteSpace(defaultInstallPath);
 
             _logger = logger;
+            _volumeResolver = volumeResolver ?? new FileSystemVolumeResolver();
             AppDataPath = Path.GetFullPath(appDataPath);
             DefaultInstallDirectory = Path.GetFullPath(defaultInstallPath);
             UserDataFile = ResolveAppDataPath("user.json");
@@ -283,21 +289,11 @@ namespace Crimson.Utils
 
         }
 
-        public async Task<System.IO.DriveInfo> GetDriveInfo(string path)
+        public async Task<DriveInfo> GetDriveInfo(string path)
         {
             try
             {
-                return await Task.Run(() =>
-                {
-                    var driveInfo = new System.IO.DriveInfo(Path.GetPathRoot(path));
-
-                    if (!driveInfo.IsReady)
-                    {
-                        throw new Exception($"Drive {driveInfo.Name} is not ready");
-                    }
-
-                    return driveInfo;
-                });
+                return await Task.Run(() => _volumeResolver.GetVolume(path));
             }
             catch (Exception ex)
             {
@@ -305,6 +301,9 @@ namespace Crimson.Utils
                 throw;
             }
         }
+
+        public bool AreOnSameVolume(string firstPath, string secondPath) =>
+            _volumeResolver.AreOnSameVolume(firstPath, secondPath);
 
         public async Task<byte[]> GetCachedManifestBytes(string appName, string version)
         {

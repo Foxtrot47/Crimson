@@ -23,12 +23,23 @@ namespace Crimson.Controls
         {
             try
             {
-                await ViewModel.InitializeAsync(gameInfo);
-                await InstallContentDialog.ShowAsync(ContentDialogPlacement.Popup);
+                var initialization = ViewModel.InitializeAsync(gameInfo);
+                var dialog = InstallContentDialog
+                    .ShowAsync(ContentDialogPlacement.Popup)
+                    .AsTask();
+                if (await Task.WhenAny(initialization, dialog) == dialog)
+                    ViewModel.InvalidateInitialization();
+
+                await initialization;
+                await dialog;
             }
             catch (Exception ex)
             {
                 App.GetService<ILogger>().Error(ex, "AppInstallDialog: Failed to show install dialog");
+            }
+            finally
+            {
+                ViewModel.InvalidateInitialization();
             }
         }
 

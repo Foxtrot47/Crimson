@@ -328,12 +328,9 @@ public class InstallManager
 
     private async Task PrepareMoveTasks(InstallItem install)
     {
-        var sourceDrive = Path.GetPathRoot(install.Location);
-        var destDrive = Path.GetPathRoot(install.MoveLocation);
-
-        if (!string.Equals(sourceDrive, destDrive, StringComparison.OrdinalIgnoreCase))
+        if (!_storage.AreOnSameVolume(install.Location, install.MoveLocation))
         {
-            await HandleInstallationStoppage("Cross-drive moves are not supported. Please uninstall and reinstall to the new location.");
+            await HandleInstallationStoppage("Cross-volume moves are not supported. Please uninstall and reinstall to the new location.");
             return;
         }
 
@@ -345,8 +342,17 @@ public class InstallManager
 
         _logger.Information("Move: Moving {AppName} from {Src} to {Dest}",
             install.AppName, install.Location, install.MoveLocation);
-        Directory.Move(install.Location, install.MoveLocation);
-        _logger.Information("Move: Successfully moved {AppName}", install.AppName);
+        try
+        {
+            Directory.Move(install.Location, install.MoveLocation);
+            _logger.Information("Move: Successfully moved {AppName}", install.AppName);
+        }
+        catch (IOException ex)
+        {
+            _logger.Error(ex, "Move: Failed to move {AppName} from {Src} to {Dest}",
+                install.AppName, install.Location, install.MoveLocation);
+            await HandleInstallationStoppage("Failed to move the game. Check the destination and try again.");
+        }
     }
 
     private void ResetQueues()
@@ -1273,41 +1279,31 @@ public class InstallManager
 
         _logger.Information("GetGameDownloadInstallSizes: Parsing game manifest for {AppName}", appName);
         var manifest = Manifest.ReadAll(manifestData);
-        var chunkDownloadList = new List<ChunkInfo>();
-        var addedChunkGuids = new HashSet<BigInteger>();
+        var (totalDownloadSizeBytes, totalWriteSizeBytes) = CalculateManifestSizes(manifest);
+        _logger.Information("GetGameDownloadInstallSizes: Download size {DownloadBytes} bytes and write size {WriteBytes} bytes",
+            totalDownloadSizeBytes, totalWriteSizeBytes);
+        return (totalDownloadSizeBytes, totalWriteSizeBytes);
+    }
 
-        double totalDownloadSizeBytes = 0;
-        double totalWriteSizeBytes = 0;
+    internal static (double DownloadBytes, double WriteBytes) CalculateManifestSizes(Manifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        var addedChunkGuids = new HashSet<BigInteger>();
+        double downloadBytes = 0;
+        double writeBytes = 0;
 
         foreach (var fileManifest in manifest.FileManifestList.Elements)
         {
             foreach (var chunkPart in fileManifest.ChunkParts)
             {
-                if (_chunkToFileManifestsDictionary.TryGetValue(chunkPart.GuidNum, out var fileManifests))
-                {
-                    fileManifests.Add(fileManifest);
-                    _chunkToFileManifestsDictionary[chunkPart.GuidNum] = fileManifests;
-                }
-                else
-                {
-                    _ = _chunkToFileManifestsDictionary.TryAdd(chunkPart.GuidNum,
-                        new List<FileManifest>() { fileManifest });
-                }
-
-                if (!addedChunkGuids.Contains(chunkPart.GuidNum))
-                {
-                    var chunkInfo = manifest.CDL.GetChunkByGuidNum(chunkPart.GuidNum);
-                    chunkDownloadList.Add(chunkInfo);
-                    addedChunkGuids.Add(chunkPart.GuidNum);
-
-                    totalDownloadSizeBytes += chunkInfo.FileSize;
-                }
+                if (addedChunkGuids.Add(chunkPart.GuidNum))
+                    downloadBytes += manifest.CDL.GetChunkByGuidNum(chunkPart.GuidNum).FileSize;
             }
-            totalWriteSizeBytes += fileManifest.FileSize;
+
+            writeBytes += fileManifest.FileSize;
         }
-        _logger.Information("GetGameDownloadInstallSizes: Download size {DownloadBytes} bytes and write size {WriteBytes} bytes",
-            totalDownloadSizeBytes, totalWriteSizeBytes);
-        return (totalDownloadSizeBytes, totalWriteSizeBytes);
+
+        return (downloadBytes, writeBytes);
     }
 
     private async Task<byte[]> GetManifestDataWithCaching(string appName)
