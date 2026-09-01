@@ -19,27 +19,19 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Ionic.Zlib.Core" Version="1.0.0" />
     <PackageReference Include="Serilog" Version="4.4.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
   </ItemGroup>
 
-
-  <!-- Manager sources remain linked until their platform dependencies are extracted. -->
   <ItemGroup>
-    <Compile Include="..\Crimson\Core\AuthManager.cs" Link="Production\Core\AuthManager.cs" />
-    <Compile Include="..\Crimson\Core\DownloadManager.cs" Link="Production\Core\DownloadManager.cs" />
-    <Compile Include="..\Crimson\Core\GameLaunchRequest.cs" Link="Production\Core\GameLaunchRequest.cs" />
-    <Compile Include="..\Crimson\Core\GameShortcutManager.cs" Link="Production\Core\GameShortcutManager.cs" />
-    <Compile Include="..\Crimson\Core\GameShortcutNaming.cs" Link="Production\Core\GameShortcutNaming.cs" />
-    <Compile Include="..\Crimson\Core\InstallManager.cs" Link="Production\Core\InstallManager.cs" />
-    <Compile Include="..\Crimson\Core\LibraryManager.cs" Link="Production\Core\LibraryManager.cs" />
-    <Compile Include="..\Crimson\Core\SecurityPolicy.cs" Link="Production\Core\SecurityPolicy.cs" />
-    <Compile Include="..\Crimson\Models\*.cs" Exclude="..\Crimson\Models\DlcOption.cs" Link="Production\Models\%(Filename)%(Extension)" />
-    <Compile Include="..\Crimson\Repository\IStoreRepository.cs" Link="Production\Repository\IStoreRepository.cs" />
-    <Compile Include="..\Crimson\Repository\GetManifestUrlData.cs" Link="Production\Repository\GetManifestUrlData.cs" />
-    <Compile Include="..\Crimson\Utils\BigIntegerJsonConverter.cs" Link="Production\Utils\BigIntegerJsonConverter.cs" />
-    <Compile Include="..\Crimson\Utils\RollingHash.cs" Link="Production\Utils\RollingHash.cs" />
-    <Compile Include="..\Crimson\Utils\Storage.cs" Link="Production\Utils\Storage.cs" />
+    <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Platform implementations remain linked until they have portable substitutes. -->
+  <ItemGroup>
+    <Compile Include="..\Crimson.WinUI\Core\GameShortcutManager.cs" Link="Production\Core\GameShortcutManager.cs" />
+    <Compile Include="..\Crimson.WinUI\Core\GameShortcutNaming.cs" Link="Production\Core\GameShortcutNaming.cs" />
+    <Compile Include="..\Crimson.WinUI\Utils\Encryption.cs" Link="Production\Utils\Encryption.cs" />
   </ItemGroup>
 
 </Project>
