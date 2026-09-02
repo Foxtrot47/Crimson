@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">Crimson glyph</title>
+  <desc id="description">A simplified faceted crimson gemstone.</desc>
+  <defs>
+    <linearGradient id="topFacet" x1="340" y1="196" x2="634" y2="430" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff8190"/>
+      <stop offset="1" stop-color="#ed2a50"/>
+    </linearGradient>
+    <linearGradient id="leftFacet" x1="248" y1="354" x2="516" y2="850" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f0254d"/>
+      <stop offset="1" stop-color="#a0062a"/>
+    </linearGradient>
+    <linearGradient id="rightFacet" x1="774" y1="356" x2="514" y2="850" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c60e37"/>
+      <stop offset="1" stop-color="#65031a"/>
+    </linearGradient>
+  </defs>
+  <path d="m512 105 271 235-102 462-169 119-169-119-102-462z" fill="#8e0525"/>
+  <path d="m512 105 271 235-271 84-271-84z" fill="url(#topFacet)"/>
+  <path d="m241 340 271 84v497L343 802z" fill="url(#leftFacet)"/>
+  <path d="m783 340-271 84v497l169-119z" fill="url(#rightFacet)"/>
+</svg>

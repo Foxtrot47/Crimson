@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -91,6 +92,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        SetWindowIcon();
 
         // Disable setting mica as default
         // We will config later when we do configuration manager
@@ -120,6 +122,15 @@ public sealed partial class MainWindow : Window
 
         IsLoggedIn = false;
         _authManager.AuthStatusChanged += AuthStatusChangedHandler;
+    }
+
+    private void SetWindowIcon()
+    {
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Crimson.ico");
+        if (File.Exists(iconPath))
+            AppWindow.SetIcon(iconPath);
+        else
+            _log.Warning("Window icon was not found at {IconPath}", iconPath);
     }
 
     private void NavControl_BackRequested(NavigationView sender,
