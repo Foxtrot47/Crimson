@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/Foxtrot47/Crimson/actions/workflows/dotnet-winui3.yml"><img src="https://github.com/Foxtrot47/Crimson/actions/workflows/dotnet-winui3.yml/badge.svg" alt="CI status"></a>
-  <a href="LICENSE.txt"><img src="https://img.shields.io/badge/license-MIT-bc1237" alt="MIT license"></a>
+  <a href="LICENSE.txt"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-bc1237" alt="GPL-3.0-or-later license"></a>
 </p>
 
 > [!IMPORTANT]
@@ -113,4 +113,4 @@ See [Installing and releasing Crimson](docs/RELEASING.md) for the tagged release
 
 ## License
 
-Crimson is distributed under the terms in [LICENSE.txt](LICENSE.txt).
+Crimson is free software licensed under the [GNU General Public License v3.0 or later](LICENSE.txt).
