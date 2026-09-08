@@ -4,7 +4,7 @@ namespace Crimson.Core;
 
 public static class GameLaunchRequest
 {
-    public const string ProtocolScheme = "crimson-launcher";
+    public const string ProtocolScheme = "crimson";
     private const string LaunchArgumentPrefix = "--launch-game=";
 
     public static Uri CreateProtocolUri(string appName) =>

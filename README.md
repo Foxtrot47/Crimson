@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A modern, unofficial desktop client for browsing, installing, and launching your Epic Games library.
+  A modern, fast and lightweight alternative to Epic Games Launcher.
 </p>
 
 <p align="center">
@@ -27,9 +27,9 @@
 
 ## Platform status
 
-The current Crimson Launcher frontend supports **64-bit Windows 10 version 1809 or later** and requires the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/microsoft-edge/webview2/#download-section) for Epic sign-in and Store access. The runtime is already present on most current Windows installations.
+The current Crimson frontend supports **64-bit Windows 10 version 1809 or later** and requires the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/microsoft-edge/webview2/#download-section) for Epic sign-in and Store access. The runtime is already present on most current Windows installations.
 
-The application is being separated into a portable core and platform-specific frontends, but Linux and macOS applications are not available yet.
+The application is being separated into a portable core and platform-specific frontends, but linux releases are not available yet.
 
 Crimson is under active development. Back up anything important and expect behavior to change between pre-release versions.
 
@@ -51,7 +51,7 @@ The GitHub MSIX is signed with Crimson's persistent self-signed certificate:
 
 1. Download the matching `.msix` and `.cer` files.
 2. Import the certificate into the current user's **Trusted People** certificate store.
-3. Open the `.msix` to install Crimson Launcher.
+3. Open the `.msix` to install Crimson.
 
 See [Installing and releasing Crimson](docs/RELEASING.md) for detailed installation steps, package differences, and checksum verification.
 

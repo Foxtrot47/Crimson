@@ -321,7 +321,7 @@ public sealed class GameShortcutManager : IGameShortcutManager
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Microsoft",
         "WindowsApps",
-        "crimson-launcher.exe");
+        "crimson.exe");
 
     private static bool IsPackaged()
     {
