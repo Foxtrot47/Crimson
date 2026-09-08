@@ -25,6 +25,9 @@ public sealed class ManifestPathSafetyTests
     [Fact]
     public void RejectsJunctionBelowInstallRoot()
     {
+        if (!OperatingSystem.IsWindows())
+            return;
+
         var root = Path.Combine(Path.GetTempPath(), $"crimson-path-junction-{Guid.NewGuid():N}");
         var installation = Path.Combine(root, "game");
         var outside = Path.Combine(root, "outside-game");
