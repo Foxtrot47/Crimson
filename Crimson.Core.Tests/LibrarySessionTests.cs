@@ -15,9 +15,9 @@ public sealed class LibrarySessionTests : IDisposable
     [Fact]
     public async Task LogoutDiscardsOldMetadataAndForcesNewAccountRefresh()
     {
-        var storage = new Storage(_logger, _root);
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         var repository = new ControlledRepository();
-        var auth = new AuthManager(_logger, storage, _http);
+        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
         var library = new LibraryManager(_logger, repository, storage, auth);
         var published = new List<string>();
         library.LibraryUpdated += games => published.AddRange(games.Select(game => game.AppName));
@@ -41,9 +41,9 @@ public sealed class LibrarySessionTests : IDisposable
     [Fact]
     public async Task AuthenticationFailureDiscardsInFlightRefresh()
     {
-        var storage = new Storage(_logger, _root);
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         var repository = new ControlledRepository();
-        var auth = new AuthManager(_logger, storage, _http);
+        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
         var library = new LibraryManager(_logger, repository, storage, auth);
         var published = new List<string>();
         library.LibraryUpdated += games => published.AddRange(games.Select(game => game.AppName));
@@ -61,9 +61,9 @@ public sealed class LibrarySessionTests : IDisposable
     [Fact]
     public async Task LogoutAfterCompletedRefreshClearsCachedOwnership()
     {
-        var storage = new Storage(_logger, _root);
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         var repository = new ControlledRepository { Account = "second" };
-        var auth = new AuthManager(_logger, storage, _http);
+        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
         var library = new LibraryManager(_logger, repository, storage, auth);
         await library.GetLibraryData();
         await auth.Logout();
@@ -106,10 +106,10 @@ public sealed class LibrarySessionTests : IDisposable
 
         public static Metadata Metadata(string app) => new() { Id = app, Title = app, KeyImages = [] };
         public Task<IReadOnlyList<StoreSearchResult>> SearchStore(string query, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<byte[]> GetGameManifest(GetManifestUrlData data) => throw new NotSupportedException();
+        public Task<byte[]> GetGameManifest(GetManifestUrlData data, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task DownloadFileAsync(string url, string destinationPath) => throw new NotSupportedException();
         public Task<string> GetGameToken() => throw new NotSupportedException();
         public Task<byte[]?> GetOwnershipToken(string nameSpace, string catalogItemId) => throw new NotSupportedException();
-        public Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live") => throw new NotSupportedException();
+        public Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live", CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

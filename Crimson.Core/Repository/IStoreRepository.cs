@@ -15,7 +15,9 @@ public interface IStoreRepository
         string query,
         CancellationToken cancellationToken = default);
 
-    public Task<byte[]> GetGameManifest(GetManifestUrlData urlData);
+    public Task<byte[]> GetGameManifest(
+        GetManifestUrlData urlData,
+        CancellationToken cancellationToken = default);
 
     public Task DownloadFileAsync(string url, string destinationPath);
 
@@ -23,5 +25,11 @@ public interface IStoreRepository
 
     public Task<byte[]?> GetOwnershipToken(string nameSpace, string catalogItemId);
 
-    public Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live");
+    public Task<GetManifestUrlData> GetManifestUrls(
+        string nameSpace,
+        string catalogItem,
+        string appName,
+        string platform = "Windows",
+        string label = "Live",
+        CancellationToken cancellationToken = default);
 }

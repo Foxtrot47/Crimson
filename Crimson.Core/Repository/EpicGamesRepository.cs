@@ -187,7 +187,9 @@ namespace Crimson.Repository
             }
         }
 
-        public async Task<byte[]> GetGameManifest(GetManifestUrlData urlData)
+        public async Task<byte[]> GetGameManifest(
+            GetManifestUrlData urlData,
+            CancellationToken cancellationToken = default)
         {
             foreach (var value in urlData.ManifestUrls)
             {
@@ -197,7 +199,7 @@ namespace Crimson.Repository
                     _log.Information(
                         "GetGameManifest: Trying content endpoint {ManifestUri}",
                         SensitiveDataRedactor.UriWithoutQuery(uri.AbsoluteUri));
-                    using var response = await _contentClient.GetAsync(uri);
+                    using var response = await _contentClient.GetAsync(uri, cancellationToken);
                     if (!response.IsSuccessStatusCode)
                     {
                         _log.Error(
@@ -206,7 +208,11 @@ namespace Crimson.Repository
                         continue;
                     }
 
-                    return await response.Content.ReadAsByteArrayAsync();
+                    return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -298,7 +304,8 @@ namespace Crimson.Repository
             string catalogItem,
             string appName,
             string platform = "Windows",
-            string label = "Live")
+            string label = "Live",
+            CancellationToken cancellationToken = default)
         {
             try
             {
@@ -306,14 +313,14 @@ namespace Crimson.Repository
                 var accessToken = await _authManager.GetAccessToken();
                 var uri = $"https://{LauncherHost}/launcher/api/public/assets/v2/platform/{Uri.EscapeDataString(platform)}/namespace/{Uri.EscapeDataString(nameSpace)}/catalogItem/{Uri.EscapeDataString(catalogItem)}/app/{Uri.EscapeDataString(appName)}/label/{Uri.EscapeDataString(label)}";
                 using var request = CreateAuthenticatedRequest(HttpMethod.Get, uri, accessToken);
-                using var response = await _apiClient.SendAsync(request);
+                using var response = await _apiClient.SendAsync(request, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
                     LogManifestMetadataFailure(response);
                     return null;
                 }
 
-                var manifest = await ReadManifestEntryAsync(response, appName);
+                var manifest = await ReadManifestEntryAsync(response, appName, cancellationToken);
                 if (manifest is null)
                     return null;
 
@@ -324,6 +331,10 @@ namespace Crimson.Repository
                     ManifestUrls = manifestUrls,
                     ManifestHash = manifest.Hash
                 };
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -342,9 +353,12 @@ namespace Crimson.Repository
                 errorNames?.FirstOrDefault() ?? "unknown");
         }
 
-        private async Task<Element?> ReadManifestEntryAsync(HttpResponseMessage response, string appName)
+        private async Task<Element?> ReadManifestEntryAsync(
+            HttpResponseMessage response,
+            string appName,
+            CancellationToken cancellationToken)
         {
-            var result = await response.Content.ReadAsStringAsync();
+            var result = await response.Content.ReadAsStringAsync(cancellationToken);
             var data = JsonSerializer.Deserialize<ManifestUrlData>(result);
             if (data?.Elements is not { Count: > 0 } || data.Elements[0].Manifests is null)
             {

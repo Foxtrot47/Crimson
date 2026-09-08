@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Models;
 using Crimson.ViewModels;
@@ -10,6 +11,8 @@ namespace Crimson.Controls
 {
     public sealed partial class AppInstallDialog : UserControl
     {
+        private CancellationTokenSource? _initializationCancellation;
+
         public AppInstallDialogViewModel ViewModel { get; }
         public AppInstallDialog()
         {
@@ -21,17 +24,16 @@ namespace Crimson.Controls
 
         public async Task ShowAsync(Game gameInfo)
         {
+            var cancellation = new CancellationTokenSource();
+            var previous = Interlocked.Exchange(ref _initializationCancellation, cancellation);
+            previous?.Cancel();
+            previous?.Dispose();
             try
             {
-                var initialization = ViewModel.InitializeAsync(gameInfo);
-                var dialog = InstallContentDialog
-                    .ShowAsync(ContentDialogPlacement.Popup)
-                    .AsTask();
-                if (await Task.WhenAny(initialization, dialog) == dialog)
-                    ViewModel.InvalidateInitialization();
-
-                await initialization;
-                await dialog;
+                _ = ObserveInitializationAsync(
+                    ViewModel.InitializeAsync(gameInfo, cancellation.Token),
+                    cancellation.Token);
+                await InstallContentDialog.ShowAsync(ContentDialogPlacement.Popup);
             }
             catch (Exception ex)
             {
@@ -39,12 +41,36 @@ namespace Crimson.Controls
             }
             finally
             {
+                if (ReferenceEquals(Interlocked.CompareExchange(
+                    ref _initializationCancellation, null, cancellation), cancellation))
+                {
+                    cancellation.Cancel();
+                    cancellation.Dispose();
+                }
                 ViewModel.InvalidateInitialization();
+            }
+        }
+
+        private static async Task ObserveInitializationAsync(
+            Task initialization,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await initialization;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                App.GetService<ILogger>().Error(ex, "AppInstallDialog: Initialization failed");
             }
         }
 
         private void OnRequestClose()
         {
+            _initializationCancellation?.Cancel();
             InstallContentDialog?.Hide();
         }
 
@@ -71,6 +97,10 @@ namespace Crimson.Controls
 
         public void Cleanup()
         {
+            var cancellation = Interlocked.Exchange(ref _initializationCancellation, null);
+            cancellation?.Cancel();
+            cancellation?.Dispose();
+            ViewModel.InvalidateInitialization();
             ViewModel.RequestClose -= OnRequestClose;
             ViewModel.FolderPickerRequested -= ShowFolderPicker;
         }

@@ -29,9 +29,9 @@ public sealed class AuthSessionTests : IDisposable
 
             return new HttpResponseMessage(HttpStatusCode.OK);
         }));
-        var storage = new Storage(_logger, _root);
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         await storage.SaveUserData(CreateUser("old", DateTimeOffset.UtcNow.AddHours(1)));
-        var auth = new AuthManager(_logger, storage, client);
+        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), client);
         Assert.Equal(AuthenticationStatus.LoggedIn, await auth.CheckAuthStatus());
         await storage.SaveUserData(CreateUser("old", DateTimeOffset.UtcNow.AddMinutes(-10)));
 

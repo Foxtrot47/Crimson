@@ -262,7 +262,7 @@ public sealed class ManagerCharacterizationTests
 
     private sealed class UnusedGameShortcutManager : IGameShortcutManager
     {
-        public Task CreateAsync(Game game, GameShortcutLocation location) =>
+        public Task CreateAsync(Game game, GameShortcutLocation location, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public void Remove(Game game)
@@ -287,8 +287,9 @@ public sealed class ManagerCharacterizationTests
             string query,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<byte[]> GetGameManifest(GetManifestUrlData urlData) =>
-            throw new NotSupportedException();
+        public Task<byte[]> GetGameManifest(
+            GetManifestUrlData urlData,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task DownloadFileAsync(string url, string destinationPath) =>
             throw new NotSupportedException();
@@ -303,6 +304,7 @@ public sealed class ManagerCharacterizationTests
             string catalogItem,
             string appName,
             string platform = "Windows",
-            string label = "Live") => throw new NotSupportedException();
+            string label = "Live",
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

@@ -23,7 +23,10 @@ public sealed class InstallerCompletionTests : IDisposable
     public InstallerCompletionTests()
     {
         _http = new HttpClient(_handler);
-        _storage = new Storage(_logger, Path.Combine(_root, "data"));
+        _storage = new Storage(
+            _logger,
+            Path.Combine(_root, "data"),
+            Path.Combine(_root, "game"));
         Directory.CreateDirectory(Path.Combine(_root, "game"));
         _game = new Game {
             AppName = "test", AppTitle = "Test Game",
@@ -38,11 +41,15 @@ public sealed class InstallerCompletionTests : IDisposable
         _storage.SaveMetaData(_game);
         _storage.AddToLocalAppState(_game.AppName, _game.LocalAppState);
         var repository = new EmptyManifestRepository();
-        var library = new LibraryManager(_logger, repository, _storage, new AuthManager(_logger, _storage, _http));
+        var library = new LibraryManager(
+            _logger,
+            repository,
+            _storage,
+            new AuthManager(_logger, _storage, new UnusedCredentialProtector(), _http));
         var shortcuts = new GameShortcutManager(_http, _logger,
             Path.Combine(_root, "desktop"), Path.Combine(_root, "start"), Path.Combine(_root, "icons"));
         _installer = new InstallManager(_logger, library, repository, _storage,
-            new DownloadManager(_logger, _http), shortcuts);
+            new DownloadManager(_logger, _http), shortcuts, new AllowInstallPermissionChecker());
     }
 
     [Fact]
@@ -118,12 +125,23 @@ public sealed class InstallerCompletionTests : IDisposable
         }
     }
 
+    private sealed class UnusedCredentialProtector : ICredentialProtector
+    {
+        public string Protect(string value) => value;
+        public string Unprotect(string protectedValue) => protectedValue;
+    }
+
+    private sealed class AllowInstallPermissionChecker : IInstallPermissionChecker
+    {
+        public InstallPermissionCheckResult Check(string folderPath) => new(true);
+    }
+
     private sealed class EmptyManifestRepository : IStoreRepository
     {
-        public Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live") => Task.FromResult(new GetManifestUrlData {
+        public Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live", CancellationToken cancellationToken = default) => Task.FromResult(new GetManifestUrlData {
             BaseUrls = [], ManifestUrls = ["test"], ManifestHash = string.Empty
         });
-        public Task<byte[]> GetGameManifest(GetManifestUrlData data) => Task.FromResult(Encoding.UTF8.GetBytes("""
+        public Task<byte[]> GetGameManifest(GetManifestUrlData data, CancellationToken cancellationToken = default) => Task.FromResult(Encoding.UTF8.GetBytes("""
             {"FileManifestList":[],"ChunkHashList":{},"ChunkShaList":{},"DataGroupList":{},"ChunkFilesizeList":{}}
             """));
         public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId) => throw new NotSupportedException();

@@ -15,7 +15,7 @@ public sealed class InstallerUpdateTests : IDisposable
     public InstallerUpdateTests()
     {
         Directory.CreateDirectory(_root);
-        _installer = new InstallManager(_logger, null!, null!, null!, null!, null!);
+        _installer = new InstallManager(_logger, null!, null!, null!, null!, null!, null!);
     }
 
     [Fact]

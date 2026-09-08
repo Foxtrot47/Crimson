@@ -1285,11 +1285,13 @@ public class InstallManager
     /// </summary>
     /// <param name="appName"></param>
     /// <returns></returns>
-    public async Task<(double totalDownloadSizeMb, double totalWriteSizeMb)> GetGameDownloadInstallSizes(string appName)
+    public async Task<(double totalDownloadSizeMb, double totalWriteSizeMb)> GetGameDownloadInstallSizes(
+        string appName,
+        CancellationToken cancellationToken = default)
     {
         _logger.Information("GetGameDownloadInstallSizes: Getting game manifest for {AppName}", appName);
 
-        var manifestData = await GetManifestDataWithCaching(appName);
+        var manifestData = await GetManifestDataWithCaching(appName, cancellationToken);
 
         _logger.Information("GetGameDownloadInstallSizes: Parsing game manifest for {AppName}", appName);
         var manifest = Manifest.ReadAll(manifestData);
@@ -1320,8 +1322,11 @@ public class InstallManager
         return (downloadBytes, writeBytes);
     }
 
-    private async Task<byte[]> GetManifestDataWithCaching(string appName)
+    private async Task<byte[]> GetManifestDataWithCaching(
+        string appName,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         byte[] manifestData = null;
         var gameData = _libraryManager.GetGameInfo(appName);
 
@@ -1342,7 +1347,8 @@ public class InstallManager
             var urlData = await _repository.GetManifestUrls(
                 gameData.AssetInfos.Windows.Namespace,
                 gameData.AssetInfos.Windows.CatalogItemId,
-                gameData.AppName);
+                gameData.AppName,
+                cancellationToken: cancellationToken);
 
             if (urlData == null)
             {
@@ -1354,8 +1360,10 @@ public class InstallManager
             _storage.SaveMetaData(gameData);
 
             // Download the manifest and cache it
-            manifestData = await _repository.GetGameManifest(urlData);
+            manifestData = await _repository.GetGameManifest(urlData, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             await _storage.CacheManifestBytes(appName, gameData.AssetInfos.Windows.BuildVersion, manifestData);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (localAppState == null)
             {

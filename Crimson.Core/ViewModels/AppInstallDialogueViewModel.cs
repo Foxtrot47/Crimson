@@ -23,9 +23,14 @@ public partial class AppInstallDialogViewModel : ObservableObject
     private readonly IUiDispatcher _uiDispatcher;
 
     private string _gameAppName;
-    private int _initializationGeneration;
-    private int _driveSpaceGeneration;
-    private double _loadedInstallSize;
+    private InitializationState _initialization = new();
+
+    private sealed class InitializationState(CancellationToken cancellationToken = default)
+    {
+        public CancellationToken CancellationToken { get; } = cancellationToken;
+        public int DriveRequest;
+        public double InstallSize;
+    }
 
     [ObservableProperty]
     private string _gameTitle;
@@ -44,9 +49,6 @@ public partial class AppInstallDialogViewModel : ObservableObject
 
     [ObservableProperty]
     private string _totalDownloadSize;
-
-    [ObservableProperty]
-    private double _totalInstallSizeRaw;
 
     [ObservableProperty]
     private string _totalInstallSize;
@@ -102,9 +104,10 @@ public partial class AppInstallDialogViewModel : ObservableObject
         _uiDispatcher = uiDispatcher;
     }
 
-    public async Task InitializeAsync(Game gameInfo)
+    public async Task InitializeAsync(Game gameInfo, CancellationToken cancellationToken = default)
     {
-        var generation = Interlocked.Increment(ref _initializationGeneration);
+        var generation = new InitializationState(cancellationToken);
+        Interlocked.Exchange(ref _initialization, generation);
         try
         {
             Activate();
@@ -126,12 +129,14 @@ public partial class AppInstallDialogViewModel : ObservableObject
                 });
             }
 
-            var sizes = await Task.Run(() =>
-                _installManager.GetGameDownloadInstallSizes(gameInfo.AppName)).ConfigureAwait(false);
+            var sizes = await _installManager
+                .GetGameDownloadInstallSizes(gameInfo.AppName, cancellationToken)
+                .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             if (!IsCurrentInitialization(generation))
                 return;
 
-            _loadedInstallSize = sizes.totalWriteSizeMb;
+            generation.InstallSize = sizes.totalWriteSizeMb;
             _uiDispatcher.TryEnqueue(() =>
             {
                 if (!IsCurrentInitialization(generation))
@@ -139,10 +144,12 @@ public partial class AppInstallDialogViewModel : ObservableObject
 
                 TotalDownloadSize = FormatSize(sizes.totalDownloadSizeMb);
                 TotalInstallSize = FormatSize(sizes.totalWriteSizeMb);
-                TotalInstallSizeRaw = sizes.totalWriteSizeMb;
             });
 
             await UpdateDriveSpace(InstallLocation, sizes.totalWriteSizeMb, generation).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
@@ -179,25 +186,20 @@ public partial class AppInstallDialogViewModel : ObservableObject
         AvailableDlcs.Clear();
         TotalDownloadSize = "0 B";
         TotalInstallSize = "0 B";
-        TotalInstallSizeRaw = 0;
         DriveSpaceAvailable = "0 B";
         DriveTotalSpace = "0 B";
         DriveSpaceUsagePercent = 0;
-        _loadedInstallSize = 0;
+        Volatile.Read(ref _initialization).InstallSize = 0;
     }
 
-    private Task UpdateDriveSpace(string installLocation, double installSize) =>
-        UpdateDriveSpace(
-            installLocation,
-            installSize,
-            Volatile.Read(ref _initializationGeneration));
-
-    private async Task UpdateDriveSpace(string installLocation, double installSize, int generation)
+    private async Task UpdateDriveSpace(string installLocation, double installSize, InitializationState generation)
     {
-        var driveRequest = Interlocked.Increment(ref _driveSpaceGeneration);
+        var driveRequest = Interlocked.Increment(ref generation.DriveRequest);
         try
         {
+            generation.CancellationToken.ThrowIfCancellationRequested();
             var driveInfo = await _storageService.GetDriveInfo(installLocation).ConfigureAwait(false);
+            generation.CancellationToken.ThrowIfCancellationRequested();
             if (!IsCurrentRequest(generation, driveRequest))
                 return;
 
@@ -206,6 +208,9 @@ public partial class AppInstallDialogViewModel : ObservableObject
                 if (IsCurrentRequest(generation, driveRequest))
                     ApplyDriveSpace(driveInfo, installSize);
             });
+        }
+        catch (OperationCanceledException) when (generation.CancellationToken.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
@@ -236,29 +241,29 @@ public partial class AppInstallDialogViewModel : ObservableObject
         IsLoadingContent = false;
     }
 
-    private bool IsCurrentInitialization(int generation) =>
-        generation == Volatile.Read(ref _initializationGeneration);
+    private bool IsCurrentInitialization(InitializationState generation) =>
+        ReferenceEquals(generation, Volatile.Read(ref _initialization));
 
-    private bool IsCurrentRequest(int generation, int driveRequest) =>
+    private bool IsCurrentRequest(InitializationState generation, int driveRequest) =>
         IsCurrentInitialization(generation) &&
-        driveRequest == Volatile.Read(ref _driveSpaceGeneration);
+        driveRequest == Volatile.Read(ref generation.DriveRequest);
 
     public void InvalidateInitialization()
     {
-        Interlocked.Increment(ref _initializationGeneration);
-        Interlocked.Increment(ref _driveSpaceGeneration);
+        Interlocked.Exchange(ref _initialization, new InitializationState());
     }
 
     [RelayCommand]
     private async Task SelectLocation()
     {
+        var generation = Volatile.Read(ref _initialization);
         if (FolderPickerRequested != null)
         {
             var newPath = await FolderPickerRequested.Invoke();
-            if (!string.IsNullOrEmpty(newPath))
+            if (!string.IsNullOrEmpty(newPath) && IsCurrentInitialization(generation))
             {
                 InstallLocation = Path.Combine(newPath, GameTitle);
-                await UpdateDriveSpace(InstallLocation, _loadedInstallSize);
+                await UpdateDriveSpace(InstallLocation, generation.InstallSize, generation);
             }
         }
     }

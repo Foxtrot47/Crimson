@@ -54,6 +54,118 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         Assert.False(viewModel.IsLoadingContent);
     }
 
+    [Fact]
+    public async Task ObsoleteInitializationCannotInvalidateCurrentDriveRequest()
+    {
+        var repository = new ControlledManifestRepository();
+        var volume = new BlockingVolumeResolver();
+        var dispatcher = new BlockingFirstDispatcher();
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"), volume);
+        var first = CreateGame("first", "First", "first-box");
+        var second = CreateGame("second", "Second", "second-box");
+        storage.SaveMetaData(first);
+        storage.SaveMetaData(second);
+        var library = CreateLibrary(storage, repository);
+        var installer = new InstallManager(_logger, library, repository, storage,
+            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var vm = new AppInstallDialogViewModel(_logger, installer, library, storage, dispatcher);
+
+        var oldInitialization = vm.InitializeAsync(first);
+        repository.Complete("first", CreateJsonManifest(100, 10));
+        await dispatcher.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var currentInitialization = vm.InitializeAsync(second);
+        repository.Complete("second", CreateJsonManifest(200, 20));
+        try
+        {
+            await volume.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            dispatcher.Release.Set();
+            await oldInitialization.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            dispatcher.Release.Set();
+            volume.Release.Set();
+        }
+        await currentInitialization.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(vm.IsLoadingContent);
+        Assert.True(vm.IsDriveSpaceVisible);
+        Assert.Equal("Second", vm.GameTitle);
+        Assert.Equal("20 B", vm.TotalInstallSize);
+    }
+
+    [Fact]
+    public async Task CancellationReleasesBlockedManifestInitialization()
+    {
+        var repository = new ControlledManifestRepository();
+        var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        repository.ManifestRequested += _ => requested.TrySetResult();
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var game = CreateGame("game", "Game", "box");
+        storage.SaveMetaData(game);
+        var library = CreateLibrary(storage, repository);
+        var installer = new InstallManager(_logger, library, repository, storage,
+            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var viewModel = new AppInstallDialogViewModel(
+            _logger, installer, library, storage, new ImmediateUiDispatcher());
+        var requestedClose = false;
+        viewModel.RequestClose += () => requestedClose = true;
+        using var cancellation = new CancellationTokenSource();
+
+        var initialization = viewModel.InitializeAsync(game, cancellation.Token);
+        await requested.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellation.Cancel();
+        await initialization.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(requestedClose);
+    }
+
+    [Fact]
+    public async Task FailedMoveCannotCompleteNextUninstallBeforeItsManifestReturns()
+    {
+        var repository = new ControlledManifestRepository();
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var source = Path.Combine(_root, "source");
+        var target = Path.Combine(_root, "uninstall");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(target);
+        var file = Path.Combine(target, "game.exe");
+        File.WriteAllText(file, "synthetic game data");
+        var move = CreateGame("move", "Move", "image");
+        var uninstall = CreateGame("uninstall", "Uninstall", "image");
+        foreach (var (game, path) in new[] { (move, source), (uninstall, target) })
+        {
+            game.LocalAppState = new LocalAppState {
+                AppName = game.AppName, InstallPath = path, InstallStatus = InstallState.Installed
+            };
+            storage.SaveMetaData(game);
+            storage.AddToLocalAppState(game.AppName, game.LocalAppState);
+        }
+        var library = CreateLibrary(storage, repository);
+        var installer = new InstallManager(_logger, library, repository, storage,
+            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var success = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        repository.ManifestRequested += app => { if (app == "uninstall") requested.TrySetResult(); };
+        installer.InstallationStatusChanged += item => {
+            if (item.AppName == "uninstall" && item.Status == ActionStatus.Success) success.TrySetResult();
+        };
+        installer.AddToQueue(new InstallItem("move", ActionType.Move, source) {
+            MoveLocation = Path.Combine(_root, "missing-parent", "destination")
+        });
+        installer.AddToQueue(new InstallItem("uninstall", ActionType.Uninstall, target));
+        repository.Complete("move", CreateJsonManifest(100, 10));
+        await requested.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAny(success.Task, Task.Delay(3000));
+        var completedEarly = success.Task.IsCompleted;
+        repository.Complete("uninstall", CreateJsonManifest(100, 10));
+        await success.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(completedEarly);
+        Assert.False(File.Exists(file));
+        Assert.Equal(InstallState.NotInstalled, uninstall.LocalAppState!.InstallStatus);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -126,6 +238,40 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         }
     }
 
+    private sealed class BlockingFirstDispatcher : IUiDispatcher
+    {
+        private int _calls;
+        public TaskCompletionSource Blocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ManualResetEventSlim Release { get; } = new(false);
+        public bool TryEnqueue(Action callback)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                Blocked.TrySetResult();
+                if (!Release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("Dispatcher barrier timed out.");
+            }
+            callback();
+            return true;
+        }
+    }
+
+    private sealed class BlockingVolumeResolver : IFileSystemVolumeResolver
+    {
+        private int _calls;
+        public TaskCompletionSource Blocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ManualResetEventSlim Release { get; } = new(false);
+        public DriveInfo GetVolume(string path)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                Blocked.TrySetResult();
+                if (!Release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("Volume barrier timed out.");
+            }
+            return new DriveInfo(Path.GetPathRoot(path)!);
+        }
+        public bool AreOnSameVolume(string firstPath, string secondPath) => true;
+    }
+
     private sealed class AllowInstallPermissionChecker : IInstallPermissionChecker
     {
         public InstallPermissionCheckResult Check(string folderPath) => new(true);
@@ -133,7 +279,7 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
 
     private sealed class UnusedShortcutManager : IGameShortcutManager
     {
-        public Task CreateAsync(Game game, GameShortcutLocation location) =>
+        public Task CreateAsync(Game game, GameShortcutLocation location, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public void Remove(Game game)
@@ -153,15 +299,25 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
             string catalogItem,
             string appName,
             string platform = "Windows",
-            string label = "Live") => Task.FromResult(new GetManifestUrlData
+            string label = "Live",
+            CancellationToken cancellationToken = default) => Task.FromResult(new GetManifestUrlData
             {
                 BaseUrls = [],
                 ManifestUrls = [appName],
                 ManifestHash = string.Empty
             });
 
-        public Task<byte[]> GetGameManifest(GetManifestUrlData urlData) =>
-            GetSource(urlData.ManifestUrls[0]).Task;
+        public event Action<string>? ManifestRequested;
+
+        public async Task<byte[]> GetGameManifest(
+            GetManifestUrlData urlData,
+            CancellationToken cancellationToken = default)
+        {
+            var appName = urlData.ManifestUrls[0];
+            var source = GetSource(appName);
+            ManifestRequested?.Invoke(appName);
+            return await source.Task.WaitAsync(cancellationToken);
+        }
 
         private TaskCompletionSource<byte[]> GetSource(string appName)
         {
