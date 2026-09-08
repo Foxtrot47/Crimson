@@ -112,6 +112,19 @@ function Invoke-ReleaseTests {
   )
 }
 
+function Assert-LicenseFile {
+  param([Parameter(Mandatory)][string]$Directory)
+
+  $licensePath = Join-Path $Directory 'LICENSE.txt'
+  if (-not (Test-Path $licensePath -PathType Leaf)) {
+    throw "Release output is missing LICENSE.txt: $Directory"
+  }
+  $expected = (Get-FileHash (Join-Path $repo 'LICENSE.txt') -Algorithm SHA256).Hash
+  if ((Get-FileHash $licensePath -Algorithm SHA256).Hash -cne $expected) {
+    throw "Release output contains a different LICENSE.txt: $Directory"
+  }
+}
+
 function Publish-PortableAsset {
   Clear-ProjectOutput
   Invoke-Checked 'dotnet' @(
@@ -126,6 +139,7 @@ function Publish-PortableAsset {
 
   $portableExe = Join-Path $staging 'unpackaged\Crimson.exe'
   if (-not (Test-Path $portableExe)) { throw 'Portable publish did not produce Crimson.exe.' }
+  Assert-LicenseFile (Join-Path $staging 'unpackaged')
   Compress-Archive `
     -Path (Join-Path $staging 'unpackaged\*') `
     -DestinationPath (Join-Path $dist "Crimson-$Version-win-x64.zip")
@@ -248,6 +262,7 @@ function Assert-PackageIdentity {
 
   Remove-Item $Destination -Recurse -Force -ErrorAction SilentlyContinue
   Invoke-Checked $MakeAppx @('unpack', '/p', $PackagePath, '/d', $Destination, '/o')
+  Assert-LicenseFile $Destination
   [xml]$packageManifest = Get-Content (Join-Path $Destination 'AppxManifest.xml') -Raw
   $identity = $packageManifest.Package.Identity
   if ($identity.Name -cne $packageName) {

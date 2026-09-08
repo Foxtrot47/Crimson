@@ -60,6 +60,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <Content Include="..\LICENSE.txt" Link="LICENSE.txt">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </Content>
         <Content Include="Assets\Crimson.ico" />
         <Content Include="Assets\SplashScreen.scale-200.png" />
         <Content Include="Assets\LockScreenLogo.scale-200.png" />

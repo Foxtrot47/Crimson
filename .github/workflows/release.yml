@@ -59,6 +59,9 @@ jobs:
           $notes = @"
           The portable ZIP can be run without installing a certificate.
 
+          License: GPL-3.0-or-later. Each application package includes LICENSE.txt.
+          Source for this release: https://github.com/Foxtrot47/Crimson/tree/v$env:VERSION
+
           To install the MSIX, first import Crimson-$env:VERSION.cer into the current user's Trusted People certificate store. The MSIX is a full-trust desktop application. The sideload and Microsoft Store packages share an identity and cannot be installed side by side.
           "@
           $assets = (Get-ChildItem dist -File).FullName

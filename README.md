@@ -29,7 +29,7 @@
 
 The current Crimson frontend supports **64-bit Windows 10 version 1809 or later** and requires the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/microsoft-edge/webview2/#download-section) for Epic sign-in and Store access. The runtime is already present on most current Windows installations.
 
-The application is being separated into a portable core and platform-specific frontends, but linux releases are not available yet.
+The application is being separated into a portable core and platform-specific frontends, but Linux releases are not available yet.
 
 Crimson is under active development. Back up anything important and expect behavior to change between pre-release versions.
 
@@ -71,7 +71,7 @@ The portable build keeps its data under `%LOCALAPPDATA%\Crimson`. Packaged build
 
 Application data includes logs, the embedded Epic sign-in and Store browser profile, cached metadata and artwork, manifests, and installation state.
 
-Epic credentials stored by the Windows frontend are encrypted at rest with Windows Data Protection API (DPAPI). Temporary ownership-token files created for a game launch are removed after the game exits.
+Epic credentials stored by the Windows frontend are encrypted at rest with Windows Data Protection API (DPAPI). Crimson attempts to remove temporary ownership-token files after the game exits. Closing Crimson first or an interrupted shutdown can leave those files on disk.
 
 ## Build from source
 
@@ -103,14 +103,14 @@ dotnet build Crimson.WinUI/Crimson.WinUI.csproj -c Release -r win-x64 -p:Platfor
 
 ## Repository layout
 
-- `Crimson.Core` — framework-neutral models, services, installers, and presentation state
-- `Crimson.WinUI` — the Windows App SDK frontend and Windows platform adapters
-- `Crimson.Core.Tests` — portable tests that also run on Linux CI
-- `Crimson.Tests` — Windows-specific adapter tests
-- `scripts` — deployment, packaging, and release validation tools
+- `Crimson.Core`: framework-neutral models, services, installers, and presentation state
+- `Crimson.WinUI`: the Windows App SDK frontend and Windows platform adapters
+- `Crimson.Core.Tests`: portable tests that also run on Linux CI
+- `Crimson.Tests`: Windows-specific adapter tests
+- `scripts`: deployment, packaging, and release validation tools
 
 See [Installing and releasing Crimson](docs/RELEASING.md) for the tagged release process.
 
 ## License
 
-Crimson is free software licensed under the [GNU General Public License v3.0 or later](LICENSE.txt).
+Crimson is free software licensed under the [GNU General Public License v3.0 or later](LICENSE.txt). A copy of the license is included with binary distributions. Source for each tagged release is available from its matching `vX.Y.Z` tag in this repository.

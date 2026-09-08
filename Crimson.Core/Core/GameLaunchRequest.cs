@@ -5,6 +5,7 @@ namespace Crimson.Core;
 public static class GameLaunchRequest
 {
     public const string ProtocolScheme = "crimson";
+    public const string LegacyProtocolScheme = "crimson-launcher";
     private const string LaunchArgumentPrefix = "--launch-game=";
 
     public static Uri CreateProtocolUri(string appName) =>
@@ -16,7 +17,8 @@ public static class GameLaunchRequest
     internal static bool TryParse(Uri uri, out string appName)
     {
         appName = string.Empty;
-        if (!uri.Scheme.Equals(ProtocolScheme, StringComparison.OrdinalIgnoreCase) ||
+        if ((!uri.Scheme.Equals(ProtocolScheme, StringComparison.OrdinalIgnoreCase) &&
+             !uri.Scheme.Equals(LegacyProtocolScheme, StringComparison.OrdinalIgnoreCase)) ||
             !uri.Host.Equals("launch", StringComparison.OrdinalIgnoreCase))
             return false;
 

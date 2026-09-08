@@ -17,6 +17,17 @@ public sealed class GameLaunchRequestTests
         Assert.Equal("Game Name+Test", appName);
     }
 
+    [Fact]
+    public void LegacyProtocolUriRemainsCompatible()
+    {
+        var parsed = GameLaunchRequest.TryParse(
+            new Uri("crimson-launcher://launch?app=ExistingGame"),
+            out var appName);
+
+        Assert.True(parsed);
+        Assert.Equal("ExistingGame", appName);
+    }
+
     [Theory]
     [InlineData("https://launch?app=Game")]
     [InlineData("crimson://other?app=Game")]

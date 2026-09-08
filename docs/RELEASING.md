@@ -4,11 +4,11 @@
 
 A tagged release contains these files:
 
-- `Crimson-X.Y.Z-win-x64.zip` — portable application with a self-contained .NET runtime
-- `Crimson-X.Y.Z-win-x64.msix` — signed sideload package
-- `Crimson-X.Y.Z.cer` — public certificate for the sideload package
-- `SHA256SUMS.txt` — SHA-256 checksums for the downloadable files
-- `Crimson-X.Y.Z-partner-center.msixupload` — unsigned Microsoft Store submission; not intended for direct installation
+- `Crimson-X.Y.Z-win-x64.zip`: portable application with a self-contained .NET runtime
+- `Crimson-X.Y.Z-win-x64.msix`: signed sideload package
+- `Crimson-X.Y.Z.cer`: public certificate for the sideload package
+- `SHA256SUMS.txt`: SHA-256 checksums for the downloadable files
+- `Crimson-X.Y.Z-partner-center.msixupload`: unsigned Microsoft Store submission; not intended for direct installation
 
 ### Portable ZIP
 
@@ -39,14 +39,20 @@ Get-FileHash .\Crimson-X.Y.Z-win-x64.zip -Algorithm SHA256
 Get-FileHash .\Crimson-X.Y.Z-win-x64.msix -Algorithm SHA256
 ```
 
+## License and corresponding source
+
+Binary distributions include the repository's `LICENSE.txt`. Release validation checks that the portable output and both MSIX variants contain an identical copy.
+
+Publish the source matching each distributed binary, including build scripts and required dependency information. For release `X.Y.Z`, link to `https://github.com/Foxtrot47/Crimson/tree/vX.Y.Z` next to the binary downloads and in the Microsoft Store listing. Verify that the tag is public and identifies the source actually used to build that package. Do not publish packages built from uncommitted changes under an unrelated source tag.
+
 ## Publish a release
 
 Pushing a canonical `vX.Y.Z` tag whose commit is on `origin/main` runs the release workflow. The workflow maps the tag to MSIX version `X.Y.Z.0`, runs both test suites, builds every release format, validates the package identity and signatures, and publishes the five files listed above.
 
 The protected `release` GitHub environment must define:
 
-- `MSIX_PFX_BASE64` — base64-encoded persistent code-signing PFX
-- `MSIX_PFX_PASSWORD` — the PFX password
+- `MSIX_PFX_BASE64`: base64-encoded persistent code-signing PFX
+- `MSIX_PFX_PASSWORD`: the PFX password
 
 The certificate subject must be exactly `CN=B3628FD3-BCE4-4EF1-ADE8-7B0F73A4FC3F` and it must contain the Code Signing EKU. Reuse the same certificate for every GitHub release so existing installations retain a stable trust chain. Keep an encrypted recovery copy outside GitHub; secret values cannot be retrieved from GitHub after upload.
 
