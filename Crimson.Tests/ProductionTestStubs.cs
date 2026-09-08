@@ -26,10 +26,8 @@ namespace Crimson.Utils
 {
     public static class KeyManager
     {
-        public static string EncryptString(string value) => throw new InvalidOperationException(
-            "Credential encryption is unavailable in headless characterization tests.");
+        public static string EncryptString(string value) => value;
 
-        public static string DecryptString(string value) => throw new InvalidOperationException(
-            "Credential encryption is unavailable in headless characterization tests.");
+        public static string DecryptString(string value) => value;
     }
 }

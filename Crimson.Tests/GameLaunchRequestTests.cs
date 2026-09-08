@@ -162,8 +162,8 @@ public sealed class GameLaunchRequestTests
         Directory.CreateDirectory(desktopDirectory);
         Directory.CreateDirectory(startMenuDirectory);
         Directory.CreateDirectory(Path.GetDirectoryName(iconPath)!);
-        File.WriteAllText(desktopShortcut, string.Empty);
-        File.WriteAllText(startMenuShortcut, string.Empty);
+        GameShortcutManager.CreateShellLink(desktopShortcut, game, iconPath, packaged: true);
+        GameShortcutManager.CreateShellLink(startMenuShortcut, game, iconPath, packaged: true);
         File.WriteAllText(iconPath, string.Empty);
         File.WriteAllText(unrelatedShortcut, string.Empty);
 

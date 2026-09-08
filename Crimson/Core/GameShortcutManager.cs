@@ -5,6 +5,8 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Models;
 using Serilog;
@@ -57,18 +59,21 @@ public sealed class GameShortcutManager
         _iconDirectory = iconDirectory;
     }
 
-    public async Task CreateAsync(Game game, GameShortcutLocation location)
+    public async Task CreateAsync(Game game, GameShortcutLocation location, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var path = GetShortcutPath(game, location);
+        RequireAvailableShortcutPath(path, game.AppName);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var iconPath = await GetIconPathAsync(game);
+        var iconPath = await GetIconPathAsync(game, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         CreateShellLink(path, game, iconPath);
     }
 
     public void Remove(Game game)
     {
-        TryDeleteFile(GetShortcutPath(game, GameShortcutLocation.StartMenu), game.AppName);
-        TryDeleteFile(GetShortcutPath(game, GameShortcutLocation.Desktop), game.AppName);
+        RemoveOwnedShortcut(GetShortcutPath(game, GameShortcutLocation.StartMenu), game.AppName);
+        RemoveOwnedShortcut(GetShortcutPath(game, GameShortcutLocation.Desktop), game.AppName);
         TryDeleteFile(
             Path.Combine(_iconDirectory, "games", GameShortcutNaming.GetIconFileName(game.AppName)),
             game.AppName);
@@ -80,6 +85,62 @@ public sealed class GameShortcutManager
             ? _desktopDirectory
             : _startMenuDirectory;
         return Path.Combine(directory, GameShortcutNaming.GetShortcutFileName(game.AppTitle));
+    }
+
+    private void RemoveOwnedShortcut(string path, string appName)
+    {
+        if (IsOwnedShortcut(path, appName))
+            TryDeleteFile(path, appName);
+    }
+
+    private static void RequireAvailableShortcutPath(string path, string appName)
+    {
+        if (File.Exists(path) && !IsOwnedShortcut(path, appName))
+            throw new IOException("An unrelated file already occupies the requested shortcut path.");
+    }
+
+    private static bool IsOwnedShortcut(string path, string appName)
+    {
+        if (!File.Exists(path))
+            return false;
+
+        try
+        {
+            return ReadShortcutOwnership(path, appName);
+        }
+        catch (COMException)
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool ReadShortcutOwnership(string path, string appName)
+    {
+        IShellLinkW link = (IShellLinkW)new ShellLink();
+        try
+        {
+            ((IPersistFile)link).Load(path, 0);
+            var target = new StringBuilder(32768);
+            var arguments = new StringBuilder(32768);
+            link.GetPath(target, target.Capacity, IntPtr.Zero, 4);
+            link.GetArguments(arguments, arguments.Capacity);
+            var targetsCrimson = string.Equals(target.ToString(), GetPackagedAliasPath(), StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(target.ToString(), Environment.ProcessPath, StringComparison.OrdinalIgnoreCase);
+            return targetsCrimson && string.Equals(arguments.ToString(),
+                GameLaunchRequest.CreateCommandLineArgument(appName), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Marshal.FinalReleaseComObject(link);
+        }
     }
 
     private void TryDeleteFile(string path, string appName)
@@ -94,7 +155,7 @@ public sealed class GameShortcutManager
         }
     }
 
-    private async Task<string> GetIconPathAsync(Game game)
+    private async Task<string> GetIconPathAsync(Game game, CancellationToken cancellationToken)
     {
         var gameIconDirectory = Path.Combine(_iconDirectory, "games");
         Directory.CreateDirectory(gameIconDirectory);
@@ -108,9 +169,13 @@ public sealed class GameShortcutManager
             try
             {
                 var imageUri = EpicEndpointPolicy.RequireContentUri(imageUrl);
-                await using var source = await _httpClient.GetStreamAsync(imageUri);
+                await using var source = await _httpClient.GetStreamAsync(imageUri, cancellationToken);
                 await CreateIconFileAsync(source, iconPath);
                 return iconPath;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -236,6 +301,7 @@ public sealed class GameShortcutManager
         string iconPath,
         bool? packaged = null)
     {
+        RequireAvailableShortcutPath(path, game.AppName);
         IShellLinkW link = (IShellLinkW)new ShellLink();
         try
         {
@@ -285,14 +351,14 @@ public sealed class GameShortcutManager
     [Guid("000214F9-0000-0000-C000-000000000046")]
     private interface IShellLinkW
     {
-        void GetPath(IntPtr file, int maxPath, IntPtr findData, uint flags);
+        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder file, int maxPath, IntPtr findData, uint flags);
         void GetIDList(out IntPtr idList);
         void SetIDList(IntPtr idList);
         void GetDescription(IntPtr name, int maxName);
         void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string name);
         void GetWorkingDirectory(IntPtr directory, int maxPath);
         void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string directory);
-        void GetArguments(IntPtr arguments, int maxPath);
+        void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder arguments, int maxPath);
         void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string arguments);
         void GetHotkey(out short hotkey);
         void SetHotkey(short hotkey);

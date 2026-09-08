@@ -32,6 +32,7 @@
     <Compile Include="..\Crimson\Core\GameShortcutManager.cs" Link="Production\Core\GameShortcutManager.cs" />
     <Compile Include="..\Crimson\Core\GameShortcutNaming.cs" Link="Production\Core\GameShortcutNaming.cs" />
     <Compile Include="..\Crimson\Core\InstallManager.cs" Link="Production\Core\InstallManager.cs" />
+    <Compile Include="..\Crimson\Core\InstallPathPolicy.cs" Link="Production\Core\InstallPathPolicy.cs" />
     <Compile Include="..\Crimson\Core\LibraryManager.cs" Link="Production\Core\LibraryManager.cs" />
     <Compile Include="..\Crimson\Core\SecurityPolicy.cs" Link="Production\Core\SecurityPolicy.cs" />
     <Compile Include="..\Crimson\Models\*.cs" Exclude="..\Crimson\Models\DlcOption.cs" Link="Production\Models\%(Filename)%(Extension)" />

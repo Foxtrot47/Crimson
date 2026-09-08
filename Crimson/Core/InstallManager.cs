@@ -54,6 +54,7 @@ public class InstallManager
     private DateTime _lastUpdateTime = DateTime.MinValue;
     private ManualResetEventSlim _pauseEvent = new ManualResetEventSlim(true);
     private volatile bool _userCancelled;
+    private bool _isFinalizing;
     private string? _stoppageReason;
 
     public InstallItem? CurrentInstall { get; private set; }
@@ -129,6 +130,8 @@ public class InstallManager
             _cancellationTokenSource = new CancellationTokenSource();
             _userCancelled = false;
             _stoppageReason = null;
+            lock (_installItemLock)
+                _isFinalizing = false;
 
             if (!isResuming)
             {
@@ -221,103 +224,88 @@ public class InstallManager
             }
 
             if (!HasFolderWritePermissions(CurrentInstall.Location))
-            {
-                await HandleInstallationStoppage("No write permissions to install location");
-                return;
-            }
+                throw new UnauthorizedAccessException("No write permissions to install location");
 
             ResetQueues();
-
-            if (CurrentInstall.Action == ActionType.Install)
-            {
-                await _downloadManager.InitializeMirrors(gameData.BaseUrls);
-                GetChunksToDownload(data, downloadedChunks);
-            }
-            else if (CurrentInstall.Action == ActionType.Update)
-            {
-                await PrepareUpdateTasks(gameData, data);
-            }
-            else if (CurrentInstall.Action == ActionType.Repair)
-            {
-                await PrepareRepairTasks(gameData, data);
-            }
-            else if (CurrentInstall.Action == ActionType.Uninstall)
-            {
-                foreach (var fileManifest in data.FileManifestList.Elements)
-                {
-                    CurrentInstall.TotalWriteSizeMb += fileManifest.FileSize / 1024.0 / 1024.0;
-
-                    var task = new IoTask()
-                    {
-                        DestinationFilePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename),
-                        TaskType = IoTaskType.Delete,
-                        Size = fileManifest.FileSize,
-                    };
-                    _ioQueue.Add(task);
-                }
-            }
-            else if (CurrentInstall.Action == ActionType.Import)
-            {
-                if (!Directory.Exists(CurrentInstall.Location))
-                {
-                    await HandleInstallationStoppage("Import folder does not exist");
-                    return;
-                }
-
-                // Import only checks file existence, not SHA1 hashes.
-                // Hash verification would fail if the installed version differs from latest.
-                // Users can run Verify/Repair separately after import if needed.
-                var missingFiles = new List<FileManifest>();
-                foreach (var fileManifest in data.FileManifestList.Elements)
-                {
-                    var filePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename);
-                    if (!File.Exists(filePath))
-                    {
-                        missingFiles.Add(fileManifest);
-                    }
-                }
-
-                _importVerificationResult = missingFiles;
-
-                if (missingFiles.Count == 0)
-                {
-                    _logger.Information("Import: All {Total} files found for {AppName}",
-                        data.FileManifestList.Elements.Count, CurrentInstall.AppName);
-                }
-                else
-                {
-                    _logger.Warning("Import: {Missing}/{Total} files missing for {AppName}. Will import as Broken.",
-                        missingFiles.Count, data.FileManifestList.Elements.Count, CurrentInstall.AppName);
-                }
-            }
-            else if (CurrentInstall.Action == ActionType.Move)
-            {
-                var sourceDrive = Path.GetPathRoot(CurrentInstall.Location);
-                var destDrive = Path.GetPathRoot(CurrentInstall.MoveLocation);
-
-                if (!string.Equals(sourceDrive, destDrive, StringComparison.OrdinalIgnoreCase))
-                {
-                    await HandleInstallationStoppage("Cross-drive moves are not supported. Please uninstall and reinstall to the new location.");
-                    return;
-                }
-
-                if (Directory.Exists(CurrentInstall.MoveLocation))
-                {
-                    await HandleInstallationStoppage("Destination directory already exists");
-                    return;
-                }
-
-                _logger.Information("Move: Moving {AppName} from {Src} to {Dest}",
-                    CurrentInstall.AppName, CurrentInstall.Location, CurrentInstall.MoveLocation);
-                Directory.Move(CurrentInstall.Location, CurrentInstall.MoveLocation);
-                _logger.Information("Move: Successfully moved {AppName}", CurrentInstall.AppName);
-            }
+            await PrepareTasksForAction(CurrentInstall, gameData, data, downloadedChunks);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "PrepareTasks: Exception occured while preparing tasks");
             throw;
         }
+    }
+
+    private async Task PrepareTasksForAction(InstallItem install, Game game, Manifest data, List<BigInteger> downloadedChunks)
+    {
+        switch (install.Action)
+        {
+            case ActionType.Install:
+                await _downloadManager.InitializeMirrors(game.BaseUrls);
+                GetChunksToDownload(data, downloadedChunks);
+                break;
+            case ActionType.Update:
+                await PrepareUpdateTasks(game, data);
+                break;
+            case ActionType.Repair:
+                await PrepareRepairTasks(game, data);
+                break;
+            case ActionType.Uninstall:
+                PrepareUninstallTasks(install, data);
+                break;
+            case ActionType.Import:
+                PrepareImportTasks(install, data);
+                break;
+            case ActionType.Move:
+                PrepareMoveTasks(install);
+                break;
+        }
+    }
+
+    private void PrepareUninstallTasks(InstallItem install, Manifest data)
+    {
+        foreach (var file in data.FileManifestList.Elements)
+        {
+            install.TotalWriteSizeMb += file.FileSize / 1024.0 / 1024.0;
+            _ioQueue.Add(new IoTask
+            {
+                DestinationFilePath = InstallPathPolicy.ResolveFile(install.Location, file.Filename),
+                TaskType = IoTaskType.Delete,
+                Size = file.FileSize
+            });
+        }
+    }
+
+    private void PrepareImportTasks(InstallItem install, Manifest data)
+    {
+        if (!Directory.Exists(install.Location))
+            throw new DirectoryNotFoundException("Import folder does not exist");
+
+        // Existing imports can differ from the latest manifest; verify hashes separately.
+        var missingFiles = new List<FileManifest>();
+        foreach (var file in data.FileManifestList.Elements)
+        {
+            if (!File.Exists(InstallPathPolicy.ResolveFile(install.Location, file.Filename)))
+                missingFiles.Add(file);
+        }
+        _importVerificationResult = missingFiles;
+        if (missingFiles.Count == 0)
+            _logger.Information("Import: All {Total} files found for {AppName}", data.FileManifestList.Elements.Count, install.AppName);
+        else
+            _logger.Warning("Import: {Missing}/{Total} files missing for {AppName}. Will import as Broken.",
+                missingFiles.Count, data.FileManifestList.Elements.Count, install.AppName);
+    }
+
+    private void PrepareMoveTasks(InstallItem install)
+    {
+        if (!string.Equals(Path.GetPathRoot(install.Location), Path.GetPathRoot(install.MoveLocation), StringComparison.OrdinalIgnoreCase))
+            throw new IOException("Cross-drive moves are not supported. Please uninstall and reinstall to the new location.");
+        if (Directory.Exists(install.MoveLocation))
+            throw new IOException("Destination directory already exists");
+
+        _logger.Information("Move: Moving {AppName} from {Src} to {Dest}", install.AppName, install.Location, install.MoveLocation);
+        Directory.Move(install.Location, install.MoveLocation);
+        _logger.Information("Move: Successfully moved {AppName}", install.AppName);
     }
 
     private void ResetQueues()
@@ -395,8 +383,7 @@ public class InstallManager
                 var task = new IoTask()
                 {
                     SourceFilePath = downloadTask.TempPath,
-                    DestinationFilePath = Path.Combine(CurrentInstall.Location, fileManifest.
-                    Filename),
+                    DestinationFilePath = InstallPathPolicy.ResolveFile(CurrentInstall.Location, fileManifest.Filename),
                     TaskType = IoTaskType.Copy,
                     Size = part.Size,
                     Offset = part.Offset,
@@ -414,6 +401,7 @@ public class InstallManager
     {
         try
         {
+            var install = CurrentInstall ?? throw new InvalidOperationException("No active installation for IO processing.");
             foreach (var ioTask in _ioQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
             {
                 try
@@ -423,10 +411,10 @@ public class InstallManager
                     switch (ioTask.TaskType)
                     {
                         case IoTaskType.Copy:
-                            await ProcessCopyTask(ioTask);
+                            await ProcessCopyTask(ioTask, install.Location);
                             break;
                         case IoTaskType.Delete:
-                            File.Delete(ioTask.DestinationFilePath);
+                            File.Delete(InstallPathPolicy.RequireFile(install.Location, ioTask.DestinationFilePath));
                             break;
                     }
                     UpdateInstallWriteProgress(ioTask.Size);
@@ -452,9 +440,9 @@ public class InstallManager
         }
     }
 
-    private async Task ProcessCopyTask(IoTask ioTask)
+    private async Task ProcessCopyTask(IoTask ioTask, string installRoot)
     {
-
+        InstallPathPolicy.RequireFile(installRoot, ioTask.DestinationFilePath);
         EnsureDirectoryExists(ioTask.DestinationFilePath);
 
         // Ensure there is a lock object for each destination file
@@ -465,7 +453,8 @@ public class InstallManager
         var chunk = Chunk.ReadBuffer(compressedChunkData);
         lock (fileLock)
         {
-            using var fileStream = new FileStream(ioTask.DestinationFilePath, FileMode.OpenOrCreate,
+            var destination = InstallPathPolicy.RequireFile(installRoot, ioTask.DestinationFilePath);
+            using var fileStream = new FileStream(destination, FileMode.OpenOrCreate,
             FileAccess.Write, FileShare.None);
             if (ioTask.DestinationFileSize > 0 && fileStream.Length != ioTask.DestinationFileSize)
                 fileStream.SetLength(ioTask.DestinationFileSize);
@@ -543,11 +532,20 @@ public class InstallManager
                 return;
 
             await StopInstallWorkersAsync(install);
+            if (!TryBeginFinalization(install))
+            {
+                await HandleInstallationStoppage("Cancel install");
+                return;
+            }
             var game = GetInstalledGame(install);
             var localAppState = GetLocalAppState(install);
             await ApplyCompletedActionAsync(install, game, localAppState);
             await CreateRequestedShortcutsAsync(install, game, localAppState);
             CompleteInstallation(install);
+        }
+        catch (OperationCanceledException) when (_userCancelled)
+        {
+            await HandleInstallationStoppage("Cancel install");
         }
         catch (Exception ex)
         {
@@ -555,12 +553,23 @@ public class InstallManager
         }
     }
 
+    private bool TryBeginFinalization(InstallItem install)
+    {
+        lock (_installItemLock)
+        {
+            if (!ReferenceEquals(CurrentInstall, install) || _userCancelled || _cancellationTokenSource.IsCancellationRequested)
+                return false;
+
+            _isFinalizing = true;
+            return true;
+        }
+    }
+
     private async Task StopInstallWorkersAsync(InstallItem install)
     {
         if (install.Action is not ActionType.Import and not ActionType.Move)
         {
-            await Task.Delay(2000);
-            await _cancellationTokenSource.CancelAsync();
+            await Task.Delay(2000, _cancellationTokenSource.Token);
         }
 
         _installStopWatch.Reset();
@@ -797,20 +806,27 @@ public class InstallManager
         Game game,
         LocalAppState localAppState)
     {
-        if (install.Action != ActionType.Install || localAppState.InstallStatus != InstallState.Installed)
+        if (install.Action != ActionType.Install || localAppState.InstallStatus != InstallState.Installed || game.IsDlc())
             return;
 
+        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
         if (install.CreateStartMenuShortcut)
             await TryCreateShortcutAsync(game, GameShortcutLocation.StartMenu);
+        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
         if (install.CreateDesktopShortcut)
             await TryCreateShortcutAsync(game, GameShortcutLocation.Desktop);
     }
 
     private async Task TryCreateShortcutAsync(Game game, GameShortcutLocation location)
     {
+        var cancellationToken = _cancellationTokenSource.Token;
         try
         {
-            await _shortcutManager.CreateAsync(game, location);
+            await _shortcutManager.CreateAsync(game, location, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -835,7 +851,7 @@ public class InstallManager
             {
                 try
                 {
-                    var filePath = Path.Join(installPath, manifest.Filename);
+                    var filePath = InstallPathPolicy.ResolveFile(installPath, manifest.Filename);
 
                     // Check if file exists and add to list if it doesn't
                     if (!File.Exists(filePath))
@@ -934,7 +950,7 @@ public class InstallManager
         {
             if (fileManifest.ChunkParts.Count == 0)
             {
-                var filePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename);
+                var filePath = InstallPathPolicy.ResolveFile(CurrentInstall.Location, fileManifest.Filename);
                 EnsureDirectoryExists(filePath);
                 File.Create(filePath).Dispose();
             }
@@ -1020,7 +1036,7 @@ public class InstallManager
         // Queue delete tasks for removed files
         foreach (var removedFile in removedFiles)
         {
-            var filePath = Path.Combine(CurrentInstall.Location, removedFile);
+            var filePath = InstallPathPolicy.ResolveFile(CurrentInstall.Location, removedFile);
             if (File.Exists(filePath))
             {
                 _ioQueue.Add(new IoTask()
@@ -1122,7 +1138,7 @@ public class InstallManager
         {
             if (fileManifest.ChunkParts.Count == 0)
             {
-                var filePath = Path.Combine(CurrentInstall.Location, fileManifest.Filename);
+                var filePath = InstallPathPolicy.ResolveFile(CurrentInstall.Location, fileManifest.Filename);
                 EnsureDirectoryExists(filePath);
                 File.Create(filePath).Dispose();
             }
@@ -1433,18 +1449,28 @@ public class InstallManager
 
     public Task StopProcessing()
     {
-        if (CurrentInstall == null)
+        InstallItem? install;
+        lock (_installItemLock)
         {
-            _logger.Warning("StopProcessing: no active install to cancel");
-            return Task.CompletedTask;
+            install = CurrentInstall;
+            if (install is null)
+            {
+                _logger.Warning("StopProcessing: no active install to cancel");
+                return Task.CompletedTask;
+            }
+            if (_isFinalizing)
+            {
+                _logger.Information("StopProcessing: finalization has started for {AppName}", install.AppName);
+                return Task.CompletedTask;
+            }
+
+            install.Status = ActionStatus.Cancelling;
+            _userCancelled = true;
         }
 
-        CurrentInstall.Status = ActionStatus.Cancelling;
-        InstallationStatusChanged?.Invoke(CurrentInstall);
-
-        _userCancelled = true;
         _pauseEvent.Set();
         RequestStoppage("Cancel install");
+        InstallationStatusChanged?.Invoke(install);
         return Task.CompletedTask;
     }
 
@@ -1539,7 +1565,11 @@ public class InstallManager
 
         if (state.CurrentInstall == null) return;
 
-        CurrentInstall = new InstallItem(state.CurrentInstall.AppName, state.CurrentInstall.Action, state.CurrentInstall.Location);
+        CurrentInstall = new InstallItem(state.CurrentInstall.AppName, state.CurrentInstall.Action, state.CurrentInstall.Location)
+        {
+            CreateDesktopShortcut = state.CurrentInstall.CreateDesktopShortcut,
+            CreateStartMenuShortcut = state.CurrentInstall.CreateStartMenuShortcut
+        };
 
         state.IoQueue.ForEach(task => _ioQueue.Add(task));
         state.CompletedChunks.ForEach(chunk => _completedChunks.Add(chunk));

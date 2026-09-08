@@ -15,7 +15,7 @@ public sealed class InstallerUpdateTests : IDisposable
     public InstallerUpdateTests()
     {
         Directory.CreateDirectory(_root);
-        _installer = new InstallManager(_logger, null!, null!, null!, null!);
+        _installer = new InstallManager(_logger, null!, null!, null!, null!, null!);
     }
 
     [Fact]
@@ -36,7 +36,7 @@ public sealed class InstallerUpdateTests : IDisposable
         };
         var method = typeof(InstallManager).GetMethod("ProcessCopyTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
-        await ((Task)method.Invoke(_installer, [task])!).WaitAsync(TimeSpan.FromSeconds(5));
+        await ((Task)method.Invoke(_installer, [task, _root])!).WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(new byte[] { 9, 8, 7 }, await File.ReadAllBytesAsync(destination));
     }
