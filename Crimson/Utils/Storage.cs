@@ -11,16 +11,19 @@ namespace Crimson.Utils
 {
     public class Storage
     {
-        private static readonly string AppDataPath = Path.GetFullPath(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Crimson"));
-        private static readonly string UserDataFile = ResolveAppDataPath("user.json");
-        private static readonly string GameAssetsFile = ResolveAppDataPath("assets.json");
-        private static readonly string MetaDataDirectory = ResolveAppDataPath("metadata");
-        private static readonly string SettingsDataFile = ResolveAppDataPath("settings.json");
-        private static readonly string InstallationStateFile = ResolveAppDataPath("install_state.json");
-        private static readonly string LocalAppStateFile = ResolveAppDataPath("localstate.json");
-        private static readonly string ManifestPath = ResolveAppDataPath("manifests");
+        private static readonly string DefaultAppDataPath = Path.GetFullPath(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Crimson"));
+        private readonly string AppDataPath;
+        private readonly string UserDataFile;
+        private readonly string GameAssetsFile;
+        private readonly string MetaDataDirectory;
+        private readonly string SettingsDataFile;
+        private readonly string InstallationStateFile;
+        private readonly string LocalAppStateFile;
+        private readonly string ManifestPath;
+
+        internal object AccountDataLock { get; } = new();
+        internal int AccountGeneration { get; private set; }
 
         private Dictionary<string, Game> _gameMetaDataDictionary = new();
         private Dictionary<string, LocalAppState> _localAppStateDictionary = new();
@@ -33,8 +36,26 @@ namespace Crimson.Utils
 
 
         public Storage()
+            : this(App.GetService<ILogger>(), DefaultAppDataPath)
         {
-            _logger = App.GetService<ILogger>();
+        }
+
+        internal Storage(ILogger logger, string appDataPath)
+        {
+            _logger = logger;
+            AppDataPath = Path.GetFullPath(appDataPath);
+            UserDataFile = ResolveAppDataPath("user.json");
+            GameAssetsFile = ResolveAppDataPath("assets.json");
+            MetaDataDirectory = ResolveAppDataPath("metadata");
+            SettingsDataFile = ResolveAppDataPath("settings.json");
+            InstallationStateFile = ResolveAppDataPath("install_state.json");
+            LocalAppStateFile = ResolveAppDataPath("localstate.json");
+            ManifestPath = ResolveAppDataPath("manifests");
+            InitializeStorage();
+        }
+
+        private void InitializeStorage()
+        {
             try
             {
                 if (!Directory.Exists(MetaDataDirectory))
@@ -90,46 +111,42 @@ namespace Crimson.Utils
             }
         }
 
-        public async Task<UserData> GetUserData()
+        public Task<UserData> GetUserData()
         {
-            if (!File.Exists(UserDataFile))
+            lock (AccountDataLock)
             {
-                await SaveUserData(null);
-                return null;
+                if (!File.Exists(UserDataFile))
+                    return Task.FromResult<UserData>(null);
+
+                var jsonString = File.ReadAllText(UserDataFile);
+                return Task.FromResult(JsonSerializer.Deserialize<UserData>(jsonString));
             }
-
-            await using var fileStream = File.Open(UserDataFile, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using var streamReader = new StreamReader(fileStream);
-            var jsonString = await streamReader.ReadToEndAsync();
-            var userData = JsonSerializer.Deserialize<UserData>(jsonString);
-            streamReader.Dispose();
-
-            return userData;
         }
 
-        public async Task SaveUserData(UserData data)
+        public Task SaveUserData(UserData data)
         {
-            var jsonString = JsonSerializer.Serialize(data);
-
-            await using var fileStream = File.Open(UserDataFile, FileMode.Create, FileAccess.Write, FileShare.Read);
-            await using var streamWriter = new StreamWriter(fileStream);
-            await streamWriter.WriteAsync(jsonString);
-            streamWriter.Close();
+            lock (AccountDataLock)
+                File.WriteAllText(UserDataFile, JsonSerializer.Serialize(data));
+            return Task.CompletedTask;
         }
 
         public Task ClearUserData()
         {
-            if (File.Exists(UserDataFile))
-                File.Delete(UserDataFile);
+            lock (AccountDataLock)
+            {
+                AccountGeneration++;
+                if (File.Exists(UserDataFile))
+                    File.Delete(UserDataFile);
 
-            if (File.Exists(GameAssetsFile))
-                File.Delete(GameAssetsFile);
+                if (File.Exists(GameAssetsFile))
+                    File.Delete(GameAssetsFile);
 
-            if (Directory.Exists(MetaDataDirectory))
-                Directory.Delete(MetaDataDirectory, true);
-            Directory.CreateDirectory(MetaDataDirectory);
+                if (Directory.Exists(MetaDataDirectory))
+                    Directory.Delete(MetaDataDirectory, true);
+                Directory.CreateDirectory(MetaDataDirectory);
 
-            _gameMetaDataDictionary.Clear();
+                _gameMetaDataDictionary.Clear();
+            }
             return Task.CompletedTask;
         }
 
@@ -156,21 +173,24 @@ namespace Crimson.Utils
             }
         }
 
-        public async Task SaveGameAssetsData(IEnumerable<Asset> data)
+        public Task SaveGameAssetsData(IEnumerable<Asset> data)
         {
-            try
-            {
-                var jsonString = JsonSerializer.Serialize(data);
+            SaveGameAssets(data);
+            return Task.CompletedTask;
+        }
 
-                await using var fileStream =
-                    File.Open(GameAssetsFile, FileMode.Create, FileAccess.Write, FileShare.Read);
-                await using var streamWriter = new StreamWriter(fileStream);
-                await streamWriter.WriteAsync(jsonString);
-                await streamWriter.FlushAsync();
-            }
-            catch (Exception ex)
+        internal void SaveGameAssets(IEnumerable<Asset> data)
+        {
+            lock (AccountDataLock)
             {
-                _logger.Error(ex, "Failed to save game assets");
+                try
+                {
+                    File.WriteAllText(GameAssetsFile, JsonSerializer.Serialize(data));
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to save game assets");
+                }
             }
         }
 
@@ -270,13 +290,13 @@ namespace Crimson.Utils
 
         public static async Task SaveAppManifest(byte[] manifestBytes, string appName)
         {
-            var path = ResolveAppDataPath($"{appName}.manifest");
+            var path = ResolvePath(DefaultAppDataPath, $"{appName}.manifest");
             await File.WriteAllBytesAsync(path, manifestBytes);
         }
 
         public static Task<byte[]> GetAppManifest(string appName)
         {
-            var path = ResolveAppDataPath($"{appName}.manifest");
+            var path = ResolvePath(DefaultAppDataPath, $"{appName}.manifest");
             return File.ReadAllBytesAsync(path);
         }
 
@@ -337,17 +357,19 @@ namespace Crimson.Utils
             }
         }
 
-        private static string GetManifestCachePath(string appName, string version) => ResolveAppDataPath(
+        private string GetManifestCachePath(string appName, string version) => ResolveAppDataPath(
             "manifests",
             $"{appName}_{version}.manifest");
 
-        private static string ResolveAppDataPath(params string[] segments)
+        private string ResolveAppDataPath(params string[] segments) => ResolvePath(AppDataPath, segments);
+
+        private static string ResolvePath(string root, params string[] segments)
         {
             var pathParts = new string[segments.Length + 1];
-            pathParts[0] = AppDataPath;
+            pathParts[0] = root;
             Array.Copy(segments, 0, pathParts, 1, segments.Length);
             var candidate = Path.GetFullPath(Path.Combine(pathParts));
-            var relative = Path.GetRelativePath(AppDataPath, candidate);
+            var relative = Path.GetRelativePath(root, candidate);
             if (relative == ".." ||
                 relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
                 Path.IsPathRooted(relative))

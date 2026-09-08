@@ -49,77 +49,65 @@ public class AuthManager
     // </summary>
     public async Task<AuthenticationStatus> CheckAuthStatus()
     {
+        await _refreshLock.WaitAsync();
+        try
+        {
+            return await CheckAuthStatusCore();
+        }
+        finally
+        {
+            _refreshLock.Release();
+        }
+    }
+
+    private async Task<AuthenticationStatus> CheckAuthStatusCore()
+    {
         try
         {
             _authenticationStatus = AuthenticationStatus.Checking;
             OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
 
             var userData = await _storage.GetUserData();
-            if (userData == null)
+            if (userData?.AccessToken is null)
             {
-                _authenticationStatus = AuthenticationStatus.LoggedOut;
-                OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
-                return _authenticationStatus;
-            }
-
-            if (userData.AccessToken == null)
-            {
-                _log.Error("CheckAuthStatus: Failed to parse user data from string");
-                throw new Exception("CheckAuthStatus: Failed to parse user data");
+                if (userData is not null)
+                    _log.Error("CheckAuthStatus: Failed to parse user data from string");
+                return await SetLoggedOutAsync();
             }
 
             userData.AccessToken = KeyManager.DecryptString(userData.AccessToken);
             userData.RefreshToken = KeyManager.DecryptString(userData.RefreshToken);
-
-            // check if the refresh token expiry date is in the past and if it is then log the user out
-            var refreshExpiryDate = DateTimeOffset.Parse(userData.RefreshExpiresAt);
-            if (refreshExpiryDate < DateTimeOffset.UtcNow)
+            if (DateTimeOffset.Parse(userData.RefreshExpiresAt) < DateTimeOffset.UtcNow)
             {
                 _log.Information("CheckAuthStatus: Refresh token expired, logging out");
-                _authenticationStatus = AuthenticationStatus.LoggedOut;
-                OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
-                return _authenticationStatus;
+                return await SetLoggedOutAsync();
             }
 
-            // check if the access token expiry date is in the past (with buffer) and if it is then refresh
-            var expiryDate = DateTimeOffset.Parse(userData.ExpiresAt);
-            if (expiryDate < DateTimeOffset.UtcNow + TokenRefreshBuffer)
+            var accessToken = userData.AccessToken;
+            if (DateTimeOffset.Parse(userData.ExpiresAt) < DateTimeOffset.UtcNow + TokenRefreshBuffer)
             {
                 _log.Information("CheckAuthStatus: Access token expired or expiring soon, refreshing");
-                var newData = await RequestTokens("refresh_token", "refresh_token", userData.RefreshToken);
-                if (newData == null || newData.AccessToken == null)
+                var refreshed = await RequestTokens("refresh_token", "refresh_token", userData.RefreshToken);
+                if (refreshed?.AccessToken is null)
                 {
                     _log.Error("CheckAuthStatus: Token refresh failed, logging out");
-                    _authenticationStatus = AuthenticationStatus.LoggedOut;
-                    OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
-                    return _authenticationStatus;
+                    return await SetLoggedOutAsync();
                 }
 
-                // Keep plain access token for verification
-                var plainAccessToken = newData.AccessToken;
-                newData.AccessToken = KeyManager.EncryptString(newData.AccessToken);
-                newData.RefreshToken = KeyManager.EncryptString(newData.RefreshToken);
-                await _storage.SaveUserData(newData);
-
-                if (!await VerifyAccessToken(plainAccessToken))
-                {
-                    _log.Warning("CheckAuthStatus: Refreshed access token is invalid, logging out");
-                    _authenticationStatus = AuthenticationStatus.LoggedOut;
-                    OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
-                    return _authenticationStatus;
-                }
+                accessToken = refreshed.AccessToken;
+                refreshed.AccessToken = KeyManager.EncryptString(refreshed.AccessToken);
+                refreshed.RefreshToken = KeyManager.EncryptString(refreshed.RefreshToken);
+                await _storage.SaveUserData(refreshed);
             }
             else
             {
                 _log.Information("CheckAuthStatus: Access token is still valid");
+            }
 
-                if (!await VerifyAccessToken(userData.AccessToken))
-                {
-                    _log.Warning("CheckAuthStatus: Access token is invalid, logging out");
-                    _authenticationStatus = AuthenticationStatus.LoggedOut;
-                    OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
-                    return _authenticationStatus;
-                }
+            if (!await VerifyAccessToken(accessToken))
+            {
+                _log.Warning("CheckAuthStatus: Access token is invalid, logging out");
+                return await SetLoggedOutAsync();
             }
 
             _authenticationStatus = AuthenticationStatus.LoggedIn;
@@ -129,9 +117,7 @@ public class AuthManager
         catch (Exception ex)
         {
             _log.Error("CheckAuthStatus failed with {ErrorType}", ex.GetType().Name);
-            _authenticationStatus = AuthenticationStatus.LoggedOut;
-            OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
-            return _authenticationStatus;
+            return await SetLoggedOutAsync();
         }
     }
 
@@ -139,6 +125,19 @@ public class AuthManager
     /// Fetch user data from the exchange code
     /// </summary>
     public async Task DoExchangeLogin(string exchangeCode)
+    {
+        await _refreshLock.WaitAsync();
+        try
+        {
+            await DoExchangeLoginCore(exchangeCode);
+        }
+        finally
+        {
+            _refreshLock.Release();
+        }
+    }
+
+    private async Task DoExchangeLoginCore(string exchangeCode)
     {
         try
         {
@@ -195,8 +194,7 @@ public class AuthManager
                 if (refreshExpiryDate < DateTimeOffset.UtcNow)
                 {
                     _log.Error("GetAccessToken: Refresh token also expired, logging out");
-                    _authenticationStatus = AuthenticationStatus.LoggedOut;
-                    OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
+                    await SetLoggedOutAsync();
                     return null;
                 }
 
@@ -204,8 +202,7 @@ public class AuthManager
                 if (newData == null || newData.AccessToken == null)
                 {
                     _log.Error("GetAccessToken: Token refresh failed, logging out");
-                    _authenticationStatus = AuthenticationStatus.LoggedOut;
-                    OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
+                    await SetLoggedOutAsync();
                     return null;
                 }
 
@@ -241,9 +238,23 @@ public class AuthManager
     public async Task Logout()
     {
         _log.Information("Logout: Logging out");
+        await _refreshLock.WaitAsync();
+        try
+        {
+            await SetLoggedOutAsync();
+        }
+        finally
+        {
+            _refreshLock.Release();
+        }
+    }
+
+    private async Task<AuthenticationStatus> SetLoggedOutAsync()
+    {
         await _storage.ClearUserData();
         _authenticationStatus = AuthenticationStatus.LoggedOut;
         OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
+        return _authenticationStatus;
     }
 
     private async Task<UserData> RequestTokens(string grantType, string codeName, string codeValue)

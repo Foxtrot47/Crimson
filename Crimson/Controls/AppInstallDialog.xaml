@@ -89,6 +89,17 @@
                 </StackPanel>
             </StackPanel>
 
+            <!--  Shortcuts  -->
+            <StackPanel Spacing="8">
+                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Shortcuts" />
+                <CheckBox
+                    Content="Create Start menu shortcut"
+                    IsChecked="{x:Bind ViewModel.CreateStartMenuShortcut, Mode=TwoWay}" />
+                <CheckBox
+                    Content="Create desktop shortcut"
+                    IsChecked="{x:Bind ViewModel.CreateDesktopShortcut, Mode=TwoWay}" />
+            </StackPanel>
+
             <!--  Content Selection  -->
             <StackPanel x:Name="ContentSelection" Visibility="{x:Bind ViewModel.IsLoadingContent, Mode=OneWay, Converter={StaticResource BoolToInverseVisibilityConverter}}">
                 <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Content to Install" />

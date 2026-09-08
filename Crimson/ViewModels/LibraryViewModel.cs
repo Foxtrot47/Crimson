@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Crimson.Core;
@@ -31,6 +32,8 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     private readonly ILogger _log;
     private readonly LibraryManager _libraryManager;
     private readonly Windows.System.DispatcherQueue _dispatcherQueue;
+    private int _navigationGeneration;
+    private Action<IEnumerable<Game>>? _libraryUpdatedHandler;
 
     public LibraryViewModel()
     {
@@ -41,28 +44,34 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
 
     public async Task OnNavigatedTo(object parameter)
     {
+        OnNavigatedFrom();
+        var generation = Volatile.Read(ref _navigationGeneration);
+        _libraryUpdatedHandler = games => UpdateLibrary(games, generation);
+        _libraryManager.LibraryUpdated += _libraryUpdatedHandler;
         _log.Information("LibraryPage: Loading Page");
-        _libraryManager.LibraryUpdated += UpdateLibrary;
-
         var games = await _libraryManager.GetLibraryData();
-        UpdateLibrary(games);
+        UpdateLibrary(games, generation);
         _log.Information("LibraryPage: Loading finished");
     }
 
     public void OnNavigatedFrom()
     {
-        _libraryManager.LibraryUpdated -= UpdateLibrary;
+        Interlocked.Increment(ref _navigationGeneration);
+        if (_libraryUpdatedHandler is not null)
+            _libraryManager.LibraryUpdated -= _libraryUpdatedHandler;
+        _libraryUpdatedHandler = null;
     }
 
-    private void UpdateLibrary(IEnumerable<Game> games)
+    private void UpdateLibrary(IEnumerable<Game> games, int generation)
     {
         try
         {
             _log.Information("UpdateLibrary: Updating Library Page");
-            if (games == null) return;
+            if (games == null || generation != Volatile.Read(ref _navigationGeneration)) return;
 
             _dispatcherQueue.TryEnqueue(() =>
             {
+                if (generation != Volatile.Read(ref _navigationGeneration)) return;
                 GamesList = new List<LibraryItem>();
                 foreach (var game in games)
                 {

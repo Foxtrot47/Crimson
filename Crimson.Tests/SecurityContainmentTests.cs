@@ -32,6 +32,23 @@ public sealed class SecurityContainmentTests
     }
 
     [Fact]
+    public void ApiPolicy_AllowsOwnershipTokenHost()
+    {
+        var uri = EpicEndpointPolicy.RequireApiUri(
+            "https://ecommerceintegration-public-service-ecomprod02.ol.epicgames.com/ownershipToken");
+
+        Assert.Equal("ecommerceintegration-public-service-ecomprod02.ol.epicgames.com", uri.Host);
+    }
+
+    [Theory]
+    [InlineData("http://ecommerceintegration-public-service-ecomprod02.ol.epicgames.com/ownershipToken")]
+    [InlineData("https://ecommerceintegration-public-service-ecomprod02.ol.epicgames.com.evil.test/ownershipToken")]
+    public void ApiPolicy_RejectsUnapprovedOwnershipUris(string value)
+    {
+        Assert.Throws<InvalidOperationException>(() => EpicEndpointPolicy.RequireApiUri(value));
+    }
+
+    [Fact]
     public void StorePolicy_AllowsLauncherGraphQlHost()
     {
         var uri = EpicEndpointPolicy.RequireStoreUri("https://launcher.store.epicgames.com/graphql");
