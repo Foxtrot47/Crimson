@@ -11,8 +11,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$project = Join-Path $repo 'Crimson\Crimson.csproj'
-$manifestPath = Join-Path $repo 'Crimson\Package.appxmanifest'
+$project = Join-Path $repo 'Crimson.WinUI\Crimson.WinUI.csproj'
+$manifestPath = Join-Path $repo 'Crimson.WinUI\Package.appxmanifest'
 $dist = Join-Path $repo 'dist'
 $staging = Join-Path $repo 'artifacts\release-staging'
 $signedOutput = Join-Path $repo 'artifacts\msix-test'
@@ -55,7 +55,7 @@ function Find-WindowsSdkTool {
 }
 
 function Clear-ProjectOutput {
-  Remove-Item (Join-Path $repo 'Crimson\bin'), (Join-Path $repo 'Crimson\obj') -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item (Join-Path $repo 'Crimson.WinUI\bin'), (Join-Path $repo 'Crimson.WinUI\obj') -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 function Assert-ReleaseInputs {
@@ -96,6 +96,10 @@ function Set-PackageVersion {
 }
 
 function Invoke-ReleaseTests {
+  Invoke-Checked 'dotnet' @(
+    'test', (Join-Path $repo 'Crimson.Core.Tests\Crimson.Core.Tests.csproj'),
+    '-c', 'Release', '--nologo', '-v', 'minimal'
+  )
   Invoke-Checked 'dotnet' @(
     'restore', (Join-Path $repo 'Crimson.sln'),
     '-r', 'win-x64', '-p:Platform=x64', '-p:PublishReadyToRun=true',
