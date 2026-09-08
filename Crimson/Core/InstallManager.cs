@@ -402,6 +402,7 @@ public class InstallManager
                     Size = part.Size,
                     Offset = part.Offset,
                     FileOffset = part.FileOffset,
+                    DestinationFileSize = fileManifest.FileSize,
                     GuidNum = part.GuidNum,
                     SourceChunkGuidNum = downloadTask.GuidNum
                 };
@@ -467,6 +468,8 @@ public class InstallManager
         {
             using var fileStream = new FileStream(ioTask.DestinationFilePath, FileMode.OpenOrCreate,
             FileAccess.Write, FileShare.None);
+            if (ioTask.DestinationFileSize > 0 && fileStream.Length != ioTask.DestinationFileSize)
+                fileStream.SetLength(ioTask.DestinationFileSize);
 
             fileStream.Seek(ioTask.FileOffset, SeekOrigin.Begin);
 
@@ -708,6 +711,7 @@ public class InstallManager
                     gameData.LocalAppState = localAppState;
                     _storage.AddToLocalAppState(gameData.AppName, localAppState);
                     _libraryManager.UpdateGameInfo(gameData);
+                    EnsureVerificationSucceeded(CurrentInstall, invalidFilesList.Count);
                     break;
                 }
             }
@@ -731,6 +735,15 @@ public class InstallManager
             CurrentInstall = null;
             ProcessNext();
         }
+    }
+
+    private static void EnsureVerificationSucceeded(InstallItem install, int invalidFileCount)
+    {
+        if (invalidFileCount == 0)
+            return;
+
+        install.StatusMessage = $"{invalidFileCount} files failed verification";
+        throw new InvalidDataException(install.StatusMessage);
     }
 
     private async Task<List<FileManifest>> VerifyFiles(string installPath, List<FileManifest> fileManifestLists)
@@ -1501,6 +1514,7 @@ public class IoTask
     public long Size { get; set; }
     public long Offset { get; set; }
     public long FileOffset { get; set; }
+    public long DestinationFileSize { get; set; }
     public IoTaskType TaskType { get; set; }
     public BigInteger GuidNum { get; set; }
     public BigInteger SourceChunkGuidNum { get; set; }
