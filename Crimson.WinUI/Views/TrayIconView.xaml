@@ -13,11 +13,9 @@
         x:FieldModifier="public"
         ContextMenuMode="SecondWindow"
         LeftClickCommand="{x:Bind ShowHideWindowCommand}"
+        IconSource="/Assets/Crimson.ico"
         NoLeftClickDelay="True"
-        ToolTipText="ToolTip">
-        <tb:TaskbarIcon.IconSource>
-            <tb:GeneratedIconSource Foreground="Red" Text="C" />
-        </tb:TaskbarIcon.IconSource>
+        ToolTipText="Crimson">
         <tb:TaskbarIcon.ContextFlyout>
             <MenuFlyout AreOpenCloseAnimationsEnabled="False">
                 <MenuFlyoutItem Command="{x:Bind ShowHideWindowCommand}" Text="Show/Hide Window" />

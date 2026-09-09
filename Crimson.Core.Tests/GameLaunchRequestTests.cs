@@ -19,9 +19,10 @@ public sealed class GameLaunchRequestTests
 
     [Theory]
     [InlineData("https://launch?app=Game")]
-    [InlineData("crimson-launcher://other?app=Game")]
-    [InlineData("crimson-launcher://launch?app=")]
-    [InlineData("crimson-launcher://launch?app=Game%0AInjected")]
+    [InlineData("crimson-launcher://launch?app=Game")]
+    [InlineData("crimson://other?app=Game")]
+    [InlineData("crimson://launch?app=")]
+    [InlineData("crimson://launch?app=Game%0AInjected")]
     public void ProtocolParserRejectsInvalidRequests(string value)
     {
         Assert.False(GameLaunchRequest.TryParse(new Uri(value), out _));

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="400" viewBox="0 0 1600 400" role="img" aria-labelledby="title description">
+  <title id="title">Crimson</title>
+  <desc id="description">The Crimson gemstone mark and geometric wordmark.</desc>
+  <defs>
+    <linearGradient id="background" x1="116" y1="84" x2="904" y2="936" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#230b14"/><stop offset="0.5" stop-color="#13080c"/><stop offset="1" stop-color="#08090c"/>
+    </linearGradient>
+    <linearGradient id="topFacet" x1="340" y1="196" x2="634" y2="430" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff8190"/><stop offset="1" stop-color="#ed2a50"/>
+    </linearGradient>
+    <linearGradient id="leftFacet" x1="248" y1="354" x2="516" y2="850" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f0254d"/><stop offset="1" stop-color="#a0062a"/>
+    </linearGradient>
+    <linearGradient id="rightFacet" x1="774" y1="356" x2="514" y2="850" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c60e37"/><stop offset="1" stop-color="#65031a"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(24 24) scale(.344)">
+    <rect x="36" y="36" width="952" height="952" rx="218" fill="url(#background)"/>
+    <rect x="37.5" y="37.5" width="949" height="949" rx="216.5" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="3"/>
+    <path d="m512 142 246 214-92 420-154 108-154-108-92-420z" fill="#8e0525"/>
+    <path d="m512 142 246 214-246 76-246-76z" fill="url(#topFacet)"/>
+    <path d="m266 356 246 76v452L358 776z" fill="url(#leftFacet)"/>
+    <path d="m758 356-246 76v452l154-108z" fill="url(#rightFacet)"/>
+    <path d="m512 432 154 344-154 108-154-108z" fill="#ae092f" fill-opacity="0.7"/>
+    <path d="m512 142 80 192-80 98-80-98z" fill="#ff9eaa" fill-opacity="0.58"/>
+  </g>
+  <g transform="translate(450 100)" fill="none" stroke="#faf7f8" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M108 42C82 17 38 17 17 46C-4 76-1 127 22 155C45 183 84 185 110 160"/>
+    <path d="M162 180V20H214C263 20 269 94 214 94H162M214 94L272 180"/>
+    <path d="M322 20V180"/>
+    <path d="M377 180V20L445 109L513 20V180"/>
+    <path d="M667 45C647 16 594 12 568 38C540 67 561 96 602 105C648 115 675 136 660 165C646 192 591 194 558 163"/>
+    <ellipse cx="778" cy="100" rx="74" ry="84"/>
+    <path d="M902 180V20L1037 180V20"/>
+  </g>
+</svg>
