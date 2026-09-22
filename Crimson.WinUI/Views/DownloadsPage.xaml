@@ -12,7 +12,7 @@
 
     <Grid Margin="50,20,50,20">
         <StackPanel Orientation="Vertical" Spacing="20">
-            <TextBlock Style="{ThemeResource TitleTextBlockStyle}">Download Manger</TextBlock>
+            <TextBlock Style="{ThemeResource TitleTextBlockStyle}">Download Manager</TextBlock>
             <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Active Downloads</TextBlock>
             <Border
                 x:Name="ActiveDownloadSection"
@@ -55,7 +55,8 @@
                                 Width="30"
                                 Height="30"
                                 Padding="5"
-                                Command="{x:Bind ViewModel.CancelInstallCommand}">
+                                Command="{x:Bind ViewModel.CancelInstallCommand}"
+                                IsEnabled="{x:Bind ViewModel.EnableCancelButton, Mode=OneWay}">
                                 <FontIcon Glyph="&#xE711;" />
                             </Button>
                         </StackPanel>
@@ -89,10 +90,14 @@
                                     Height="150"
                                     Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}"
                                     Stretch="UniformToFill" />
-                                <TextBlock
-                                    VerticalAlignment="Center"
-                                    Style="{ThemeResource SubtitleTextBlockStyle}"
-                                    Text="{x:Bind Title}" />
+                                <StackPanel VerticalAlignment="Center" Spacing="4">
+                                    <TextBlock
+                                        Style="{ThemeResource SubtitleTextBlockStyle}"
+                                        Text="{x:Bind Title}" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{x:Bind StatusText}" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
@@ -121,10 +126,14 @@
                                     Height="150"
                                     Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}"
                                     Stretch="UniformToFill" />
-                                <TextBlock
-                                    VerticalAlignment="Center"
-                                    Style="{ThemeResource SubtitleTextBlockStyle}"
-                                    Text="{x:Bind Title}" />
+                                <StackPanel VerticalAlignment="Center" Spacing="4">
+                                    <TextBlock
+                                        Style="{ThemeResource SubtitleTextBlockStyle}"
+                                        Text="{x:Bind Title}" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{x:Bind StatusText}" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </DataTemplate>

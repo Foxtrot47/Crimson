@@ -112,6 +112,32 @@ public sealed class ManagerCharacterizationTests
     }
 
     [Fact]
+    public void InstallManager_PublishesQueuedAndCancelledSnapshots()
+    {
+        var manager = InstallManagerWith(Game("queued"));
+        SetCurrentInstall(manager, new InstallItem("active", ActionType.Install, "C:\\active"));
+        var updates = new List<OperationSnapshot>();
+        manager.OperationUpdated += updates.Add;
+
+        manager.AddToQueue(new InstallItem("queued", ActionType.Install, "C:\\queued"));
+        manager.CancelInstall("queued");
+
+        Assert.Collection(
+            updates,
+            queued =>
+            {
+                Assert.Equal(ActionStatus.Pending, queued.Status);
+                Assert.Equal(OperationPhase.Queued, queued.Phase);
+                Assert.True(queued.IsActive);
+            },
+            cancelled =>
+            {
+                Assert.Equal(ActionStatus.Cancelled, cancelled.Status);
+                Assert.False(cancelled.IsActive);
+            });
+    }
+
+    [Fact]
     public async Task InstallManager_StopProcessingLeavesTeardownToProcessor()
     {
         var manager = InstallManagerWith();

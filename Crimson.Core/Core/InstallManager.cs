@@ -20,6 +20,7 @@ public class InstallManager
 {
     public event Action<InstallItem> InstallationStatusChanged;
     public event Action<InstallItem> InstallProgressUpdate;
+    public event Action<OperationSnapshot>? OperationUpdated;
 
     private readonly ILogger _logger;
     private readonly LibraryManager _libraryManager;
@@ -57,6 +58,9 @@ public class InstallManager
     private string? _stoppageReason;
 
     public InstallItem? CurrentInstall { get; private set; }
+    public OperationSnapshot? CurrentOperation => CurrentInstall is null
+        ? null
+        : OperationSnapshot.From(CurrentInstall);
 
     public InstallManager(
         ILogger logger,
@@ -82,6 +86,36 @@ public class InstallManager
             Converters = { new BigIntegerJsonConverter() }
         };
     }
+
+    private void PublishStatusChanged(InstallItem install)
+    {
+        InstallationStatusChanged?.Invoke(install);
+        PublishOperation(install);
+    }
+
+    private void PublishProgressUpdated(InstallItem install)
+    {
+        InstallProgressUpdate?.Invoke(install);
+        PublishOperation(install);
+    }
+
+    private void PublishOperation(InstallItem install) =>
+        OperationUpdated?.Invoke(OperationSnapshot.From(install));
+
+    private void SetPhase(InstallItem install, OperationPhase phase)
+    {
+        install.Phase = phase;
+        PublishStatusChanged(install);
+    }
+
+    private static OperationPhase GetExecutionPhase(ActionType action) => action switch
+    {
+        ActionType.Uninstall => OperationPhase.Uninstalling,
+        ActionType.Verify => OperationPhase.Verifying,
+        ActionType.Import => OperationPhase.Importing,
+        ActionType.Move => OperationPhase.Moving,
+        _ => OperationPhase.Transferring
+    };
 
     /// <summary>
     /// Adds game to the install queue.
@@ -122,7 +156,10 @@ public class InstallManager
         }
 
         _logger.Information("AddToQueue: Adding new Install to queue {Name} Action {Action}", item.AppName, item.Action);
+        item.Status = ActionStatus.Pending;
+        item.Phase = OperationPhase.Queued;
         _installQueue.Add(item);
+        PublishStatusChanged(item);
         if (CurrentInstall == null)
             ProcessNext();
     }
@@ -152,7 +189,8 @@ public class InstallManager
             }
 
             CurrentInstall.Status = ActionStatus.Processing;
-            InstallationStatusChanged?.Invoke(CurrentInstall);
+            CurrentInstall.Phase = GetExecutionPhase(CurrentInstall.Action);
+            PublishStatusChanged(CurrentInstall);
 
             if (CurrentInstall.Action == ActionType.Import || CurrentInstall.Action == ActionType.Move)
             {
@@ -208,6 +246,8 @@ public class InstallManager
 
             var currentInstall = CurrentInstall;
             if (currentInstall == null) return;
+            currentInstall.Phase = OperationPhase.Preparing;
+            PublishStatusChanged(currentInstall);
             _logger.Information("ProcessNext: Processing {Action} of {AppName}. Game Location {Location} ",
                 currentInstall.Action, currentInstall.AppName, currentInstall.Location);
 
@@ -266,15 +306,18 @@ public class InstallManager
                 await PrepareUpdateTasks(gameData, data);
                 break;
             case ActionType.Repair:
+                SetPhase(install, OperationPhase.Verifying);
                 await PrepareRepairTasks(gameData, data);
                 break;
             case ActionType.Uninstall:
                 PrepareUninstallTasks(install, data);
                 break;
             case ActionType.Import:
+                SetPhase(install, OperationPhase.Importing);
                 PrepareImportTasks(install, data);
                 break;
             case ActionType.Move:
+                SetPhase(install, OperationPhase.Moving);
                 PrepareMoveTasks(install);
                 break;
         }
@@ -559,7 +602,10 @@ public class InstallManager
             }
             var game = GetInstalledGame(install);
             var localAppState = GetLocalAppState(install);
+            if (install.Action is ActionType.Install or ActionType.Update or ActionType.Repair or ActionType.Verify)
+                SetPhase(install, OperationPhase.Verifying);
             await ApplyCompletedActionAsync(install, game, localAppState);
+            SetPhase(install, OperationPhase.Finalizing);
             await CreateRequestedShortcutsAsync(install, game, localAppState);
             CompleteInstallation(install);
         }
@@ -790,7 +836,7 @@ public class InstallManager
     {
         install.Status = ActionStatus.Success;
         _installHistory.Add(install);
-        InstallationStatusChanged?.Invoke(install);
+        PublishStatusChanged(install);
         CurrentInstall = null;
         ProcessNext();
     }
@@ -802,7 +848,7 @@ public class InstallManager
         {
             CurrentInstall.Status = ActionStatus.Failed;
             _installHistory.Add(CurrentInstall);
-            InstallationStatusChanged?.Invoke(CurrentInstall);
+            PublishStatusChanged(CurrentInstall);
         }
 
         CurrentInstall = null;
@@ -1209,7 +1255,7 @@ public class InstallManager
         if ((DateTime.Now - _lastUpdateTime).TotalMilliseconds >= _progressUpdateIntervalInMS)
         {
             _lastUpdateTime = DateTime.Now;
-            InstallProgressUpdate?.Invoke(CurrentInstall);
+            PublishProgressUpdated(CurrentInstall);
         }
     }
 
@@ -1230,20 +1276,21 @@ public class InstallManager
             // propage cancelling status if not done already
             await _cancellationTokenSource.CancelAsync();
             CurrentInstall.Status = ActionStatus.Cancelling;
-            InstallationStatusChanged?.Invoke(CurrentInstall);
+            PublishStatusChanged(CurrentInstall);
 
             if (_downloadTasks != null) await Task.WhenAll(_downloadTasks);
             if (_installTasks != null) await Task.WhenAll(_installTasks);
 
             CurrentInstall.Status = ActionStatus.Failed;
+            CurrentInstall.StatusMessage ??= errorMessage;
             _installHistory.Add(CurrentInstall);
-            InstallationStatusChanged?.Invoke(CurrentInstall);
+            PublishStatusChanged(CurrentInstall);
             _logger.Error("Installation failed: {ErrorMessage}", errorMessage);
         }
         else
         {
             CurrentInstall.Status = ActionStatus.Cancelling;
-            InstallationStatusChanged?.Invoke(CurrentInstall);
+            PublishStatusChanged(CurrentInstall);
 
             if (_downloadTasks != null) await Task.WhenAll(_downloadTasks);
             if (_installTasks != null) await Task.WhenAll(_installTasks);
@@ -1262,7 +1309,7 @@ public class InstallManager
 
             CurrentInstall.Status = ActionStatus.Cancelled;
             _installHistory.Add(CurrentInstall);
-            InstallationStatusChanged?.Invoke(CurrentInstall);
+            PublishStatusChanged(CurrentInstall);
             _logger.Information("Installation cancelled");
         }
         CurrentInstall = null;
@@ -1404,16 +1451,36 @@ public class InstallManager
         if (CurrentInstall?.AppName == appName)
             _ = StopProcessing();
 
-        var removedItem = _installQueue.RemoveAll(item => item.AppName == appName);
-        if (removedItem > 0)
+        var queuedItems = _installQueue.Where(item => item.AppName == appName).ToList();
+        _installQueue.RemoveAll(item => item.AppName == appName);
+        foreach (var item in queuedItems)
         {
-            _logger.Information("RemoveFromQueue: Removed {AppName} from the install queue", appName);
+            item.Status = ActionStatus.Cancelled;
+            PublishStatusChanged(item);
         }
+        if (queuedItems.Count > 0)
+            _logger.Information("RemoveFromQueue: Removed {AppName} from the install queue", appName);
     }
 
     public List<string> GetQueueItemNames()
     {
         return _installQueue.Select(item => item.AppName).ToList();
+    }
+
+    public IReadOnlyList<OperationSnapshot> GetQueueOperations() =>
+        _installQueue.Select(OperationSnapshot.From).ToList();
+
+    public IReadOnlyList<OperationSnapshot> GetHistoryOperations()
+    {
+        var seen = new HashSet<string>();
+        var result = new List<OperationSnapshot>();
+        for (var index = _installHistory.Count - 1; index >= 0; index--)
+        {
+            if (seen.Add(_installHistory[index].AppName))
+                result.Add(OperationSnapshot.From(_installHistory[index]));
+        }
+        result.Reverse();
+        return result;
     }
 
     public List<string> GetHistoryItemsNames()
@@ -1453,7 +1520,7 @@ public class InstallManager
 
         _pauseEvent.Set();
         RequestStoppage("Cancel install");
-        InstallationStatusChanged?.Invoke(install);
+        PublishStatusChanged(install);
         return Task.CompletedTask;
     }
 
@@ -1485,7 +1552,7 @@ public class InstallManager
 
             _installStopWatch.Stop();
             CurrentInstall.Status = ActionStatus.Paused;
-            InstallationStatusChanged?.Invoke(CurrentInstall);
+            PublishStatusChanged(CurrentInstall);
 
             var state = new InstallManagerState
             {
@@ -1525,7 +1592,7 @@ public class InstallManager
         _installStopWatch.Start();
         CurrentInstall.Status = ActionStatus.Processing;
         _pauseEvent.Set();
-        InstallationStatusChanged?.Invoke(CurrentInstall);
+        PublishStatusChanged(CurrentInstall);
     }
 
     public async Task LoadPendingInstalls()
@@ -1560,7 +1627,7 @@ public class InstallManager
         await PrepareTasks(true, state.CompletedChunks);
 
         CurrentInstall.Status = ActionStatus.Paused;
-        InstallationStatusChanged?.Invoke(CurrentInstall);
+        PublishStatusChanged(CurrentInstall);
 
         _pauseEvent.Set();
         //ProcessNext(true);

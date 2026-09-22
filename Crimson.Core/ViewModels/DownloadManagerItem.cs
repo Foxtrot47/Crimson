@@ -8,4 +8,5 @@ public sealed class DownloadManagerItem
     public string Title { get; init; } = string.Empty;
     public string? ImageUrl { get; init; }
     public InstallState InstallState { get; init; }
+    public string StatusText { get; init; } = string.Empty;
 }

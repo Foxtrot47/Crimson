@@ -6,7 +6,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Models;
-using Crimson.Utils;
 using Serilog;
 
 namespace Crimson.ViewModels;
@@ -36,6 +35,9 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _enablePauseButton = false;
+
+    [ObservableProperty]
+    private bool _enableCancelButton = false;
 
     [ObservableProperty]
     private bool _showCurrentDownload = false;
@@ -74,12 +76,10 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
         _installManager = installManager;
         _libraryManager = libraryManager;
 
-        var gameInQueue = _installManager.CurrentInstall;
-        HandleInstallationStatusChanged(gameInQueue);
+        HandleOperationUpdated(_installManager.CurrentOperation);
         FetchQueueItemsList();
         FetchHistoryItemsList();
-        _installManager.InstallationStatusChanged += HandleInstallationStatusChanged;
-        _installManager.InstallProgressUpdate += InstallationProgressUpdate;
+        _installManager.OperationUpdated += HandleOperationUpdated;
     }
 
     private void FetchQueueItemsList()
@@ -87,23 +87,21 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
         try
         {
             QueueItems.Clear();
-            var queueItemNames = _installManager.GetQueueItemNames();
-            if (queueItemNames == null || queueItemNames.Count < 1) return;
-
+            var operations = _installManager.GetQueueOperations();
             ObservableCollection<DownloadManagerItem> itemList = new();
-            foreach (var queueItemName in queueItemNames)
+            for (var index = 0; index < operations.Count; index++)
             {
-
-                var gameInfo = _libraryManager.GetGameInfo(queueItemName);
+                var operation = operations[index];
+                var gameInfo = _libraryManager.GetGameInfo(operation.AppName);
                 if (gameInfo is null) continue;
-                itemList.Add(new DownloadManagerItem()
+                itemList.Add(new DownloadManagerItem
                 {
-                    Name = queueItemName,
+                    Name = operation.AppName,
                     Title = gameInfo.AppTitle,
                     ImageUrl = gameInfo.Metadata.KeyImages
-                        .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
+                        .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url,
+                    StatusText = $"{OperationPresenter.Present(operation).Headline} · Position {index + 1}"
                 });
-
             }
             QueueItems = itemList;
         }
@@ -116,25 +114,22 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var historyItemsNames = _installManager.GetHistoryItemsNames();
-            if (historyItemsNames == null || historyItemsNames.Count < 1) return;
-
-            _log.Debug("FetchHistoryItemsList: Loaded {Count} history items", historyItemsNames.Count);
+            var operations = _installManager.GetHistoryOperations();
+            _log.Debug("FetchHistoryItemsList: Loaded {Count} history items", operations.Count);
             HistoryItems.Clear();
 
             ObservableCollection<DownloadManagerItem> itemList = new();
-
-            foreach (var historyItemName in historyItemsNames)
+            foreach (var operation in operations)
             {
-
-                var gameInfo = _libraryManager.GetGameInfo(historyItemName);
+                var gameInfo = _libraryManager.GetGameInfo(operation.AppName);
                 if (gameInfo is null) continue;
-                itemList.Add(new DownloadManagerItem()
+                itemList.Add(new DownloadManagerItem
                 {
-                    Name = historyItemName,
+                    Name = operation.AppName,
                     Title = gameInfo.AppTitle,
                     ImageUrl = gameInfo.Metadata.KeyImages
-                        .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
+                        .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url,
+                    StatusText = OperationPresenter.Present(operation).Headline
                 });
             }
             HistoryItems = itemList;
@@ -146,41 +141,42 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     }
 
 
-    private void HandleInstallationStatusChanged(InstallItem? installItem)
+    private void HandleOperationUpdated(OperationSnapshot? _)
     {
         try
         {
-            UpdateUIProperties(() => RefreshAndApplyStatus(installItem));
+            UpdateUIProperties(() => RefreshAndApplyStatus(_installManager.CurrentOperation));
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Exception in HandleInstallationStatusChanged");
+            _log.Error(ex, "Exception in HandleOperationUpdated");
         }
     }
 
-    private void RefreshAndApplyStatus(InstallItem? installItem)
+    private void RefreshAndApplyStatus(OperationSnapshot? operation)
     {
-        _log.Information("HandleInstallationStatusChanged: Handling Installation Status Change");
         FetchQueueItemsList();
         FetchHistoryItemsList();
-        if (installItem == null)
+        if (operation is null || !operation.IsActive)
         {
-            _log.Information("HandleInstallationStatusChanged: No installation in progress");
             ShowCurrentDownload = false;
             return;
         }
 
         ShowCurrentDownload = true;
-        DownloadProgressBarIndeterminate = true;
-        SetCurrentInstallItem(installItem);
-        ApplyInstallationStatus(installItem);
-        UpdatePauseResumeControls(installItem.Status);
+        SetCurrentInstallItem(operation);
+        ApplyOperationPresentation(operation);
     }
 
-    private void SetCurrentInstallItem(InstallItem installItem)
+    private void SetCurrentInstallItem(OperationSnapshot operation)
     {
-        var gameInfo = _libraryManager.GetGameInfo(installItem.AppName);
-        _log.Debug("HandleInstallationStatusChanged: Loaded {AppName}", gameInfo.AppName);
+        var gameInfo = _libraryManager.GetGameInfo(operation.AppName);
+        if (gameInfo is null)
+        {
+            ShowCurrentDownload = false;
+            return;
+        }
+        _log.Debug("HandleOperationUpdated: Loaded {AppName}", gameInfo.AppName);
         CurrentInstallItem = new DownloadManagerItem
         {
             Name = gameInfo.AppName,
@@ -193,93 +189,20 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
         CurrentInstallItemImageUrl = CurrentInstallItem.ImageUrl;
     }
 
-    private void ApplyInstallationStatus(InstallItem installItem)
+    private void ApplyOperationPresentation(OperationSnapshot operation)
     {
-        _log.Information("HandleInstallationStatusChanged: Installation Status: {Status}", installItem.Status);
-        switch (installItem.Status)
-        {
-            case ActionStatus.Processing:
-                ApplyProcessingState(installItem);
-                break;
-            case ActionStatus.Paused:
-                ApplyPausedState(installItem);
-                break;
-            case ActionStatus.Cancelling:
-                ApplyCancellingState();
-                break;
-            case ActionStatus.Success:
-            case ActionStatus.Failed:
-            case ActionStatus.Cancelled:
-                ShowCurrentDownload = false;
-                break;
-        }
-    }
-
-    private void ApplyProcessingState(InstallItem installItem)
-    {
-        DownloadProgressBarIndeterminate = false;
-        DownloadProgressBarValue = Convert.ToDouble(installItem.ProgressPercentage);
-        CurrentInstallAction = $@"{installItem.Action}ing";
-        CurrentDownloadSize = FormatProgressSize(installItem);
-        CurrentDownloadSpeed = $"{installItem.DownloadSpeedRawMiB} MiB /s";
-    }
-
-    private void ApplyPausedState(InstallItem installItem)
-    {
-        DownloadProgressBarIndeterminate = false;
-        DownloadProgressBarValue = Convert.ToDouble(installItem.ProgressPercentage);
-        CurrentInstallAction = "Paused";
-        CurrentDownloadSize = FormatProgressSize(installItem);
-        CurrentDownloadSpeed = string.Empty;
-    }
-
-    private void ApplyCancellingState()
-    {
-        DownloadProgressBarIndeterminate = true;
-        CurrentInstallAction = "Cancelling";
-        CurrentDownloadSize = string.Empty;
-        CurrentDownloadSpeed = string.Empty;
-    }
-
-    private static string FormatProgressSize(InstallItem installItem) =>
-        $@"{StorageSizeFormatter.FormatMebibytes(installItem.WrittenSizeMiB)} of {StorageSizeFormatter.FormatMebibytes(installItem.TotalWriteSizeMb)}";
-
-    private void UpdatePauseResumeControls(ActionStatus status)
-    {
-        if (status == ActionStatus.Paused)
-        {
-            ShowResumeButton = true;
-            ShowPauseButton = false;
-            return;
-        }
-
-        ShowResumeButton = false;
-        ShowPauseButton = true;
-        EnablePauseButton = status == ActionStatus.Processing;
-    }
-
-    private void InstallationProgressUpdate(InstallItem installItem)
-    {
-        // Its better not to log the progress update as it will be called very frequently
-        // It can make the log file very big
-        try
-        {
-
-            if (installItem == null) return;
-
-            if (installItem.Status != ActionStatus.Processing) return;
-            _ = UpdateUIProperties(() =>
-            {
-                DownloadProgressBarIndeterminate = false;
-                DownloadProgressBarValue = Convert.ToDouble(installItem.ProgressPercentage);
-                CurrentDownloadSize = $@"{StorageSizeFormatter.FormatMebibytes(installItem.WrittenSizeMiB)} of {StorageSizeFormatter.FormatMebibytes(installItem.TotalWriteSizeMb)}";
-                CurrentDownloadSpeed = $@"{installItem.DownloadSpeedRawMiB} MiB/s";
-            });
-        }
-        catch (Exception ex)
-        {
-            _log.Error(ex, "InstallationProgressUpdate: Error while updating progress");
-        }
+        var presentation = OperationPresenter.Present(operation);
+        DownloadProgressBarIndeterminate = presentation.IsIndeterminate;
+        DownloadProgressBarValue = presentation.ProgressPercentage;
+        CurrentInstallAction = presentation.Headline;
+        CurrentDownloadSize = presentation.Detail;
+        CurrentDownloadSpeed = operation.Phase == OperationPhase.Transferring && operation.DownloadSpeedMiB > 0
+            ? $"{operation.DownloadSpeedMiB:0.##} MiB/s"
+            : string.Empty;
+        ShowResumeButton = presentation.CanResume;
+        ShowPauseButton = !presentation.CanResume;
+        EnablePauseButton = presentation.CanPause;
+        EnableCancelButton = presentation.CanCancel;
     }
 
     [RelayCommand]
@@ -308,8 +231,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     }
     public void Dispose()
     {
-        _installManager.InstallationStatusChanged -= HandleInstallationStatusChanged;
-        _installManager.InstallProgressUpdate -= InstallationProgressUpdate;
+        _installManager.OperationUpdated -= HandleOperationUpdated;
     }
 
 }

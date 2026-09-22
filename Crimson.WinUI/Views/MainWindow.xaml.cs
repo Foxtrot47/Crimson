@@ -55,7 +55,7 @@ public sealed partial class MainWindow : Window
     private string? _installedMenuActiveAppName;
 
     private readonly Dictionary<string, GameNavEntry> _gameNavEntries = new(StringComparer.Ordinal);
-    private InstallItem? _activeInstall;
+    private OperationSnapshot? _activeInstall;
     private string? _decoratedAppName;
     private DownloadSummary? _lastDownloadSummary;
 
@@ -111,13 +111,12 @@ public sealed partial class MainWindow : Window
         _libraryManager.LibraryUpdated += LibraryUpdatedHandler;
         _libraryManager.GameStatusUpdated += GameStatusUpdatedHandler;
         CurrentDownload.SummaryChanged += OnDownloadSummaryChanged;
-        _installManager.InstallationStatusChanged += InstallationStatusChangedHandler;
-        _installManager.InstallProgressUpdate += InstallProgressUpdateHandler;
+        _installManager.OperationUpdated += OperationUpdatedHandler;
         NavControl.PaneOpened += (_, _) => UpdateBadgeVisibility();
         NavControl.PaneClosed += (_, _) => UpdateBadgeVisibility();
         NavControl.DisplayModeChanged += (_, _) => UpdateBadgeVisibility();
         CurrentDownload.PublishCurrentSummary();
-        _activeInstall = IsActionRunning(_installManager.CurrentInstall) ? _installManager.CurrentInstall : null;
+        _activeInstall = _installManager.CurrentOperation is { IsActive: true } operation ? operation : null;
         RebuildInstalledMenu();
 
         IsLoggedIn = false;
@@ -557,29 +556,20 @@ public sealed partial class MainWindow : Window
         return item;
     }
 
-    private void InstallationStatusChangedHandler(InstallItem? installItem)
+    private void OperationUpdatedHandler(OperationSnapshot operation)
     {
         DispatcherQueue.TryEnqueue(() =>
         {
-            _activeInstall = IsActionRunning(installItem) ? installItem : null;
+            var current = _installManager.CurrentOperation;
+            _activeInstall = current is { IsActive: true } ? current : null;
             RebuildInstalledMenu();
             ApplyInstallVisual(_activeInstall);
         });
     }
 
-    private void InstallProgressUpdateHandler(InstallItem? installItem)
+    private void ApplyInstallVisual(OperationSnapshot? operation)
     {
-        if (installItem is null) return;
-        DispatcherQueue.TryEnqueue(() => ApplyInstallVisual(installItem));
-    }
-
-    private static bool IsActionRunning(InstallItem? installItem) =>
-        installItem?.Status is ActionStatus.Pending or ActionStatus.OnGoing or ActionStatus.Processing
-            or ActionStatus.Paused or ActionStatus.Cancelling;
-
-    private void ApplyInstallVisual(InstallItem? installItem)
-    {
-        var activeAppName = IsActionRunning(installItem) ? installItem!.AppName : null;
+        var activeAppName = operation is { IsActive: true } ? operation.AppName : null;
 
         if (!string.Equals(_decoratedAppName, activeAppName, StringComparison.Ordinal))
         {
@@ -592,22 +582,20 @@ public sealed partial class MainWindow : Window
         if (activeAppName is null || !_gameNavEntries.TryGetValue(activeAppName, out var target))
             return;
 
-        var percent = Math.Clamp(installItem!.ProgressPercentage, 0, 100);
-        var label = CurrentDownloadControl.GetActionLabel(installItem.Action);
+        var presentation = OperationPresenter.Present(operation!);
+        var percent = presentation.ProgressPercentage;
 
         target.PlayButton.Visibility = Visibility.Collapsed;
         target.StatusPanel.Visibility = Visibility.Visible;
-        target.ActionIcon.Glyph = GetActionGlyph(installItem.Action, installItem.Status);
-        target.ProgressText.Text = $"{percent}%";
+        target.ActionIcon.Glyph = GetActionGlyph(operation!.Action, operation.Status);
+        target.ProgressText.Text = GetCompactStatus(operation, presentation);
 
         target.Badge.Value = percent;
         UpdateBadgeVisibility();
 
-        SetProgressFill(target.ProgressBrush, percent);
+        SetProgressFill(target.ProgressBrush, presentation.IsIndeterminate ? 0 : percent);
         ToolTipService.SetToolTip(target.Item,
-            installItem.Status == ActionStatus.Paused
-                ? $"{target.Title} - {label} paused at {percent}%"
-                : $"{target.Title} - {label} {percent}%");
+            $"{target.Title} - {presentation.Headline.ToLowerInvariant()}");
     }
 
     private static void ResetEntry(GameNavEntry entry)
@@ -618,6 +606,30 @@ public sealed partial class MainWindow : Window
         SetProgressFill(entry.ProgressBrush, 0);
         ToolTipService.SetToolTip(entry.Item, entry.Title);
     }
+
+    private static string GetCompactStatus(
+        OperationSnapshot operation,
+        OperationPresentation presentation)
+    {
+        if (!presentation.IsIndeterminate)
+            return $"{presentation.ProgressPercentage}%";
+
+        return operation.Status == ActionStatus.Cancelling
+            ? "Cancelling"
+            : GetPhaseStatus(operation.Phase);
+    }
+
+    private static string GetPhaseStatus(OperationPhase phase) => phase switch
+    {
+        OperationPhase.Queued => "Queued",
+        OperationPhase.Preparing => "Preparing",
+        OperationPhase.Verifying => "Verifying",
+        OperationPhase.Uninstalling => "Removing",
+        OperationPhase.Importing => "Importing",
+        OperationPhase.Moving => "Moving",
+        OperationPhase.Finalizing => "Finishing",
+        _ => "Working"
+    };
 
     private static string GetActionGlyph(ActionType action, ActionStatus status) => status switch
     {
@@ -696,7 +708,7 @@ public sealed partial class MainWindow : Window
     {
         _lastDownloadSummary = summary;
         ToolTipService.SetToolTip(DownloadsNavItem, summary.ToolTip);
-        DownloadInfoBadge.Value = summary.ProgressPercentage;
+        DownloadInfoBadge.Value = summary.IsIndeterminate ? -1 : summary.ProgressPercentage;
         UpdateBadgeVisibility();
     }
 
@@ -838,8 +850,7 @@ public sealed partial class MainWindow : Window
         _libraryManager.GameStatusUpdated -= GameStatusUpdatedHandler;
         CancelStoreSearch();
         CurrentDownload.SummaryChanged -= OnDownloadSummaryChanged;
-        _installManager.InstallationStatusChanged -= InstallationStatusChangedHandler;
-        _installManager.InstallProgressUpdate -= InstallProgressUpdateHandler;
+        _installManager.OperationUpdated -= OperationUpdatedHandler;
     }
 
     private void Window_ThemeChanged(FrameworkElement sender, object args)
