@@ -129,6 +129,22 @@
                     </DropDownButton>
                 </StackPanel>
 
+                <Border
+                    Padding="14,10"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    CornerRadius="8"
+                    Visibility="{x:Bind ViewModel.IsOperationStatusVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Spacing="4">
+                        <TextBlock
+                            Style="{ThemeResource BodyStrongTextBlockStyle}"
+                            Text="{x:Bind ViewModel.OperationStatusText, Mode=OneWay}" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.OperationDetail, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
             </StackPanel>
 
             <StackPanel Grid.Column="1">

@@ -27,14 +27,26 @@
                             VerticalAlignment="Center"
                             Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}"
                             Stretch="UniformToFill" />
-                        <TextBlock
-                            MaxWidth="200"
-                            HorizontalAlignment="Left"
-                            VerticalAlignment="Bottom"
-                            FontSize="18"
-                            Foreground="White"
-                            Text="{x:Bind Title}"
-                            TextTrimming="CharacterEllipsis" />
+                        <StackPanel MaxWidth="226" Spacing="8">
+                            <TextBlock
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Bottom"
+                                FontSize="18"
+                                Foreground="White"
+                                Text="{x:Bind Title}"
+                                TextTrimming="CharacterEllipsis" />
+                            <StackPanel
+                                Spacing="6"
+                                Visibility="{x:Bind HasActiveOperation, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{x:Bind OperationStatus}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <ProgressBar
+                                    IsIndeterminate="{x:Bind IsOperationIndeterminate}"
+                                    Value="{x:Bind OperationProgress}" />
+                            </StackPanel>
+                        </StackPanel>
                     </StackPanel>
                 </Button>
             </DataTemplate>

@@ -54,6 +54,15 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     [ObservableProperty]
     private string? _titleImageUrl;
 
+    [ObservableProperty]
+    private bool _isOperationStatusVisible;
+
+    [ObservableProperty]
+    private string _operationStatusText = string.Empty;
+
+    [ObservableProperty]
+    private string _operationDetail = string.Empty;
+
     // Event for showing install dialog
     public event Func<Task> ShowInstallDialogRequested;
     public event Action CloseInstallDialogRequested;
@@ -79,26 +88,22 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     {
         if (parameter is not string appName) return;
 
-        Game = _libraryManager.GetGameInfo((string)appName);
+        UnregisterEventHandlers();
+        Game = _libraryManager.GetGameInfo(appName);
+        if (Game is null) return;
+
         var gameImage = Game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBox");
         TitleImageUrl = gameImage?.Url;
 
-        CheckGameStatus(Game);
-
-        // Unregister event handlers on start
-        UnregisterEventHandlers();
-
         _libraryManager.GameStatusUpdated += CheckGameStatus;
-        _installer.InstallationStatusChanged += HandleInstallationStatusChanged;
-        _installer.InstallProgressUpdate += HandleInstallationStatusChanged;
-
+        _installer.OperationUpdated += HandleOperationUpdated;
+        CheckGameStatus(Game);
     }
 
     private void UnregisterEventHandlers()
     {
         _libraryManager.GameStatusUpdated -= CheckGameStatus;
-        _installer.InstallationStatusChanged -= HandleInstallationStatusChanged;
-        _installer.InstallProgressUpdate -= HandleInstallationStatusChanged;
+        _installer.OperationUpdated -= HandleOperationUpdated;
     }
 
     [RelayCommand]
@@ -143,87 +148,83 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         }
     }
 
-    /// <summary>
-    /// Handing Installation State Change.
-    /// <br/>
-    /// This function is never run on UI Thread.
-    /// <br/>
-    /// So always make sure to use Dispatcher Queue to update UI thread
-    /// </summary>
-    /// <param name="installItem"></param>
-    private void HandleInstallationStatusChanged(InstallItem installItem)
+    private void HandleOperationUpdated(OperationSnapshot operation)
     {
         try
         {
-            if (installItem == null || installItem.AppName != Game.AppName) return;
+            if (Game is null || operation.AppName != Game.AppName) return;
             _uiDispatcher.TryEnqueue(() =>
             {
-                _log.LogInformation("GameInfoPage: Installation Status Changed for {Game}", installItem.AppName);
-                switch (installItem.Status)
-                {
-                    case ActionStatus.Processing:
-                        IsProgressRingIndeterminate = false;
-                        ProgressValue = Convert.ToDouble(installItem.ProgressPercentage);
-                        IsProgressRingVisible = true;
-                        IsPrimaryActionEnabled = false;
-                        PrimaryActionButtonText = $"{installItem.ProgressPercentage}%";
-                        break;
-                    case ActionStatus.Pending:
-                        PrimaryActionButtonText = "Pending...";
-                        IsProgressRingVisible = true;
-                        IsProgressRingIndeterminate = true;
-                        break;
-
-                    case ActionStatus.Cancelling:
-                        PrimaryActionButtonText = "Cancelling...";
-                        IsProgressRingVisible = true;
-                        IsProgressRingIndeterminate = true;
-                        break;
-                }
+                if (Game?.AppName == operation.AppName)
+                    ApplyOperation(operation);
             });
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "HandleInstallationStatusChanged failed");
+            _log.LogError(ex, "HandleOperationUpdated failed");
         }
+    }
+
+    private OperationSnapshot? FindOperation(string appName)
+    {
+        if (_installer.CurrentOperation is { } current && current.AppName == appName)
+            return current;
+        return _installer.GetQueueOperations().FirstOrDefault(operation => operation.AppName == appName);
+    }
+
+    private void ApplyOperation(OperationSnapshot? operation)
+    {
+        if (operation is null)
+        {
+            IsOperationStatusVisible = false;
+            return;
+        }
+
+        var presentation = OperationPresenter.Present(operation);
+        IsOperationStatusVisible = true;
+        OperationStatusText = presentation.Headline;
+        OperationDetail = presentation.Detail;
+        IsProgressRingVisible = presentation.IsActive;
+        IsProgressRingIndeterminate = presentation.IsIndeterminate;
+        ProgressValue = presentation.ProgressPercentage;
+        IsPrimaryActionEnabled = !presentation.IsActive;
+
+        if (presentation.IsActive)
+            PrimaryActionButtonText = presentation.Headline;
+        else if (Game is not null)
+            ApplyGameStatus(Game.LocalAppState?.InstallStatus);
     }
 
     private void CheckGameStatus(Game updatedGame)
     {
-        if (updatedGame == null || updatedGame.AppName != Game.AppName) return;
+        if (updatedGame == null || Game is null || updatedGame.AppName != Game.AppName) return;
         _log.LogInformation("GameInfoPage: Game Status Changed for {Game}", updatedGame.AppTitle);
-        Game = updatedGame;
+        var operation = FindOperation(updatedGame.AppName);
 
         _uiDispatcher.TryEnqueue(() =>
         {
-            IsProgressRingVisible = false;
-            IsPrimaryActionEnabled = true;
-            PrimaryAction = GetPrimaryAction(Game.LocalAppState?.InstallStatus);
-            if (PrimaryAction is GamePrimaryAction.Install)
-            {
-                PrimaryActionButtonText = "Install";
-                IsInstalled = false;
-                IsImportVisible = true;
-                return;
-            }
-
-            IsImportVisible = false;
-            switch (PrimaryAction)
-            {
-                case GamePrimaryAction.Play:
-                    PrimaryActionButtonText = "Play";
-                    IsInstalled = true;
-                    break;
-                case GamePrimaryAction.Update:
-                    PrimaryActionButtonText = "Update";
-                    IsInstalled = true;
-                    break;
-                case GamePrimaryAction.Repair:
-                    PrimaryActionButtonText = "Repair";
-                    IsInstalled = true;
-                    break;
-            }
+            if (Game?.AppName != updatedGame.AppName) return;
+            Game = updatedGame;
+            ApplyGameStatus(updatedGame.LocalAppState?.InstallStatus);
+            ApplyOperation(operation);
         });
+    }
+
+    private void ApplyGameStatus(InstallState? installState)
+    {
+        IsProgressRingVisible = false;
+        IsPrimaryActionEnabled = true;
+        PrimaryAction = GetPrimaryAction(installState);
+        PrimaryActionButtonText = PrimaryAction switch
+        {
+            GamePrimaryAction.Install => "Install",
+            GamePrimaryAction.Play => "Play",
+            GamePrimaryAction.Update => "Update",
+            GamePrimaryAction.Repair => "Repair",
+            _ => string.Empty
+        };
+        IsInstalled = PrimaryAction is not GamePrimaryAction.Install and not GamePrimaryAction.None;
+        IsImportVisible = PrimaryAction == GamePrimaryAction.Install;
     }
 
     internal static GamePrimaryAction GetPrimaryAction(InstallState? installState) => installState switch
@@ -320,9 +321,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
     public void Cleanup()
     {
-        _libraryManager.GameStatusUpdated -= CheckGameStatus;
-        _installer.InstallationStatusChanged -= HandleInstallationStatusChanged;
-        _installer.InstallProgressUpdate -= HandleInstallationStatusChanged;
+        UnregisterEventHandlers();
     }
 }
 
