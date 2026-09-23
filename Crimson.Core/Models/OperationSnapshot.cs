@@ -23,7 +23,8 @@ public sealed record OperationSnapshot(
     double WrittenSizeMiB,
     double TotalWriteSizeMiB,
     double DownloadSpeedMiB,
-    string? StatusMessage)
+    string? StatusMessage,
+    OperationFailure? Failure = null)
 {
     public bool IsActive => Status is
         ActionStatus.Pending or
@@ -41,5 +42,6 @@ public sealed record OperationSnapshot(
         item.WrittenSizeMiB,
         item.TotalWriteSizeMb,
         item.DownloadSpeedRawMiB,
-        item.StatusMessage);
+        item.StatusMessage,
+        item.Failure);
 }

@@ -25,6 +25,7 @@ public class InstallItem(string appName, ActionType action, string location)
     public ActionStatus Status { get; set; } = ActionStatus.Pending;
     public OperationPhase Phase { get; set; } = OperationPhase.Queued;
     public string StatusMessage { get; set; }
+    public OperationFailure? Failure { get; set; }
     public bool CreateDesktopShortcut { get; set; }
     public bool CreateStartMenuShortcut { get; set; }
 }

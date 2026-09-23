@@ -95,6 +95,8 @@ public static class OperationPresenter
 
     private static string GetDetail(OperationSnapshot operation, bool isIndeterminate)
     {
+        if (operation.Failure is { } failure)
+            return $"{failure.Message} {failure.SuggestedAction}";
         if (!string.IsNullOrWhiteSpace(operation.StatusMessage))
             return operation.StatusMessage;
         if (operation.Phase == OperationPhase.Queued)

@@ -129,7 +129,13 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
                     Title = gameInfo.AppTitle,
                     ImageUrl = gameInfo.Metadata.KeyImages
                         .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url,
-                    StatusText = OperationPresenter.Present(operation).Headline
+                    StatusText = OperationPresenter.Present(operation).Headline,
+                    FailureText = operation.Failure is null
+                        ? string.Empty
+                        : $"{operation.Failure.Message} {operation.Failure.SuggestedAction}",
+                    HasFailure = operation.Failure is not null,
+                    CanRetry = operation.Failure?.CanRetry == true,
+                    Operation = operation
                 });
             }
             HistoryItems = itemList;
@@ -203,6 +209,13 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
         ShowPauseButton = !presentation.CanResume;
         EnablePauseButton = presentation.CanPause;
         EnableCancelButton = presentation.CanCancel;
+    }
+
+    public bool RetryFailedOperation(DownloadManagerItem? item)
+    {
+        if (item?.Operation is not { Status: ActionStatus.Failed } operation)
+            return false;
+        return _installManager.RetryFailedOperation(operation.AppName);
     }
 
     [RelayCommand]

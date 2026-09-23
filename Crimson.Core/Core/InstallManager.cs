@@ -230,7 +230,7 @@ public class InstallManager
         catch (Exception ex)
         {
             _logger.Error(ex, "ProcessNext failed");
-            await HandleInstallationStoppage("An error occurred during installation");
+            await HandleInstallationStoppage("An error occurred during installation", ex);
         }
     }
 
@@ -798,6 +798,7 @@ public class InstallManager
             return;
 
         install.StatusMessage = $"{invalidFileCount} files failed verification";
+        install.Failure = OperationFailure.Verification(invalidFileCount);
         throw new InvalidDataException(install.StatusMessage);
     }
 
@@ -847,6 +848,7 @@ public class InstallManager
         if (CurrentInstall is not null)
         {
             CurrentInstall.Status = ActionStatus.Failed;
+            CurrentInstall.Failure ??= OperationFailureClassifier.Classify(exception);
             _installHistory.Add(CurrentInstall);
             PublishStatusChanged(CurrentInstall);
         }
@@ -1259,7 +1261,7 @@ public class InstallManager
         }
     }
 
-    private async Task HandleInstallationStoppage(string errorMessage)
+    private async Task HandleInstallationStoppage(string errorMessage, Exception? exception = null)
     {
         _ioQueue = new();
         _downloadQueue = new();
@@ -1283,6 +1285,7 @@ public class InstallManager
 
             CurrentInstall.Status = ActionStatus.Failed;
             CurrentInstall.StatusMessage ??= errorMessage;
+            CurrentInstall.Failure ??= OperationFailureClassifier.Classify(exception);
             _installHistory.Add(CurrentInstall);
             PublishStatusChanged(CurrentInstall);
             _logger.Error("Installation failed: {ErrorMessage}", errorMessage);
@@ -1481,6 +1484,24 @@ public class InstallManager
         }
         result.Reverse();
         return result;
+    }
+
+    public bool RetryFailedOperation(string appName)
+    {
+        if (string.IsNullOrWhiteSpace(appName) || GameGameInQueue(appName) is not null)
+            return false;
+
+        var failed = _installHistory.LastOrDefault(item => item.AppName == appName);
+        if (failed?.Status != ActionStatus.Failed || failed.Failure?.CanRetry != true)
+            return false;
+
+        AddToQueue(new InstallItem(failed.AppName, failed.Action, failed.Location)
+        {
+            MoveLocation = failed.MoveLocation,
+            CreateDesktopShortcut = failed.CreateDesktopShortcut,
+            CreateStartMenuShortcut = failed.CreateStartMenuShortcut
+        });
+        return true;
     }
 
     public List<string> GetHistoryItemsNames()

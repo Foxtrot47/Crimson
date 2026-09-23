@@ -190,6 +190,29 @@ public sealed class ManagerCharacterizationTests
     }
 
     [Fact]
+    public void InstallManager_RetriesSanitizedCopyOfFailedOperation()
+    {
+        var manager = InstallManagerWith(Game("failed", InstallState.Installed));
+        SetCurrentInstall(manager, new InstallItem("active", ActionType.Install, "C:\\active"));
+        var history = GetPrivateField<List<InstallItem>>(manager, "_installHistory");
+        history.Add(new InstallItem("failed", ActionType.Repair, "C:\\failed")
+        {
+            Status = ActionStatus.Failed,
+            StatusMessage = "sensitive raw detail",
+            Failure = OperationFailureClassifier.Classify(new IOException())
+        });
+
+        var retried = manager.RetryFailedOperation("failed");
+        var queued = manager.GameGameInQueue("failed");
+
+        Assert.True(retried);
+        Assert.NotNull(queued);
+        Assert.Equal(ActionType.Repair, queued.Action);
+        Assert.Null(queued.Failure);
+        Assert.Null(queued.StatusMessage);
+    }
+
+    [Fact]
     public void InstallManager_HistoryReturnsLatestEntryPerGameInStableOrder()
     {
         var manager = InstallManagerWith();

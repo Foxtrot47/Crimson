@@ -70,6 +70,26 @@ public sealed class OperationPresenterTests
     }
 
     [Fact]
+    public void StructuredFailureHidesRawStatusMessage()
+    {
+        var presentation = OperationPresenter.Present(new OperationSnapshot(
+            "game",
+            ActionType.Install,
+            ActionStatus.Failed,
+            OperationPhase.Preparing,
+            0,
+            0,
+            0,
+            0,
+            "C:\\Users\\person\\private.file",
+            OperationFailureClassifier.Classify(new UnauthorizedAccessException())));
+
+        Assert.DoesNotContain("private.file", presentation.Detail);
+        Assert.Contains("selected installation location", presentation.Detail);
+        Assert.Contains("Choose another folder", presentation.Detail);
+    }
+
+    [Fact]
     public void FailureUsesAvailableStatusMessage()
     {
         var presentation = OperationPresenter.Present(new OperationSnapshot(
