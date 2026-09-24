@@ -145,6 +145,7 @@ public sealed class InstallerCompletionTests : IDisposable
             {"FileManifestList":[],"ChunkHashList":{},"ChunkShaList":{},"DataGroupList":{},"ChunkFilesizeList":{}}
             """));
         public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId) => throw new NotSupportedException();
+        public Task<StoreProductDetails?> FetchStoreProductDetails(string nameSpace, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live") => throw new NotSupportedException();
         public Task<IReadOnlyList<StoreSearchResult>> SearchStore(string query, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task DownloadFileAsync(string url, string destinationPath) => throw new NotSupportedException();

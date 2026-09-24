@@ -329,6 +329,10 @@ public sealed class ManagerCharacterizationTests
         public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId) =>
             throw new NotSupportedException();
 
+        public Task<StoreProductDetails?> FetchStoreProductDetails(
+            string nameSpace,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
         public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live") =>
             throw new NotSupportedException();
 

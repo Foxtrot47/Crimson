@@ -29,6 +29,7 @@ public class LibraryManager
     private DateTime _lastUpdateDateTime = DateTime.MinValue;
     private readonly SemaphoreSlim _updateGate = new(1, 1);
     private IReadOnlySet<string> _ownedAppNames = new HashSet<string>();
+    private readonly ConcurrentDictionary<string, StoreProductCacheEntry> _storeProductCache = new();
     private int _ownedAccountGeneration = -1;
 
     public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager)
@@ -50,13 +51,36 @@ public class LibraryManager
             _ownedAppNames = new HashSet<string>();
             _ownedAccountGeneration = -1;
             _lastUpdateDateTime = DateTime.MinValue;
+            _storeProductCache.Clear();
         }
     }
 
     public void InvalidateCache()
     {
         lock (_storage.AccountDataLock)
+        {
             _lastUpdateDateTime = DateTime.MinValue;
+            _storeProductCache.Clear();
+        }
+    }
+
+    public async Task<StoreProductDetails?> GetStoreProductDetails(
+        string nameSpace,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(nameSpace))
+            return null;
+
+        if (_storeProductCache.TryGetValue(nameSpace, out var cached) &&
+            cached.ExpiresAt > DateTimeOffset.UtcNow)
+            return cached.Details;
+
+        var details = await _storeRepository.FetchStoreProductDetails(nameSpace, cancellationToken);
+        var lifetime = details is null ? TimeSpan.FromMinutes(15) : TimeSpan.FromHours(24);
+        _storeProductCache[nameSpace] = new StoreProductCacheEntry(
+            details,
+            DateTimeOffset.UtcNow.Add(lifetime));
+        return details;
     }
 
     /// <summary>
@@ -475,6 +499,10 @@ public class LibraryManager
         }
     }
 }
+
+internal sealed record StoreProductCacheEntry(
+    StoreProductDetails? Details,
+    DateTimeOffset ExpiresAt);
 
 internal class FetchListItem
 {

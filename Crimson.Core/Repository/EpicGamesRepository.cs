@@ -21,6 +21,44 @@ namespace Crimson.Repository
         private const string EcommerceHost = "ecommerceintegration-public-service-ecomprod02.ol.epicgames.com";
         private const string OAuthHost = "account-public-service-prod03.ol.epicgames.com";
         private const string StoreSearchUrl = "https://launcher.store.epicgames.com/graphql";
+        private const string StoreProductDetailsQuery = """
+            query productDetails($locale: String!, $sandboxId: String!) {
+                Product {
+                    sandbox(sandboxId: $sandboxId) {
+                        configuration(locale: $locale) {
+                            __typename
+                            ... on StoreConfiguration {
+                                configs {
+                                    developerDisplayName
+                                    gameWebsite
+                                    keyImages { __typename type url alt }
+                                    pcReleaseDate
+                                    productDisplayName
+                                    publisherDisplayName
+                                    shortDescription
+                                    supportedAudio
+                                    supportedText
+                                    tags(locale: $locale) { name groupName }
+                                    technicalRequirements {
+                                        windows { minimum recommended title }
+                                    }
+                                }
+                            }
+                            ... on HomeConfiguration {
+                                configs {
+                                    longDescription
+                                    keyImages {
+                                        __typename
+                                        ... on KeyImage { type url alt }
+                                        ... on Video { type url alt }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            """;
         private const string StoreSearchQuery = """
             query searchStoreQuery(
                 $count: Int,
@@ -103,6 +141,54 @@ namespace Crimson.Repository
             catch (Exception ex)
             {
                 _log.Error("FetchGameMetaData failed with {ErrorType}", ex.GetType().Name);
+                return null;
+            }
+        }
+
+        public async Task<StoreProductDetails?> FetchStoreProductDetails(
+            string nameSpace,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(nameSpace))
+                return null;
+
+            var payload = JsonSerializer.Serialize(new
+            {
+                query = StoreProductDetailsQuery,
+                variables = new
+                {
+                    locale = "en-US",
+                    sandboxId = nameSpace
+                }
+            });
+
+            try
+            {
+                using var request = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    EpicEndpointPolicy.RequireStoreUri(StoreSearchUrl))
+                {
+                    Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                };
+                using var response = await _storeClient.SendAsync(request, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _log.Warning(
+                        "FetchStoreProductDetails failed with HTTP {StatusCode}",
+                        (int)response.StatusCode);
+                    return null;
+                }
+
+                var result = await response.Content.ReadAsStringAsync(cancellationToken);
+                return StoreProductDetailsParser.Parse(result);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning(ex, "FetchStoreProductDetails failed");
                 return null;
             }
         }

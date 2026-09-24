@@ -75,6 +75,24 @@ public sealed class LibrarySessionTests : IDisposable
         Assert.Equal(2, repository.AssetRequests);
     }
 
+    [Fact]
+    public async Task StoreProductDetailsAreCachedUntilInvalidated()
+    {
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var repository = new ControlledRepository();
+        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new LibraryManager(_logger, repository, storage, auth);
+
+        var first = await library.GetStoreProductDetails("example-namespace");
+        var second = await library.GetStoreProductDetails("example-namespace");
+        library.InvalidateCache();
+        var refreshed = await library.GetStoreProductDetails("example-namespace");
+
+        Assert.Same(first, second);
+        Assert.NotSame(first, refreshed);
+        Assert.Equal(2, repository.ProductRequests);
+    }
+
     public void Dispose()
     {
         _http.Dispose();
@@ -86,6 +104,7 @@ public sealed class LibrarySessionTests : IDisposable
     {
         public string Account = "first";
         public int AssetRequests;
+        public int ProductRequests;
         public TaskCompletionSource<bool> FirstRequest { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<Metadata> FirstMetadata { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -105,6 +124,17 @@ public sealed class LibrarySessionTests : IDisposable
         }
 
         public static Metadata Metadata(string app) => new() { Id = app, Title = app, KeyImages = [] };
+
+        public Task<StoreProductDetails?> FetchStoreProductDetails(
+            string nameSpace,
+            CancellationToken cancellationToken = default)
+        {
+            ProductRequests++;
+            return Task.FromResult<StoreProductDetails?>(new StoreProductDetails
+            {
+                ProductName = $"Product {ProductRequests}"
+            });
+        }
         public Task<IReadOnlyList<StoreSearchResult>> SearchStore(string query, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<byte[]> GetGameManifest(GetManifestUrlData data, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task DownloadFileAsync(string url, string destinationPath) => throw new NotSupportedException();
