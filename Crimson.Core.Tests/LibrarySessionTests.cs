@@ -93,6 +93,62 @@ public sealed class LibrarySessionTests : IDisposable
         Assert.Equal(2, repository.ProductRequests);
     }
 
+    [Fact]
+    public async Task InFlightStoreDetailsDoNotRepopulateInvalidatedCache()
+    {
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var repository = new ControlledRepository { DelayNextProductRequest = true };
+        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new LibraryManager(_logger, repository, storage, auth);
+
+        var staleRequest = library.GetStoreProductDetails("example-namespace");
+        await repository.ProductRequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        library.InvalidateCache();
+        repository.DelayedProduct.SetResult(new StoreProductDetails { ProductName = "Stale" });
+        await staleRequest.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var refreshed = await library.GetStoreProductDetails("example-namespace");
+
+        Assert.Equal("Product 2", refreshed?.ProductName);
+        Assert.Equal(2, repository.ProductRequests);
+    }
+
+    [Fact]
+    public async Task OlderConcurrentStoreResponseCannotOverwriteNewerResponse()
+    {
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var repository = new ControlledRepository { DelayTwoProductRequests = true };
+        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new LibraryManager(_logger, repository, storage, auth);
+
+        var olderRequest = library.GetStoreProductDetails("example-namespace");
+        var newerRequest = library.GetStoreProductDetails("example-namespace");
+        await repository.TwoProductRequestsStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        repository.SecondDelayedProduct.SetResult(new StoreProductDetails { ProductName = "Newer" });
+        var newer = await newerRequest.WaitAsync(TimeSpan.FromSeconds(5));
+        repository.DelayedProduct.SetResult(new StoreProductDetails { ProductName = "Older" });
+        await olderRequest.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var cached = await library.GetStoreProductDetails("example-namespace");
+
+        Assert.Same(newer, cached);
+        Assert.Equal(2, repository.ProductRequests);
+    }
+
+    [Fact]
+    public async Task UnavailableStoreDetailsAreRetried()
+    {
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var repository = new ControlledRepository { ProductDetailsUnavailable = true };
+        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new LibraryManager(_logger, repository, storage, auth);
+
+        await library.GetStoreProductDetails("example-namespace");
+        await library.GetStoreProductDetails("example-namespace");
+
+        Assert.Equal(2, repository.ProductRequests);
+    }
+
     public void Dispose()
     {
         _http.Dispose();
@@ -105,8 +161,15 @@ public sealed class LibrarySessionTests : IDisposable
         public string Account = "first";
         public int AssetRequests;
         public int ProductRequests;
+        public bool DelayNextProductRequest;
+        public bool DelayTwoProductRequests;
+        public bool ProductDetailsUnavailable;
         public TaskCompletionSource<bool> FirstRequest { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<Metadata> FirstMetadata { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> ProductRequestStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> TwoProductRequestsStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<StoreProductDetails?> DelayedProduct { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<StoreProductDetails?> SecondDelayedProduct { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live")
         {
@@ -130,6 +193,23 @@ public sealed class LibrarySessionTests : IDisposable
             CancellationToken cancellationToken = default)
         {
             ProductRequests++;
+            if (ProductDetailsUnavailable)
+                return Task.FromResult<StoreProductDetails?>(null);
+
+            if (DelayTwoProductRequests)
+            {
+                if (ProductRequests == 2)
+                    TwoProductRequestsStarted.TrySetResult(true);
+                return ProductRequests == 1 ? DelayedProduct.Task : SecondDelayedProduct.Task;
+            }
+
+            if (DelayNextProductRequest)
+            {
+                DelayNextProductRequest = false;
+                ProductRequestStarted.TrySetResult(true);
+                return DelayedProduct.Task;
+            }
+
             return Task.FromResult<StoreProductDetails?>(new StoreProductDetails
             {
                 ProductName = $"Product {ProductRequests}"

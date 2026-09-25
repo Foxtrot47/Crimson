@@ -5,166 +5,564 @@
     xmlns:controls="using:Crimson.Controls"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:local="using:Crimson"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:Crimson.Models"
     xmlns:utils="using:Crimson.Utils"
+    SizeChanged="GameInfoPageSizeChanged"
     mc:Ignorable="d">
 
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <Grid Grid.Row="1" Margin="50,40,50,50">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1*" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-
-            <StackPanel Spacing="20">
-                <TextBlock Style="{StaticResource TitleLargeTextBlockStyle}" Text="{x:Bind ViewModel.Game.AppTitle, Mode=OneWay}" />
-                <StackPanel Orientation="Horizontal" Spacing="10">
-                    <FontIcon FontSize="15" Glyph="&#xE735;" />
-                    <FontIcon FontSize="15" Glyph="&#xE735;" />
-                    <FontIcon FontSize="15" Glyph="&#xE735;" />
-                    <FontIcon FontSize="15" Glyph="&#xE735;" />
-                    <FontIcon FontSize="15" Glyph="&#xE735;" />
-                    <TextBlock Style="{ThemeResource BodyTextBlockStyle}">4.8</TextBlock>
-                </StackPanel>
-
-                <StackPanel Orientation="Horizontal" Spacing="10">
-                    <!--<Border BorderBrush="Black" Padding="10,5,10,5" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="10">
-                        <TextBlock>
-                                    First Person
-                        </TextBlock>
-                    </Border>
-                    <Border BorderBrush="Black" Padding="10,5,10,5" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="10">
-                        <TextBlock>
-                                    Shooter
-                        </TextBlock>
-                    </Border>
-                    <Border BorderBrush="Black" Padding="10,5,10,5" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="10">
-                        <TextBlock>
-                                    Cloud Saves
-                        </TextBlock>
-                    </Border>
-                    <Border BorderBrush="Black" Padding="10,5,10,5" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="10">
-                        <TextBlock>
-                                Controller Support
-                        </TextBlock>
-                    </Border>
-                    <Border BorderBrush="Black" Padding="10,5,10,5" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="10">
-                        <TextBlock>
-                                Single Player
-                        </TextBlock>
-                    </Border>-->
-                </StackPanel>
-
-                <StackPanel Orientation="Horizontal" Spacing="20">
-                    <Button
-                        Padding="20,10,20,10"
-                        Background="{ThemeResource AccentFillColorDefaultBrush}"
-                        Command="{x:Bind ViewModel.PrimaryActionCommand}"
-                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                        IsEnabled="{x:Bind ViewModel.IsPrimaryActionEnabled, Mode=OneWay}">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <ProgressRing
-                                IsActive="True"
-                                IsIndeterminate="{x:Bind ViewModel.IsProgressRingIndeterminate, Mode=OneWay}"
-                                Visibility="{x:Bind ViewModel.IsProgressRingVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
-                                Value="{x:Bind ViewModel.ProgressValue, Mode=OneWay}" />
-                            <FontIcon Glyph="{x:Bind ViewModel.PrimaryAction, Mode=OneWay, Converter={StaticResource GamePrimaryActionGlyphConverter}}" />
-                            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.PrimaryActionButtonText, Mode=OneWay}" />
-                        </StackPanel>
-                    </Button>
-
-                    <Button
-                        Padding="20,10,20,10"
-                        Command="{x:Bind ViewModel.ImportGameCommand}"
-                        Visibility="{x:Bind ViewModel.IsImportVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <FontIcon Glyph="&#xE8B5;" />
-                            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}">Import</TextBlock>
-                        </StackPanel>
-                    </Button>
-
-                    <DropDownButton IsEnabled="{x:Bind ViewModel.IsInstalled, Mode=OneWay}">
-                        <DropDownButton.Content>
-                            <StackPanel
-                                Padding="10,5,10,5"
-                                Orientation="Horizontal"
-                                Spacing="10">
-                                <FontIcon Glyph="&#xE713;" />
-                                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}">
-                                    Manage
-                                </TextBlock>
-                            </StackPanel>
-                        </DropDownButton.Content>
-                        <DropDownButton.Flyout>
-                            <MenuFlyout Placement="Bottom">
-                                <MenuFlyout.MenuFlyoutPresenterStyle>
-                                    <Style TargetType="MenuFlyoutPresenter">
-                                        <Setter Property="MinWidth" Value="170" />
-                                    </Style>
-                                </MenuFlyout.MenuFlyoutPresenterStyle>
-                                <MenuFlyout.Items>
-                                    <MenuFlyoutItem Command="{x:Bind ViewModel.VerifyRepairCommand}" Text="Verify / Repair">
-                                        <MenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE90F;" />
-                                        </MenuFlyoutItem.Icon>
-                                    </MenuFlyoutItem>
-                                    <MenuFlyoutItem Command="{x:Bind ViewModel.MoveGameCommand}" Text="Move">
-                                        <MenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE8DE;" />
-                                        </MenuFlyoutItem.Icon>
-                                    </MenuFlyoutItem>
-                                    <MenuFlyoutItem Command="{x:Bind ViewModel.UninstallCommand}" Text="Uninstall">
-                                        <MenuFlyoutItem.Icon>
-                                            <FontIcon Glyph="&#xE74D;" />
-                                        </MenuFlyoutItem.Icon>
-                                    </MenuFlyoutItem>
-                                </MenuFlyout.Items>
-                            </MenuFlyout>
-                        </DropDownButton.Flyout>
-                    </DropDownButton>
-                </StackPanel>
-
-                <Border
-                    Padding="14,10"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    CornerRadius="8"
-                    Visibility="{x:Bind ViewModel.IsOperationStatusVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <StackPanel Spacing="4">
-                        <TextBlock
-                            Style="{ThemeResource BodyStrongTextBlockStyle}"
-                            Text="{x:Bind ViewModel.OperationStatusText, Mode=OneWay}" />
-                        <TextBlock
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="{x:Bind ViewModel.OperationDetail, Mode=OneWay}"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-
-            </StackPanel>
-
-            <StackPanel Grid.Column="1">
-                <Border
-                    Width="700"
-                    Height="400"
-                    BorderBrush="Black"
-                    BorderThickness="1"
-                    CornerRadius="10">
-                    <Image Source="{x:Bind ViewModel.TitleImageUrl, Converter={StaticResource ImageUrlConverter}, Mode=OneWay}" Stretch="UniformToFill" />
-                </Border>
-            </StackPanel>
-        </Grid>
-
-        <controls:AppInstallDialog x:Name="InstallDialog" />
-
-    </Grid>
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <utils:GamePrimaryActionGlyphConverter x:Key="GamePrimaryActionGlyphConverter" />
         <utils:ImageUrlConverter x:Key="ImageUrlConverter" />
+        <AcrylicBrush
+            x:Key="GameInfoOverlayBrush"
+            FallbackColor="#EA171717"
+            TintColor="#171717"
+            TintLuminosityOpacity="0.72"
+            TintOpacity="0.70" />
     </Page.Resources>
+
+    <Grid x:Name="LayoutRoot">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup>
+                <VisualState x:Name="Compact" />
+                <VisualState x:Name="Wide">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="1400" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="OverviewGrid.ColumnSpacing" Value="28" />
+                        <Setter Target="OverviewGrid.RowSpacing" Value="0" />
+                        <Setter Target="CoverColumn.Width" Value="220" />
+                        <Setter Target="ContentColumn.Width" Value="*" />
+                        <Setter Target="SideColumn.Width" Value="280" />
+                        <Setter Target="CoverCard.HorizontalAlignment" Value="Left" />
+                        <Setter Target="MainCard.(Grid.Row)" Value="0" />
+                        <Setter Target="MainCard.(Grid.Column)" Value="1" />
+                        <Setter Target="SidePanel.(Grid.Row)" Value="0" />
+                        <Setter Target="SidePanel.(Grid.Column)" Value="2" />
+                        <Setter Target="ActionPanel.Orientation" Value="Horizontal" />
+                        <Setter Target="GameTitle.FontSize" Value="40" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <StackPanel
+                MaxWidth="1280"
+                Margin="28,24,28,48"
+                HorizontalAlignment="Center"
+                Spacing="28">
+
+                <Border
+                    x:Name="HeroSurface"
+                    MinHeight="480"
+                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                    CornerRadius="14">
+                    <Grid>
+                        <Image
+                            x:Name="HeroImage"
+                            AutomationProperties.Name="Game background artwork"
+                            ImageFailed="HeroImageFailed"
+                            ImageOpened="HeroImageOpened"
+                            Opacity="0"
+                            Source="{x:Bind ViewModel.HeroImageUrl, Mode=OneWay, Converter={StaticResource ImageUrlConverter}}"
+                            Stretch="UniformToFill">
+                            <Image.OpacityTransition>
+                                <ScalarTransition Duration="0:0:0.35" />
+                            </Image.OpacityTransition>
+                        </Image>
+
+                        <Border>
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Offset="0" Color="#60101010" />
+                                    <GradientStop Offset="0.52" Color="#78101010" />
+                                    <GradientStop Offset="1" Color="#E8101010" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+
+                        <ProgressRing
+                            x:Name="HeroImageLoadingRing"
+                            Width="34"
+                            Height="34"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            IsActive="True"
+                            Visibility="{x:Bind ViewModel.HasHeroImage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                        <Grid
+                            x:Name="OverviewGrid"
+                            Margin="28"
+                            VerticalAlignment="Bottom"
+                            ColumnSpacing="0"
+                            RowSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="CoverColumn" Width="*" />
+                                <ColumnDefinition x:Name="ContentColumn" Width="0" />
+                                <ColumnDefinition x:Name="SideColumn" Width="0" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Border
+                                x:Name="CoverCard"
+                                Grid.Row="0"
+                                Width="220"
+                                Height="293"
+                                HorizontalAlignment="Center"
+                                Background="#CC202020"
+                                CornerRadius="10">
+                                <Grid>
+                                    <FontIcon
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.Name="Cover artwork unavailable"
+                                        FontSize="40"
+                                        Glyph="&#xE7FC;"
+                                        Opacity="0.65" />
+                                    <ProgressRing
+                                        x:Name="CoverImageLoadingRing"
+                                        Width="28"
+                                        Height="28"
+                                        IsActive="True"
+                                        Visibility="{x:Bind ViewModel.HasCoverImage, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    <Image
+                                        x:Name="CoverImage"
+                                        AutomationProperties.Name="Game cover artwork"
+                                        ImageFailed="CoverImageFailed"
+                                        ImageOpened="CoverImageOpened"
+                                        Opacity="0"
+                                        Source="{x:Bind ViewModel.CoverImageUrl, Mode=OneWay, Converter={StaticResource ImageUrlConverter}}"
+                                        Stretch="UniformToFill">
+                                        <Image.OpacityTransition>
+                                            <ScalarTransition Duration="0:0:0.25" />
+                                        </Image.OpacityTransition>
+                                    </Image>
+                                </Grid>
+                            </Border>
+
+                            <Border
+                                x:Name="MainCard"
+                                Grid.Row="1"
+                                Padding="22"
+                                Background="{StaticResource GameInfoOverlayBrush}"
+                                CornerRadius="12">
+                                <StackPanel x:Name="MainPanel" Spacing="16">
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                x:Name="GameTitle"
+                                                Foreground="White"
+                                                FontSize="32"
+                                                FontWeight="SemiBold"
+                                                Text="{x:Bind ViewModel.Game.AppTitle, Mode=OneWay}"
+                                                TextWrapping="Wrap" />
+                                            <Border
+                                                Grid.Column="1"
+                                                Padding="10,5"
+                                                VerticalAlignment="Center"
+                                                Background="#A62A2A2A"
+                                                CornerRadius="12">
+                                                <TextBlock
+                                                    Foreground="#E6FFFFFF"
+                                                    Style="{ThemeResource CaptionTextBlockStyle}"
+                                                    Text="{x:Bind ViewModel.GameStatusText, Mode=OneWay}" />
+                                            </Border>
+                                        </Grid>
+                                        <TextBlock
+                                            Foreground="#D6FFFFFF"
+                                            Text="{x:Bind ViewModel.DeveloperName, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+
+                                    <StackPanel
+                                        Orientation="Horizontal"
+                                        Spacing="10"
+                                        Visibility="{x:Bind ViewModel.IsDetailsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <ProgressRing
+                                            Width="18"
+                                            Height="18"
+                                            Foreground="White"
+                                            IsActive="{x:Bind ViewModel.IsDetailsLoading, Mode=OneWay}" />
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="#D6FFFFFF"
+                                            Text="Loading Store details" />
+                                    </StackPanel>
+
+                                    <TextBlock
+                                        Foreground="#FF8DD8F8"
+                                        Text="{x:Bind ViewModel.TagsText, Mode=OneWay}"
+                                        TextWrapping="WrapWholeWords"
+                                        Visibility="{x:Bind ViewModel.HasTags, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                                    <StackPanel
+                                        x:Name="ActionPanel"
+                                        Orientation="Vertical"
+                                        Spacing="10">
+                                        <Button
+                                            Padding="20,10"
+                                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                            Command="{x:Bind ViewModel.PrimaryActionCommand}"
+                                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                            IsEnabled="{x:Bind ViewModel.IsPrimaryActionEnabled, Mode=OneWay}">
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <ProgressRing
+                                                    Width="18"
+                                                    Height="18"
+                                                    IsActive="True"
+                                                    IsIndeterminate="{x:Bind ViewModel.IsProgressRingIndeterminate, Mode=OneWay}"
+                                                    Visibility="{x:Bind ViewModel.IsProgressRingVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                    Value="{x:Bind ViewModel.ProgressValue, Mode=OneWay}" />
+                                                <FontIcon Glyph="{x:Bind ViewModel.PrimaryAction, Mode=OneWay, Converter={StaticResource GamePrimaryActionGlyphConverter}}" />
+                                                <TextBlock Text="{x:Bind ViewModel.PrimaryActionButtonText, Mode=OneWay}" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button
+                                            Padding="20,10"
+                                            Command="{x:Bind ViewModel.ImportGameCommand}"
+                                            Visibility="{x:Bind ViewModel.IsImportVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <FontIcon Glyph="&#xE8B5;" />
+                                                <TextBlock Text="Import" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <DropDownButton IsEnabled="{x:Bind ViewModel.IsInstalled, Mode=OneWay}">
+                                            <DropDownButton.Content>
+                                                <StackPanel Padding="8,3" Orientation="Horizontal" Spacing="10">
+                                                    <FontIcon Glyph="&#xE713;" />
+                                                    <TextBlock Text="Manage" />
+                                                </StackPanel>
+                                            </DropDownButton.Content>
+                                            <DropDownButton.Flyout>
+                                                <MenuFlyout Placement="Bottom">
+                                                    <MenuFlyoutItem Command="{x:Bind ViewModel.VerifyRepairCommand}" Text="Verify / Repair">
+                                                        <MenuFlyoutItem.Icon>
+                                                            <FontIcon Glyph="&#xE90F;" />
+                                                        </MenuFlyoutItem.Icon>
+                                                    </MenuFlyoutItem>
+                                                    <MenuFlyoutItem Command="{x:Bind ViewModel.MoveGameCommand}" Text="Move">
+                                                        <MenuFlyoutItem.Icon>
+                                                            <FontIcon Glyph="&#xE8DE;" />
+                                                        </MenuFlyoutItem.Icon>
+                                                    </MenuFlyoutItem>
+                                                    <MenuFlyoutItem Command="{x:Bind ViewModel.UninstallCommand}" Text="Uninstall">
+                                                        <MenuFlyoutItem.Icon>
+                                                            <FontIcon Glyph="&#xE74D;" />
+                                                        </MenuFlyoutItem.Icon>
+                                                    </MenuFlyoutItem>
+                                                </MenuFlyout>
+                                            </DropDownButton.Flyout>
+                                        </DropDownButton>
+                                    </StackPanel>
+
+                                    <Border
+                                        Padding="14,10"
+                                        Background="#A6262626"
+                                        CornerRadius="8"
+                                        Visibility="{x:Bind ViewModel.IsOperationStatusVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock
+                                                Foreground="White"
+                                                Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                                Text="{x:Bind ViewModel.OperationStatusText, Mode=OneWay}" />
+                                            <TextBlock
+                                                Foreground="#D6FFFFFF"
+                                                Text="{x:Bind ViewModel.OperationDetail, Mode=OneWay}"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <StackPanel
+                                x:Name="SidePanel"
+                                Grid.Row="2"
+                                Spacing="12">
+                                <Border
+                                    Padding="16"
+                                    Background="{StaticResource GameInfoOverlayBrush}"
+                                    CornerRadius="10"
+                                    Visibility="{x:Bind ViewModel.HasAdditionalDetails, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <StackPanel Spacing="16">
+                                        <StackPanel
+                                            Spacing="4"
+                                            Visibility="{x:Bind ViewModel.HasPublisher, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBlock Foreground="#BFFFFFFF" Text="Publisher" />
+                                            <TextBlock Foreground="White" Text="{x:Bind ViewModel.PublisherName, Mode=OneWay}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <StackPanel
+                                            Spacing="4"
+                                            Visibility="{x:Bind ViewModel.HasReleaseDate, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBlock Foreground="#BFFFFFFF" Text="Release date" />
+                                            <TextBlock Foreground="White" Text="{x:Bind ViewModel.ReleaseDateText, Mode=OneWay}" />
+                                        </StackPanel>
+                                        <StackPanel
+                                            Spacing="4"
+                                            Visibility="{x:Bind ViewModel.HasInstalledVersion, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBlock Foreground="#BFFFFFFF" Text="Installed build" />
+                                            <TextBlock
+                                                Foreground="White"
+                                                Text="{x:Bind ViewModel.InstalledVersion, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <StackPanel
+                                            Spacing="4"
+                                            Visibility="{x:Bind ViewModel.HasSupportedLanguages, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBlock Foreground="#BFFFFFFF" Text="Text languages" />
+                                            <TextBlock
+                                                Foreground="White"
+                                                Text="{x:Bind ViewModel.SupportedLanguagesText, Mode=OneWay}"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <StackPanel
+                    Spacing="12"
+                    Visibility="{x:Bind ViewModel.HasScreenshots, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Style="{ThemeResource SubtitleTextBlockStyle}"
+                            Text="Screenshots" />
+                        <StackPanel
+                            HorizontalAlignment="Right"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <Button
+                                Width="48"
+                                Height="48"
+                                AutomationProperties.Name="Previous screenshots"
+                                Click="PreviousScreenshotsClicked">
+                                <FontIcon FontSize="18" Glyph="&#xE76B;" />
+                            </Button>
+                            <Button
+                                Width="48"
+                                Height="48"
+                                AutomationProperties.Name="Next screenshots"
+                                Click="NextScreenshotsClicked">
+                                <FontIcon FontSize="18" Glyph="&#xE76C;" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                    <ScrollViewer
+                        x:Name="ScreenshotScroller"
+                        HorizontalScrollBarVisibility="Auto"
+                        HorizontalScrollMode="Enabled"
+                        VerticalScrollBarVisibility="Disabled"
+                        VerticalScrollMode="Disabled"
+                        ZoomMode="Disabled">
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.Screenshots, Mode=OneWay}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:StoreProductImage">
+                                    <Button
+                                        Width="400"
+                                        Height="225"
+                                        Margin="0,0,14,0"
+                                        Padding="0"
+                                        AutomationProperties.HelpText="{x:Bind AltText, Mode=OneWay}"
+                                        AutomationProperties.Name="Open screenshot"
+                                        Click="ScreenshotClicked"
+                                        Tag="{Binding}">
+                                        <Grid Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                            <FontIcon
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                AutomationProperties.Name="Screenshot unavailable"
+                                                FontSize="32"
+                                                Glyph="&#xEB9F;"
+                                                Opacity="0.65" />
+                                            <ProgressRing
+                                                x:Name="ScreenshotLoadingRing"
+                                                Width="28"
+                                                Height="28"
+                                                IsActive="True" />
+                                            <Image
+                                                ImageFailed="ScreenshotImageFailed"
+                                                ImageOpened="ScreenshotImageOpened"
+                                                Opacity="0"
+                                                Source="{x:Bind Url, Converter={StaticResource ImageUrlConverter}}"
+                                                Stretch="UniformToFill">
+                                                <Image.OpacityTransition>
+                                                    <ScalarTransition Duration="0:0:0.25" />
+                                                </Image.OpacityTransition>
+                                            </Image>
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+
+                <StackPanel
+                    Spacing="8"
+                    Visibility="{x:Bind ViewModel.HasGameDescription, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="About" />
+                    <TextBlock
+                        MaxWidth="960"
+                        HorizontalAlignment="Left"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        LineHeight="22"
+                        Text="{x:Bind ViewModel.GameDescription, Mode=OneWay}"
+                        TextWrapping="WrapWholeWords" />
+                </StackPanel>
+
+                <InfoBar
+                    IsClosable="False"
+                    IsOpen="{x:Bind ViewModel.IsStoreDetailsUnavailable, Mode=OneWay}"
+                    Message="Extended Store details could not be loaded for this title."
+                    Severity="Informational"
+                    Title="Store details unavailable" />
+
+                <StackPanel
+                    Spacing="12"
+                    Visibility="{x:Bind ViewModel.HasWindowsRequirements, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Windows requirements" />
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        CornerRadius="10">
+                        <ScrollViewer
+                            HorizontalScrollBarVisibility="Auto"
+                            HorizontalScrollMode="Auto"
+                            VerticalScrollBarVisibility="Disabled"
+                            VerticalScrollMode="Disabled">
+                            <Grid MinWidth="720">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid
+                                    Padding="18,14"
+                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                    ColumnSpacing="24">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{ThemeResource BodyStrongTextBlockStyle}" Text="Specification" />
+                                    <TextBlock Grid.Column="1" Style="{ThemeResource BodyStrongTextBlockStyle}" Text="Minimum" />
+                                    <TextBlock Grid.Column="2" Style="{ThemeResource BodyStrongTextBlockStyle}" Text="Recommended" />
+                                </Grid>
+                                <ItemsControl
+                                    Grid.Row="1"
+                                    ItemsSource="{x:Bind ViewModel.WindowsRequirements, Mode=OneWay}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:StoreSystemRequirement">
+                                            <Grid Padding="18,14" ColumnSpacing="24">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="180" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock
+                                                    Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                                    Text="{x:Bind Title}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{x:Bind Minimum}"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    Grid.Column="2"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{x:Bind Recommended}"
+                                                    TextWrapping="Wrap" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <ContentDialog
+            x:Name="ScreenshotDialog"
+            MaxWidth="1200"
+            Padding="0"
+            Background="Black"
+            Opened="ScreenshotDialogOpened">
+            <ContentDialog.Resources>
+                <x:Double x:Key="ContentDialogMaxWidth">1200</x:Double>
+                <x:Double x:Key="ContentDialogMaxHeight">900</x:Double>
+                <Thickness x:Key="ContentDialogPadding">0</Thickness>
+            </ContentDialog.Resources>
+            <Grid
+                x:Name="ScreenshotViewer"
+                Background="Black"
+                KeyDown="ScreenshotDialogKeyDown">
+                <ProgressRing
+                    x:Name="ExpandedScreenshotLoadingRing"
+                    Width="44"
+                    Height="44"
+                    IsActive="False" />
+                <TextBlock
+                    x:Name="ExpandedScreenshotErrorText"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Foreground="White"
+                    Style="{ThemeResource BodyStrongTextBlockStyle}"
+                    Text="Screenshot could not be loaded."
+                    Visibility="Collapsed" />
+                <Image
+                    x:Name="ExpandedScreenshotImage"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    ImageFailed="ExpandedScreenshotImageFailed"
+                    ImageOpened="ExpandedScreenshotImageOpened"
+                    Opacity="0"
+                    Stretch="Uniform">
+                    <Image.OpacityTransition>
+                        <ScalarTransition Duration="0:0:0.25" />
+                    </Image.OpacityTransition>
+                </Image>
+                <Button
+                    x:Name="ScreenshotCloseButton"
+                    Width="52"
+                    Height="52"
+                    Margin="12"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Canvas.ZIndex="10"
+                    AutomationProperties.Name="Close screenshot"
+                    Background="#F2FFFFFF"
+                    BorderBrush="#33000000"
+                    BorderThickness="1"
+                    Click="CloseScreenshotClicked"
+                    Foreground="Black">
+                    <FontIcon FontSize="20" Glyph="&#xE711;" />
+                </Button>
+            </Grid>
+        </ContentDialog>
+
+        <controls:AppInstallDialog x:Name="InstallDialog" />
+    </Grid>
 </Page>

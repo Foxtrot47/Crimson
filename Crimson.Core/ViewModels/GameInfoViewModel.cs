@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -23,6 +25,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     private readonly LibraryManager _libraryManager;
     private readonly Storage _storage;
     private readonly ILogger<GameInfoViewModel> _log;
+    private CancellationTokenSource? _storeDetailsCancellation;
 
     [ObservableProperty]
     private Game? _game;
@@ -52,7 +55,79 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     private double _progressValue;
 
     [ObservableProperty]
-    private string? _titleImageUrl;
+    private string? _coverImageUrl;
+
+    [ObservableProperty]
+    private bool _hasCoverImage;
+
+    [ObservableProperty]
+    private string? _heroImageUrl;
+
+    [ObservableProperty]
+    private bool _hasHeroImage;
+
+    [ObservableProperty]
+    private IReadOnlyList<StoreProductImage> _screenshots = [];
+
+    [ObservableProperty]
+    private bool _hasScreenshots;
+
+    [ObservableProperty]
+    private string _developerName = string.Empty;
+
+    [ObservableProperty]
+    private string _publisherName = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasPublisher;
+
+    [ObservableProperty]
+    private string _gameDescription = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasGameDescription;
+
+    [ObservableProperty]
+    private bool _isDetailsLoading;
+
+    [ObservableProperty]
+    private bool _isStoreDetailsUnavailable;
+
+    [ObservableProperty]
+    private string _tagsText = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasTags;
+
+    [ObservableProperty]
+    private string _releaseDateText = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasReleaseDate;
+
+    [ObservableProperty]
+    private string _supportedLanguagesText = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasSupportedLanguages;
+
+    [ObservableProperty]
+    private IReadOnlyList<StoreSystemRequirement> _windowsRequirements = [];
+
+    [ObservableProperty]
+    private bool _hasWindowsRequirements;
+
+    [ObservableProperty]
+    private string _gameStatusText = string.Empty;
+
+    [ObservableProperty]
+    private string _installedVersion = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasInstalledVersion;
+
+    [ObservableProperty]
+    private bool _hasAdditionalDetails;
 
     [ObservableProperty]
     private bool _isOperationStatusVisible;
@@ -89,21 +164,30 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         if (parameter is not string appName) return;
 
         UnregisterEventHandlers();
+        CancelStoreDetailsRequest();
         Game = _libraryManager.GetGameInfo(appName);
         if (Game is null) return;
 
-        var gameImage = Game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBox");
-        TitleImageUrl = gameImage?.Url;
-
+        ApplyCatalogMetadata(Game);
         _libraryManager.GameStatusUpdated += CheckGameStatus;
         _installer.OperationUpdated += HandleOperationUpdated;
         CheckGameStatus(Game);
+
+        _storeDetailsCancellation = new CancellationTokenSource();
+        await LoadStoreDetails(appName, Game.Metadata.Namespace, _storeDetailsCancellation.Token);
     }
 
     private void UnregisterEventHandlers()
     {
         _libraryManager.GameStatusUpdated -= CheckGameStatus;
         _installer.OperationUpdated -= HandleOperationUpdated;
+    }
+
+    private void CancelStoreDetailsRequest()
+    {
+        _storeDetailsCancellation?.Cancel();
+        _storeDetailsCancellation?.Dispose();
+        _storeDetailsCancellation = null;
     }
 
     [RelayCommand]
@@ -205,10 +289,148 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         {
             if (Game?.AppName != updatedGame.AppName) return;
             Game = updatedGame;
+            ApplyLocalGameDetails(updatedGame);
             ApplyGameStatus(updatedGame.LocalAppState?.InstallStatus);
             ApplyOperation(operation);
         });
     }
+
+    private async Task LoadStoreDetails(
+        string appName,
+        string nameSpace,
+        CancellationToken cancellationToken)
+    {
+        IsDetailsLoading = true;
+        try
+        {
+            var details = await _libraryManager.GetStoreProductDetails(nameSpace, cancellationToken);
+            _uiDispatcher.TryEnqueue(() =>
+            {
+                if (cancellationToken.IsCancellationRequested || Game?.AppName != appName) return;
+                ApplyStoreDetails(details);
+                IsDetailsLoading = false;
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private void ApplyCatalogMetadata(Game game)
+    {
+        CoverImageUrl = FindImage(game.Metadata.KeyImages, "DieselGameBoxTall", "OfferImageTall", "DieselGameBox");
+        HasCoverImage = !string.IsNullOrWhiteSpace(CoverImageUrl);
+        HeroImageUrl = FindImage(game.Metadata.KeyImages, "DieselGameBox", "OfferImageWide");
+        HasHeroImage = !string.IsNullOrWhiteSpace(HeroImageUrl);
+        Screenshots = [];
+        HasScreenshots = false;
+        DeveloperName = game.Metadata.Developer ?? string.Empty;
+        PublisherName = string.Empty;
+        HasPublisher = false;
+        TagsText = string.Empty;
+        HasTags = false;
+        ReleaseDateText = string.Empty;
+        HasReleaseDate = false;
+        SupportedLanguagesText = string.Empty;
+        HasSupportedLanguages = false;
+        WindowsRequirements = [];
+        HasWindowsRequirements = false;
+        IsStoreDetailsUnavailable = false;
+        ApplyDescription(game.Metadata.Description, game.AppTitle);
+        ApplyLocalGameDetails(game);
+    }
+
+    private void ApplyStoreDetails(StoreProductDetails? details)
+    {
+        IsStoreDetailsUnavailable = details is null;
+        if (details is null) return;
+
+        HeroImageUrl = FirstNonEmpty(
+            HeroImageUrl,
+            FindImage(details.Images, "featuredMedia", "OfferImageWide"));
+        HasHeroImage = !string.IsNullOrWhiteSpace(HeroImageUrl);
+        Screenshots = GetScreenshots(details.Images);
+        HasScreenshots = Screenshots.Count > 0;
+        DeveloperName = FirstNonEmpty(details.DeveloperName, DeveloperName);
+        PublisherName = details.PublisherName ?? string.Empty;
+        HasPublisher = !string.IsNullOrWhiteSpace(PublisherName);
+        var tags = details.Tags.Take(8).ToList();
+        TagsText = string.Join("  •  ", tags.Select(tag => tag.Name));
+        HasTags = tags.Count > 0;
+        ReleaseDateText = details.ReleaseDate?.ToString("d MMMM yyyy") ?? string.Empty;
+        HasReleaseDate = !string.IsNullOrWhiteSpace(ReleaseDateText);
+        SupportedLanguagesText = string.Join(", ", details.SupportedTextLanguages);
+        HasSupportedLanguages = !string.IsNullOrWhiteSpace(SupportedLanguagesText);
+        WindowsRequirements = details.WindowsRequirements;
+        HasWindowsRequirements = WindowsRequirements.Count > 0;
+        UpdateAdditionalDetailsVisibility();
+        ApplyDescription(
+            StoreDescriptionFormatter.ToPlainText(details.LongDescription),
+            Game?.AppTitle,
+            details.ShortDescription);
+    }
+
+    private void ApplyDescription(string? preferred, string? title, string? fallback = null)
+    {
+        var description = FirstNonEmpty(preferred, fallback);
+        if (string.Equals(description, title, StringComparison.OrdinalIgnoreCase))
+            description = string.Empty;
+
+        GameDescription = description;
+        HasGameDescription = !string.IsNullOrWhiteSpace(description);
+    }
+
+    private void ApplyLocalGameDetails(Game game)
+    {
+        InstalledVersion = game.LocalAppState?.Version ?? string.Empty;
+        HasInstalledVersion = !string.IsNullOrWhiteSpace(InstalledVersion);
+        UpdateAdditionalDetailsVisibility();
+    }
+
+    private void UpdateAdditionalDetailsVisibility()
+    {
+        HasAdditionalDetails = HasPublisher || HasReleaseDate ||
+            HasInstalledVersion || HasSupportedLanguages;
+    }
+
+    private static string? FindImage(IEnumerable<KeyImage>? images, params string[] preferredTypes) =>
+        FindImage(
+            images?.Select(image => new StoreProductImage
+            {
+                Type = image.Type,
+                Url = image.Url,
+                IsVideo = false
+            }) ?? [],
+            preferredTypes);
+
+    private static string? FindImage(
+        IEnumerable<StoreProductImage> images,
+        params string[] preferredTypes)
+    {
+        foreach (var preferredType in preferredTypes)
+        {
+            var url = images.FirstOrDefault(image =>
+                !image.IsVideo &&
+                string.Equals(image.Type, preferredType, StringComparison.OrdinalIgnoreCase) &&
+                EpicEndpointPolicy.TryGetContentUri(image.Url, out _))?.Url;
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+
+        return null;
+    }
+
+    internal static IReadOnlyList<StoreProductImage> GetScreenshots(
+        IEnumerable<StoreProductImage> images) => images
+        .Where(image =>
+            !image.IsVideo &&
+            string.Equals(image.Type, "featuredMedia", StringComparison.OrdinalIgnoreCase) &&
+            EpicEndpointPolicy.TryGetContentUri(image.Url, out _))
+        .DistinctBy(image => image.Url, StringComparer.OrdinalIgnoreCase)
+        .Take(8)
+        .ToList();
+
+    private static string FirstNonEmpty(string? preferred, string? fallback) =>
+        !string.IsNullOrWhiteSpace(preferred) ? preferred : fallback ?? string.Empty;
 
     private void ApplyGameStatus(InstallState? installState)
     {
@@ -225,7 +447,18 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         };
         IsInstalled = PrimaryAction is not GamePrimaryAction.Install and not GamePrimaryAction.None;
         IsImportVisible = PrimaryAction == GamePrimaryAction.Install;
+        GameStatusText = GetGameStatusLabel(installState);
     }
+
+    internal static string GetGameStatusLabel(InstallState? installState) => installState switch
+    {
+        InstallState.Installed => "Ready to play",
+        InstallState.NeedUpdate => "Update available",
+        InstallState.Broken => "Repair required",
+        InstallState.Installing or InstallState.Updating or InstallState.Repairing => "Operation in progress",
+        InstallState.InstallationPaused or InstallState.UpdatingPaused => "Operation paused",
+        _ => "Not installed"
+    };
 
     internal static GamePrimaryAction GetPrimaryAction(InstallState? installState) => installState switch
     {
@@ -239,7 +472,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     public void OnNavigatedFrom()
     {
         UnregisterEventHandlers();
-
+        CancelStoreDetailsRequest();
     }
 
     [RelayCommand]
@@ -322,6 +555,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     public void Cleanup()
     {
         UnregisterEventHandlers();
+        CancelStoreDetailsRequest();
     }
 }
 

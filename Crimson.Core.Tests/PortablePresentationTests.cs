@@ -1,3 +1,4 @@
+using Crimson.Core;
 using Crimson.Models;
 using Crimson.ViewModels;
 
@@ -17,6 +18,42 @@ public sealed class PortablePresentationTests
         GamePrimaryAction expected)
     {
         Assert.Equal(expected, GameInfoViewModel.GetPrimaryAction(installState));
+    }
+
+    [Theory]
+    [InlineData(null, "Not installed")]
+    [InlineData(InstallState.Installed, "Ready to play")]
+    [InlineData(InstallState.NeedUpdate, "Update available")]
+    [InlineData(InstallState.Broken, "Repair required")]
+    [InlineData(InstallState.Installing, "Operation in progress")]
+    [InlineData(InstallState.UpdatingPaused, "Operation paused")]
+    public void MapsInstallStateToGameStatus(InstallState? installState, string expected)
+    {
+        Assert.Equal(expected, GameInfoViewModel.GetGameStatusLabel(installState));
+    }
+
+    [Theory]
+    [InlineData("<!--textBlock--><p>First &amp; second</p><br>Third", "First & second\n\nThird")]
+    [InlineData("# Features\n![Scene](https://cdn.example/scene.jpg)\nUse **cross-play** with [friends](https://example.test).", "Features\n\nUse cross-play with friends.")]
+    [InlineData(null, "")]
+    public void FormatsStoreDescriptionAsPlainText(string? value, string expected)
+    {
+        Assert.Equal(expected, StoreDescriptionFormatter.ToPlainText(value));
+    }
+
+    [Fact]
+    public void SelectsDistinctStoreScreenshots()
+    {
+        const string screenshotUrl = "https://cdn1.epicgames.com/images/one.jpg";
+        var screenshots = GameInfoViewModel.GetScreenshots([
+            new StoreProductImage { Type = "featuredMedia", Url = screenshotUrl, IsVideo = false },
+            new StoreProductImage { Type = "featuredMedia", Url = screenshotUrl.ToUpperInvariant(), IsVideo = false },
+            new StoreProductImage { Type = "featuredMedia", Url = "https://cdn1.epicgames.com/video.mp4", IsVideo = true },
+            new StoreProductImage { Type = "featuredMedia", Url = "https://example.test/unsafe.jpg", IsVideo = false },
+            new StoreProductImage { Type = "ProductLogo", Url = "https://cdn1.epicgames.com/logo.png", IsVideo = false }
+        ]);
+
+        Assert.Collection(screenshots, image => Assert.Equal(screenshotUrl, image.Url));
     }
 
     [Fact]

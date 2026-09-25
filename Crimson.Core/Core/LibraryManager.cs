@@ -30,6 +30,9 @@ public class LibraryManager
     private readonly SemaphoreSlim _updateGate = new(1, 1);
     private IReadOnlySet<string> _ownedAppNames = new HashSet<string>();
     private readonly ConcurrentDictionary<string, StoreProductCacheEntry> _storeProductCache = new();
+    private readonly Dictionary<string, long> _storeProductFetchSequences = new();
+    private readonly object _storeProductCacheLock = new();
+    private int _storeProductCacheGeneration;
     private int _ownedAccountGeneration = -1;
 
     public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager)
@@ -51,7 +54,7 @@ public class LibraryManager
             _ownedAppNames = new HashSet<string>();
             _ownedAccountGeneration = -1;
             _lastUpdateDateTime = DateTime.MinValue;
-            _storeProductCache.Clear();
+            InvalidateStoreProductCache();
         }
     }
 
@@ -60,6 +63,16 @@ public class LibraryManager
         lock (_storage.AccountDataLock)
         {
             _lastUpdateDateTime = DateTime.MinValue;
+            InvalidateStoreProductCache();
+        }
+    }
+
+    private void InvalidateStoreProductCache()
+    {
+        lock (_storeProductCacheLock)
+        {
+            _storeProductCacheGeneration++;
+            _storeProductFetchSequences.Clear();
             _storeProductCache.Clear();
         }
     }
@@ -71,15 +84,32 @@ public class LibraryManager
         if (string.IsNullOrWhiteSpace(nameSpace))
             return null;
 
-        if (_storeProductCache.TryGetValue(nameSpace, out var cached) &&
-            cached.ExpiresAt > DateTimeOffset.UtcNow)
-            return cached.Details;
+        int generation;
+        long fetchSequence;
+        lock (_storeProductCacheLock)
+        {
+            if (_storeProductCache.TryGetValue(nameSpace, out var cached) &&
+                cached.ExpiresAt > DateTimeOffset.UtcNow)
+                return cached.Details;
+            generation = _storeProductCacheGeneration;
+            _storeProductFetchSequences.TryGetValue(nameSpace, out fetchSequence);
+            _storeProductFetchSequences[nameSpace] = ++fetchSequence;
+        }
 
         var details = await _storeRepository.FetchStoreProductDetails(nameSpace, cancellationToken);
-        var lifetime = details is null ? TimeSpan.FromMinutes(15) : TimeSpan.FromHours(24);
-        _storeProductCache[nameSpace] = new StoreProductCacheEntry(
-            details,
-            DateTimeOffset.UtcNow.Add(lifetime));
+        cancellationToken.ThrowIfCancellationRequested();
+        if (details is null) return null;
+
+        lock (_storeProductCacheLock)
+        {
+            if (generation == _storeProductCacheGeneration &&
+                _storeProductFetchSequences.GetValueOrDefault(nameSpace) == fetchSequence)
+            {
+                _storeProductCache[nameSpace] = new StoreProductCacheEntry(
+                    details,
+                    DateTimeOffset.UtcNow.AddHours(24));
+            }
+        }
         return details;
     }
 

@@ -2,6 +2,7 @@
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml;
 using CommunityToolkit.WinUI.Converters;
+using Crimson.Core;
 using Crimson.ViewModels;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -33,9 +34,10 @@ public class ImageUrlConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
-        return value is string imageUrl && !string.IsNullOrWhiteSpace(imageUrl)
-            ? new BitmapImage(new Uri(imageUrl))
-            : null!;
+        return value is string imageUrl &&
+            EpicEndpointPolicy.TryGetContentUri(imageUrl, out var uri)
+                ? new BitmapImage(uri)
+                : null!;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)

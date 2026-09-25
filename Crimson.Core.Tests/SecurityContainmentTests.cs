@@ -21,6 +21,26 @@ public sealed class SecurityContainmentTests
         Assert.Throws<InvalidOperationException>(() => EpicEndpointPolicy.RequireContentUri(value));
     }
 
+    [Fact]
+    public void ContentPolicy_TryGetAcceptsApprovedEpicCdnUri()
+    {
+        Assert.True(EpicEndpointPolicy.TryGetContentUri(
+            "https://cdn1.epicgames.com/spt-assets/example/image.jpg",
+            out var uri));
+        Assert.Equal("cdn1.epicgames.com", uri.Host);
+    }
+
+    [Theory]
+    [InlineData("not a URI")]
+    [InlineData("file:///C:/games/image.jpg")]
+    [InlineData("http://cdn1.epicgames.com/image.jpg")]
+    [InlineData("https://localhost/image.jpg")]
+    [InlineData("https://user@cdn1.epicgames.com/image.jpg")]
+    public void ContentPolicy_TryGetRejectsUnsafeImageUris(string value)
+    {
+        Assert.False(EpicEndpointPolicy.TryGetContentUri(value, out _));
+    }
+
     [Theory]
     [InlineData("http://store.epicgames.com/graphql")]
     [InlineData("https://store.epicgames.com.evil.test/graphql")]
