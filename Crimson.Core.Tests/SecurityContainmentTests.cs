@@ -69,6 +69,23 @@ public sealed class SecurityContainmentTests
     }
 
     [Fact]
+    public void ApiPolicy_AllowsLibraryServiceHost()
+    {
+        var uri = EpicEndpointPolicy.RequireApiUri("https://library-service.live.use1a.on.epicgames.com/library/api/public/playtime");
+        Assert.Equal("library-service.live.use1a.on.epicgames.com", uri.Host);
+    }
+
+    [Theory]
+    [InlineData("http://library-service.live.use1a.on.epicgames.com/library")]
+    [InlineData("https://library-service.live.use1a.on.epicgames.com.evil.test/library")]
+    [InlineData("https://user@library-service.live.use1a.on.epicgames.com/library")]
+    [InlineData("https://library-service.live.use1a.on.epicgames.com:444/library")]
+    public void ApiPolicy_RejectsUnapprovedLibraryUris(string value)
+    {
+        Assert.Throws<InvalidOperationException>(() => EpicEndpointPolicy.RequireApiUri(value));
+    }
+
+    [Fact]
     public void StorePolicy_AllowsLauncherGraphQlHost()
     {
         var uri = EpicEndpointPolicy.RequireStoreUri("https://launcher.store.epicgames.com/graphql");

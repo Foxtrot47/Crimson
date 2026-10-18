@@ -34,6 +34,9 @@ public class LibraryManager
     private readonly object _storeProductCacheLock = new();
     private int _storeProductCacheGeneration;
     private int _ownedAccountGeneration = -1;
+    private readonly SemaphoreSlim _playtimeGate = new(1, 1);
+    private readonly Dictionary<string, (long Seconds, DateTimeOffset ExpiresAt)> _playtimeCache = new();
+    private int _playtimeGeneration;
 
     public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager)
     {
@@ -55,6 +58,7 @@ public class LibraryManager
             _ownedAccountGeneration = -1;
             _lastUpdateDateTime = DateTime.MinValue;
             InvalidateStoreProductCache();
+            InvalidatePlaytimeCache();
         }
     }
 
@@ -64,6 +68,53 @@ public class LibraryManager
         {
             _lastUpdateDateTime = DateTime.MinValue;
             InvalidateStoreProductCache();
+            InvalidatePlaytimeCache();
+        }
+    }
+
+    private void InvalidatePlaytimeCache()
+    {
+        _playtimeGeneration++;
+        _playtimeCache.Clear();
+    }
+
+    public async Task<long?> GetGamePlaytimeSeconds(string appName, CancellationToken cancellationToken = default)
+    {
+        int generation;
+        int accountGeneration;
+        lock (_storage.AccountDataLock)
+        {
+            if (_ownedAccountGeneration != _storage.AccountGeneration || !_ownedAppNames.Contains(appName))
+                return null;
+            generation = _playtimeGeneration;
+            accountGeneration = _storage.AccountGeneration;
+        }
+
+        await _playtimeGate.WaitAsync(cancellationToken);
+        try
+        {
+            lock (_storage.AccountDataLock)
+            {
+                if (generation != _playtimeGeneration || accountGeneration != _storage.AccountGeneration)
+                    return null;
+                if (_playtimeCache.TryGetValue(appName, out var cached) && cached.ExpiresAt > DateTimeOffset.UtcNow)
+                    return cached.Seconds;
+            }
+
+            var seconds = await _storeRepository.FetchGamePlaytimeSeconds(appName, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_storage.AccountDataLock)
+            {
+                if (generation != _playtimeGeneration || accountGeneration != _storage.AccountGeneration)
+                    return null;
+                if (seconds.HasValue)
+                    _playtimeCache[appName] = (seconds.Value, DateTimeOffset.UtcNow.AddMinutes(5));
+                return seconds;
+            }
+        }
+        finally
+        {
+            _playtimeGate.Release();
         }
     }
 
@@ -160,6 +211,20 @@ public class LibraryManager
         return _storage.GetGameMetaData(name);
     }
 
+    internal IReadOnlyList<Game> GetSidebarGames(IEnumerable<Game> cachedGames, string? activeAppName) =>
+        cachedGames
+            .Select(game => GetGameInfo(game.AppName))
+            .OfType<Game>()
+            .Where(game => game.Metadata is not null && !game.IsDlc() && IsSidebarListed(game, activeAppName))
+            .ToList();
+
+    internal static bool IsSidebarListed(Game game, string? activeAppName) =>
+        string.Equals(game.AppName, activeAppName, StringComparison.Ordinal) ||
+        game.LocalAppState?.InstallStatus is InstallState.Installed or InstallState.NeedUpdate
+            or InstallState.Broken or InstallState.Playing
+            or InstallState.Installing or InstallState.InstallationPaused
+            or InstallState.Updating or InstallState.UpdatingPaused or InstallState.Repairing;
+
     /// <summary>
     /// Get all DLC Game objects that belong to a base game
     /// </summary>
@@ -173,8 +238,37 @@ public class LibraryManager
 
         return _storage.GameMetaDataDictionary.Values
             .Where(g => g.IsDlc() && g.Metadata?.MainGameItem?.Id == baseGameCatalogId)
+            .Select(g => _storage.GetGameMetaData(g.AppName))
             .ToList();
     }
+
+    public IReadOnlyList<Game> GetOwnedDlcsForGame(string appName)
+    {
+        lock (_storage.AccountDataLock)
+        {
+            if (_ownedAccountGeneration != _storage.AccountGeneration || !_ownedAppNames.Contains(appName))
+                return [];
+            return GetDlcsForGame(appName).Where(game => _ownedAppNames.Contains(game.AppName)).ToList();
+        }
+    }
+
+    public string GetBaseGameAppName(string appName)
+    {
+        var game = _storage.GetGameMetaData(appName);
+        var mainGameId = game?.Metadata?.MainGameItem?.Id;
+        if (string.IsNullOrWhiteSpace(mainGameId)) return appName;
+
+        var baseGame = _storage.GameMetaDataDictionary.Values.FirstOrDefault(candidate =>
+            !candidate.IsDlc() &&
+            string.Equals(candidate.Metadata?.Id, mainGameId, StringComparison.Ordinal));
+        return baseGame?.AppName ?? appName;
+    }
+
+    public bool IsOperationForGame(string operationAppName, string gameAppName) =>
+        string.Equals(
+            GetBaseGameAppName(operationAppName),
+            gameAppName,
+            StringComparison.Ordinal);
 
     /// <summary>
     /// Updates stored game data and fired GameStatusUpdated event

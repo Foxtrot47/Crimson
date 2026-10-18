@@ -100,6 +100,62 @@ public sealed class InstallerCompletionTests : IDisposable
         Assert.IsType<InvalidDataException>(exception.InnerException);
     }
 
+    [Theory]
+    [InlineData(ActionType.Install, true)]
+    [InlineData(ActionType.Update, true)]
+    [InlineData(ActionType.Repair, false)]
+    [InlineData(ActionType.Verify, false)]
+    public async Task OnlySuccessfulInstallsAndUpdatesRecordLastUpdated(ActionType action, bool changesDate)
+    {
+        var previous = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        _game.LocalAppState!.LastUpdatedAt = previous;
+        var item = new InstallItem("test", action, Path.Combine(_root, "game"));
+        typeof(InstallManager).GetProperty(nameof(InstallManager.CurrentInstall))!.SetValue(_installer, item);
+        var method = typeof(InstallManager).GetMethod("CompleteInstallAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var started = DateTimeOffset.UtcNow;
+
+        await (Task)method.Invoke(_installer, [item, _game, _game.LocalAppState])!;
+
+        var saved = _storage.LocalAppStateDictionary["test"].LastUpdatedAt;
+        if (changesDate)
+            Assert.InRange(saved!.Value, started, DateTimeOffset.UtcNow);
+        else
+            Assert.Equal(previous, saved);
+    }
+
+    [Fact]
+    public async Task FailedVerificationPreservesPreviousUpdateDate()
+    {
+        var previous = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        _game.LocalAppState!.LastUpdatedAt = previous;
+        var item = new InstallItem("test", ActionType.Update, Path.Combine(_root, "game"));
+        typeof(InstallManager).GetProperty(nameof(InstallManager.CurrentInstall))!.SetValue(_installer, item);
+        await _storage.CacheManifestBytes("test", "1.0", Encoding.UTF8.GetBytes("""
+            {"FileManifestList":[{"Filename":"missing.bin","FileHash":"000000000000000000000000000000000000000000000000000000000000","FileChunkParts":[]}],"ChunkHashList":{},"ChunkShaList":{},"DataGroupList":{},"ChunkFilesizeList":{}}
+            """));
+        var method = typeof(InstallManager).GetMethod("CompleteInstallAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            (Task)method.Invoke(_installer, [item, _game, _game.LocalAppState])!);
+
+        Assert.Equal(previous, _storage.LocalAppStateDictionary["test"].LastUpdatedAt);
+        Assert.Equal(InstallState.Broken, _storage.LocalAppStateDictionary["test"].InstallStatus);
+    }
+
+    [Fact]
+    public void UninstallClearsLastUpdated()
+    {
+        _game.LocalAppState!.LastUpdatedAt = DateTimeOffset.UtcNow;
+        _game.LocalAppState.InstallSize = 5L * 1024 * 1024 * 1024;
+        var item = new InstallItem("test", ActionType.Uninstall, Path.Combine(_root, "game"));
+        var method = typeof(InstallManager).GetMethod("CompleteUninstall", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        method.Invoke(_installer, [item, _game, _game.LocalAppState]);
+
+        Assert.Null(_storage.LocalAppStateDictionary["test"].LastUpdatedAt);
+        Assert.Equal(0L, _storage.LocalAppStateDictionary["test"].InstallSize);
+    }
+
     private InstallItem NewInstall() => new("test", ActionType.Install, Path.Combine(_root, "game")) {
         CreateDesktopShortcut = true, CreateStartMenuShortcut = true
     };
@@ -145,6 +201,7 @@ public sealed class InstallerCompletionTests : IDisposable
             {"FileManifestList":[],"ChunkHashList":{},"ChunkShaList":{},"DataGroupList":{},"ChunkFilesizeList":{}}
             """));
         public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId) => throw new NotSupportedException();
+        public Task<long?> FetchGamePlaytimeSeconds(string appName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<StoreProductDetails?> FetchStoreProductDetails(string nameSpace, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live") => throw new NotSupportedException();
         public Task<IReadOnlyList<StoreSearchResult>> SearchStore(string query, CancellationToken cancellationToken = default) => throw new NotSupportedException();

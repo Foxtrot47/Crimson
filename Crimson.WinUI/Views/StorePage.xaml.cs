@@ -257,17 +257,9 @@ public sealed partial class StorePage : Page
         return null;
     }
 
-    internal static Uri CreateSearchUri(string query)
-    {
-        var escapedQuery = Uri.EscapeDataString(query.Trim());
-        return new Uri($"https://store.epicgames.com/en-US/browse?q={escapedQuery}&sortBy=relevancy&sortDir=DESC&count=40");
-    }
+    internal static Uri CreateSearchUri(string query) => EpicStoreLinks.CreateSearchUri(query);
 
-    internal static Uri CreateProductUri(string productSlug)
-    {
-        var escapedSlug = Uri.EscapeDataString(productSlug.Trim('/'));
-        return new Uri(StoreUri, $"en-US/p/{escapedSlug}");
-    }
+    internal static Uri CreateProductUri(string productSlug) => EpicStoreLinks.CreateProductUri(productSlug);
 
     private async void RetryButton_Click(object sender, RoutedEventArgs e)
     {

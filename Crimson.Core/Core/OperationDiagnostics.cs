@@ -31,7 +31,8 @@ public static class OperationDiagnostics
 
     public static Uri CreateIssueUri(OperationSnapshot operation)
     {
-        var title = Uri.EscapeDataString($"Operation failed: {operation.Action}");
+        var prefix = operation.Status == ActionStatus.Failed ? "Operation failed" : "Operation error";
+        var title = Uri.EscapeDataString($"{prefix}: {operation.Action}");
         var body = Uri.EscapeDataString(
             "Describe what happened and what you expected.\n\n" +
             "Sanitized diagnostic:\n```text\n" + Create(operation) + "\n```");

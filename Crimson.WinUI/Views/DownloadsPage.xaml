@@ -12,8 +12,8 @@
 
     <Grid Margin="50,20,50,20">
         <StackPanel Orientation="Vertical" Spacing="20">
-            <TextBlock Style="{ThemeResource TitleTextBlockStyle}">Download Manager</TextBlock>
-            <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Active Downloads</TextBlock>
+            <TextBlock Style="{ThemeResource TitleTextBlockStyle}">Downloads</TextBlock>
+            <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Current</TextBlock>
             <Border
                 x:Name="ActiveDownloadSection"
                 Padding="20"
@@ -75,7 +75,7 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Install Queue</TextBlock>
+            <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Queue</TextBlock>
             <ListView x:Name="InstallQueueListView" ItemsSource="{x:Bind ViewModel.QueueItems, Mode=TwoWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:DownloadManagerItem">
@@ -111,7 +111,7 @@
                 </ListView.ItemContainerStyle>
             </ListView>
 
-            <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Previous Installs</TextBlock>
+            <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">History</TextBlock>
             <ListView x:Name="HistoryItemsList" ItemsSource="{x:Bind ViewModel.HistoryItems, Mode=TwoWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:DownloadManagerItem">

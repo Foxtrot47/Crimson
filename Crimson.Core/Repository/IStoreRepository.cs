@@ -13,6 +13,10 @@ public interface IStoreRepository
         string nameSpace,
         CancellationToken cancellationToken = default);
 
+    public Task<long?> FetchGamePlaytimeSeconds(
+        string appName,
+        CancellationToken cancellationToken = default);
+
     public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live");
 
     public Task<IReadOnlyList<StoreSearchResult>> SearchStore(

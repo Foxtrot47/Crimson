@@ -39,10 +39,10 @@ public static class OperationPresenter
 
     public static string GetActionLabel(ActionType action) => action switch
     {
-        ActionType.Install => "Installation",
+        ActionType.Install => "Install",
         ActionType.Update => "Update",
         ActionType.Repair => "Repair",
-        ActionType.Verify => "Verification",
+        ActionType.Verify => "Verify",
         ActionType.Uninstall => "Uninstall",
         ActionType.Move => "Move",
         ActionType.Import => "Import",
@@ -54,10 +54,11 @@ public static class OperationPresenter
         return operation.Status switch
         {
             ActionStatus.Paused => $"{label} paused",
-            ActionStatus.Cancelling => $"Cancelling {label.ToLowerInvariant()}",
-            ActionStatus.Success => $"{label} completed",
+            ActionStatus.Cancelling => "Cancelling",
+            ActionStatus.Success => GetCompletedHeadline(operation.Action),
             ActionStatus.Failed => $"{label} failed",
             ActionStatus.Cancelled => $"{label} cancelled",
+            _ when IsRetryingTransfer(operation) => "Retrying…",
             _ => GetPhaseHeadline(operation, label)
         };
     }
@@ -65,22 +66,38 @@ public static class OperationPresenter
     private static string GetPhaseHeadline(OperationSnapshot operation, string label) => operation.Phase switch
     {
         OperationPhase.Queued => $"{label} queued",
-        OperationPhase.Preparing => $"Preparing {label.ToLowerInvariant()}",
-        OperationPhase.Transferring => GetTransferHeadline(operation.Action, label),
-        OperationPhase.Verifying => "Verifying files",
-        OperationPhase.Uninstalling => "Removing game files",
-        OperationPhase.Importing => "Importing game",
-        OperationPhase.Moving => "Moving game",
-        OperationPhase.Finalizing => $"Finishing {label.ToLowerInvariant()}",
+        OperationPhase.Preparing => "Preparing",
+        OperationPhase.Transferring => GetActiveHeadline(operation.Action, label),
+        OperationPhase.Verifying => "Verifying",
+        OperationPhase.Uninstalling => "Uninstalling",
+        OperationPhase.Importing => "Importing",
+        OperationPhase.Moving => "Moving",
+        OperationPhase.Finalizing => "Finishing",
         _ => label
     };
 
-    private static string GetTransferHeadline(ActionType action, string fallback) => action switch
+    private static string GetActiveHeadline(ActionType action, string fallback) => action switch
     {
-        ActionType.Install => "Downloading and installing",
-        ActionType.Update => "Downloading and updating",
-        ActionType.Repair or ActionType.Verify => "Repairing files",
+        ActionType.Install => "Installing",
+        ActionType.Update => "Updating",
+        ActionType.Repair => "Repairing",
+        ActionType.Verify => "Verifying",
+        ActionType.Uninstall => "Uninstalling",
+        ActionType.Move => "Moving",
+        ActionType.Import => "Importing",
         _ => fallback
+    };
+
+    private static string GetCompletedHeadline(ActionType action) => action switch
+    {
+        ActionType.Install => "Installed",
+        ActionType.Update => "Updated",
+        ActionType.Repair => "Repaired",
+        ActionType.Verify => "Verified",
+        ActionType.Uninstall => "Uninstalled",
+        ActionType.Move => "Moved",
+        ActionType.Import => "Imported",
+        _ => "Completed"
     };
 
     private static bool IsIndeterminate(OperationSnapshot operation)
@@ -93,10 +110,16 @@ public static class OperationPresenter
                 OperationPhase.Importing or OperationPhase.Moving or OperationPhase.Finalizing;
     }
 
+    internal static bool IsRetryingTransfer(OperationSnapshot operation) =>
+        operation.IsRetrying && operation.Phase == OperationPhase.Transferring &&
+        operation.Status is ActionStatus.Processing or ActionStatus.OnGoing;
+
     private static string GetDetail(OperationSnapshot operation, bool isIndeterminate)
     {
         if (operation.Failure is { } failure)
             return $"{failure.Message} {failure.SuggestedAction}";
+        if (IsRetryingTransfer(operation))
+            return "Connection interrupted. Retrying…";
         if (!string.IsNullOrWhiteSpace(operation.StatusMessage))
             return operation.StatusMessage;
         if (operation.Phase == OperationPhase.Queued)

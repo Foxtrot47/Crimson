@@ -109,11 +109,15 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
 
     private IReadOnlyDictionary<string, OperationSnapshot> GetActiveOperations()
     {
-        var operations = _installManager.GetQueueOperations()
-            .Where(operation => operation.IsActive)
-            .ToDictionary(operation => operation.AppName, StringComparer.Ordinal);
+        var operations = new Dictionary<string, OperationSnapshot>(StringComparer.Ordinal);
+        foreach (var operation in _installManager.GetQueueOperations().Where(item => item.IsActive))
+        {
+            var appName = _libraryManager.GetBaseGameAppName(operation.AppName);
+            operations.TryAdd(appName, operation);
+        }
+
         if (_installManager.CurrentOperation is { IsActive: true } current)
-            operations[current.AppName] = current;
+            operations[_libraryManager.GetBaseGameAppName(current.AppName)] = current;
         return operations;
     }
 

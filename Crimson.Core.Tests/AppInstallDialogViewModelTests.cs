@@ -121,6 +121,32 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task InstallDialogInitializationFailurePublishesAnErrorBeforeClosing()
+    {
+        var repository = new ControlledManifestRepository();
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var game = CreateGame("game", "Game", "box");
+        storage.SaveMetaData(game);
+        var library = CreateLibrary(storage, repository);
+        var installer = new InstallManager(_logger, library, repository, storage,
+            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var errors = new List<OperationSnapshot>();
+        installer.OperationError += errors.Add;
+        var viewModel = new AppInstallDialogViewModel(_logger, installer, library, storage, new ImmediateUiDispatcher());
+        var closed = false;
+        viewModel.RequestClose += () => closed = true;
+        repository.Fail("game", new HttpRequestException("synthetic-private-url"));
+
+        await viewModel.InitializeAsync(game);
+
+        Assert.True(closed);
+        var error = Assert.Single(errors);
+        Assert.Equal(OperationPhase.Preparing, error.Phase);
+        Assert.Equal("network_unavailable", error.Failure?.Code);
+        Assert.DoesNotContain("synthetic-private-url", OperationDiagnostics.Create(error));
+    }
+
+    [Fact]
     public async Task FailedMoveCannotCompleteNextUninstallBeforeItsManifestReturns()
     {
         var repository = new ControlledManifestRepository();
@@ -294,6 +320,8 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         public void Complete(string appName, byte[] manifest) =>
             GetSource(appName).SetResult(manifest);
 
+        public void Fail(string appName, Exception exception) => GetSource(appName).SetException(exception);
+
         public Task<GetManifestUrlData> GetManifestUrls(
             string nameSpace,
             string catalogItem,
@@ -334,6 +362,9 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         }
 
         public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId) =>
+            throw new NotSupportedException();
+
+        public Task<long?> FetchGamePlaytimeSeconds(string appName, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public Task<StoreProductDetails?> FetchStoreProductDetails(

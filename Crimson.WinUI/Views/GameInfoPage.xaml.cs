@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Models;
@@ -16,6 +17,7 @@ namespace Crimson.Views;
 public sealed partial class GameInfoPage : Page
 {
     private bool _isScreenshotDialogOpen;
+    private CancellationTokenSource? _screenshotCancellation;
 
     public GameInfoViewModel ViewModel { get; }
 
@@ -38,6 +40,7 @@ public sealed partial class GameInfoPage : Page
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         CloseScreenshot();
+        ManageDialog.Close();
         ViewModel.OnNavigatedFrom();
         base.OnNavigatedFrom(e);
     }
@@ -110,14 +113,20 @@ public sealed partial class GameInfoPage : Page
         SizeScreenshotViewer();
         ScreenshotDialog.XamlRoot = XamlRoot;
         _isScreenshotDialogOpen = true;
-
+        using var cancellation = new CancellationTokenSource();
+        _screenshotCancellation = cancellation;
         try
         {
-            await ScreenshotDialog.ShowAsync();
+            await App.GetService<DialogCoordinator>().ShowAsync(
+                async () => await ScreenshotDialog.ShowAsync(), cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
         }
         finally
         {
             _isScreenshotDialogOpen = false;
+            if (ReferenceEquals(_screenshotCancellation, cancellation)) _screenshotCancellation = null;
             ExpandedScreenshotLoadingRing.IsActive = false;
             ExpandedScreenshotImage.Source = null;
         }
@@ -138,6 +147,7 @@ public sealed partial class GameInfoPage : Page
 
     private void CloseScreenshot()
     {
+        _screenshotCancellation?.Cancel();
         if (_isScreenshotDialogOpen)
             ScreenshotDialog.Hide();
     }
@@ -146,6 +156,23 @@ public sealed partial class GameInfoPage : Page
     {
         if (_isScreenshotDialogOpen)
             SizeScreenshotViewer();
+        if (ManageDialog.IsOpen)
+            ManageDialog.UpdateSize(ActualWidth, ActualHeight);
+    }
+
+    private async void ManageClicked(object sender, RoutedEventArgs e)
+    {
+        var storeUri = await ManageDialog.ShowAsync(ViewModel, XamlRoot, ActualWidth, ActualHeight);
+        NavigateToStore(storeUri);
+    }
+
+    private void ViewInStoreClicked(object sender, RoutedEventArgs e) =>
+        NavigateToStore(ViewModel.StorePageUri);
+
+    private static void NavigateToStore(Uri? uri)
+    {
+        if (uri is not null && ((App)Application.Current).GetWindow() is MainWindow window)
+            window.NavigateToStore(uri);
     }
 
     private void SizeScreenshotViewer()

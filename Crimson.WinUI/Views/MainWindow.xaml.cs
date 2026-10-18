@@ -46,6 +46,7 @@ public sealed partial class MainWindow : Window
     private readonly InstallManager _installManager;
     private readonly LibraryManager _libraryManager;
     private readonly IStoreRepository _storeRepository;
+    private readonly OperationErrorPresenter _operationErrors;
 
     private List<Game> _libraryCache = new();
     private CancellationTokenSource? _storeSearchCancellation;
@@ -107,6 +108,9 @@ public sealed partial class MainWindow : Window
         _libraryManager = App.GetService<LibraryManager>();
         _storeRepository = App.GetService<IStoreRepository>();
         _log = App.GetService<ILogger>();
+        _operationErrors = new OperationErrorPresenter(ContentFrame, _installManager, _libraryManager,
+            App.GetService<DialogCoordinator>(), _log);
+        Closed += Window_Closed;
 
         _libraryManager.LibraryUpdated += LibraryUpdatedHandler;
         _libraryManager.GameStatusUpdated += GameStatusUpdatedHandler;
@@ -334,8 +338,10 @@ public sealed partial class MainWindow : Window
         IconGlyph = "\uE719"
     };
 
-    private void NavigateToStore(Uri uri)
+    internal void NavigateToStore(Uri uri)
     {
+        if (!EpicEndpointPolicy.IsAllowedStoreUri(uri))
+            throw new InvalidOperationException("Unapproved Store URI.");
         NavControl.SelectedItem = StoreNavItem;
         if (ContentFrame.Content is StorePage storePage)
         {
@@ -428,10 +434,8 @@ public sealed partial class MainWindow : Window
 
     private void RebuildInstalledMenu(bool force = false)
     {
-        var activeAppName = _activeInstall?.AppName;
-        var installed = _libraryCache
-            .Where(game => game.Metadata is not null && !game.IsDlc())
-            .Where(game => IsPaneListed(game, activeAppName))
+        var activeAppName = GetDisplayedGameAppName(_activeInstall);
+        var installed = _libraryManager.GetSidebarGames(_libraryCache, activeAppName)
             .OrderBy(game => game.AppTitle, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
@@ -457,13 +461,6 @@ public sealed partial class MainWindow : Window
 
         ApplyInstallVisual(_activeInstall);
     }
-
-    private static bool IsPaneListed(Game game, string? activeAppName) =>
-        string.Equals(game.AppName, activeAppName, StringComparison.Ordinal) ||
-        game.LocalAppState?.InstallStatus is InstallState.Installed or InstallState.NeedUpdate
-            or InstallState.Installing or InstallState.InstallationPaused
-            or InstallState.Updating or InstallState.UpdatingPaused
-            or InstallState.Repairing;
 
     private NavigationViewItem CreateInstalledGameItem(Game game)
     {
@@ -561,7 +558,9 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             var current = _installManager.CurrentOperation;
-            _activeInstall = current is { IsActive: true } ? current : null;
+            _activeInstall = current is { IsActive: true }
+                ? current
+                : operation.IsActive ? operation : null;
             RebuildInstalledMenu();
             ApplyInstallVisual(_activeInstall);
         });
@@ -569,7 +568,7 @@ public sealed partial class MainWindow : Window
 
     private void ApplyInstallVisual(OperationSnapshot? operation)
     {
-        var activeAppName = operation is { IsActive: true } ? operation.AppName : null;
+        var activeAppName = GetDisplayedGameAppName(operation);
 
         if (!string.Equals(_decoratedAppName, activeAppName, StringComparison.Ordinal))
         {
@@ -598,6 +597,11 @@ public sealed partial class MainWindow : Window
             $"{target.Title} - {presentation.Headline.ToLowerInvariant()}");
     }
 
+    private string? GetDisplayedGameAppName(OperationSnapshot? operation) =>
+        operation is { IsActive: true }
+            ? _libraryManager.GetBaseGameAppName(operation.AppName)
+            : null;
+
     private static void ResetEntry(GameNavEntry entry)
     {
         entry.StatusPanel.Visibility = Visibility.Collapsed;
@@ -611,6 +615,7 @@ public sealed partial class MainWindow : Window
         OperationSnapshot operation,
         OperationPresentation presentation)
     {
+        if (OperationPresenter.IsRetryingTransfer(operation)) return "Retrying…";
         if (!presentation.IsIndeterminate)
             return $"{presentation.ProgressPercentage}%";
 
@@ -700,6 +705,12 @@ public sealed partial class MainWindow : Window
 
     private void LaunchGame(string appName, string title)
     {
+        if (_installManager.GetActiveOperationForGame(appName) is not null)
+        {
+            _log.Information("MainWindow: Launch blocked while an operation is active for {AppName}", appName);
+            return;
+        }
+
         _log.Information("MainWindow: Launching {Title} ({AppName}) from the navigation pane", title, appName);
         _ = Task.Run(() => _libraryManager.LaunchApp(appName));
     }
@@ -812,7 +823,6 @@ public sealed partial class MainWindow : Window
         // Create the policy object.
         _mConfigurationSource = new SystemBackdropConfiguration();
         this.Activated += Window_Activated;
-        this.Closed += Window_Closed;
         ((FrameworkElement)this.Content).ActualThemeChanged += Window_ThemeChanged;
 
         // Initial configuration state.
@@ -836,6 +846,7 @@ public sealed partial class MainWindow : Window
 
     private void Window_Closed(object sender, WindowEventArgs args)
     {
+        if (App.HandleClosedEvents) return;
         // Make sure any Mica/Acrylic controller is disposed
         // so it doesn't try to use this closed window.
         if (_mBackdropController != null)
@@ -846,6 +857,7 @@ public sealed partial class MainWindow : Window
         this.Activated -= Window_Activated;
         _mConfigurationSource = null;
 
+        _operationErrors.Dispose();
         _libraryManager.LibraryUpdated -= LibraryUpdatedHandler;
         _libraryManager.GameStatusUpdated -= GameStatusUpdatedHandler;
         CancelStoreSearch();

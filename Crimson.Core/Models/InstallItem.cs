@@ -26,6 +26,11 @@ public class InstallItem(string appName, ActionType action, string location)
     public OperationPhase Phase { get; set; } = OperationPhase.Queued;
     public string StatusMessage { get; set; }
     public OperationFailure? Failure { get; set; }
+    internal bool ErrorReported { get; set; }
+    internal int RetryingDownloadCount;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsRetrying => System.Threading.Volatile.Read(ref RetryingDownloadCount) > 0;
     public bool CreateDesktopShortcut { get; set; }
     public bool CreateStartMenuShortcut { get; set; }
 }

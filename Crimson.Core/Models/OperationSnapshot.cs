@@ -24,7 +24,8 @@ public sealed record OperationSnapshot(
     double TotalWriteSizeMiB,
     double DownloadSpeedMiB,
     string? StatusMessage,
-    OperationFailure? Failure = null)
+    OperationFailure? Failure = null,
+    bool IsRetrying = false)
 {
     public bool IsActive => Status is
         ActionStatus.Pending or
@@ -43,5 +44,6 @@ public sealed record OperationSnapshot(
         item.TotalWriteSizeMb,
         item.DownloadSpeedRawMiB,
         item.StatusMessage,
-        item.Failure);
+        item.Failure,
+        item.IsRetrying);
 }

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace Crimson.Models;
@@ -29,7 +30,7 @@ public class LocalAppState
     public string InstallPath { get; set; }
 
     [JsonPropertyName("install_size")]
-    public int InstallSize { get; set; }
+    public long InstallSize { get; set; }
 
     [JsonPropertyName("is_dlc")]
     public bool IsDlc { get; set; }
@@ -60,6 +61,9 @@ public class LocalAppState
 
     [JsonPropertyName("version")]
     public string Version { get; set; }
+
+    [JsonPropertyName("last_updated_at")]
+    public DateTimeOffset? LastUpdatedAt { get; set; }
 
 }
 

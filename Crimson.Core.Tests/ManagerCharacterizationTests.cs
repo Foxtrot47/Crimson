@@ -28,6 +28,11 @@ public sealed class ManagerCharacterizationTests
         Assert.Equal([matchingDlc], manager.GetDlcsForGame("base"));
         Assert.Empty(manager.GetDlcsForGame("matching-dlc"));
         Assert.Empty(manager.GetDlcsForGame("missing"));
+        Assert.Equal("base", manager.GetBaseGameAppName("matching-dlc"));
+        Assert.Equal("base", manager.GetBaseGameAppName("base"));
+        Assert.Equal("missing", manager.GetBaseGameAppName("missing"));
+        Assert.True(manager.IsOperationForGame("matching-dlc", "base"));
+        Assert.False(manager.IsOperationForGame("other-dlc", "base"));
     }
 
     [Fact]
@@ -213,6 +218,25 @@ public sealed class ManagerCharacterizationTests
     }
 
     [Fact]
+    public void InstallManager_MapsActiveDlcOperationToBaseGame()
+    {
+        var baseGame = Game("base", InstallState.Installed, metadataId: "catalog-base");
+        var dlc = Game("dlc", mainGameId: "catalog-base");
+        var manager = InstallManagerWith(baseGame, dlc);
+        SetCurrentInstall(manager, new InstallItem("dlc", ActionType.Install, "C:\\base")
+        {
+            Status = ActionStatus.Processing,
+            Phase = OperationPhase.Transferring
+        });
+
+        var operation = manager.GetActiveOperationForGame("base");
+
+        Assert.NotNull(operation);
+        Assert.Equal("dlc", operation.AppName);
+        Assert.Null(manager.GetActiveOperationForGame("unrelated"));
+    }
+
+    [Fact]
     public void InstallManager_HistoryReturnsLatestEntryPerGameInStableOrder()
     {
         var manager = InstallManagerWith();
@@ -327,6 +351,9 @@ public sealed class ManagerCharacterizationTests
     private sealed class UnusedStoreRepository : IStoreRepository
     {
         public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId) =>
+            throw new NotSupportedException();
+
+        public Task<long?> FetchGamePlaytimeSeconds(string appName, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public Task<StoreProductDetails?> FetchStoreProductDetails(

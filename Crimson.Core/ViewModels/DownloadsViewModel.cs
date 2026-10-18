@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -17,6 +18,8 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     private readonly InstallManager _installManager;
     private readonly LibraryManager _libraryManager;
     private readonly IUiDispatcher _uiDispatcher;
+    private IReadOnlyList<OperationSnapshot> _queueSnapshot = [];
+    private IReadOnlyList<OperationSnapshot> _historySnapshot = [];
 
     [ObservableProperty]
     private DownloadManagerItem _currentInstallItem = new DownloadManagerItem();
@@ -77,17 +80,13 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
         _libraryManager = libraryManager;
 
         HandleOperationUpdated(_installManager.CurrentOperation);
-        FetchQueueItemsList();
-        FetchHistoryItemsList();
         _installManager.OperationUpdated += HandleOperationUpdated;
     }
 
-    private void FetchQueueItemsList()
+    private void FetchQueueItemsList(IReadOnlyList<OperationSnapshot> operations)
     {
         try
         {
-            QueueItems.Clear();
-            var operations = _installManager.GetQueueOperations();
             ObservableCollection<DownloadManagerItem> itemList = new();
             for (var index = 0; index < operations.Count; index++)
             {
@@ -110,14 +109,11 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
             _log.Error(ex, "FetchQueueItemsList: Exception occurred");
         }
     }
-    private void FetchHistoryItemsList()
+    private void FetchHistoryItemsList(IReadOnlyList<OperationSnapshot> operations)
     {
         try
         {
-            var operations = _installManager.GetHistoryOperations();
             _log.Debug("FetchHistoryItemsList: Loaded {Count} history items", operations.Count);
-            HistoryItems.Clear();
-
             ObservableCollection<DownloadManagerItem> itemList = new();
             foreach (var operation in operations)
             {
@@ -161,8 +157,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 
     private void RefreshAndApplyStatus(OperationSnapshot? operation)
     {
-        FetchQueueItemsList();
-        FetchHistoryItemsList();
+        RefreshOperationLists();
         if (operation is null || !operation.IsActive)
         {
             ShowCurrentDownload = false;
@@ -173,6 +168,48 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
         SetCurrentInstallItem(operation);
         ApplyOperationPresentation(operation);
     }
+
+    private void RefreshOperationLists()
+    {
+        var queue = _installManager.GetQueueOperations();
+        if (HasOperationListChanged(_queueSnapshot, queue))
+        {
+            FetchQueueItemsList(queue);
+            _queueSnapshot = queue;
+        }
+
+        var history = _installManager.GetHistoryOperations();
+        if (HasOperationListChanged(_historySnapshot, history))
+        {
+            FetchHistoryItemsList(history);
+            _historySnapshot = history;
+        }
+    }
+
+    internal static bool HasOperationListChanged(
+        IReadOnlyList<OperationSnapshot> previous,
+        IReadOnlyList<OperationSnapshot> current)
+    {
+        if (previous.Count != current.Count) return true;
+
+        for (var index = 0; index < previous.Count; index++)
+        {
+            if (!HasSameListPresentation(previous[index], current[index]))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool HasSameListPresentation(
+        OperationSnapshot left,
+        OperationSnapshot right) =>
+        left.AppName == right.AppName &&
+        left.Action == right.Action &&
+        left.Status == right.Status &&
+        left.Phase == right.Phase &&
+        left.IsRetrying == right.IsRetrying &&
+        left.StatusMessage == right.StatusMessage &&
+        left.Failure == right.Failure;
 
     private void SetCurrentInstallItem(OperationSnapshot operation)
     {

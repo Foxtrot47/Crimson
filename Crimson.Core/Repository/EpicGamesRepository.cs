@@ -20,6 +20,7 @@ namespace Crimson.Repository
         private const string CatalogHost = "catalog-public-service-prod06.ol.epicgames.com";
         private const string EcommerceHost = "ecommerceintegration-public-service-ecomprod02.ol.epicgames.com";
         private const string OAuthHost = "account-public-service-prod03.ol.epicgames.com";
+        private const string LibraryHost = "library-service.live.use1a.on.epicgames.com";
         private const string StoreSearchUrl = "https://launcher.store.epicgames.com/graphql";
         private const string StoreProductDetailsQuery = """
             query productDetails($locale: String!, $sandboxId: String!) {
@@ -111,6 +112,63 @@ namespace Crimson.Repository
             _contentClient = contentClient;
             _storeClient = storeClient;
         }
+
+        public async Task<long?> FetchGamePlaytimeSeconds(
+            string appName,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(appName)) return null;
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            try
+            {
+                var user = await _authManager.GetUserData();
+                if (string.IsNullOrWhiteSpace(user?.AccountId)) return null;
+                var token = await _authManager.GetAccessToken();
+                var currentUser = await _authManager.GetUserData();
+                if (string.IsNullOrWhiteSpace(token) || currentUser?.AccountId != user.AccountId)
+                    return null;
+
+                var uri = $"https://{LibraryHost}/library/api/public/playtime/account/{Uri.EscapeDataString(user.AccountId)}/artifact/{Uri.EscapeDataString(appName)}";
+                using var request = CreateAuthenticatedRequest(HttpMethod.Get, uri, token);
+                using var response = await _apiClient.SendAsync(request, timeout.Token);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _log.Warning("Playtime request failed with HTTP {StatusCode}", (int)response.StatusCode);
+                    return null;
+                }
+
+                var json = await response.Content.ReadAsStringAsync(timeout.Token);
+                return ParsePlaytimeSeconds(json, appName, user.AccountId);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                // Exception messages and request URLs may contain account identifiers.
+                _log.Warning("Playtime is unavailable");
+                return null;
+            }
+        }
+
+        internal static long? ParsePlaytimeSeconds(string json, string appName, string accountId)
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return null;
+            if (!MatchesString(root, "artifactId", appName) || !MatchesString(root, "accountId", accountId))
+                return null;
+            if (!root.TryGetProperty("totalTime", out var totalTime) || totalTime.ValueKind != JsonValueKind.Number)
+                return null;
+            return totalTime.TryGetInt64(out var seconds) && seconds >= 0 ? seconds : null;
+        }
+
+        private static bool MatchesString(JsonElement element, string property, string expected) =>
+            element.TryGetProperty(property, out var value) &&
+            value.ValueKind == JsonValueKind.String &&
+            string.Equals(value.GetString(), expected, StringComparison.Ordinal);
 
         public async Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId)
         {

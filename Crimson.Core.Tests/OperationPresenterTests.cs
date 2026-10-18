@@ -15,16 +15,16 @@ public sealed class OperationPresenterTests
 
         Assert.True(presentation.IsActive);
         Assert.True(presentation.IsIndeterminate);
-        Assert.Equal("Installation queued", presentation.Headline);
+        Assert.Equal("Install queued", presentation.Headline);
         Assert.Equal("Waiting to start", presentation.Detail);
         Assert.False(presentation.CanPause);
         Assert.True(presentation.CanCancel);
     }
 
     [Theory]
-    [InlineData(OperationPhase.Preparing, "Preparing installation")]
-    [InlineData(OperationPhase.Verifying, "Verifying files")]
-    [InlineData(OperationPhase.Finalizing, "Finishing installation")]
+    [InlineData(OperationPhase.Preparing, "Preparing")]
+    [InlineData(OperationPhase.Verifying, "Verifying")]
+    [InlineData(OperationPhase.Finalizing, "Finishing")]
     public void IntermediateInstallPhasesHaveSpecificLabels(OperationPhase phase, string expected)
     {
         var presentation = OperationPresenter.Present(Snapshot(
@@ -52,7 +52,7 @@ public sealed class OperationPresenterTests
 
         Assert.False(presentation.IsIndeterminate);
         Assert.Equal(42, presentation.ProgressPercentage);
-        Assert.Equal("Downloading and updating", presentation.Headline);
+        Assert.Equal("Updating", presentation.Headline);
         Assert.Equal("400.00 MiB of 1000.00 MiB", presentation.Detail);
         Assert.True(presentation.CanPause);
     }
@@ -65,8 +65,26 @@ public sealed class OperationPresenterTests
             ActionStatus.Processing,
             OperationPhase.Uninstalling));
 
-        Assert.Equal("Removing game files", presentation.Headline);
+        Assert.Equal("Uninstalling", presentation.Headline);
         Assert.False(presentation.IsIndeterminate);
+    }
+
+    [Theory]
+    [InlineData(ActionType.Install, "Installed")]
+    [InlineData(ActionType.Update, "Updated")]
+    [InlineData(ActionType.Repair, "Repaired")]
+    [InlineData(ActionType.Verify, "Verified")]
+    [InlineData(ActionType.Uninstall, "Uninstalled")]
+    [InlineData(ActionType.Move, "Moved")]
+    [InlineData(ActionType.Import, "Imported")]
+    public void CompletedOperationsUseConcisePastTense(ActionType action, string expected)
+    {
+        var presentation = OperationPresenter.Present(Snapshot(
+            action,
+            ActionStatus.Success,
+            OperationPhase.Finalizing));
+
+        Assert.Equal(expected, presentation.Headline);
     }
 
     [Fact]

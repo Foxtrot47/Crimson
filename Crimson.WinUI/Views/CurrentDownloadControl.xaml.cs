@@ -76,7 +76,7 @@ public sealed partial class CurrentDownloadControl : UserControl
         ProgressBar.IsIndeterminate = presentation.IsIndeterminate;
         ProgressBar.Value = presentation.ProgressPercentage;
         DownloadedSize.Text = presentation.Detail;
-        DownloadSpeed.Text = operation.Phase == OperationPhase.Transferring && operation.DownloadSpeedMiB > 0
+        DownloadSpeed.Text = !OperationPresenter.IsRetryingTransfer(operation) && operation.Phase == OperationPhase.Transferring && operation.DownloadSpeedMiB > 0
             ? $"{operation.DownloadSpeedMiB:0.##} MiB/s"
             : string.Empty;
 

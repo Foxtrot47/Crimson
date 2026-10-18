@@ -15,7 +15,8 @@ public static class EpicEndpointPolicy
         "account-public-service-prod03.ol.epicgames.com",
         "catalog-public-service-prod06.ol.epicgames.com",
         "ecommerceintegration-public-service-ecomprod02.ol.epicgames.com",
-        "launcher-public-service-prod06.ol.epicgames.com"
+        "launcher-public-service-prod06.ol.epicgames.com",
+        "library-service.live.use1a.on.epicgames.com"
     };
 
     private static readonly HashSet<string> LoginHosts = new(StringComparer.OrdinalIgnoreCase)

@@ -233,6 +233,7 @@
                                         <Button
                                             Padding="20,10"
                                             Command="{x:Bind ViewModel.ImportGameCommand}"
+                                            IsEnabled="{x:Bind ViewModel.IsImportEnabled, Mode=OneWay}"
                                             Visibility="{x:Bind ViewModel.IsImportVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                             <StackPanel Orientation="Horizontal" Spacing="10">
                                                 <FontIcon Glyph="&#xE8B5;" />
@@ -240,51 +241,43 @@
                                             </StackPanel>
                                         </Button>
 
-                                        <DropDownButton IsEnabled="{x:Bind ViewModel.IsInstalled, Mode=OneWay}">
-                                            <DropDownButton.Content>
-                                                <StackPanel Padding="8,3" Orientation="Horizontal" Spacing="10">
-                                                    <FontIcon Glyph="&#xE713;" />
-                                                    <TextBlock Text="Manage" />
-                                                </StackPanel>
-                                            </DropDownButton.Content>
-                                            <DropDownButton.Flyout>
-                                                <MenuFlyout Placement="Bottom">
-                                                    <MenuFlyoutItem Command="{x:Bind ViewModel.VerifyRepairCommand}" Text="Verify / Repair">
-                                                        <MenuFlyoutItem.Icon>
-                                                            <FontIcon Glyph="&#xE90F;" />
-                                                        </MenuFlyoutItem.Icon>
-                                                    </MenuFlyoutItem>
-                                                    <MenuFlyoutItem Command="{x:Bind ViewModel.MoveGameCommand}" Text="Move">
-                                                        <MenuFlyoutItem.Icon>
-                                                            <FontIcon Glyph="&#xE8DE;" />
-                                                        </MenuFlyoutItem.Icon>
-                                                    </MenuFlyoutItem>
-                                                    <MenuFlyoutItem Command="{x:Bind ViewModel.UninstallCommand}" Text="Uninstall">
-                                                        <MenuFlyoutItem.Icon>
-                                                            <FontIcon Glyph="&#xE74D;" />
-                                                        </MenuFlyoutItem.Icon>
-                                                    </MenuFlyoutItem>
-                                                </MenuFlyout>
-                                            </DropDownButton.Flyout>
-                                        </DropDownButton>
+                                        <Button
+                                            Padding="20,10"
+                                            AutomationProperties.Name="Open game properties"
+                                            Click="ManageClicked"
+                                            IsEnabled="{x:Bind ViewModel.IsManageEnabled, Mode=OneWay}">
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <FontIcon Glyph="&#xE713;" />
+                                                <TextBlock Text="Manage" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button
+                                            Width="42"
+                                            Height="42"
+                                            HorizontalAlignment="Left"
+                                            AutomationProperties.Name="View in Store"
+                                            ToolTipService.ToolTip="View in Store"
+                                            IsEnabled="{x:Bind ViewModel.CanViewStore, Mode=OneWay}"
+                                            Click="ViewInStoreClicked">
+                                            <FontIcon FontSize="16" Glyph="&#xE8A7;" />
+                                        </Button>
                                     </StackPanel>
 
-                                    <Border
-                                        Padding="14,10"
-                                        Background="#A6262626"
-                                        CornerRadius="8"
-                                        Visibility="{x:Bind ViewModel.IsOperationStatusVisible, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <Grid ColumnSpacing="24">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
                                         <StackPanel Spacing="4">
-                                            <TextBlock
-                                                Foreground="White"
-                                                Style="{ThemeResource BodyStrongTextBlockStyle}"
-                                                Text="{x:Bind ViewModel.OperationStatusText, Mode=OneWay}" />
-                                            <TextBlock
-                                                Foreground="#D6FFFFFF"
-                                                Text="{x:Bind ViewModel.OperationDetail, Mode=OneWay}"
-                                                TextWrapping="Wrap" />
+                                            <TextBlock Foreground="#BFFFFFFF" Text="Total play time" TextWrapping="Wrap" />
+                                            <TextBlock Foreground="White" Text="{x:Bind ViewModel.TotalPlayTimeText, Mode=OneWay}" />
                                         </StackPanel>
-                                    </Border>
+                                        <StackPanel Grid.Column="1" Spacing="4">
+                                            <TextBlock Foreground="#BFFFFFFF" Text="Last updated" TextWrapping="Wrap" />
+                                            <TextBlock Foreground="White" Text="{x:Bind ViewModel.LastUpdatedText, Mode=OneWay}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Grid>
                                 </StackPanel>
                             </Border>
 
@@ -295,38 +288,22 @@
                                 <Border
                                     Padding="16"
                                     Background="{StaticResource GameInfoOverlayBrush}"
-                                    CornerRadius="10"
-                                    Visibility="{x:Bind ViewModel.HasAdditionalDetails, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    CornerRadius="10">
                                     <StackPanel Spacing="16">
-                                        <StackPanel
-                                            Spacing="4"
-                                            Visibility="{x:Bind ViewModel.HasPublisher, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <StackPanel Spacing="4">
                                             <TextBlock Foreground="#BFFFFFFF" Text="Publisher" />
                                             <TextBlock Foreground="White" Text="{x:Bind ViewModel.PublisherName, Mode=OneWay}" TextWrapping="Wrap" />
                                         </StackPanel>
-                                        <StackPanel
-                                            Spacing="4"
-                                            Visibility="{x:Bind ViewModel.HasReleaseDate, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <StackPanel Spacing="4">
                                             <TextBlock Foreground="#BFFFFFFF" Text="Release date" />
                                             <TextBlock Foreground="White" Text="{x:Bind ViewModel.ReleaseDateText, Mode=OneWay}" />
                                         </StackPanel>
-                                        <StackPanel
-                                            Spacing="4"
-                                            Visibility="{x:Bind ViewModel.HasInstalledVersion, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <StackPanel Spacing="4">
                                             <TextBlock Foreground="#BFFFFFFF" Text="Installed build" />
                                             <TextBlock
                                                 Foreground="White"
                                                 Text="{x:Bind ViewModel.InstalledVersion, Mode=OneWay}"
                                                 TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                        <StackPanel
-                                            Spacing="4"
-                                            Visibility="{x:Bind ViewModel.HasSupportedLanguages, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                            <TextBlock Foreground="#BFFFFFFF" Text="Text languages" />
-                                            <TextBlock
-                                                Foreground="White"
-                                                Text="{x:Bind ViewModel.SupportedLanguagesText, Mode=OneWay}"
-                                                TextWrapping="Wrap" />
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>
@@ -564,5 +541,6 @@
         </ContentDialog>
 
         <controls:AppInstallDialog x:Name="InstallDialog" />
+        <controls:GameManageDialog x:Name="ManageDialog" />
     </Grid>
 </Page>

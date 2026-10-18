@@ -66,10 +66,30 @@ public class DownloadManager
         string destinationPath,
         int maxRetries = 7,
         CancellationToken cancellationToken = default,
-        long? expectedSize = null)
+        long? expectedSize = null,
+        Action<bool>? retryStateChanged = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxRetries, 1);
+        var retrying = false;
+        try
+        {
+            return await DownloadWithRetriesAsync(relativePath, destinationPath, maxRetries, cancellationToken, expectedSize, () =>
+            {
+                if (retrying) return;
+                retrying = true;
+                retryStateChanged?.Invoke(true);
+            });
+        }
+        finally
+        {
+            if (retrying) retryStateChanged?.Invoke(false);
+        }
+    }
 
+    private async Task<bool> DownloadWithRetriesAsync(
+        string relativePath, string destinationPath, int maxRetries,
+        CancellationToken cancellationToken, long? expectedSize, Action retrying)
+    {
         for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
             var orderedMirrors = await GetPrioritizedMirrors(cancellationToken);
@@ -96,6 +116,10 @@ public class DownloadManager
                 {
                     throw;
                 }
+                catch (Exception ex) when (IsLocalWriteFailure(ex))
+                {
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     _log.Error(
@@ -111,13 +135,20 @@ public class DownloadManager
             // Exponential backoff, capped. A flat 100ms burned all attempts inside a second and
             // turned a brief network blip into a failed install.
             if (attempt < maxRetries)
+            {
+                retrying();
                 await Task.Delay(
                     TimeSpan.FromMilliseconds(Math.Min(500 * Math.Pow(2, attempt - 1), 15_000)),
                     cancellationToken);
+            }
         }
 
         return false;
     }
+
+    private static bool IsLocalWriteFailure(Exception exception) =>
+        exception is UnauthorizedAccessException ||
+        exception is IOException ioException && OperationFailureClassifier.Classify(ioException).Code == "storage_full";
 
     private async Task<List<MirrorStats>> GetPrioritizedMirrors(CancellationToken cancellationToken = default)
     {

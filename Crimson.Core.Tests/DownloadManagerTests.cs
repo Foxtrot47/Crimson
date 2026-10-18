@@ -76,6 +76,122 @@ public sealed class DownloadManagerTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DownloadFileWithFallback_PreservesLocalWriteErrorsInsteadOfTreatingThemAsNetworkRetries(bool diskFull)
+    {
+        var requests = 0;
+        Exception failure = diskFull
+            ? new IOException("Synthetic disk full", unchecked((int)0x80070070))
+            : new UnauthorizedAccessException("Synthetic permission failure");
+        using var client = new HttpClient(new StubHttpMessageHandler((_, _) =>
+        {
+            requests++;
+            return Task.FromException<HttpResponseMessage>(failure);
+        }));
+        using var logger = new LoggerConfiguration().CreateLogger();
+        var manager = new DownloadManager(logger, client);
+        await manager.InitializeMirrors(["https://first.epicgamescdn.com", "https://second.epicgamescdn.com"]);
+        var destination = CreateDestination();
+        try
+        {
+            var error = await Record.ExceptionAsync(() => manager.DownloadFileWithFallback("one.chunk", destination));
+            Assert.Same(failure, error);
+            Assert.Equal(1, requests);
+            Assert.Equal(diskFull ? "storage_full" : "permission_denied", OperationFailureClassifier.Classify(error).Code);
+        }
+        finally
+        {
+            DeleteDestinationDirectory(destination);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RetryNotificationCoversBackoffUntilRecoveryOrExhaustion(bool recovers)
+    {
+        var requests = 0;
+        using var client = new HttpClient(new StubHttpMessageHandler((_, _) =>
+        {
+            requests++;
+            return Task.FromResult(new HttpResponseMessage(recovers && requests > 1 ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable)
+            {
+                Content = new ByteArrayContent([1, 2, 3])
+            });
+        }));
+        using var logger = new LoggerConfiguration().CreateLogger();
+        var manager = new DownloadManager(logger, client);
+        await manager.InitializeMirrors(["https://first.epicgamescdn.com"]);
+        var changes = new List<bool>();
+        var destination = CreateDestination();
+        try
+        {
+            var succeeded = await manager.DownloadFileWithFallback("one.chunk", destination, maxRetries: 2,
+                retryStateChanged: retrying => changes.Add(retrying));
+
+            Assert.Equal(recovers, succeeded);
+            Assert.Equal(new[] { true, false }, changes);
+            Assert.Equal(2, requests);
+        }
+        finally
+        {
+            DeleteDestinationDirectory(destination);
+        }
+    }
+
+    [Fact]
+    public async Task CancellationDuringBackoffClearsRetryNotification()
+    {
+        using var client = new HttpClient(new StubHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable))));
+        using var logger = new LoggerConfiguration().CreateLogger();
+        var manager = new DownloadManager(logger, client);
+        await manager.InitializeMirrors(["https://first.epicgamescdn.com"]);
+        using var cancellation = new CancellationTokenSource();
+        var changes = new List<bool>();
+        var destination = CreateDestination();
+        try
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => manager.DownloadFileWithFallback(
+                "one.chunk", destination, cancellationToken: cancellation.Token, retryStateChanged: retrying =>
+                {
+                    changes.Add(retrying);
+                    if (retrying) cancellation.Cancel();
+                }));
+            Assert.Equal(new[] { true, false }, changes);
+        }
+        finally
+        {
+            DeleteDestinationDirectory(destination);
+        }
+    }
+
+    [Fact]
+    public async Task SuccessfulMirrorFallbackDoesNotShowAnOperationRetry()
+    {
+        using var client = new HttpClient(new StubHttpMessageHandler((request, _) => Task.FromResult(
+            new HttpResponseMessage(request.RequestUri!.Host.StartsWith("first") ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent([1, 2, 3])
+            })));
+        using var logger = new LoggerConfiguration().CreateLogger();
+        var manager = new DownloadManager(logger, client);
+        await manager.InitializeMirrors(["https://first.epicgamescdn.com", "https://second.epicgamescdn.com"]);
+        var destination = CreateDestination();
+        var changes = new List<bool>();
+        try
+        {
+            Assert.True(await manager.DownloadFileWithFallback("one.chunk", destination, retryStateChanged: retrying => changes.Add(retrying)));
+            Assert.Empty(changes);
+        }
+        finally
+        {
+            DeleteDestinationDirectory(destination);
+        }
+    }
+
     [Fact]
     public async Task DownloadFileWithFallback_CancellationStopsActiveRequest()
     {

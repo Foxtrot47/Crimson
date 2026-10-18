@@ -163,6 +163,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
                     return;
 
                 IsLoadingContent = false;
+                _installManager.ReportPreparationFailure(gameInfo.AppName, ActionType.Install, ex);
                 RequestClose?.Invoke();
             });
         }
@@ -226,6 +227,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
                 IsDriveSpaceVisible = false;
                 CanInstall = false;
                 IsLoadingContent = false;
+                _installManager.ReportPreparationFailure(_gameAppName, ActionType.Install, ex);
+                RequestClose?.Invoke();
             });
         }
     }
@@ -257,7 +260,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
     private async Task SelectLocation()
     {
         var generation = Volatile.Read(ref _initialization);
-        if (FolderPickerRequested != null)
+        if (FolderPickerRequested is null) return;
+        try
         {
             var newPath = await FolderPickerRequested.Invoke();
             if (!string.IsNullOrEmpty(newPath) && IsCurrentInitialization(generation))
@@ -265,6 +269,15 @@ public partial class AppInstallDialogViewModel : ObservableObject
                 InstallLocation = Path.Combine(newPath, GameTitle);
                 await UpdateDriveSpace(InstallLocation, generation.InstallSize, generation);
             }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            if (!IsCurrentInitialization(generation)) return;
+            _installManager.ReportPreparationFailure(_gameAppName, ActionType.Install, exception);
+            RequestClose?.Invoke();
         }
     }
 

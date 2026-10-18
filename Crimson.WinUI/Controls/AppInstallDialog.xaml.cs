@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Crimson.Core;
 using Crimson.Models;
 using Crimson.ViewModels;
 using Microsoft.UI.Xaml;
@@ -28,16 +29,22 @@ namespace Crimson.Controls
             var previous = Interlocked.Exchange(ref _initializationCancellation, cancellation);
             previous?.Cancel();
             previous?.Dispose();
+            Task initialization = Task.CompletedTask;
             try
             {
-                _ = ObserveInitializationAsync(
+                initialization = ObserveInitializationAsync(
                     ViewModel.InitializeAsync(gameInfo, cancellation.Token),
-                    cancellation.Token);
-                await InstallContentDialog.ShowAsync(ContentDialogPlacement.Popup);
+                    cancellation.Token, gameInfo.AppName);
+                await App.GetService<DialogCoordinator>().ShowAsync(
+                    async () => await InstallContentDialog.ShowAsync(ContentDialogPlacement.Popup), cancellation.Token);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
             }
             catch (Exception ex)
             {
-                App.GetService<ILogger>().Error(ex, "AppInstallDialog: Failed to show install dialog");
+                App.GetService<ILogger>().Error("AppInstallDialog could not be shown: {ErrorType}", ex.GetType().Name);
+                App.GetService<InstallManager>().ReportPreparationFailure(gameInfo.AppName, ActionType.Install, ex);
             }
             finally
             {
@@ -48,12 +55,14 @@ namespace Crimson.Controls
                     cancellation.Dispose();
                 }
                 ViewModel.InvalidateInitialization();
+                await initialization;
             }
         }
 
-        private static async Task ObserveInitializationAsync(
+        private async Task ObserveInitializationAsync(
             Task initialization,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            string appName)
         {
             try
             {
@@ -64,7 +73,9 @@ namespace Crimson.Controls
             }
             catch (Exception ex)
             {
-                App.GetService<ILogger>().Error(ex, "AppInstallDialog: Initialization failed");
+                App.GetService<ILogger>().Error("AppInstallDialog initialization failed: {ErrorType}", ex.GetType().Name);
+                App.GetService<InstallManager>().ReportPreparationFailure(appName, ActionType.Install, ex);
+                OnRequestClose();
             }
         }
 

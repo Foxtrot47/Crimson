@@ -93,6 +93,8 @@ namespace Crimson
                 services.AddHttpClient("EpicOAuth", ConfigureEpicClient)
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
                 services.AddHttpClient("EpicApi", ConfigureEpicClient)
+                    // Library Service request paths contain account IDs.
+                    .RemoveAllLoggers()
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler)
                     .AddResilienceHandler(
                         "CustomPipeline",
@@ -135,6 +137,7 @@ namespace Crimson
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicApi"),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicStore")));
+                services.AddSingleton<DialogCoordinator>();
                 services.AddSingleton<LibraryManager>();
                 services.AddSingleton<IGameShortcutManager>(provider => new GameShortcutManager(
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
@@ -258,8 +261,10 @@ namespace Crimson
             if (authenticationStatus == AuthenticationStatus.LoggedIn)
             {
                 var libraryManager = GetService<LibraryManager>();
+                var installManager = GetService<InstallManager>();
                 var library = await libraryManager.GetLibraryData();
                 if (library.Any(game => game.AppName == appName) &&
+                    installManager.GetActiveOperationForGame(appName) is null &&
                     await libraryManager.LaunchApp(appName))
                     return;
             }
