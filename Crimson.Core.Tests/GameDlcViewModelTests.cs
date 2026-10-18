@@ -263,6 +263,108 @@ public sealed class DlcUninstallTests : IDisposable
     }
 
     [Fact]
+    public async Task BaseRemovalIncludesDlcExclusiveFilesAndDeduplicatesSharedFiles()
+    {
+        await _fixture.Cache("installed", "dlc-build", "shared.bin", "dlc-only.bin");
+        var manifest = Manifest.ReadAll(DlcTestFixture.ManifestBytes("base.bin", "shared.bin"));
+
+        await _fixture.Invoke("PrepareBaseUninstallTasks", new InstallItem("base", ActionType.Uninstall, _fixture.BasePath),
+            _fixture.BaseGame, manifest);
+
+        Assert.Equal(3, _fixture.IoTasks().Length);
+        Assert.Contains(_fixture.IoTasks(), task => task.DestinationFilePath == Path.Combine(_fixture.BasePath, "dlc-only.bin"));
+    }
+
+    [Fact]
+    public async Task BaseRemovalUsesInstalledBuildAndIncludesNestedDlcFiles()
+    {
+        var nested = Path.Combine(_fixture.BasePath, "dlc");
+        Directory.CreateDirectory(nested);
+        _fixture.InstalledDlc.LocalAppState!.InstallPath = nested;
+        await _fixture.Cache("base", "base-build", "old-base.bin");
+        await _fixture.Cache("installed", "dlc-build", "addon.bin");
+        _fixture.Queue().Add(new InstallItem("base", ActionType.Uninstall, _fixture.BasePath));
+
+        await _fixture.Invoke("PrepareTasks", false, null!);
+
+        Assert.Equal(2, _fixture.IoTasks().Length);
+        Assert.Contains(_fixture.IoTasks(), task => task.DestinationFilePath == Path.Combine(_fixture.BasePath, "old-base.bin"));
+        Assert.Contains(_fixture.IoTasks(), task => task.DestinationFilePath == Path.Combine(nested, "addon.bin"));
+    }
+
+    [Fact]
+    public async Task MissingDlcManifestBlocksBaseRemovalBeforeAnyDeletionIsQueued()
+    {
+        var manifest = Manifest.ReadAll(DlcTestFixture.ManifestBytes("base.bin"));
+        await Assert.ThrowsAsync<InvalidDataException>(() => _fixture.Invoke("PrepareBaseUninstallTasks",
+            new InstallItem("base", ActionType.Uninstall, _fixture.BasePath), _fixture.BaseGame, manifest));
+        Assert.Empty(_fixture.IoTasks());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MovingBaseUpdatesSameAndNestedDlcPaths(bool nested)
+    {
+        var dlcPath = nested ? Path.Combine(_fixture.BasePath, "dlc") : _fixture.BasePath;
+        Directory.CreateDirectory(dlcPath);
+        _fixture.InstalledDlc.LocalAppState!.InstallPath = dlcPath;
+        var destination = Path.Combine(_fixture.Root, "moved-game");
+        var item = new InstallItem("base", ActionType.Move, _fixture.BasePath) { MoveLocation = destination };
+
+        InvokeSynchronous("PrepareMoveTasks", item);
+        InvokeSynchronous("CompleteMove", item, _fixture.BaseGame, _fixture.BaseGame.LocalAppState!);
+
+        var expected = nested ? Path.Combine(destination, "dlc") : destination;
+        Assert.Equal(expected, _fixture.InstalledDlc.LocalAppState.InstallPath);
+        Assert.True(Directory.Exists(expected));
+        Assert.Equal(expected, _fixture.Storage.LocalAppStateDictionary["installed"].InstallPath);
+    }
+
+    [Fact]
+    public void BaseRemovalClearsRelatedDlcStateButPreservesSeparatelyInstalledContent()
+    {
+        var outside = _fixture.Storage.GameMetaDataDictionary["available"];
+        outside.LocalAppState!.InstallStatus = InstallState.Installed;
+        outside.LocalAppState.InstallPath = Path.Combine(_fixture.Root, "separate");
+        var item = new InstallItem("base", ActionType.Uninstall, _fixture.BasePath);
+
+        InvokeSynchronous("CompleteUninstall", item, _fixture.BaseGame, _fixture.BaseGame.LocalAppState!);
+
+        Assert.Equal(InstallState.NotInstalled, _fixture.InstalledDlc.LocalAppState!.InstallStatus);
+        Assert.Null(_fixture.InstalledDlc.LocalAppState.InstallPath);
+        Assert.Null(_fixture.InstalledDlc.LocalAppState.Version);
+        Assert.Equal(InstallState.Installed, outside.LocalAppState.InstallStatus);
+    }
+
+    [Fact]
+    public void MovingBasePreservesSeparatelyInstalledDlcPath()
+    {
+        var outside = Path.Combine(_fixture.Root, "separate");
+        _fixture.InstalledDlc.LocalAppState!.InstallPath = outside;
+        var destination = Path.Combine(_fixture.Root, "moved-game");
+        var item = new InstallItem("base", ActionType.Move, _fixture.BasePath) { MoveLocation = destination };
+
+        InvokeSynchronous("PrepareMoveTasks", item);
+        InvokeSynchronous("CompleteMove", item, _fixture.BaseGame, _fixture.BaseGame.LocalAppState!);
+
+        Assert.Equal(outside, _fixture.InstalledDlc.LocalAppState.InstallPath);
+    }
+
+    [Fact]
+    public void FailedBaseMoveDoesNotChangeDlcPaths()
+    {
+        var original = _fixture.InstalledDlc.LocalAppState!.InstallPath;
+        var item = new InstallItem("base", ActionType.Move, _fixture.BasePath) { MoveLocation = _fixture.BasePath };
+
+        Assert.Throws<TargetInvocationException>(() => InvokeSynchronous("PrepareMoveTasks", item));
+        Assert.Equal(original, _fixture.InstalledDlc.LocalAppState.InstallPath);
+    }
+
+    private void InvokeSynchronous(string method, params object[] arguments) => typeof(InstallManager)
+        .GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(_fixture.Installer, arguments);
+
+    [Fact]
     public async Task DlcRemovalPreservesNestedInstalledContent()
     {
         await _fixture.Cache("base", "base-build");

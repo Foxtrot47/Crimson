@@ -37,6 +37,8 @@ public class LibraryManager
     private readonly SemaphoreSlim _playtimeGate = new(1, 1);
     private readonly Dictionary<string, (long Seconds, DateTimeOffset ExpiresAt)> _playtimeCache = new();
     private int _playtimeGeneration;
+    private readonly object _operationLock = new();
+    private readonly Dictionary<string, Guid> _activeOperationApps = new(StringComparer.Ordinal);
 
     public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager)
     {
@@ -299,7 +301,9 @@ public class LibraryManager
                 ownershipTokenPath = await CreateOwnershipTokenFileAsync(game);
 
             var (exchangeCode, userData) = credentials.Value;
-            return StartGame(gameInfo, game, exchangeCode, userData, ownershipTokenPath);
+            var started = TryStartGame(appName, () => StartGame(gameInfo, game, exchangeCode, userData, ownershipTokenPath));
+            if (!started) DeleteOwnershipToken(ownershipTokenPath);
+            return started;
         }
         catch (Exception ex)
         {
@@ -309,15 +313,65 @@ public class LibraryManager
         }
     }
 
+    internal void TrackOperation(OperationSnapshot operation)
+    {
+        lock (_operationLock)
+        {
+            if (operation.IsActive)
+            {
+                if (!_activeOperationApps.ContainsKey(operation.AppName))
+                    _activeOperationApps[operation.AppName] = operation.OperationId;
+            }
+            else if (_activeOperationApps.TryGetValue(operation.AppName, out var activeId) && activeId == operation.OperationId)
+                _activeOperationApps.Remove(operation.AppName);
+        }
+    }
+
+    internal bool TryQueueOperation(OperationSnapshot operation, Action enqueue)
+    {
+        lock (_operationLock)
+        {
+            if (_activeOperationApps.ContainsKey(operation.AppName)) return false;
+            _activeOperationApps[operation.AppName] = operation.OperationId;
+            try
+            {
+                enqueue();
+                return true;
+            }
+            catch
+            {
+                _activeOperationApps.Remove(operation.AppName);
+                throw;
+            }
+        }
+    }
+
+    internal bool TryStartGame(string appName, Func<bool> start)
+    {
+        lock (_operationLock)
+        {
+            if (HasRelatedOperation(appName) || !CanLaunch(_storage.GetGameMetaData(appName))) return false;
+            return start();
+        }
+    }
+
+    private bool HasRelatedOperation(string appName)
+    {
+        var baseAppName = GetBaseGameAppName(appName);
+        return _activeOperationApps.Keys.Any(operation => IsOperationForGame(operation, baseAppName));
+    }
+
     private (LocalAppState State, Game Game)? GetLaunchContext(string appName)
     {
-        if (string.IsNullOrWhiteSpace(appName) ||
-            !_storage.LocalAppStateDictionary.TryGetValue(appName, out var gameInfo))
-            return null;
-
-        _log.Information("LaunchApp: Trying to launch app: {AppName}", appName);
-        var game = _storage.GetGameMetaData(appName);
-        return CanLaunch(game) ? (gameInfo, game!) : null;
+        lock (_operationLock)
+        {
+            if (string.IsNullOrWhiteSpace(appName) || HasRelatedOperation(appName) ||
+                !_storage.LocalAppStateDictionary.TryGetValue(appName, out var gameInfo))
+                return null;
+            _log.Information("LaunchApp: Trying to launch app: {AppName}", appName);
+            var game = _storage.GetGameMetaData(appName);
+            return CanLaunch(game) ? (gameInfo, game!) : null;
+        }
     }
 
     private async Task<(string ExchangeCode, UserData User)?> GetLaunchCredentialsAsync(string appName)

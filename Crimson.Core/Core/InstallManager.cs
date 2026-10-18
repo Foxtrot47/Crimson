@@ -7,6 +7,7 @@ using System.IO.Pipes;
 using System.Linq;
 using System.Numerics;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,6 +46,7 @@ public class InstallManager
     private readonly int _numberOfThreads;
     private const int _progressUpdateIntervalInMS = 1000;
     private List<FileManifest> _importVerificationResult;
+    private Manifest? _importVerificationManifest;
 
     private BlockingCollection<DownloadTask> _downloadQueue = [];
     private BlockingCollection<IoTask> _ioQueue = [];
@@ -105,7 +107,12 @@ public class InstallManager
 
     private void PublishOperation(InstallItem install)
     {
-        var snapshot = OperationSnapshot.From(install);
+        OperationSnapshot snapshot;
+        lock (_installItemLock)
+        {
+            snapshot = OperationSnapshot.From(install);
+            _libraryManager.TrackOperation(snapshot);
+        }
         OperationUpdated?.Invoke(snapshot);
         if (snapshot.Status != ActionStatus.Failed) return;
         lock (_installItemLock)
@@ -159,8 +166,8 @@ public class InstallManager
             return;
         }
 
-        // check if the game is already in the queue
-        if (_installQueue.Contains(item, new InstallItemComparer()))
+        // Reject both queued duplicates and the currently processing game.
+        if (GameGameInQueue(item.AppName) is not null)
         {
             _logger.Warning("AddToQueue: Game {Name} already in queue", item.AppName);
             return;
@@ -169,19 +176,23 @@ public class InstallManager
         var gameData = ValidateQueuedGame(item);
         if (gameData is null) return;
 
-        if (item.Action != ActionType.Repair && item.Action != ActionType.Uninstall && gameData.LocalAppState?.InstallStatus == InstallState.Broken)
-        {
-            _logger.Warning("AddToQueue: {AppName} is broken, forcing repair", item.AppName);
-            item.Action = ActionType.Repair;
-        }
+        NormalizeQueuedAction(item, gameData);
 
         _logger.Information("AddToQueue: Adding new Install to queue {Name} Action {Action}", item.AppName, item.Action);
         item.Status = ActionStatus.Pending;
         item.Phase = OperationPhase.Queued;
-        _installQueue.Add(item);
+        if (!_libraryManager.TryQueueOperation(OperationSnapshot.From(item), () => _installQueue.Add(item))) return;
         PublishStatusChanged(item);
         if (CurrentInstall == null)
             ProcessNext();
+    }
+
+    private void NormalizeQueuedAction(InstallItem item, Game game)
+    {
+        if (item.Action is ActionType.Repair or ActionType.Uninstall || game.LocalAppState?.InstallStatus != InstallState.Broken)
+            return;
+        _logger.Warning("AddToQueue: {AppName} is broken, forcing repair", item.AppName);
+        item.Action = ActionType.Repair;
     }
 
     private Game? ValidateQueuedGame(InstallItem item)
@@ -261,6 +272,8 @@ public class InstallManager
         _userCancelled = false;
         _stoppageReason = null;
         _stoppageFailure = null;
+        _importVerificationResult = null;
+        _importVerificationManifest = null;
         lock (_installItemLock)
             _isFinalizing = false;
         if (!isResuming) await PrepareTasks();
@@ -294,9 +307,7 @@ public class InstallManager
                 currentInstall.Action, currentInstall.AppName, currentInstall.Location);
 
             var gameData = _libraryManager.GetGameInfo(currentInstall.AppName);
-            var manifestData = currentInstall.Action == ActionType.Uninstall && gameData.IsDlc()
-                ? await GetInstalledManifestBytes(currentInstall.AppName)
-                : await GetManifestDataWithCaching(currentInstall.AppName, _cancellationTokenSource.Token);
+            var manifestData = await GetOperationManifestBytes(currentInstall, gameData);
 
             _logger.Information("ProcessNext: Parsing game manifest");
             var data = currentInstall.Action == ActionType.Import
@@ -336,6 +347,14 @@ public class InstallManager
         }
     }
 
+    private Task<byte[]> GetOperationManifestBytes(InstallItem install, Game game)
+    {
+        if (install.Action == ActionType.Uninstall &&
+            (game.IsDlc() || !string.IsNullOrWhiteSpace(game.LocalAppState?.Version)))
+            return GetInstalledManifestBytes(install.AppName);
+        return GetManifestDataWithCaching(install.AppName, _cancellationTokenSource.Token);
+    }
+
     private async Task PrepareTasksForAction(
         InstallItem install,
         Game gameData,
@@ -359,7 +378,7 @@ public class InstallManager
                 if (gameData.IsDlc())
                     await PrepareDlcUninstallTasks(install, data);
                 else
-                    PrepareUninstallTasks(install, data);
+                    await PrepareBaseUninstallTasks(install, gameData, data);
                 break;
             case ActionType.Import:
                 SetPhase(install, OperationPhase.Importing);
@@ -374,6 +393,42 @@ public class InstallManager
 
     private void PrepareUninstallTasks(InstallItem install, Manifest data) =>
         QueueUninstallFiles(install, data.FileManifestList.Elements);
+
+    private async Task PrepareBaseUninstallTasks(InstallItem install, Game game, Manifest data)
+    {
+        var files = data.FileManifestList.Elements.ToList();
+        foreach (var dlc in GetInstalledDlcsInRoot(game, install.Location))
+        {
+            var manifest = Manifest.ReadAll(await GetInstalledManifestBytes(dlc.AppName));
+            foreach (var file in manifest.FileManifestList.Elements)
+            {
+                var path = InstallPathPolicy.ResolveFile(dlc.LocalAppState!.InstallPath, file.Filename);
+                files.Add(new FileManifest
+                {
+                    Filename = Path.GetRelativePath(install.Location, path),
+                    FileSize = file.FileSize
+                });
+            }
+        }
+        var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var uniqueFiles = files.GroupBy(file => InstallPathPolicy.ResolveFile(install.Location, file.Filename), comparer)
+            .Select(group => group.First()).ToList();
+        QueueUninstallFiles(install, uniqueFiles);
+    }
+
+    private List<Game> GetInstalledDlcsInRoot(Game game, string root) =>
+        _libraryManager.GetDlcsForGame(game.AppName)
+            .Where(dlc => dlc.LocalAppState?.InstallStatus is not null and not InstallState.NotInstalled)
+            .Where(dlc => IsInstallWithinRoot(dlc.LocalAppState!.InstallPath, root))
+            .ToList();
+
+    private static bool IsInstallWithinRoot(string? path, string root)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var relative = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
+        return !Path.IsPathRooted(relative) && relative != ".." &&
+            !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+    }
 
     private async Task<byte[]> GetInstalledManifestBytes(string appName)
     {
@@ -433,8 +488,8 @@ public class InstallManager
     private async Task PrepareImportTasks(InstallItem install, Manifest data)
     {
         var cancellationToken = _cancellationTokenSource.Token;
-        var missingFiles = await Task.Run(() => FindMissingImportFiles(install, data, cancellationToken), cancellationToken);
-        if (missingFiles.Count == data.FileManifestList.Elements.Count)
+        var result = await Task.Run(() => VerifyImportFilesAsync(install, data, cancellationToken), cancellationToken);
+        if (result.FoundFiles == 0)
         {
             install.Failure = new OperationFailure(
                 OperationFailureKind.Verification,
@@ -444,30 +499,42 @@ public class InstallManager
                 false);
             throw new InvalidDataException("No game files were found in the selected folder.");
         }
-        _importVerificationResult = missingFiles;
-        if (missingFiles.Count == 0)
-            _logger.Information("Import: All {Total} files found for {AppName}", data.FileManifestList.Elements.Count, install.AppName);
-        else
-            _logger.Warning("Import: {Missing}/{Total} files missing for {AppName}. Will import as Broken.",
-                missingFiles.Count, data.FileManifestList.Elements.Count, install.AppName);
+        _importVerificationResult = result.InvalidFiles;
+        _importVerificationManifest = data;
+        _logger.Information("Import verification: {Invalid}/{Total} files require repair",
+            result.InvalidFiles.Count, data.FileManifestList.Elements.Count);
     }
 
-    private static List<FileManifest> FindMissingImportFiles(
+    private static async Task<(List<FileManifest> InvalidFiles, int FoundFiles)> VerifyImportFilesAsync(
         InstallItem install, Manifest data, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!Directory.Exists(install.Location))
             throw new DirectoryNotFoundException("Import folder does not exist");
 
-        // Different installed builds may legitimately have some missing files.
-        var missingFiles = new List<FileManifest>();
+        var invalidFiles = new List<FileManifest>();
+        var foundFiles = 0;
         foreach (var file in data.FileManifestList.Elements)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!File.Exists(InstallPathPolicy.ResolveFile(install.Location, file.Filename)))
-                missingFiles.Add(file);
+            var path = InstallPathPolicy.ResolveFile(install.Location, file.Filename);
+            if (!File.Exists(path))
+            {
+                invalidFiles.Add(file);
+                continue;
+            }
+            foundFiles++;
+            if (!await MatchesImportFileAsync(path, file, cancellationToken)) invalidFiles.Add(file);
         }
-        return missingFiles;
+        return (invalidFiles, foundFiles);
+    }
+
+    private static async Task<bool> MatchesImportFileAsync(string path, FileManifest file, CancellationToken cancellationToken)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
+        if (stream.Length != file.FileSize) return false;
+        var hash = await SHA1.HashDataAsync(stream, cancellationToken);
+        return hash.AsSpan().SequenceEqual(file.ShaHash);
     }
 
     private void PrepareMoveTasks(InstallItem install)
@@ -818,49 +885,71 @@ public class InstallManager
 
     private void CompleteUninstall(InstallItem install, Game game, LocalAppState localAppState)
     {
-        localAppState.InstallStatus = InstallState.NotInstalled;
-        localAppState.InstallPath = null;
-        localAppState.Version = null;
-        localAppState.InstallSize = 0;
-        localAppState.LastUpdatedAt = null;
-        localAppState.Executable = null;
+        var dlcs = GetInstalledDlcsInRoot(game, install.Location);
+        ClearInstallationState(localAppState);
         SaveLocalAppState(game, localAppState);
+        foreach (var dlc in dlcs)
+        {
+            ClearInstallationState(dlc.LocalAppState!);
+            SaveLocalAppState(dlc, dlc.LocalAppState!);
+        }
         TryRemoveShortcuts(game);
         _logger.Information(
             "UpdateInstalledGameStatus: Uninstall complete for {AppName}",
             install.AppName);
     }
 
+    private static void ClearInstallationState(LocalAppState state)
+    {
+        state.InstallStatus = InstallState.NotInstalled;
+        state.InstallPath = null;
+        state.Version = null;
+        state.InstallSize = 0;
+        state.LastUpdatedAt = null;
+        state.Executable = null;
+    }
+
     private void CompleteMove(InstallItem install, Game game, LocalAppState localAppState)
     {
+        var dlcs = GetInstalledDlcsInRoot(game, install.Location);
         localAppState.InstallPath = install.MoveLocation;
         SaveLocalAppState(game, localAppState);
+        foreach (var dlc in dlcs)
+        {
+            var relative = Path.GetRelativePath(install.Location, dlc.LocalAppState!.InstallPath);
+            dlc.LocalAppState.InstallPath = Path.GetFullPath(Path.Combine(install.MoveLocation, relative));
+            SaveLocalAppState(dlc, dlc.LocalAppState);
+        }
         _logger.Information(
             "UpdateInstalledGameStatus: Move complete for {AppName}",
             install.AppName);
     }
 
-    private async Task CompleteImportAsync(
+    private Task CompleteImportAsync(
         InstallItem install,
         Game game,
         LocalAppState localAppState)
     {
-        var manifest = await GetManifestAsync(install, game);
-        localAppState.InstallStatus = _importVerificationResult is { Count: > 0 }
-            ? InstallState.Broken
-            : InstallState.Installed;
+        var manifest = _importVerificationManifest ?? throw new InvalidOperationException("The verified import manifest is unavailable.");
+        var invalidFiles = _importVerificationResult ?? throw new InvalidOperationException("Import verification was not completed.");
+        localAppState.InstallStatus = invalidFiles.Count > 0 ? InstallState.Broken : InstallState.Installed;
         ApplyManifestState(install, game, localAppState, manifest);
+        if (invalidFiles.Count > 0) localAppState.Version = null;
+        else if (manifest.ManifestMeta.BuildVersion != game.AssetInfos.Windows.BuildVersion)
+            localAppState.InstallStatus = InstallState.NeedUpdate;
         SaveLocalAppState(game, localAppState);
 
         var totalFiles = manifest.FileManifestList.Elements.Count;
-        var missingCount = _importVerificationResult?.Count ?? 0;
-        install.StatusMessage =
-            $"Verified {totalFiles} files: {totalFiles - missingCount} found, {missingCount} missing";
+        install.StatusMessage = invalidFiles.Count == 0
+            ? $"Verified {totalFiles} files"
+            : $"Verified {totalFiles} files: {invalidFiles.Count} require repair";
         _importVerificationResult = null;
+        _importVerificationManifest = null;
         _logger.Information(
             "UpdateInstalledGameStatus: Import complete for {AppName}, status: {Status}",
             install.AppName,
             localAppState.InstallStatus);
+        return Task.CompletedTask;
     }
 
     private async Task CompleteInstallAsync(
@@ -1839,40 +1928,67 @@ public class InstallManager
 
     public async Task LoadPendingInstalls()
     {
+        if (CurrentInstall is not null) return;
+        var state = ReadPendingInstallState();
+        if (state?.CurrentInstall is not { } pending) return;
+
+        var restored = new InstallItem(pending.AppName, pending.Action, pending.Location)
+        {
+            CreateDesktopShortcut = pending.CreateDesktopShortcut,
+            CreateStartMenuShortcut = pending.CreateStartMenuShortcut,
+            Status = ActionStatus.Paused,
+            Phase = OperationPhase.Preparing
+        };
+        if (!_libraryManager.TryQueueOperation(OperationSnapshot.From(restored), () => CurrentInstall = restored)) return;
+        try
+        {
+            state.IoQueue?.ForEach(task => _ioQueue.Add(task));
+            var completedChunks = state.CompletedChunks ?? [];
+            completedChunks.ForEach(chunk => _completedChunks.Add(chunk));
+            await PrepareTasks(true, completedChunks);
+            restored.Status = ActionStatus.Paused;
+            PublishStatusChanged(restored);
+            _pauseEvent.Set();
+        }
+        catch (Exception exception)
+        {
+            restored.Status = ActionStatus.Failed;
+            restored.Failure = OperationFailureClassifier.Classify(exception);
+            _installHistory.Add(restored);
+            ResetQueues();
+            PublishStatusChanged(restored);
+            CurrentInstall = null;
+        }
+    }
+
+    private InstallManagerState? ReadPendingInstallState()
+    {
         string jsonData;
         try
         {
             jsonData = _storage.GetInstallState();
         }
-        catch (Exception)
+        catch (FileNotFoundException)
         {
-            return;
+            return null;
         }
-
-        if (string.IsNullOrEmpty(jsonData))
-            return;
-
-        var state = JsonSerializer.Deserialize<InstallManagerState>(jsonData, _jsonSerializerOptions);
-        if (state == null) return;
-
-        if (state.CurrentInstall == null) return;
-
-        CurrentInstall = new InstallItem(state.CurrentInstall.AppName, state.CurrentInstall.Action, state.CurrentInstall.Location)
+        catch (Exception exception)
         {
-            CreateDesktopShortcut = state.CurrentInstall.CreateDesktopShortcut,
-            CreateStartMenuShortcut = state.CurrentInstall.CreateStartMenuShortcut
-        };
-
-        state.IoQueue.ForEach(task => _ioQueue.Add(task));
-        state.CompletedChunks.ForEach(chunk => _completedChunks.Add(chunk));
-
-        await PrepareTasks(true, state.CompletedChunks);
-
-        CurrentInstall.Status = ActionStatus.Paused;
-        PublishStatusChanged(CurrentInstall);
-
-        _pauseEvent.Set();
-        //ProcessNext(true);
+            ReportPreparationFailure(string.Empty, ActionType.Install, exception);
+            return null;
+        }
+        if (string.IsNullOrWhiteSpace(jsonData)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<InstallManagerState>(jsonData, _jsonSerializerOptions);
+        }
+        catch (JsonException)
+        {
+            ReportPreparationFailure(string.Empty, ActionType.Install, new OperationFailure(
+                OperationFailureKind.Manifest, "pending_state_invalid", "The pending operation could not be restored.",
+                "Start the operation again from the library.", false));
+            return null;
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Security.Cryptography;
 using Crimson.Core;
 using Crimson.Models;
 
@@ -118,7 +119,7 @@ public sealed class ImportFlowTests : IDisposable
         Assert.Equal("latest-build", game.LocalAppState.Version);
         Assert.Contains(InstallState.Installed, published);
         Assert.Same(game, Assert.Single(_fixture.Library.GetSidebarGames([game], null)));
-        Assert.Equal("Verified 1 files: 1 found, 0 missing", item.StatusMessage);
+        Assert.Equal("Verified 1 files", item.StatusMessage);
     }
 
     [Fact]
@@ -135,7 +136,46 @@ public sealed class ImportFlowTests : IDisposable
         Assert.Equal(ActionStatus.Success, item.Status);
         Assert.Equal(InstallState.Broken, game.LocalAppState.InstallStatus);
         Assert.Same(game, Assert.Single(_fixture.Library.GetSidebarGames([game], null)));
-        Assert.Equal("Verified 2 files: 1 found, 1 missing", item.StatusMessage);
+        Assert.Equal("Verified 2 files: 1 require repair", item.StatusMessage);
+        Assert.Null(game.LocalAppState.Version);
+    }
+
+    [Theory]
+    [InlineData("synthetic gome")]
+    [InlineData("short")]
+    public async Task CorruptOrOlderImportedFilesRequireRepairAndDoNotClaimLatestBuild(string content)
+    {
+        var game = _fixture.BaseGame;
+        game.LocalAppState!.InstallStatus = InstallState.NotInstalled;
+        await CacheImportManifest(game, "game.exe");
+        File.WriteAllText(Path.Combine(_fixture.BasePath, "game.exe"), content);
+        var item = new InstallItem(game.AppName, ActionType.Import, _fixture.BasePath);
+
+        await RunToTerminal(item);
+
+        Assert.Equal(ActionStatus.Success, item.Status);
+        Assert.Equal(InstallState.Broken, game.LocalAppState.InstallStatus);
+        Assert.Null(game.LocalAppState.Version);
+        Assert.Equal("Verified 1 files: 1 require repair", item.StatusMessage);
+    }
+
+    [Fact]
+    public async Task CatalogRefreshCannotRelabelTheBuildThatWasActuallyVerified()
+    {
+        var game = _fixture.BaseGame;
+        game.LocalAppState!.InstallStatus = InstallState.NotInstalled;
+        File.WriteAllText(Path.Combine(_fixture.BasePath, "game.exe"), "synthetic game");
+        var json = CreateImportManifest(["game.exe"]);
+        json["BuildVersionString"] = "verified-build";
+        var manifest = Manifest.ReadAll(Encoding.UTF8.GetBytes(json.ToJsonString()));
+        var item = new InstallItem(game.AppName, ActionType.Import, _fixture.BasePath);
+        await _fixture.Invoke("PrepareImportTasks", item, manifest);
+        game.AssetInfos.Windows.BuildVersion = "newer-build";
+
+        await _fixture.Invoke("CompleteImportAsync", item, game, game.LocalAppState);
+
+        Assert.Equal("verified-build", game.LocalAppState.Version);
+        Assert.Equal(InstallState.NeedUpdate, game.LocalAppState.InstallStatus);
     }
 
     [Fact]
@@ -147,7 +187,7 @@ public sealed class ImportFlowTests : IDisposable
         nextGame.LocalAppState!.InstallStatus = InstallState.NotInstalled;
         await CacheImportManifest(firstGame, "absent.bin");
         await CacheImportManifest(nextGame, "dlc.bin");
-        File.WriteAllText(Path.Combine(_fixture.BasePath, "dlc.bin"), "synthetic DLC");
+        File.WriteAllText(Path.Combine(_fixture.BasePath, "dlc.bin"), "synthetic game");
         var first = new InstallItem(firstGame.AppName, ActionType.Import, _fixture.BasePath);
         var next = new InstallItem(nextGame.AppName, ActionType.Import, _fixture.BasePath);
         var nextCompleted = Terminal(next);
@@ -163,18 +203,16 @@ public sealed class ImportFlowTests : IDisposable
     }
 
     [Fact]
-    public void CancelledImportScanDoesNotRegisterAResult()
+    public async Task CancelledImportScanDoesNotRegisterAResult()
     {
         using var cancelled = new CancellationTokenSource();
         cancelled.Cancel();
         var manifest = Manifest.ReadAll(DlcTestFixture.ManifestBytes("game.exe"));
-        var method = typeof(InstallManager).GetMethod("FindMissingImportFiles", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var method = typeof(InstallManager).GetMethod("VerifyImportFilesAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
         var item = new InstallItem("base", ActionType.Import, _fixture.BasePath);
 
-        var exception = Assert.Throws<TargetInvocationException>(() =>
-            method.Invoke(null, [item, manifest, cancelled.Token]));
-
-        Assert.IsAssignableFrom<OperationCanceledException>(exception.InnerException);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            (Task)method.Invoke(null, [item, manifest, cancelled.Token])!);
         Assert.Null(typeof(InstallManager).GetField("_importVerificationResult", BindingFlags.NonPublic | BindingFlags.Instance)!
             .GetValue(_fixture.Installer));
     }
@@ -183,10 +221,33 @@ public sealed class ImportFlowTests : IDisposable
     {
         game.BaseUrls = [];
         game.LocalAppState!.CachedManifestVersion = "latest-build";
-        var json = JsonNode.Parse(DlcTestFixture.ManifestBytes(files))!.AsObject();
+        var json = CreateImportManifest(files);
         json["BuildVersionString"] = "latest-build";
         json["LaunchExeString"] = "game.exe";
         await _fixture.Storage.CacheManifestBytes(game.AppName, "latest-build", Encoding.UTF8.GetBytes(json.ToJsonString()));
+    }
+
+    private static JsonObject CreateImportManifest(string[] files)
+    {
+        const string guid = "00000001000000020000000300000004";
+        var contents = Encoding.UTF8.GetBytes("synthetic game");
+        static string Encode(byte[] bytes) => string.Concat(bytes.Select(value => value.ToString("D3")));
+        var json = JsonNode.Parse(DlcTestFixture.ManifestBytes(files))!.AsObject();
+        foreach (var file in json["FileManifestList"]!.AsArray())
+        {
+            file!["FileHash"] = Encode(SHA1.HashData(contents));
+            file["FileChunkParts"] = new JsonArray(new JsonObject
+            {
+                ["Guid"] = guid,
+                ["Offset"] = Encode(BitConverter.GetBytes(0)),
+                ["Size"] = Encode(BitConverter.GetBytes(contents.Length))
+            });
+        }
+        json["ChunkHashList"] = new JsonObject { [guid] = Encode(new byte[8]) };
+        json["ChunkShaList"] = new JsonObject { [guid] = new string('0', 40) };
+        json["DataGroupList"] = new JsonObject { [guid] = Encode([0]) };
+        json["ChunkFilesizeList"] = new JsonObject { [guid] = Encode(BitConverter.GetBytes((long)contents.Length)) };
+        return json;
     }
 
     private async Task RunToTerminal(InstallItem item)

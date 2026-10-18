@@ -25,7 +25,8 @@ public sealed record OperationSnapshot(
     double DownloadSpeedMiB,
     string? StatusMessage,
     OperationFailure? Failure = null,
-    bool IsRetrying = false)
+    bool IsRetrying = false,
+    Guid OperationId = default)
 {
     public bool IsActive => Status is
         ActionStatus.Pending or
@@ -45,5 +46,6 @@ public sealed record OperationSnapshot(
         item.DownloadSpeedRawMiB,
         item.StatusMessage,
         item.Failure,
-        item.IsRetrying);
+        item.IsRetrying,
+        item.OperationId);
 }

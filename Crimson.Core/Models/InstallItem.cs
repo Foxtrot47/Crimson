@@ -26,6 +26,7 @@ public class InstallItem(string appName, ActionType action, string location)
     public OperationPhase Phase { get; set; } = OperationPhase.Queued;
     public string StatusMessage { get; set; }
     public OperationFailure? Failure { get; set; }
+    internal Guid OperationId { get; } = Guid.NewGuid();
     internal bool ErrorReported { get; set; }
     internal int RetryingDownloadCount;
 
