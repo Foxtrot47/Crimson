@@ -49,6 +49,7 @@ public sealed partial class MainWindow : Window
     private readonly LibraryManager _libraryManager;
     private readonly IStoreRepository _storeRepository;
     private readonly OperationErrorPresenter _operationErrors;
+    private readonly WindowSizeConstraints _windowSizeConstraints;
 
     private List<Game> _libraryCache = new();
     private CancellationTokenSource? _storeSearchCancellation;
@@ -102,6 +103,7 @@ public sealed partial class MainWindow : Window
         TrySetSystemBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        _windowSizeConstraints = new WindowSizeConstraints(WinRT.Interop.WindowNative.GetWindowHandle(this), _log);
         GlobalSearchBox.Loaded += (_, _) => UpdateTitleBarInteractiveRegion();
         GlobalSearchBox.SizeChanged += (_, _) => UpdateTitleBarInteractiveRegion();
 
@@ -894,6 +896,7 @@ public sealed partial class MainWindow : Window
     private void Window_Closed(object sender, WindowEventArgs args)
     {
         if (App.HandleClosedEvents) return;
+        _windowSizeConstraints.Dispose();
         // Make sure any Mica/Acrylic controller is disposed
         // so it doesn't try to use this closed window.
         if (_mBackdropController != null)
