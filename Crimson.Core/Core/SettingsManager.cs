@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Models;
 using Crimson.Utils;
@@ -13,6 +14,7 @@ public class SettingsManager
     private readonly ILogger<SettingsManager> _logger;
     private readonly string _defaultInstallLocation;
     private readonly string _logsDirectory;
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
 
     private Settings Settings { get; set; }
 
@@ -58,8 +60,15 @@ public class SettingsManager
 
     public async Task SaveSettings()
     {
-        await _storage.SaveSettingsData(JsonSerializer.Serialize(Settings));
-
+        await _saveGate.WaitAsync();
+        try
+        {
+            await _storage.SaveSettingsData(JsonSerializer.Serialize(Settings));
+        }
+        finally
+        {
+            _saveGate.Release();
+        }
     }
 
 }

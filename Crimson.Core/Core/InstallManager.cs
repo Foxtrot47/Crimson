@@ -156,35 +156,38 @@ public class InstallManager
     /// Starts processing it immediately if no other game is in the queue
     /// </summary>
     /// <param name="item"></param>
-    public void AddToQueue(InstallItem item)
+    public void AddToQueue(InstallItem item) => TryAddToQueue(item);
+
+    internal bool TryAddToQueue(InstallItem item)
     {
         if (item == null)
-            return;
+            return false;
         if (_recoveryStateFailure is { } recoveryFailure)
         {
             ReportPreparationFailure(item.AppName, item.Action, recoveryFailure);
-            return;
+            return false;
         }
 
         // Reject both queued duplicates and the currently processing game.
         if (GameGameInQueue(item.AppName) is not null)
         {
             _logger.Warning("AddToQueue: Game {Name} already in queue", item.AppName);
-            return;
+            return false;
         }
 
         var gameData = ValidateQueuedGame(item);
-        if (gameData is null) return;
+        if (gameData is null) return false;
 
         NormalizeQueuedAction(item, gameData);
 
         _logger.Information("AddToQueue: Adding new Install to queue {Name} Action {Action}", item.AppName, item.Action);
         item.Status = ActionStatus.Pending;
         item.Phase = OperationPhase.Queued;
-        if (!_libraryManager.TryQueueOperation(OperationSnapshot.From(item), () => _installQueue.Add(item))) return;
+        if (!_libraryManager.TryQueueOperation(OperationSnapshot.From(item), () => _installQueue.Add(item))) return false;
         PublishStatusChanged(item);
         if (CurrentInstall == null)
             ProcessNext();
+        return true;
     }
 
     private void NormalizeQueuedAction(InstallItem item, Game game)

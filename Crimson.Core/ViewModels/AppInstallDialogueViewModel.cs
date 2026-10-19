@@ -21,6 +21,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
     private readonly Storage _storageService;
     private readonly ILogger _logger;
     private readonly IUiDispatcher _uiDispatcher;
+    private readonly SettingsManager? _settingsManager;
 
     private string _gameAppName;
     private InitializationState _initialization = new();
@@ -95,13 +96,15 @@ public partial class AppInstallDialogViewModel : ObservableObject
         InstallManager installManager,
         LibraryManager libraryManager,
         Storage storage,
-        IUiDispatcher uiDispatcher)
+        IUiDispatcher uiDispatcher,
+        SettingsManager? settingsManager = null)
     {
         _logger = logger;
         _installManager = installManager;
         _libraryManager = libraryManager;
         _storageService = storage;
         _uiDispatcher = uiDispatcher;
+        _settingsManager = settingsManager;
     }
 
     public async Task InitializeAsync(Game gameInfo, CancellationToken cancellationToken = default)
@@ -114,7 +117,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
             _gameAppName = gameInfo.AppName;
             GameTitle = gameInfo.AppTitle;
             GameImageUrl = SelectImageUrl(gameInfo);
-            InstallLocation = Path.Combine(_storageService.DefaultInstallPath, gameInfo.AppTitle);
+            InstallLocation = Path.Combine(
+                _settingsManager?.DefaultInstallLocation ?? _storageService.DefaultInstallPath, gameInfo.AppTitle);
 
             AvailableDlcs.Clear();
             var dlcs = _libraryManager.GetDlcsForGame(gameInfo.AppName);
@@ -289,24 +293,41 @@ public partial class AppInstallDialogViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ConfirmInstall()
+    private async Task ConfirmInstall()
     {
-        InvalidateInitialization();
-        RequestClose?.Invoke();
-
-        // Queue base game install
-        _installManager.AddToQueue(new InstallItem(_gameAppName, ActionType.Install, InstallLocation)
+        var install = new InstallItem(_gameAppName, ActionType.Install, InstallLocation)
         {
             CreateDesktopShortcut = CreateDesktopShortcut,
             CreateStartMenuShortcut = CreateStartMenuShortcut
-        });
-        _logger.Information("GameInfoViewModel: Added {Game} to Installation Queue", GameTitle);
+        };
+        var selectedDlcs = AvailableDlcs.Where(dlc => dlc.IsSelected).Select(dlc => dlc.AppName).ToList();
+        InvalidateInitialization();
+        RequestClose?.Invoke();
+        if (!_installManager.TryAddToQueue(install)) return;
 
-        // Queue selected DLCs (install to same base path)
-        foreach (var dlc in AvailableDlcs.Where(d => d.IsSelected))
+        foreach (var appName in selectedDlcs)
+            _installManager.AddToQueue(new InstallItem(appName, ActionType.Install, install.Location));
+        await RememberInstallParentAsync(install);
+    }
+
+    private async Task RememberInstallParentAsync(InstallItem install)
+    {
+        if (_settingsManager is null) return;
+        try
         {
-            _installManager.AddToQueue(new InstallItem(dlc.AppName, ActionType.Install, InstallLocation));
-            _logger.Information("GameInfoViewModel: Added DLC {Dlc} to Installation Queue", dlc.Title);
+            var destination = Path.TrimEndingDirectorySeparator(Path.GetFullPath(install.Location));
+            var parent = Path.GetDirectoryName(destination)
+                ?? throw new InvalidOperationException("The installation destination has no parent folder.");
+            _settingsManager.DefaultInstallLocation = parent;
+            await _settingsManager.SaveSettings();
+        }
+        catch (Exception exception)
+        {
+            _logger.Warning("The queued installation's parent folder could not be saved ({ErrorType})", exception.GetType().Name);
+            _installManager.ReportPreparationFailure(install.AppName, install.Action, new OperationFailure(
+                OperationFailureKind.Storage, "install_folder_save_failed",
+                "The installation was queued, but Crimson could not remember its folder.",
+                "Choose the folder again next time. Check app data permissions if this continues.", false));
         }
     }
 

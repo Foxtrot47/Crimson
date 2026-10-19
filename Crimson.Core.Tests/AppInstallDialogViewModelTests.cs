@@ -192,6 +192,147 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         Assert.Equal(InstallState.NotInstalled, uninstall.LocalAppState!.InstallStatus);
     }
 
+    [Fact]
+    public async Task InstallLocationUsesConfiguredParent()
+    {
+        var (viewModel, _, settings, _) = await CreateLocationFixture();
+
+        Assert.Equal(Path.Combine(settings.DefaultInstallLocation, "New Game"), viewModel.InstallLocation);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConfirmedInstallRemembersOnlyParentAcrossRestart(bool trailingSeparator)
+    {
+        var (viewModel, storage, settings, installer) = await CreateLocationFixture();
+        var parent = Path.Combine(_root, "chosen-library");
+        viewModel.InstallLocation = Path.Combine(parent, "New Game") + (trailingSeparator ? Path.DirectorySeparatorChar.ToString() : string.Empty);
+        var dlc = CreateGame("dlc", "DLC", "box");
+        storage.SaveMetaData(dlc);
+        viewModel.AvailableDlcs.Add(new DlcOption { AppName = "dlc", Title = "DLC", IsSelected = true });
+
+        await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
+
+        Assert.Equal(parent, settings.DefaultInstallLocation);
+        var reloaded = CreateSettings(storage);
+        Assert.Equal(parent, reloaded.DefaultInstallLocation);
+        Assert.Equal(viewModel.InstallLocation, installer.GameGameInQueue("new").Location);
+        Assert.Equal(viewModel.InstallLocation, installer.GameGameInQueue("dlc").Location);
+    }
+
+    [Fact]
+    public async Task ConfirmedInstallCanRememberFilesystemRoot()
+    {
+        var (viewModel, storage, _, _) = await CreateLocationFixture();
+        var parent = Path.GetPathRoot(_root)!;
+        viewModel.InstallLocation = Path.Combine(parent, "New Game");
+
+        await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
+
+        Assert.Equal(parent, CreateSettings(storage).DefaultInstallLocation);
+    }
+
+    [Fact]
+    public async Task ClosingOrCancellingPickerDoesNotRememberEditedLocation()
+    {
+        var (viewModel, storage, settings, _) = await CreateLocationFixture();
+        var original = settings.DefaultInstallLocation;
+        viewModel.FolderPickerRequested += () => Task.FromResult<string>(null!);
+        await viewModel.SelectLocationCommand.ExecuteAsync(null);
+        viewModel.InstallLocation = Path.Combine(_root, "not-confirmed", "New Game");
+        viewModel.CloseDialogCommand.Execute(null);
+
+        Assert.Equal(original, settings.DefaultInstallLocation);
+        Assert.Equal(original, CreateSettings(storage).DefaultInstallLocation);
+    }
+
+    [Fact]
+    public async Task RejectedInstallDoesNotChangeRememberedParent()
+    {
+        var (viewModel, storage, settings, installer) = await CreateLocationFixture();
+        var original = settings.DefaultInstallLocation;
+        installer.AddToQueue(new InstallItem("new", ActionType.Install, viewModel.InstallLocation));
+        viewModel.InstallLocation = Path.Combine(_root, "rejected", "New Game");
+
+        await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
+
+        Assert.Equal(original, settings.DefaultInstallLocation);
+        Assert.Equal(original, CreateSettings(storage).DefaultInstallLocation);
+    }
+
+    [Fact]
+    public async Task SettingsFailureDoesNotUndoQueuedInstall()
+    {
+        var (viewModel, _, _, installer) = await CreateLocationFixture();
+        var settingsFile = Path.Combine(_root, "settings.json");
+        File.Delete(settingsFile);
+        Directory.CreateDirectory(settingsFile);
+        var errors = new List<OperationSnapshot>();
+        installer.OperationError += errors.Add;
+        viewModel.InstallLocation = Path.Combine(_root, "chosen", "New Game");
+
+        await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
+
+        Assert.NotNull(installer.GameGameInQueue("new"));
+        Assert.Equal("install_folder_save_failed", Assert.Single(errors).Failure?.Code);
+    }
+
+    [Fact]
+    public async Task ClosingCallbackCannotChangeConfirmedInstallSnapshot()
+    {
+        var (viewModel, _, settings, installer) = await CreateLocationFixture();
+        var parent = Path.Combine(_root, "chosen");
+        viewModel.InstallLocation = Path.Combine(parent, "New Game");
+        viewModel.RequestClose += () => viewModel.InstallLocation = Path.Combine(_root, "obsolete", "Other Game");
+
+        await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
+
+        Assert.Equal(Path.Combine(parent, "New Game"), installer.GameGameInQueue("new").Location);
+        Assert.Equal(parent, settings.DefaultInstallLocation);
+    }
+
+    private async Task<(AppInstallDialogViewModel ViewModel, Storage Storage, SettingsManager Settings, InstallManager Installer)> CreateLocationFixture()
+    {
+        var repository = new ControlledManifestRepository();
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var settings = CreateSettings(storage);
+        settings.DefaultInstallLocation = Path.Combine(_root, "configured-library");
+        await settings.SaveSettings();
+        var game = CreateGame("new", "New Game", "box");
+        storage.SaveMetaData(game);
+        repository.Complete("new", CreateJsonManifest(100, 10));
+        var library = CreateLibrary(storage, repository);
+        var installer = new InstallManager(_logger, library, repository, storage,
+            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        // Keep the test's confirmed installs queued without starting workers or touching game files.
+        typeof(InstallManager).GetProperty(nameof(InstallManager.CurrentInstall))!.SetValue(installer,
+            new InstallItem("paused-test", ActionType.Install, _root) { Status = ActionStatus.Paused });
+        var viewModel = new AppInstallDialogViewModel(_logger, installer, library, storage, new ImmediateUiDispatcher(), settings);
+        await viewModel.InitializeAsync(game);
+        return (viewModel, storage, settings, installer);
+    }
+
+    [Fact]
+    public async Task ConcurrentSettingsSavesPreserveLatestInMemoryFolder()
+    {
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var settings = CreateSettings(storage);
+        var saves = Enumerable.Range(0, 16).Select(index => Task.Run(async () =>
+        {
+            settings.DefaultInstallLocation = Path.Combine(_root, $"library-{index}");
+            await settings.SaveSettings();
+        }));
+
+        await Task.WhenAll(saves);
+
+        Assert.Equal(settings.DefaultInstallLocation, CreateSettings(storage).DefaultInstallLocation);
+    }
+
+    private SettingsManager CreateSettings(Storage storage) => new(
+        storage, Microsoft.Extensions.Logging.Abstractions.NullLogger<SettingsManager>.Instance,
+        Path.Combine(_root, "games"), Path.Combine(_root, "logs"));
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
