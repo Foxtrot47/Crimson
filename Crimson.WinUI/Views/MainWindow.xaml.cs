@@ -8,9 +8,11 @@ using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Repository;
+using H.NotifyIcon;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -338,6 +340,43 @@ public sealed partial class MainWindow : Window
         IconGlyph = "\uE719"
     };
 
+    internal void OpenLibraryFromTray()
+    {
+        if (!ShowForTrayNavigation()) return;
+        _currentGameAppName = null;
+        NavControl.SelectedItem = NavControl.MenuItems[0];
+        NavControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
+    }
+
+    internal void OpenStoreFromTray()
+    {
+        if (!ShowForTrayNavigation()) return;
+        _currentGameAppName = null;
+        NavControl.SelectedItem = StoreNavItem;
+        NavControl_Navigate(typeof(StorePage), new EntranceNavigationTransitionInfo());
+    }
+
+    private bool ShowForTrayNavigation()
+    {
+        var presenter = AppWindow.Presenter as OverlappedPresenter;
+        if (!Visible)
+        {
+            var wasMaximized = presenter?.State == OverlappedPresenterState.Maximized;
+            this.Show();
+            if (wasMaximized) presenter!.Maximize();
+        }
+        if (presenter?.State == OverlappedPresenterState.Minimized) presenter.Restore();
+        Activate();
+        return _authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn;
+    }
+
+    internal void LaunchFromTray(string appName)
+    {
+        if (_authManager.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
+        var game = _libraryManager.GetGameInfo(appName);
+        if (game is not null) LaunchGame(appName, game.AppTitle);
+    }
+
     internal void NavigateToStore(Uri uri)
     {
         if (!EpicEndpointPolicy.IsAllowedStoreUri(uri))
@@ -432,8 +471,15 @@ public sealed partial class MainWindow : Window
         });
     }
 
+    private void RefreshTrayMenu() =>
+        TrayIconView.UpdateInstalledGames(
+            _libraryManager.GetSidebarGames(_libraryCache, null),
+            _authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn,
+            appName => _installManager.GetActiveOperationForGame(appName) is not null);
+
     private void RebuildInstalledMenu(bool force = false)
     {
+        RefreshTrayMenu();
         var activeAppName = GetDisplayedGameAppName(_activeInstall);
         var installed = _libraryManager.GetSidebarGames(_libraryCache, activeAppName)
             .OrderBy(game => game.AppTitle, StringComparer.CurrentCultureIgnoreCase)
@@ -750,6 +796,7 @@ public sealed partial class MainWindow : Window
     private void UpdateUIBasedOnAuthenticationStatus(AuthenticationStatus authStatus)
     {
         Log.Information("Auth status: {AuthStatus}", authStatus);
+        RefreshTrayMenu();
 
         switch (authStatus)
         {
