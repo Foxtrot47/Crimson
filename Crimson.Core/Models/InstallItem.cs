@@ -27,6 +27,8 @@ public class InstallItem(string appName, ActionType action, string location)
     public string StatusMessage { get; set; }
     public OperationFailure? Failure { get; set; }
     internal Guid OperationId { get; } = Guid.NewGuid();
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal Crimson.Core.TransferRateHistory TransferRates { get; } = new();
     internal bool ErrorReported { get; set; }
     internal int RetryingDownloadCount;
 

@@ -6,164 +6,191 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Crimson.ViewModels"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:utils="using:Crimson.Utils"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    SizeChanged="DownloadsPage_SizeChanged">
 
-    <Grid Margin="50,20,50,20">
-        <StackPanel Orientation="Vertical" Spacing="20">
-            <TextBlock Style="{ThemeResource TitleTextBlockStyle}">Downloads</TextBlock>
-            <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Current</TextBlock>
-            <Border
+    <Grid Margin="32,24,32,32">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup>
+                <VisualState x:Name="Compact" />
+                <VisualState x:Name="Wide">
+                    <VisualState.Setters>
+                        <Setter Target="DetailsColumn.Width" Value="360" />
+                        <Setter Target="ActivityChart.(Grid.ColumnSpan)" Value="1" />
+                        <Setter Target="TransferDetails.(Grid.Row)" Value="0" />
+                        <Setter Target="TransferDetails.(Grid.Column)" Value="1" />
+                        <Setter Target="TransferDetails.(Grid.ColumnSpan)" Value="1" />
+                        <Setter Target="TransferDetails.Margin" Value="20,0,0,0" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <StackPanel Spacing="20">
+            <TextBlock Style="{ThemeResource TitleTextBlockStyle}" Text="Downloads" />
+            <Grid
                 x:Name="ActiveDownloadSection"
-                Padding="20"
-                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                CornerRadius="10"
-                Visibility="{x:Bind ViewModel.ShowCurrentDownload, Converter={StaticResource BoolToVisibilityConverter}, Mode=TwoWay}">
-                <StackPanel Orientation="Horizontal" Spacing="20">
-                    <Image Height="200" Source="{x:Bind ViewModel.CurrentInstallItemImageUrl, Converter={StaticResource ImageUrlConverter}, Mode=OneWay}" />
-                    <StackPanel Orientation="Vertical">
-                        <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="{x:Bind ViewModel.CurrentInstallItemName, Mode=TwoWay}" />
-                        <StackPanel Orientation="Horizontal" Spacing="30">
-                            <ProgressBar
-                                Width="500"
-                                Height="50"
-                                IsIndeterminate="{x:Bind ViewModel.DownloadProgressBarIndeterminate, Mode=TwoWay}"
-                                Value="{x:Bind ViewModel.DownloadProgressBarValue, Mode=TwoWay}" />
-                            <Grid>
-                                <Button
-                                    Width="30"
-                                    Height="30"
-                                    Padding="5"
-                                    Command="{x:Bind ViewModel.PauseInstallCommand}"
-                                    IsEnabled="{x:Bind ViewModel.EnablePauseButton, Mode=TwoWay}"
-                                    Visibility="{x:Bind ViewModel.ShowPauseButton, Mode=TwoWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <FontIcon Glyph="&#xE769;" />
-                                </Button>
+                Visibility="{x:Bind ViewModel.ShowCurrentDownload, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition x:Name="DetailsColumn" Width="0" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-                                <Button
-                                    Width="30"
-                                    Height="30"
-                                    Padding="5"
+                <Grid x:Name="ActivityChart" Grid.ColumnSpan="2" Height="204"
+                      AutomationProperties.Name="Download and installer disk-write rates over the last 60 seconds">
+                    <Border Opacity="0.22" IsHitTestVisible="False">
+                        <Border.Background>
+                            <utils:FadingArtworkBrush
+                                FallbackColor="Transparent"
+                                ImageUrl="{x:Bind ViewModel.CurrentInstallItemBannerUrl, Mode=OneWay}" />
+                        </Border.Background>
+                    </Border>
+                    <Canvas x:Name="RateCanvas" Margin="12,12,12,0" IsHitTestVisible="False" SizeChanged="RateCanvas_SizeChanged">
+                        <Path x:Name="DownloadRateBars" Opacity="0.75" Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="3" />
+                        <Polyline x:Name="DiskWriteRateLine" Stroke="{ThemeResource SystemFillColorSuccessBrush}" StrokeThickness="2" />
+                    </Canvas>
+                    <TextBlock x:Name="GraphWaitingLabel" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="No transfer activity recorded" />
+                </Grid>
+
+                <StackPanel x:Name="TransferDetails" Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0"
+                            VerticalAlignment="Center" Spacing="10">
+                    <TextBlock FontSize="17" FontWeight="SemiBold"
+                               Text="{x:Bind ViewModel.CurrentInstallItemName, Mode=OneWay}" TextWrapping="Wrap" />
+                    <Grid x:Name="TransferMetrics" ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3">
+                            <TextBlock FontSize="18" FontWeight="SemiBold" Text="{x:Bind ViewModel.CurrentDownloadSpeed, Mode=OneWay}" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Border Width="3" Height="10" Background="{ThemeResource AccentFillColorDefaultBrush}" />
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" Text="Download Rate" />
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="3"
+                                    ToolTipService.ToolTip="Bytes written to game installation files, not total device throughput or temporary download-cache writes.">
+                            <TextBlock FontSize="18" FontWeight="SemiBold"
+                                       AutomationProperties.HelpText="Installer destination-file output, not total device throughput."
+                                       Text="{x:Bind ViewModel.CurrentDiskWriteSpeed, Mode=OneWay}" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Border Width="16" Height="2" Background="{ThemeResource SystemFillColorSuccessBrush}" />
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" Text="Disk Write Rate" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                    <StackPanel x:Name="ActiveProgress" Spacing="6">
+                        <TextBlock FontWeight="SemiBold" Text="{x:Bind ViewModel.CurrentInstallAction, Mode=OneWay}" />
+                        <ProgressBar Height="6"
+                                     IsIndeterminate="{x:Bind ViewModel.DownloadProgressBarIndeterminate, Mode=OneWay}"
+                                     Value="{x:Bind ViewModel.DownloadProgressBarValue, Mode=OneWay}" />
+                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"
+                                   Text="{x:Bind ViewModel.CurrentDownloadSize, Mode=OneWay}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                        <Grid>
+                            <Button Width="36" Height="36" Padding="6"
+                                    AutomationProperties.Name="Pause operation" ToolTipService.ToolTip="Pause"
+                                    Command="{x:Bind ViewModel.PauseInstallCommand}"
+                                    IsEnabled="{x:Bind ViewModel.EnablePauseButton, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.ShowPauseButton, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <FontIcon Glyph="&#xE769;" />
+                            </Button>
+                            <Button Width="36" Height="36" Padding="6"
+                                    AutomationProperties.Name="Resume operation" ToolTipService.ToolTip="Resume"
                                     Command="{x:Bind ViewModel.ResumeInstallCommand}"
-                                    Visibility="{x:Bind ViewModel.ShowPauseButton, Converter={StaticResource BoolToInverseVisibilityConverter}, Mode=TwoWay}">
-                                    <FontIcon Glyph="&#xE768;" />
-                                </Button>
-                            </Grid>
-                            <Button
-                                x:Name="CancelInstallButton"
-                                Width="30"
-                                Height="30"
-                                Padding="5"
+                                    Visibility="{x:Bind ViewModel.ShowPauseButton, Mode=OneWay, Converter={StaticResource BoolToInverseVisibilityConverter}}">
+                                <FontIcon Glyph="&#xE768;" />
+                            </Button>
+                        </Grid>
+                        <Button x:Name="CancelInstallButton" Width="36" Height="36" Padding="6"
+                                AutomationProperties.Name="Cancel operation" ToolTipService.ToolTip="Cancel"
                                 Command="{x:Bind ViewModel.CancelInstallCommand}"
                                 IsEnabled="{x:Bind ViewModel.EnableCancelButton, Mode=OneWay}">
-                                <FontIcon Glyph="&#xE711;" />
-                            </Button>
-                        </StackPanel>
-                        <TextBlock Style="{ThemeResource BodyStrongTextBlockStyle}" Text="{x:Bind ViewModel.CurrentInstallAction, Mode=TwoWay}" />
-                        <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="{x:Bind ViewModel.CurrentDownloadSize, Mode=TwoWay}" />
+                            <FontIcon Glyph="&#xE711;" />
+                        </Button>
                     </StackPanel>
-
-                    <StackPanel
-                        Margin="30,0,0,0"
-                        Orientation="Vertical"
-                        Spacing="15">
-                        <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" Style="{ThemeResource SubtitleTextBlockStyle}">Download Rate</TextBlock>
-                        <TextBlock Text="{x:Bind ViewModel.CurrentDownloadSpeed, Mode=TwoWay}" />
-                    </StackPanel>
-
                 </StackPanel>
-            </Border>
+            </Grid>
 
-            <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">Queue</TextBlock>
-            <ListView x:Name="InstallQueueListView" ItemsSource="{x:Bind ViewModel.QueueItems, Mode=TwoWay}">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Queue" />
+                <Border Grid.Column="1" Height="1" VerticalAlignment="Center" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+            </Grid>
+            <ListView x:Name="InstallQueueListView" Background="Transparent" ItemsSource="{x:Bind ViewModel.QueueItems, Mode=OneWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:DownloadManagerItem">
-                        <Border
-                            Margin="0"
-                            Padding="0"
-                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                            BorderThickness="0"
-                            CornerRadius="10">
-                            <StackPanel Orientation="Horizontal" Spacing="20">
-                                <Image
-                                    Height="150"
-                                    Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}"
-                                    Stretch="UniformToFill" />
-                                <StackPanel VerticalAlignment="Center" Spacing="4">
-                                    <TextBlock
-                                        Style="{ThemeResource SubtitleTextBlockStyle}"
-                                        Text="{x:Bind Title}" />
-                                    <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="{x:Bind StatusText}" />
-                                </StackPanel>
+                        <Grid Padding="12,10" ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="128" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Image Width="128" Height="72" Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}" Stretch="Uniform" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="5">
+                                <TextBlock FontSize="16" FontWeight="SemiBold" Text="{x:Bind Title}" TextWrapping="Wrap" />
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind StatusText}" TextWrapping="Wrap" />
                             </StackPanel>
-                        </Border>
+                        </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         <Setter Property="Padding" Value="0" />
-                        <Setter Property="Margin" Value="0,0,0,5" />
                     </Style>
                 </ListView.ItemContainerStyle>
             </ListView>
 
-            <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}">History</TextBlock>
-            <ListView x:Name="HistoryItemsList" ItemsSource="{x:Bind ViewModel.HistoryItems, Mode=TwoWay}">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="History" />
+                <Border Grid.Column="1" Height="1" VerticalAlignment="Center" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+            </Grid>
+            <ListView x:Name="HistoryItemsList" Background="Transparent" ItemsSource="{x:Bind ViewModel.HistoryItems, Mode=OneWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:DownloadManagerItem">
-                        <Border
-                            Margin="0"
-                            Padding="0"
-                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                            BorderThickness="0"
-                            CornerRadius="10">
-                            <StackPanel Orientation="Horizontal" Spacing="20">
-                                <Image
-                                    Height="150"
-                                    Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}"
-                                    Stretch="UniformToFill" />
-                                <StackPanel VerticalAlignment="Center" Spacing="4">
-                                    <TextBlock
-                                        Style="{ThemeResource SubtitleTextBlockStyle}"
-                                        Text="{x:Bind Title}" />
-                                    <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="{x:Bind StatusText}" />
-                                    <StackPanel
-                                        MaxWidth="620"
-                                        Spacing="8"
-                                        Visibility="{x:Bind HasFailure, Converter={StaticResource BoolToVisibilityConverter}}">
-                                        <TextBlock
-                                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                                            Text="{x:Bind FailureText}"
-                                            TextWrapping="Wrap" />
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <Button
-                                                Click="RetryOperation_Click"
-                                                Content="Retry"
-                                                IsEnabled="{x:Bind CanRetry}" />
-                                            <Button Click="CopyDiagnostics_Click" Content="Copy diagnostics" />
-                                            <Button Click="ReportProblem_Click" Content="Report problem" />
-                                        </StackPanel>
+                        <Grid Padding="12,10" ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="128" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Image Width="128" Height="72" VerticalAlignment="Top"
+                                   Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}" Stretch="Uniform" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="5">
+                                <TextBlock FontSize="16" FontWeight="SemiBold" Text="{x:Bind Title}" TextWrapping="Wrap" />
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind StatusText}" TextWrapping="Wrap" />
+                                <StackPanel Spacing="8" Visibility="{x:Bind HasFailure, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <TextBlock Foreground="{ThemeResource SystemFillColorCriticalBrush}" Text="{x:Bind FailureText}" TextWrapping="Wrap" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Click="RetryOperation_Click" Content="Retry" IsEnabled="{x:Bind CanRetry}" />
+                                        <Button Click="ReportProblem_Click" Content="Report problem" />
                                     </StackPanel>
+                                    <Button HorizontalAlignment="Left" Click="CopyDiagnostics_Click" Content="Copy diagnostics" />
                                 </StackPanel>
                             </StackPanel>
-                        </Border>
+                        </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         <Setter Property="Padding" Value="0" />
-                        <Setter Property="Margin" Value="0,0,0,5" />
                     </Style>
                 </ListView.ItemContainerStyle>
             </ListView>
-
         </StackPanel>
     </Grid>
 

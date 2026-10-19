@@ -467,6 +467,7 @@ internal sealed class DlcTestFixture : IDisposable
     public void Dispose()
     {
         foreach (var viewModel in _viewModels) viewModel.Close();
+        Installer.Dispose();
         _http.Dispose();
         _logger.Dispose();
         if (Directory.Exists(Root)) Directory.Delete(Root, recursive: true);

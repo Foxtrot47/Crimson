@@ -909,7 +909,9 @@ public sealed partial class MainWindow : Window
         _libraryManager.GameStatusUpdated -= GameStatusUpdatedHandler;
         CancelStoreSearch();
         CurrentDownload.SummaryChanged -= OnDownloadSummaryChanged;
+        CurrentDownload.Dispose();
         _installManager.OperationUpdated -= OperationUpdatedHandler;
+        _installManager.Dispose();
     }
 
     private void Window_ThemeChanged(FrameworkElement sender, object args)

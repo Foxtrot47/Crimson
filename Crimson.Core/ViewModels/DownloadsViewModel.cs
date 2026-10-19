@@ -58,6 +58,9 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     private string? _currentInstallItemImageUrl;
 
     [ObservableProperty]
+    private string? _currentInstallItemBannerUrl;
+
+    [ObservableProperty]
     private string _currentInstallAction = string.Empty;
 
     [ObservableProperty]
@@ -65,6 +68,12 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _currentDownloadSize = string.Empty;
+
+    [ObservableProperty]
+    private string _currentDiskWriteSpeed = "0 MiB/s";
+
+    [ObservableProperty]
+    private IReadOnlyList<TransferRateSample> _transferHistory = [];
 
     public DownloadsViewModel(
         ILogger logger,
@@ -81,6 +90,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 
         HandleOperationUpdated(_installManager.CurrentOperation);
         _installManager.OperationUpdated += HandleOperationUpdated;
+        _installManager.TransferRatesUpdated += HandleTransferRatesUpdated;
     }
 
     private void FetchQueueItemsList(IReadOnlyList<OperationSnapshot> operations)
@@ -97,8 +107,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
                 {
                     Name = operation.AppName,
                     Title = gameInfo.AppTitle,
-                    ImageUrl = gameInfo.Metadata.KeyImages
-                        .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url,
+                    ImageUrl = GetRowArtworkUrl(gameInfo),
                     StatusText = $"{OperationPresenter.Present(operation).Headline} · Position {index + 1}"
                 });
             }
@@ -123,8 +132,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
                 {
                     Name = operation.AppName,
                     Title = gameInfo.AppTitle,
-                    ImageUrl = gameInfo.Metadata.KeyImages
-                        .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url,
+                    ImageUrl = GetRowArtworkUrl(gameInfo),
                     StatusText = OperationPresenter.Present(operation).Headline,
                     FailureText = operation.Failure is null
                         ? string.Empty
@@ -154,6 +162,14 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
             _log.Error(ex, "Exception in HandleOperationUpdated");
         }
     }
+
+    private void HandleTransferRatesUpdated(OperationSnapshot operation) =>
+        UpdateUIProperties(() =>
+        {
+            var current = _installManager.CurrentOperation;
+            if (current?.OperationId == operation.OperationId)
+                ApplyOperationPresentation(current);
+        });
 
     private void RefreshAndApplyStatus(OperationSnapshot? operation)
     {
@@ -230,7 +246,17 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
         };
         CurrentInstallItemName = CurrentInstallItem.Title;
         CurrentInstallItemImageUrl = CurrentInstallItem.ImageUrl;
+        CurrentInstallItemBannerUrl = FindBannerUrl(gameInfo);
     }
+
+    internal static string? FindBannerUrl(Game game) =>
+        game.Metadata.KeyImages.FirstOrDefault(image =>
+            (image.Type is "DieselGameBox" or "OfferImageWide") &&
+            (image.Width <= 0 || image.Height <= 0 || image.Width > image.Height) &&
+            EpicEndpointPolicy.TryGetContentUri(image.Url, out _))?.Url;
+
+    private static string? GetRowArtworkUrl(Game game) =>
+        FindBannerUrl(game) ?? game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url;
 
     private void ApplyOperationPresentation(OperationSnapshot operation)
     {
@@ -239,13 +265,26 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
         DownloadProgressBarValue = presentation.ProgressPercentage;
         CurrentInstallAction = presentation.Headline;
         CurrentDownloadSize = presentation.Detail;
-        CurrentDownloadSpeed = operation.Phase == OperationPhase.Transferring && operation.DownloadSpeedMiB > 0
-            ? $"{operation.DownloadSpeedMiB:0.##} MiB/s"
-            : string.Empty;
+        var transferring = operation.Phase == OperationPhase.Transferring &&
+            operation.Status is ActionStatus.OnGoing or ActionStatus.Processing;
+        CurrentDownloadSpeed = OperationPresenter.IsRetryingTransfer(operation)
+            ? "Retrying…"
+            : FormatTransferRate(transferring ? operation.DownloadSpeedMiB : 0);
+        CurrentDiskWriteSpeed = FormatTransferRate(transferring ? operation.WriteSpeedMiB : 0);
+        TransferHistory = operation.TransferHistory ?? [];
         ShowResumeButton = presentation.CanResume;
         ShowPauseButton = !presentation.CanResume;
         EnablePauseButton = presentation.CanPause;
         EnableCancelButton = presentation.CanCancel;
+    }
+
+    internal static string FormatTransferRate(double rate)
+    {
+        if (!double.IsFinite(rate) || rate <= 0) return "0 MiB/s";
+        if (rate >= 1) return $"{rate:0.##} MiB/s";
+        return rate >= 1d / 1024
+            ? $"{rate * 1024:0.##} KiB/s"
+            : $"{rate * 1024 * 1024:0.##} B/s";
     }
 
     public bool RetryFailedOperation(DownloadManagerItem? item)
@@ -282,6 +321,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _installManager.OperationUpdated -= HandleOperationUpdated;
+        _installManager.TransferRatesUpdated -= HandleTransferRatesUpdated;
     }
 
 }

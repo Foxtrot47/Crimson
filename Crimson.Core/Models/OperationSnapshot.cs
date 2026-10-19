@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Crimson.Models;
 
@@ -26,7 +27,9 @@ public sealed record OperationSnapshot(
     string? StatusMessage,
     OperationFailure? Failure = null,
     bool IsRetrying = false,
-    Guid OperationId = default)
+    Guid OperationId = default,
+    double WriteSpeedMiB = 0,
+    IReadOnlyList<TransferRateSample>? TransferHistory = null)
 {
     public bool IsActive => Status is
         ActionStatus.Pending or
@@ -47,5 +50,7 @@ public sealed record OperationSnapshot(
         item.StatusMessage,
         item.Failure,
         item.IsRetrying,
-        item.OperationId);
+        item.OperationId,
+        item.WriteSpeedMiB,
+        item.TransferRates.GetSamples());
 }

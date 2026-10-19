@@ -245,10 +245,12 @@ public sealed class DownloadManagerTests
 
         try
         {
+            long receivedBytes = 0;
             var success = await manager.DownloadFileWithFallback(
-                "one.chunk", destination, expectedSize: 4);
+                "one.chunk", destination, expectedSize: 4, bytesTransferred: bytes => receivedBytes += bytes);
 
             Assert.True(success);
+            Assert.Equal(7, receivedBytes); // Include traffic from the rejected first body, not just the final file.
             Assert.Equal(new byte[] { 4, 5, 6, 7 }, await File.ReadAllBytesAsync(destination));
             Assert.False(File.Exists(destination + ".partial"));
         }
@@ -311,6 +313,66 @@ public sealed class DownloadManagerTests
         {
             DeleteDestinationDirectory(destination);
         }
+    }
+
+    [Fact]
+    public async Task TransferCallbackReportsBytesBeforeBodyCompletes()
+    {
+        var stream = new GatedStream();
+        using var client = new HttpClient(new StubHttpMessageHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(stream) })));
+        using var logger = new LoggerConfiguration().CreateLogger();
+        var manager = new DownloadManager(logger, client);
+        await manager.InitializeMirrors(["https://first.epicgamescdn.com"]);
+        var destination = CreateDestination();
+        var reported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        long received = 0;
+        try
+        {
+            var download = manager.DownloadFileWithFallback("one.chunk", destination, bytesTransferred: bytes =>
+            {
+                received += bytes;
+                reported.TrySetResult();
+            });
+            await reported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(4096, received);
+            Assert.False(download.IsCompleted);
+            stream.Release.TrySetResult();
+            Assert.True(await download.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal(4096, new FileInfo(destination).Length);
+        }
+        finally
+        {
+            stream.Release.TrySetResult();
+            DeleteDestinationDirectory(destination);
+        }
+    }
+
+    private sealed class GatedStream : Stream
+    {
+        private bool _read;
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (!_read)
+            {
+                _read = true;
+                buffer.Span[..4096].Fill(1);
+                return 4096;
+            }
+            await Release.Task.WaitAsync(cancellationToken);
+            return 0;
+        }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush() => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private static string CreateDestination() =>

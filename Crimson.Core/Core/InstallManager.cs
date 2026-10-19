@@ -18,11 +18,12 @@ using Serilog;
 
 namespace Crimson.Core;
 
-public class InstallManager
+public class InstallManager : IDisposable
 {
     public event Action<InstallItem> InstallationStatusChanged;
     public event Action<InstallItem> InstallProgressUpdate;
     public event Action<OperationSnapshot>? OperationUpdated;
+    public event Action<OperationSnapshot>? TransferRatesUpdated;
     public event Action<OperationSnapshot>? OperationError;
 
     private readonly ILogger _logger;
@@ -56,6 +57,9 @@ public class InstallManager
     private CancellationTokenSource _cancellationTokenSource = new();
     private Stopwatch _installStopWatch = new();
     private DateTime _lastUpdateTime = DateTime.MinValue;
+    private Timer? _transferTimer;
+    private InstallItem? _sampledInstall;
+    private bool _disposed;
     private ManualResetEventSlim _pauseEvent = new ManualResetEventSlim(true);
     private volatile bool _userCancelled;
     private bool _isFinalizing;
@@ -64,9 +68,14 @@ public class InstallManager
     private OperationFailure? _recoveryStateFailure;
 
     public InstallItem? CurrentInstall { get; private set; }
-    public OperationSnapshot? CurrentOperation => CurrentInstall is null
-        ? null
-        : OperationSnapshot.From(CurrentInstall);
+    public OperationSnapshot? CurrentOperation
+    {
+        get
+        {
+            lock (_installItemLock)
+                return CurrentInstall is { } install ? OperationSnapshot.From(install) : null;
+        }
+    }
 
     public InstallManager(
         ILogger logger,
@@ -110,6 +119,7 @@ public class InstallManager
         OperationSnapshot snapshot;
         lock (_installItemLock)
         {
+            UpdateTransferSampling(install);
             snapshot = OperationSnapshot.From(install);
             _libraryManager.TrackOperation(snapshot);
         }
@@ -121,6 +131,72 @@ public class InstallManager
             install.ErrorReported = true;
         }
         ReportError(install, snapshot.Failure ?? OperationFailureClassifier.Classify(null));
+    }
+
+    private void UpdateTransferSampling(InstallItem install)
+    {
+        if (_disposed || !ReferenceEquals(CurrentInstall, install)) return;
+        var active = install.Status is ActionStatus.Pending or ActionStatus.OnGoing or ActionStatus.Processing
+            or ActionStatus.Paused or ActionStatus.Cancelling;
+        var transferring = install.Phase == OperationPhase.Transferring &&
+            install.Status is ActionStatus.OnGoing or ActionStatus.Processing;
+        install.TransferRates.SetTransferring(transferring);
+        if (!transferring)
+        {
+            install.DownloadSpeedRawMiB = 0;
+            install.WriteSpeedMiB = 0;
+        }
+        if (!active)
+        {
+            StopTransferSampling();
+            return;
+        }
+        if (ReferenceEquals(_sampledInstall, install)) return;
+        if (!transferring) return;
+        StopTransferSampling();
+        _sampledInstall = install;
+        _transferTimer = new Timer(_ => SampleTransferRates(install), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    private void StopTransferSampling()
+    {
+        _transferTimer?.Dispose();
+        _transferTimer = null;
+        _sampledInstall = null;
+    }
+
+    public void Dispose()
+    {
+        lock (_installItemLock)
+        {
+            _disposed = true;
+            StopTransferSampling();
+        }
+    }
+
+    private void SampleTransferRates(InstallItem install)
+    {
+        try
+        {
+            lock (_installItemLock)
+            {
+                if (!ReferenceEquals(_sampledInstall, install)) return;
+                if (!ReferenceEquals(CurrentInstall, install))
+                {
+                    if (ReferenceEquals(_sampledInstall, install)) StopTransferSampling();
+                    return;
+                }
+                var sample = install.TransferRates.Sample();
+                if (sample is null) return;
+                install.DownloadSpeedRawMiB = sample.DownloadMiBPerSecond;
+                install.WriteSpeedMiB = sample.WriteMiBPerSecond;
+                TransferRatesUpdated?.Invoke(OperationSnapshot.From(install));
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Transfer-rate sampling failed ({ErrorType})", exception.GetType().Name);
+        }
     }
 
     private void ReportError(InstallItem install, OperationFailure failure, OperationPhase? phase = null) =>
@@ -585,7 +661,8 @@ public class InstallManager
                         downloadTask.TempPath,
                         cancellationToken: _cancellationTokenSource.Token,
                         expectedSize: downloadTask.ChunkInfo.FileSize,
-                        retryStateChanged: retrying => UpdateDownloadRetryState(install, retrying));
+                        retryStateChanged: retrying => UpdateDownloadRetryState(install, retrying),
+                        bytesTransferred: install.TransferRates.RecordDownload);
                     if (!downloaded)
                         throw new HttpRequestException("The required download could not be completed.");
 
@@ -703,6 +780,7 @@ public class InstallManager
 
     private async Task ProcessCopyTask(IoTask ioTask, string installRoot)
     {
+        var transferRates = CurrentInstall?.TransferRates;
         InstallPathPolicy.RequireFile(installRoot, ioTask.DestinationFilePath);
         EnsureDirectoryExists(ioTask.DestinationFilePath);
 
@@ -737,6 +815,7 @@ public class InstallManager
                 var bytesToRead = (int)Math.Min(bufferSize, remainingBytesToWrite);
                 var bytesRead = memoryStream.Read(buffer, 0, bytesToRead);
                 fileStream.Write(buffer, 0, bytesRead);
+                transferRates?.RecordWrite(bytesRead);
 
                 remainingBytesToWrite -= bytesRead;
             }
@@ -1453,10 +1532,6 @@ public class InstallManager
         lock (_installItemLock)
         {
             CurrentInstall.DownloadedSizeMiB += downloadedSize / 1024.0 / 1024.0;
-            CurrentInstall.DownloadSpeedRawMiB = _installStopWatch.IsRunning && _installStopWatch.Elapsed.TotalSeconds > 0
-                ? Math.Round(CurrentInstall.DownloadedSizeMiB / _installStopWatch.Elapsed.TotalSeconds, 2)
-                : 0;
-
             UpdateProgressIfNeeded();
         }
     }
@@ -1475,9 +1550,6 @@ public class InstallManager
                 return;
             }
 
-            CurrentInstall.WriteSpeedMiB = _installStopWatch.IsRunning && _installStopWatch.Elapsed.TotalSeconds > 0
-                ? Math.Round(CurrentInstall.WrittenSizeMiB / _installStopWatch.Elapsed.TotalSeconds, 2)
-                : 0;
             CurrentInstall.ProgressPercentage = Convert.ToInt32((CurrentInstall.WrittenSizeMiB / CurrentInstall.TotalWriteSizeMb) * 100);
             UpdateProgressIfNeeded();
         }

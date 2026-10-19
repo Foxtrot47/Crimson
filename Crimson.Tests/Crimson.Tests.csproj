@@ -27,6 +27,10 @@
     <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\Crimson.WinUI\Views\DownloadsPage.xaml" TargetPath="Presentation\DownloadsPage.xaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Platform implementations remain linked until they have portable substitutes. -->
   <ItemGroup>
     <Compile Include="..\Crimson.WinUI\Core\GameShortcutManager.cs" Link="Production\Core\GameShortcutManager.cs" />

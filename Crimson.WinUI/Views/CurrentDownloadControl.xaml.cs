@@ -15,7 +15,7 @@ public sealed class DownloadSummary
     public string ToolTip { get; init; } = "No downloads in queue";
 }
 
-public sealed partial class CurrentDownloadControl : UserControl
+public sealed partial class CurrentDownloadControl : UserControl, IDisposable
 {
     public event Action<DownloadSummary>? SummaryChanged;
 
@@ -32,7 +32,21 @@ public sealed partial class CurrentDownloadControl : UserControl
 
         HandleOperationUpdated(_installManager.CurrentOperation);
         _installManager.OperationUpdated += HandleOperationUpdated;
+        _installManager.TransferRatesUpdated += HandleTransferRatesUpdated;
     }
+
+    public void Dispose()
+    {
+        _installManager.OperationUpdated -= HandleOperationUpdated;
+        _installManager.TransferRatesUpdated -= HandleTransferRatesUpdated;
+    }
+
+    private void HandleTransferRatesUpdated(OperationSnapshot operation) =>
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var current = _installManager.CurrentOperation;
+            if (current?.OperationId == operation.OperationId) ApplyDownloadSpeed(current);
+        });
 
     public void PublishCurrentSummary() => HandleOperationUpdated(_installManager.CurrentOperation);
 
@@ -76,9 +90,7 @@ public sealed partial class CurrentDownloadControl : UserControl
         ProgressBar.IsIndeterminate = presentation.IsIndeterminate;
         ProgressBar.Value = presentation.ProgressPercentage;
         DownloadedSize.Text = presentation.Detail;
-        DownloadSpeed.Text = !OperationPresenter.IsRetryingTransfer(operation) && operation.Phase == OperationPhase.Transferring && operation.DownloadSpeedMiB > 0
-            ? $"{operation.DownloadSpeedMiB:0.##} MiB/s"
-            : string.Empty;
+        ApplyDownloadSpeed(operation);
 
         SummaryChanged?.Invoke(new DownloadSummary
         {
@@ -87,5 +99,14 @@ public sealed partial class CurrentDownloadControl : UserControl
             ProgressPercentage = presentation.ProgressPercentage,
             ToolTip = $"{title} - {presentation.Headline.ToLowerInvariant()}"
         });
+    }
+
+    private void ApplyDownloadSpeed(OperationSnapshot operation)
+    {
+        var transferring = operation.Phase == OperationPhase.Transferring &&
+            operation.Status is ActionStatus.OnGoing or ActionStatus.Processing;
+        DownloadSpeed.Text = transferring && !OperationPresenter.IsRetryingTransfer(operation) && operation.DownloadSpeedMiB > 0
+            ? Crimson.ViewModels.DownloadsViewModel.FormatTransferRate(operation.DownloadSpeedMiB)
+            : string.Empty;
     }
 }
