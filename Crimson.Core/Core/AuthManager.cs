@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -89,26 +90,7 @@ public class AuthManager
                 return await SetLoggedOutAsync();
             }
 
-            var accessToken = userData.AccessToken;
-            if (DateTimeOffset.Parse(userData.ExpiresAt) < DateTimeOffset.UtcNow + TokenRefreshBuffer)
-            {
-                _log.Information("CheckAuthStatus: Access token expired or expiring soon, refreshing");
-                var refreshed = await RequestTokens("refresh_token", "refresh_token", userData.RefreshToken);
-                if (refreshed?.AccessToken is null)
-                {
-                    _log.Error("CheckAuthStatus: Token refresh failed, logging out");
-                    return await SetLoggedOutAsync();
-                }
-
-                accessToken = refreshed.AccessToken;
-                refreshed.AccessToken = _credentialProtector.Protect(refreshed.AccessToken);
-                refreshed.RefreshToken = _credentialProtector.Protect(refreshed.RefreshToken);
-                await _storage.SaveUserData(refreshed);
-            }
-            else
-            {
-                _log.Information("CheckAuthStatus: Access token is still valid");
-            }
+            var accessToken = await RefreshStoredAccessTokenIfNeededAsync(userData);
 
             if (!await VerifyAccessToken(accessToken))
             {
@@ -120,11 +102,32 @@ public class AuthManager
             OnAuthStatusChanged(new AuthStatusChangedEventArgs(_authenticationStatus));
             return _authenticationStatus;
         }
+        catch (AuthenticationRejectedException)
+        {
+            return await SetLoggedOutAsync();
+        }
         catch (Exception ex)
         {
             _log.Error("CheckAuthStatus failed with {ErrorType}", ex.GetType().Name);
-            return await SetLoggedOutAsync();
+            return await SetLoggedOutAsync(clearSavedData: false);
         }
+    }
+
+    private async Task<string> RefreshStoredAccessTokenIfNeededAsync(UserData userData)
+    {
+        if (DateTimeOffset.Parse(userData.ExpiresAt) >= DateTimeOffset.UtcNow + TokenRefreshBuffer)
+        {
+            _log.Information("CheckAuthStatus: Access token is still valid");
+            return userData.AccessToken;
+        }
+
+        _log.Information("CheckAuthStatus: Access token expired or expiring soon, refreshing");
+        var refreshed = await RequestTokens("refresh_token", "refresh_token", userData.RefreshToken);
+        var accessToken = refreshed.AccessToken;
+        refreshed.AccessToken = _credentialProtector.Protect(refreshed.AccessToken);
+        refreshed.RefreshToken = _credentialProtector.Protect(refreshed.RefreshToken);
+        await _storage.SaveUserData(refreshed);
+        return accessToken;
     }
 
     /// <summary>
@@ -220,6 +223,11 @@ public class AuthManager
 
             return plainAccessToken;
         }
+        catch (AuthenticationRejectedException)
+        {
+            await SetLoggedOutAsync();
+            return null;
+        }
         catch (Exception ex)
         {
             _log.Error("GetAccessToken failed with {ErrorType}", ex.GetType().Name);
@@ -255,9 +263,9 @@ public class AuthManager
         }
     }
 
-    private async Task<AuthenticationStatus> SetLoggedOutAsync()
+    private async Task<AuthenticationStatus> SetLoggedOutAsync(bool clearSavedData = true)
     {
-        await _storage.ClearUserData();
+        if (clearSavedData) await _storage.ClearUserData();
         _authenticationStatus = AuthenticationStatus.LoggedOut;
         OnAuthStatusChanged(new AuthStatusChangedEventArgs(AuthenticationStatus.LoggedOut));
         return _authenticationStatus;
@@ -289,15 +297,15 @@ public class AuthManager
                     "RequestTokens failed with HTTP {StatusCode} {ReasonPhrase}",
                     (int)response.StatusCode,
                     response.ReasonPhrase);
-                return null;
+                if (await IsCredentialRejectionAsync(response)) throw new AuthenticationRejectedException();
+                response.EnsureSuccessStatusCode();
             }
 
             var result = await response.Content.ReadAsStringAsync();
             var userData = JsonSerializer.Deserialize<UserData>(result);
             if (userData?.AccessToken == null)
             {
-                _log.Error("RequestTokens returned an invalid authentication response");
-                return null;
+                throw new InvalidDataException("The authentication response did not contain an access token.");
             }
 
             return userData;
@@ -305,7 +313,26 @@ public class AuthManager
         catch (Exception ex)
         {
             _log.Error("RequestTokens failed with {ErrorType}", ex.GetType().Name);
-            return null;
+            throw;
+        }
+    }
+
+    private sealed class AuthenticationRejectedException : Exception { }
+
+    private static async Task<bool> IsCredentialRejectionAsync(HttpResponseMessage response)
+    {
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) return true;
+        if (response.StatusCode != System.Net.HttpStatusCode.BadRequest) return false;
+        try
+        {
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return body.RootElement.ValueKind == JsonValueKind.Object &&
+                body.RootElement.TryGetProperty("error", out var error) &&
+                error.ValueKind == JsonValueKind.String && error.GetString() == "invalid_grant";
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 
@@ -319,16 +346,10 @@ public class AuthManager
             EpicEndpointPolicy.RequireApiUri($"{OAuthHost}/account/api/oauth/verify"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-        try
-        {
-            using var response = await _httpClient.SendAsync(request);
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex)
-        {
-            _log.Error("VerifyAccessToken failed with {ErrorType}", ex.GetType().Name);
-            return false;
-        }
+        using var response = await _httpClient.SendAsync(request);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
     }
 
 
