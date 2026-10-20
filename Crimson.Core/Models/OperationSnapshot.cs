@@ -29,7 +29,9 @@ public sealed record OperationSnapshot(
     bool IsRetrying = false,
     Guid OperationId = default,
     double WriteSpeedMiB = 0,
-    IReadOnlyList<TransferRateSample>? TransferHistory = null)
+    IReadOnlyList<TransferRateSample>? TransferHistory = null,
+    OperationFailure? Notice = null,
+    bool ShowErrorDialog = false)
 {
     public bool IsActive => Status is
         ActionStatus.Pending or
@@ -52,5 +54,6 @@ public sealed record OperationSnapshot(
         item.IsRetrying,
         item.OperationId,
         item.WriteSpeedMiB,
-        item.TransferRates.GetSamples());
+        item.TransferRates.GetSamples(),
+        item.Notice);
 }

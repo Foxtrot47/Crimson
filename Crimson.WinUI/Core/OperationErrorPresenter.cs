@@ -1,3 +1,4 @@
+using Crimson.Resources;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -35,12 +36,16 @@ internal sealed class OperationErrorPresenter : IDisposable
         _root.Loaded += RootLoaded;
     }
 
-    private void OperationError(OperationSnapshot operation) => _root.DispatcherQueue.TryEnqueue(async () =>
+    private void OperationError(OperationSnapshot operation)
     {
-        if (_closed) return;
-        _pending.Enqueue(operation);
-        await ShowPendingAsync();
-    });
+        if (!operation.ShowErrorDialog) return;
+        _root.DispatcherQueue.TryEnqueue(async () =>
+        {
+            if (_closed) return;
+            _pending.Enqueue(operation);
+            await ShowPendingAsync();
+        });
+    }
 
     private async void RootLoaded(object sender, RoutedEventArgs args) => await ShowPendingAsync();
 
@@ -78,23 +83,23 @@ internal sealed class OperationErrorPresenter : IDisposable
     private ContentDialog CreateDialog(OperationSnapshot operation)
     {
         var failure = operation.Failure ?? OperationFailureClassifier.Classify(null);
-        var title = $"{OperationPresenter.GetActionLabel(operation.Action)} error";
+        var title = UiStrings.Format(UiStrings.OperationErrorFormat, OperationPresenter.GetActionLabel(operation.Action));
         var gameTitle = _library.GetGameInfo(operation.AppName)?.AppTitle;
-        if (!string.IsNullOrWhiteSpace(gameTitle)) title = $"{gameTitle}: {title}";
+        if (!string.IsNullOrWhiteSpace(gameTitle)) title = UiStrings.Format(UiStrings.TitleDetailFormat, gameTitle, title);
         var feedback = new TextBlock { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
         var content = new StackPanel { Spacing = 10 };
         content.Children.Add(new TextBlock { Text = failure.Message, TextWrapping = TextWrapping.Wrap });
         content.Children.Add(new TextBlock { Text = failure.SuggestedAction, TextWrapping = TextWrapping.Wrap });
         content.Children.Add(new TextBlock
         {
-            Text = $"Error code: {failure.Code}", FontSize = 12, Opacity = 0.75,
+            Text = UiStrings.Format(UiStrings.ErrorCodeFormat, failure.Code), FontSize = 12, Opacity = 0.75,
             IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap
         });
         content.Children.Add(feedback);
         var dialog = new ContentDialog
         {
             XamlRoot = _root.XamlRoot, Title = title, Content = content,
-            PrimaryButtonText = "Report problem", CloseButtonText = "Close",
+            PrimaryButtonText = UiStrings.ReportProblem, CloseButtonText = UiStrings.Close,
             DefaultButton = ContentDialogButton.Close, MaxWidth = 480
         };
         dialog.Resources["ContentDialogMaxWidth"] = 480d;
@@ -120,7 +125,7 @@ internal sealed class OperationErrorPresenter : IDisposable
         {
             _log.Warning("Report page could not be opened: {ErrorType}", exception.GetType().Name);
         }
-        feedback.Text = "The report page could not be opened. Error code: report_open_failed.";
+        feedback.Text = UiStrings.TheReportPageCouldNotBeOpenedErrorCodeReportOpenFailed;
         feedback.Visibility = Visibility.Visible;
     }
 

@@ -107,6 +107,25 @@ public sealed class OperationPresenterTests
         Assert.Contains("Choose another folder", presentation.Detail);
     }
 
+    [Theory]
+    [InlineData("An error occurred during installation")]
+    [InlineData("Download task failed")]
+    [InlineData("Download worker failed")]
+    [InlineData("Io Task failed")]
+    [InlineData("File worker failed")]
+    [InlineData("3 files failed verification")]
+    public void InternalFailureReasonsAreReplacedByUserFacingFailureCopy(string reason)
+    {
+        var failure = OperationFailureClassifier.Classify(new IOException());
+        var operation = Snapshot(ActionType.Install, ActionStatus.Failed, OperationPhase.Preparing)
+            with { StatusMessage = reason, Failure = failure };
+
+        var presentation = OperationPresenter.Present(operation);
+
+        Assert.Equal($"{failure.Message} {failure.SuggestedAction}", presentation.Detail);
+        Assert.DoesNotContain(reason, presentation.Detail);
+    }
+
     [Fact]
     public void FailureUsesAvailableStatusMessage()
     {

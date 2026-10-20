@@ -1,3 +1,4 @@
+using Crimson.Resources;
 using System;
 using System.IO;
 using System.Net.Http;
@@ -17,28 +18,28 @@ public static class OperationFailureClassifier
         UnauthorizedAccessException => Failure(
             OperationFailureKind.Permission,
             "permission_denied",
-            "Crimson could not write to the selected installation location.",
-            "Choose another folder or allow Crimson to write to this location."),
+            UiStrings.CrimsonCouldNotWriteToTheSelectedInstallationLocation,
+            UiStrings.ChooseAnotherFolderOrAllowCrimsonToWriteToThisLocation),
         IOException ioException when IsDiskFull(ioException) => Failure(
             OperationFailureKind.Storage,
             "storage_full",
-            "There is not enough free space to complete this operation.",
-            "Free some disk space, then retry."),
+            UiStrings.ThereIsNotEnoughFreeSpaceToCompleteThisOperation,
+            UiStrings.FreeSomeDiskSpaceThenRetry),
         HttpRequestException or TimeoutException or TaskCanceledException => Failure(
             OperationFailureKind.Network,
             "network_unavailable",
-            "Crimson could not download the required data.",
-            "Check your connection and retry."),
+            UiStrings.CrimsonCouldNotDownloadTheRequiredData,
+            UiStrings.CheckYourConnectionAndRetry),
         InvalidDataException => Failure(
             OperationFailureKind.Manifest,
             "invalid_install_data",
-            "Crimson could not read the installation data.",
-            "Retry later. If the problem continues, report it."),
+            UiStrings.CrimsonCouldNotReadTheInstallationData,
+            UiStrings.RetryLaterIfTheProblemContinuesReportIt),
         _ => Failure(
             OperationFailureKind.Unknown,
             "operation_failed",
-            "The operation stopped unexpectedly.",
-            "Retry the operation. If it fails again, report the problem.")
+            UiStrings.TheOperationStoppedUnexpectedly,
+            UiStrings.RetryTheOperationIfItFailsAgainReportTheProblem)
     };
 
     private static bool IsDiskFull(IOException exception) =>

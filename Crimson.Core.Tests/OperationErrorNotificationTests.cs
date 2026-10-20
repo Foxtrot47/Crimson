@@ -31,6 +31,7 @@ public sealed class OperationErrorNotificationTests : IDisposable
         Publish(item);
 
         var error = Assert.Single(errors);
+        Assert.True(error.ShowErrorDialog);
         Assert.Equal(action, error.Action);
         Assert.Equal(phase, error.Phase);
         Assert.Equal("permission_denied", error.Failure?.Code);
@@ -73,6 +74,7 @@ public sealed class OperationErrorNotificationTests : IDisposable
         _fixture.Installer.ReportPreparationFailure("base", ActionType.Import, new IOException("synthetic-private-path"));
 
         var error = Assert.Single(errors);
+        Assert.False(error.ShowErrorDialog);
         Assert.Equal(ActionType.Import, error.Action);
         Assert.Equal(OperationPhase.Preparing, error.Phase);
         Assert.NotNull(error.Failure);
@@ -92,6 +94,7 @@ public sealed class OperationErrorNotificationTests : IDisposable
         await _fixture.Invoke("HandleInstallationStoppage", "File worker failed", null!);
 
         var error = Assert.Single(errors);
+        Assert.True(error.ShowErrorDialog);
         Assert.Equal("permission_denied", error.Failure?.Code);
         Assert.Equal(OperationPhase.Transferring, error.Phase);
     }
@@ -111,6 +114,9 @@ public sealed class OperationErrorNotificationTests : IDisposable
         await _fixture.Invoke("CreateRequestedShortcutsAsync", item, _fixture.BaseGame, _fixture.BaseGame.LocalAppState!);
 
         Assert.Equal(2, errors.Count);
+        Assert.All(errors, error => Assert.False(error.ShowErrorDialog));
+        Assert.NotNull(item.Notice);
+        Assert.Null(item.Failure);
         Assert.Contains(errors, error => error.Failure?.Code == "desktop_shortcut_failed");
         Assert.Contains(errors, error => error.Failure?.Code == "start_menu_shortcut_failed");
         Assert.Equal(InstallState.Installed, _fixture.BaseGame.LocalAppState!.InstallStatus);
@@ -128,11 +134,13 @@ public sealed class OperationErrorNotificationTests : IDisposable
 
         await _fixture.Invoke("HandleInstallationStoppage", "Synthetic failure", null!);
 
-        Assert.Contains(errors, error => error.Failure?.Code == "operation_state_save_failed" && error.Phase == OperationPhase.Finalizing);
+        Assert.Contains(errors, error => error.Failure?.Code == "operation_state_save_failed" &&
+            error.Phase == OperationPhase.Finalizing && error.ShowErrorDialog);
         Assert.Same(item, _fixture.Installer.CurrentInstall);
         _fixture.Installer.AddToQueue(new InstallItem("available", ActionType.Install, _fixture.BasePath));
         Assert.Empty(_fixture.Installer.GetQueueOperations());
         Assert.Equal("operation_state_save_failed", errors[^1].Failure?.Code);
+        Assert.True(errors[^1].ShowErrorDialog);
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using Crimson.Resources;
 namespace Crimson.Models;
 
 public enum OperationFailureKind
@@ -21,8 +22,8 @@ public sealed record OperationFailure(
         OperationFailureKind.Verification,
         "verification_failed",
         invalidFileCount == 1
-            ? "One file failed verification."
-            : $"{invalidFileCount} files failed verification.",
-        "Retry the repair. If it fails again, report the problem.",
+            ? UiStrings.OneFileFailedVerification
+            : UiStrings.Format(UiStrings.VerificationFailedSentenceFormat, invalidFileCount),
+        UiStrings.RetryTheRepairIfItFailsAgainReportTheProblem,
         true);
 }
