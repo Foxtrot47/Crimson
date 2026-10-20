@@ -18,7 +18,7 @@
     Version="1.0.0.0" />
 
   <Properties>
-    <DisplayName>Crimson</DisplayName>
+    <DisplayName>Crimson Launcher</DisplayName>
     <PublisherDisplayName>Foxtrot47</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -37,7 +37,7 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="Crimson"
+        DisplayName="Crimson Launcher"
         Description="A modern, fast and lightweight alternative to Epic Games Launcher."
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"

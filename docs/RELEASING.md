@@ -45,6 +45,12 @@ Binary distributions include the repository's `LICENSE.txt`. Release validation 
 
 Publish the source matching each distributed binary, including build scripts and required dependency information. For release `X.Y.Z`, link to `https://github.com/Foxtrot47/Crimson/tree/vX.Y.Z` next to the binary downloads and in the Microsoft Store listing. Verify that the tag is public and identifies the source actually used to build that package. Do not publish packages built from uncommitted changes under an unrelated source tag.
 
+## Store display name
+
+The reserved Partner Center name is **Crimson Launcher**. Both `Package/Properties/DisplayName` and the application's `uap:VisualElements/@DisplayName` must use that exact name. Windows may show it in Start and installed-app listings. The title bar, tray, and in-app UI keep the **Crimson** branding.
+
+This does not change the package identity `Foxtrot47.CrimsonLauncher`, publisher, signing certificate, or Store ID `9P6MZFN90NN8`. Release validation checks the source and generated package display names against this confirmed reservation; it does not query Partner Center.
+
 ## Versioning
 
 The first stable release is `1.0.0`, with MSIX version `1.0.0.0`. `Directory.Build.props` defines the product, assembly, file, and default package versions. Keep `Package.appxmanifest` synchronized with the product version and leave the fourth MSIX component at zero.

@@ -26,6 +26,7 @@ $signedOutput = Join-Path $staging 'msix-test'
 $storeOutput = Join-Path $staging 'msix'
 $publisher = 'CN=B3628FD3-BCE4-4EF1-ADE8-7B0F73A4FC3F'
 $packageName = 'Foxtrot47.CrimsonLauncher'
+$displayName = 'Crimson Launcher'
 $temporaryDirectory = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
 $pfxPath = Join-Path $temporaryDirectory ('Crimson-signing-' + [guid]::NewGuid().ToString('N') + '.pfx')
 $originalManifest = [IO.File]::ReadAllBytes($manifestPath)
@@ -95,6 +96,16 @@ function Assert-SourceVersions {
   [xml]$sourceManifest = [IO.File]::ReadAllText($manifestPath)
   if ($sourceManifest.Package.Identity.Version -cne $MsixVersion) {
     throw 'The requested MSIX version does not match Package.appxmanifest.'
+  }
+  Assert-ReservedDisplayNames $sourceManifest
+}
+
+function Assert-ReservedDisplayNames {
+  param([Parameter(Mandatory)][xml]$Manifest)
+
+  if ($Manifest.Package.Properties.DisplayName -cne $displayName -or
+      $Manifest.Package.Applications.Application.VisualElements.DisplayName -cne $displayName) {
+    throw 'Package and application display names must match the reserved Store name Crimson Launcher.'
   }
 }
 
@@ -308,6 +319,7 @@ function Assert-PackageIdentity {
   if ($identity.Version -cne $MsixVersion) {
     throw "Package version '$($identity.Version)' does not match '$MsixVersion'."
   }
+  Assert-ReservedDisplayNames $packageManifest
 }
 
 function Confirm-SignedAsset {

@@ -28,6 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\Crimson.WinUI\Package.appxmanifest" TargetPath="Presentation\Package.appxmanifest" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\Crimson.WinUI\Views\*.xaml;..\Crimson.WinUI\Controls\*.xaml"
           TargetPath="Presentation\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
