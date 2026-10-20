@@ -14,12 +14,30 @@ namespace Crimson.ViewModels;
 public partial class LibraryViewModel : ObservableObject, INavigationAware
 {
     [ObservableProperty]
-    private List<LibraryItem> _gamesList;
+    [NotifyPropertyChangedFor(nameof(HasNoInstalledGames))]
+    private List<LibraryItem> _gamesList = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoInstalledGames))]
+    private bool _installedOnly;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsGridView))]
+    private bool _isListView;
+
+    public bool IsGridView => !IsListView;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActionError))]
+    private string _actionErrorMessage = string.Empty;
+
+    public bool HasActionError => !string.IsNullOrWhiteSpace(ActionErrorMessage);
 
     [ObservableProperty]
     private bool _loadingFinished = false;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoInstalledGames))]
     private bool _showLoadingScreen = true;
 
     [ObservableProperty]
@@ -27,6 +45,14 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
 
     [ObservableProperty]
     private bool _showQueueItems = false;
+
+    public bool HasNoInstalledGames => InstalledOnly && !ShowLoadingScreen && GamesList.Count == 0;
+
+    partial void OnInstalledOnlyChanged(bool value)
+    {
+        if (_libraryUpdatedHandler is not null && !ShowLoadingScreen)
+            RefreshOperationStatus(Volatile.Read(ref _navigationGeneration));
+    }
 
     private readonly ILogger _log;
     private readonly InstallManager _installManager;
@@ -128,30 +154,42 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     {
         if (generation != Volatile.Read(ref _navigationGeneration)) return;
 
-        GamesList = games
-            .Where(game => !game.IsDlc())
-            .Select(game => CreateLibraryItem(game, operations.GetValueOrDefault(game.AppName)))
+        var existing = GamesList.ToDictionary(item => item.Name, StringComparer.Ordinal);
+        var items = games
+            .Where(game => !game.IsDlc() && MatchesInstalledFilter(game))
+            .Select(game => CreateOrUpdateLibraryItem(game, operations.GetValueOrDefault(game.AppName),
+                existing.GetValueOrDefault(game.AppName)))
             .OrderBy(item => item.Title)
             .ToList();
+        if (!GamesList.SequenceEqual(items)) GamesList = items;
         ShowLoadingScreen = false;
         ShowAppGrid = true;
     }
 
-    private LibraryItem CreateLibraryItem(Game game, OperationSnapshot? operation)
+    private bool MatchesInstalledFilter(Game game)
+    {
+        if (!InstalledOnly) return true;
+        var current = _libraryManager.GetGameInfo(game.AppName);
+        return current is not null && LibraryManager.IsSidebarListed(current, null);
+    }
+
+    private static LibraryItem CreateOrUpdateLibraryItem(Game game, OperationSnapshot? operation, LibraryItem? item)
+    {
+        var imageUrl = game.Metadata.KeyImages
+            .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url;
+        if (item is null || item.Title != game.AppTitle || item.ImageUrl != imageUrl)
+            item = new LibraryItem { Name = game.AppName, Title = game.AppTitle, ImageUrl = imageUrl };
+
+        UpdateItemOperation(item, operation);
+        return item;
+    }
+
+    private static void UpdateItemOperation(LibraryItem item, OperationSnapshot? operation)
     {
         var presentation = operation is null ? null : OperationPresenter.Present(operation);
-        var item = new LibraryItem
-        {
-            Name = game.AppName,
-            Title = game.AppTitle,
-            ImageUrl = game.Metadata.KeyImages
-                .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url,
-            OperationStatus = presentation?.Headline ?? string.Empty,
-            HasActiveOperation = presentation?.IsActive == true,
-            IsOperationIndeterminate = presentation?.IsIndeterminate == true,
-            OperationProgress = presentation?.ProgressPercentage ?? 0
-        };
-        _log.Debug("UpdateLibrary: Adding {AppName} to library", item.Name);
-        return item;
+        item.OperationStatus = presentation?.Headline ?? string.Empty;
+        item.HasActiveOperation = presentation?.IsActive == true;
+        item.IsOperationIndeterminate = presentation?.IsIndeterminate == true;
+        item.OperationProgress = presentation?.ProgressPercentage ?? 0;
     }
 }

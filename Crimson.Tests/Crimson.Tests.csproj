@@ -28,7 +28,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\Crimson.WinUI\Views\DownloadsPage.xaml" TargetPath="Presentation\DownloadsPage.xaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Crimson.WinUI\Views\*.xaml;..\Crimson.WinUI\Controls\*.xaml"
+          TargetPath="Presentation\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Platform implementations remain linked until they have portable substitutes. -->
