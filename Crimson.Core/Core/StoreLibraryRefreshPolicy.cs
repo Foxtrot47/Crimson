@@ -20,8 +20,9 @@ public sealed class StoreLibraryRefreshPolicy
         // attempt too: the browser may close before a completion signal is visible.
         var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (uri.Host.Equals("payment-website-pci.ol.epicgames.com", StringComparison.OrdinalIgnoreCase) ||
-            Array.Exists(segments, segment => segment.Equals("purchase", StringComparison.OrdinalIgnoreCase) ||
-                                              segment.Equals("checkout", StringComparison.OrdinalIgnoreCase)))
+            (!Array.Exists(segments, segment => segment.Equals("p", StringComparison.OrdinalIgnoreCase)) &&
+             Array.Exists(segments, segment => segment.Equals("purchase", StringComparison.OrdinalIgnoreCase) ||
+                                               segment.Equals("checkout", StringComparison.OrdinalIgnoreCase))))
             Revision++;
     }
 

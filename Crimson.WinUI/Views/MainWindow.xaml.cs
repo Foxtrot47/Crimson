@@ -770,8 +770,7 @@ public sealed partial class MainWindow : Window
                 {
                     try
                     {
-                        var games = await _libraryManager.GetLibraryData();
-                        LibraryUpdatedHandler(games);
+                        await _libraryManager.GetLibraryData();
                     }
                     catch (Exception ex)
                     {
