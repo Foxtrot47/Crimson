@@ -8,6 +8,10 @@ public class InstallItem(string appName, ActionType action, string location)
     public ActionType Action { get; set; } = action;
     public string Location { get; set; } = location;
     public string MoveLocation { get; set; }
+    public EpicInstallation? EpicImportSource { get; set; }
+    public string? EpicImportOwner { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal int? EpicImportAccountGeneration { get; set; }
     public int ProgressPercentage { get; set; }
     public TimeSpan RunningTime { get; set; }
     public TimeSpan Eta { get; set; }
@@ -26,6 +30,7 @@ public class InstallItem(string appName, ActionType action, string location)
     public OperationPhase Phase { get; set; } = OperationPhase.Queued;
     public string StatusMessage { get; set; }
     public OperationFailure? Failure { get; set; }
+    public OperationFailure? Notice { get; set; }
     internal Guid OperationId { get; } = Guid.NewGuid();
     [System.Text.Json.Serialization.JsonIgnore]
     internal Crimson.Core.TransferRateHistory TransferRates { get; } = new();

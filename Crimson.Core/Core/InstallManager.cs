@@ -1,4 +1,5 @@
-﻿using System;
+using Crimson.Resources;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,6 +9,7 @@ using System.Linq;
 using System.Numerics;
 using System.Net.Http;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,6 +33,7 @@ public class InstallManager : IDisposable
     private readonly DownloadManager _downloadManager;
     private readonly IGameShortcutManager _shortcutManager;
     private readonly IInstallPermissionChecker _permissionChecker;
+    private readonly EpicInstallDiscovery? _epicInstallDiscovery;
     private readonly IStoreRepository _repository;
     private readonly Storage _storage;
 
@@ -84,13 +87,15 @@ public class InstallManager : IDisposable
         Storage storage,
         DownloadManager downloadManager,
         IGameShortcutManager shortcutManager,
-        IInstallPermissionChecker permissionChecker)
+        IInstallPermissionChecker permissionChecker,
+        EpicInstallDiscovery? epicInstallDiscovery = null)
     {
         _logger = logger;
         _libraryManager = libraryManager;
         _downloadManager = downloadManager;
         _shortcutManager = shortcutManager;
         _permissionChecker = permissionChecker;
+        _epicInstallDiscovery = epicInstallDiscovery;
         CurrentInstall = null;
         _repository = repository;
         _storage = storage;
@@ -199,8 +204,18 @@ public class InstallManager : IDisposable
         }
     }
 
-    private void ReportError(InstallItem install, OperationFailure failure, OperationPhase? phase = null) =>
-        OperationError?.Invoke(OperationSnapshot.From(install) with { Failure = failure, Phase = phase ?? install.Phase });
+    private void ReportError(InstallItem install, OperationFailure failure, OperationPhase? phase = null, bool showDialog = true) =>
+        OperationError?.Invoke(OperationSnapshot.From(install) with
+        {
+            Failure = failure, Phase = phase ?? install.Phase, ShowErrorDialog = showDialog
+        });
+
+    internal void ReportSecondaryFailure(InstallItem install, OperationFailure failure)
+    {
+        install.Notice = failure;
+        ReportError(install, failure, showDialog: false);
+        PublishProgressUpdated(install);
+    }
 
     public void ReportPreparationFailure(string appName, ActionType action, Exception exception) =>
         ReportPreparationFailure(appName, action, OperationFailureClassifier.Classify(exception));
@@ -210,7 +225,7 @@ public class InstallManager : IDisposable
         {
             Status = ActionStatus.Failed,
             Phase = OperationPhase.Preparing
-        }, failure);
+        }, failure, showDialog: failure.Code is "operation_state_save_failed" or "pending_state_invalid");
 
     private void SetPhase(InstallItem install, OperationPhase phase)
     {
@@ -226,6 +241,50 @@ public class InstallManager : IDisposable
         ActionType.Move => OperationPhase.Moving,
         _ => OperationPhase.Transferring
     };
+
+    internal bool CanImportEpicInstallation(EpicInstallation source)
+    {
+        lock (_storage.AccountDataLock)
+        {
+            var game = GetOwnedEpicGame(source);
+            return game is not null && game.LocalAppState?.InstallStatus is (null or InstallState.NotInstalled) &&
+                GetActiveOperationForGame(source.AppName) is null;
+        }
+    }
+
+    private Game? GetOwnedEpicGame(EpicInstallation source)
+    {
+        var owned = _libraryManager.GetOwnedGames().FirstOrDefault(game =>
+            game.AppName == source.AppName && !game.IsDlc() &&
+            game.AssetInfos.Windows.Namespace == source.CatalogNamespace &&
+            game.AssetInfos.Windows.CatalogItemId == source.CatalogItemId);
+        return owned is null ? null : _libraryManager.GetGameInfo(source.AppName);
+    }
+
+    internal async Task<bool> TryQueueEpicImportAsync(
+        EpicInstallation source, int accountGeneration, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var owner = await GetEpicImportOwnerAsync();
+        lock (_storage.AccountDataLock)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_storage.AccountGeneration != accountGeneration || owner is null || !CanImportEpicInstallation(source)) return false;
+            return TryAddToQueue(new InstallItem(source.AppName, ActionType.Import, source.InstallLocation)
+            {
+                EpicImportSource = source,
+                EpicImportOwner = owner,
+                EpicImportAccountGeneration = accountGeneration
+            });
+        }
+    }
+
+    internal async Task<string?> GetEpicImportOwnerAsync()
+    {
+        var user = await _storage.GetUserData();
+        return string.IsNullOrWhiteSpace(user?.AccountId) ? null :
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(user.AccountId)));
+    }
 
     /// <summary>
     /// Adds game to the install queue.
@@ -259,7 +318,8 @@ public class InstallManager : IDisposable
         _logger.Information("AddToQueue: Adding new Install to queue {Name} Action {Action}", item.AppName, item.Action);
         item.Status = ActionStatus.Pending;
         item.Phase = OperationPhase.Queued;
-        if (!_libraryManager.TryQueueOperation(OperationSnapshot.From(item), () => _installQueue.Add(item))) return false;
+        if (!_libraryManager.TryQueueOperation(OperationSnapshot.From(item), () => _installQueue.Add(item),
+            excludeRelatedOperations: item.EpicImportSource is not null)) return false;
         PublishStatusChanged(item);
         if (CurrentInstall == null)
             ProcessNext();
@@ -280,16 +340,16 @@ public class InstallManager : IDisposable
         if (game is null)
         {
             ReportPreparationFailure(item.AppName, item.Action, new OperationFailure(
-                OperationFailureKind.Unknown, "library_item_unavailable", "This game is no longer available in the current library.",
-                "Refresh the library and try again.", false));
+                OperationFailureKind.Unknown, "library_item_unavailable", UiStrings.ThisGameIsNoLongerAvailableInTheCurrentLibrary,
+                UiStrings.RefreshTheLibraryAndTryAgain, false));
             return null;
         }
         if (item.Action is not (ActionType.Install or ActionType.Import) &&
             game.LocalAppState?.InstallStatus is null or InstallState.NotInstalled)
         {
             ReportPreparationFailure(item.AppName, item.Action, new OperationFailure(
-                OperationFailureKind.Unknown, "game_not_installed", "This operation requires an installed game.",
-                "Install or import the game first.", false));
+                OperationFailureKind.Unknown, "game_not_installed", UiStrings.ThisOperationRequiresAnInstalledGame,
+                UiStrings.InstallOrImportTheGameFirst, false));
             return null;
         }
         return game;
@@ -392,6 +452,7 @@ public class InstallManager : IDisposable
             var data = currentInstall.Action == ActionType.Import
                 ? await Task.Run(() => Manifest.ReadAll(manifestData), _cancellationTokenSource.Token)
                 : Manifest.ReadAll(manifestData);
+            ApplyOperationInstallTags(currentInstall, data);
 
             // TODO Handle stats if game is installed
 
@@ -428,10 +489,47 @@ public class InstallManager : IDisposable
 
     private Task<byte[]> GetOperationManifestBytes(InstallItem install, Game game)
     {
-        if (install.Action == ActionType.Uninstall &&
+        if (install.Action == ActionType.Import && install.EpicImportSource is not null)
+            return GetEpicImportManifestBytesAsync(install, _cancellationTokenSource.Token);
+        if (install.Action is (ActionType.Uninstall or ActionType.Move) &&
             (game.IsDlc() || !string.IsNullOrWhiteSpace(game.LocalAppState?.Version)))
             return GetInstalledManifestBytes(install.AppName);
         return GetManifestDataWithCaching(install.AppName, _cancellationTokenSource.Token);
+    }
+
+    private async Task<byte[]> GetEpicImportManifestBytesAsync(InstallItem install, CancellationToken cancellationToken)
+    {
+        var source = install.EpicImportSource!;
+        var generation = install.EpicImportAccountGeneration ??
+            throw new InvalidDataException("The import account could not be verified. Start a new import.");
+        RequireEpicImportOwnership(install, generation);
+        if (install.EpicImportOwner is null || install.EpicImportOwner != await GetEpicImportOwnerAsync())
+            throw new InvalidDataException("This import belongs to a different account. Start a new import.");
+        RequireEpicImportOwnership(install, generation);
+        var discovery = _epicInstallDiscovery ?? throw new InvalidDataException("Epic installation detection is unavailable.");
+        var bytes = await discovery.ReadManifestAsync(source, cancellationToken);
+        var manifest = await Task.Run(() => Manifest.ReadAll(bytes), cancellationToken);
+        if (manifest.ManifestMeta.AppName != source.AppName || manifest.ManifestMeta.BuildVersion != source.BuildVersion)
+            throw new InvalidDataException("The installed Epic manifest does not match this game and build.");
+        RequireEpicImportOwnership(install, generation);
+        await _storage.CacheManifestBytes(source.AppName, source.BuildVersion, bytes);
+        var cached = await _storage.GetCachedManifestBytes(source.AppName, source.BuildVersion);
+        if (cached is null || !bytes.AsSpan().SequenceEqual(cached))
+            throw new IOException("The installed Epic manifest could not be saved in Crimson.");
+        cancellationToken.ThrowIfCancellationRequested();
+        RequireEpicImportOwnership(install, generation);
+        return bytes;
+    }
+
+    private void RequireEpicImportOwnership(InstallItem install, int generation)
+    {
+        lock (_storage.AccountDataLock)
+        {
+            var source = install.EpicImportSource!;
+            if (_storage.AccountGeneration != generation || GetOwnedEpicGame(source) is null ||
+                install.AppName != source.AppName || install.Location != source.InstallLocation)
+                throw new InvalidDataException("The game is no longer available for import in this account.");
+        }
     }
 
     private async Task PrepareTasksForAction(
@@ -564,6 +662,22 @@ public class InstallManager : IDisposable
         }
     }
 
+    private void ApplyOperationInstallTags(InstallItem install, Manifest data)
+    {
+        var tags = install.Action == ActionType.Import ? install.EpicImportSource?.InstallTags
+            : _libraryManager.GetGameInfo(install.AppName)?.LocalAppState?.InstallTags;
+        ApplyInstallTags(data, tags);
+    }
+
+    private static void ApplyInstallTags(Manifest data, string[]? tags)
+    {
+        if (tags is null) return;
+        var selected = tags.ToHashSet(StringComparer.Ordinal);
+        data.FileManifestList.Elements.RemoveAll(file =>
+            file.InstallTags.Count > 0 && !file.InstallTags.Any(selected.Contains));
+        data.FileManifestList.Count = data.FileManifestList.Elements.Count;
+    }
+
     private async Task PrepareImportTasks(InstallItem install, Manifest data)
     {
         var cancellationToken = _cancellationTokenSource.Token;
@@ -573,8 +687,8 @@ public class InstallManager : IDisposable
             install.Failure = new OperationFailure(
                 OperationFailureKind.Verification,
                 "import_location_invalid",
-                "No game files were found in the selected folder.",
-                "Choose the folder containing the game files, then import again.",
+                UiStrings.NoGameFilesWereFoundInTheSelectedFolder,
+                UiStrings.ChooseTheFolderContainingTheGameFilesThenImportAgain,
                 false);
             throw new InvalidDataException("No game files were found in the selected folder.");
         }
@@ -788,8 +902,9 @@ public class InstallManager : IDisposable
         var fileLock =
             _fileLocksConcurrentDictionary.GetOrAdd(ioTask.DestinationFilePath, new object());
 
-        var compressedChunkData = await File.ReadAllBytesAsync(ioTask.SourceFilePath);
+        var compressedChunkData = await File.ReadAllBytesAsync(ioTask.SourceFilePath, _cancellationTokenSource.Token);
         var chunk = Chunk.ReadBuffer(compressedChunkData);
+        RequireChunkPartRange(ioTask, chunk.Data.LongLength);
         lock (fileLock)
         {
             var destination = InstallPathPolicy.RequireFile(installRoot, ioTask.DestinationFilePath);
@@ -812,8 +927,10 @@ public class InstallManager : IDisposable
 
             while (remainingBytesToWrite > 0)
             {
+                _cancellationTokenSource.Token.ThrowIfCancellationRequested();
                 var bytesToRead = (int)Math.Min(bufferSize, remainingBytesToWrite);
                 var bytesRead = memoryStream.Read(buffer, 0, bytesToRead);
+                if (bytesRead == 0) throw new EndOfStreamException("Chunk data ended before the requested part was copied.");
                 fileStream.Write(buffer, 0, bytesRead);
                 transferRates?.RecordWrite(bytesRead);
 
@@ -840,6 +957,12 @@ public class InstallManager : IDisposable
             // Delete the file if successfully removed
             File.Delete(ioTask.SourceFilePath);
         }
+    }
+
+    private static void RequireChunkPartRange(IoTask task, long decodedLength)
+    {
+        if (task.Offset < 0 || task.Size < 0 || task.Offset > decodedLength || task.Size > decodedLength - task.Offset)
+            throw new InvalidDataException("The requested chunk part exceeds the decoded chunk data.");
     }
 
     private void EnsureDirectoryExists(string filePath)
@@ -987,6 +1110,7 @@ public class InstallManager : IDisposable
         state.InstallPath = null;
         state.Version = null;
         state.InstallSize = 0;
+        state.InstallTags = null;
         state.LastUpdatedAt = null;
         state.Executable = null;
     }
@@ -1007,7 +1131,24 @@ public class InstallManager : IDisposable
             install.AppName);
     }
 
-    private Task CompleteImportAsync(
+    private Task CompleteImportAsync(InstallItem install, Game game, LocalAppState localAppState)
+    {
+        lock (_storage.AccountDataLock)
+        {
+            RequireEpicImportSession(install);
+            return CompleteVerifiedImport(install, game, localAppState);
+        }
+    }
+
+    private void RequireEpicImportSession(InstallItem install)
+    {
+        if (install.EpicImportSource is null) return;
+        var generation = install.EpicImportAccountGeneration ??
+            throw new InvalidDataException("The import account could not be verified. Start a new import.");
+        RequireEpicImportOwnership(install, generation);
+    }
+
+    private Task CompleteVerifiedImport(
         InstallItem install,
         Game game,
         LocalAppState localAppState)
@@ -1015,6 +1156,7 @@ public class InstallManager : IDisposable
         var manifest = _importVerificationManifest ?? throw new InvalidOperationException("The verified import manifest is unavailable.");
         var invalidFiles = _importVerificationResult ?? throw new InvalidOperationException("Import verification was not completed.");
         localAppState.InstallStatus = invalidFiles.Count > 0 ? InstallState.Broken : InstallState.Installed;
+        localAppState.InstallTags = install.EpicImportSource?.InstallTags?.ToArray();
         ApplyManifestState(install, game, localAppState, manifest);
         if (invalidFiles.Count > 0) localAppState.Version = null;
         else if (manifest.ManifestMeta.BuildVersion != game.AssetInfos.Windows.BuildVersion)
@@ -1023,8 +1165,8 @@ public class InstallManager : IDisposable
 
         var totalFiles = manifest.FileManifestList.Elements.Count;
         install.StatusMessage = invalidFiles.Count == 0
-            ? $"Verified {totalFiles} files"
-            : $"Verified {totalFiles} files: {invalidFiles.Count} require repair";
+            ? UiStrings.Format(UiStrings.ImportVerifiedFilesFormat, totalFiles)
+            : UiStrings.Format(UiStrings.ImportRepairFilesFormat, totalFiles, invalidFiles.Count);
         _importVerificationResult = null;
         _importVerificationManifest = null;
         _logger.Information(
@@ -1040,6 +1182,7 @@ public class InstallManager : IDisposable
         LocalAppState localAppState)
     {
         var manifest = await GetManifestAsync(install, game);
+        ApplyOperationInstallTags(install, manifest);
         var invalidFiles = await VerifyFiles(install.Location, manifest.FileManifestList.Elements);
         SetVerificationStatus(install, localAppState, invalidFiles.Count);
         ApplyManifestState(install, game, localAppState, manifest);
@@ -1170,9 +1313,9 @@ public class InstallManager : IDisposable
         {
             _logger.Warning("Failed to remove shortcuts: {ErrorType}", ex.GetType().Name);
             if (CurrentInstall is { } install)
-                ReportError(install, new OperationFailure(OperationFailureKind.Storage,
-                    "shortcut_cleanup_failed", "The game was removed, but its shortcuts could not be removed.",
-                    "Remove the remaining Crimson shortcuts manually.", false));
+                ReportSecondaryFailure(install, new OperationFailure(OperationFailureKind.Storage,
+                    "shortcut_cleanup_failed", UiStrings.TheGameWasRemovedButItsShortcutsCouldNotBeRemoved,
+                    UiStrings.RemoveTheRemainingCrimsonShortcutsManually, false));
         }
     }
 
@@ -1207,10 +1350,10 @@ public class InstallManager : IDisposable
         {
             _logger.Warning("Failed to create shortcut: {ErrorType}", ex.GetType().Name);
             if (CurrentInstall is { } install)
-                ReportError(install, new OperationFailure(OperationFailureKind.Storage,
+                ReportSecondaryFailure(install, new OperationFailure(OperationFailureKind.Storage,
                     location == GameShortcutLocation.Desktop ? "desktop_shortcut_failed" : "start_menu_shortcut_failed",
-                    "The game was installed, but a requested shortcut could not be created.",
-                    "Create the shortcut again from game Properties.", false));
+                    UiStrings.TheGameWasInstalledButARequestedShortcutCouldNotBeCreated,
+                    UiStrings.CreateTheShortcutAgainFromGameProperties, false));
         }
     }
 
@@ -1337,6 +1480,26 @@ public class InstallManager : IDisposable
         }
     }
 
+    private async Task<Manifest?> GetUpdateBaseManifestAsync()
+    {
+        var localAppState = _storage.LocalAppStateDictionary
+            .FirstOrDefault(g => g.Key == CurrentInstall.AppName).Value;
+        if (localAppState == null || string.IsNullOrEmpty(localAppState.Version))
+        {
+            _logger.Warning("PrepareUpdateTasks: No installed version info, falling back to full install");
+            return null;
+        }
+        var bytes = await _storage.GetCachedManifestBytes(CurrentInstall.AppName, localAppState.Version);
+        if (bytes == null || bytes.Length < 1)
+        {
+            _logger.Warning("PrepareUpdateTasks: Old manifest not cached, falling back to full install");
+            return null;
+        }
+        var manifest = Manifest.ReadAll(bytes);
+        ApplyInstallTags(manifest, localAppState.InstallTags);
+        return manifest;
+    }
+
     /// <summary>
     /// Prepare update tasks by comparing old and new manifests.
     /// Downloads only chunks for changed/added files and deletes removed files.
@@ -1344,32 +1507,14 @@ public class InstallManager : IDisposable
     /// </summary>
     private async Task PrepareUpdateTasks(Game gameData, Manifest newManifest)
     {
-        // Try to load the old manifest for the currently installed version
-        var localAppState = _storage.LocalAppStateDictionary
-            .FirstOrDefault(g => g.Key == CurrentInstall.AppName).Value;
-
-        if (localAppState == null || string.IsNullOrEmpty(localAppState.Version))
+        var oldManifest = await GetUpdateBaseManifestAsync();
+        if (oldManifest is null)
         {
-            _logger.Warning("PrepareUpdateTasks: No installed version info, falling back to full install");
             CurrentInstall.Action = ActionType.Install;
             await _downloadManager.InitializeMirrors(gameData.BaseUrls);
             GetChunksToDownload(newManifest);
             return;
         }
-
-        var oldManifestBytes = await _storage.GetCachedManifestBytes(
-            CurrentInstall.AppName, localAppState.Version);
-
-        if (oldManifestBytes == null || oldManifestBytes.Length < 1)
-        {
-            _logger.Warning("PrepareUpdateTasks: Old manifest not cached, falling back to full install");
-            CurrentInstall.Action = ActionType.Install;
-            await _downloadManager.InitializeMirrors(gameData.BaseUrls);
-            GetChunksToDownload(newManifest);
-            return;
-        }
-
-        var oldManifest = Manifest.ReadAll(oldManifestBytes);
         _logger.Information("PrepareUpdateTasks: Comparing manifests for {AppName}", CurrentInstall.AppName);
 
         // Build lookup of old file hashes by filename
@@ -1611,9 +1756,9 @@ public class InstallManager : IDisposable
             catch (Exception ex)
             {
                 _logger.Warning("Failed to clean up temporary installation files: {ErrorType}", ex.GetType().Name);
-                ReportError(CurrentInstall, new OperationFailure(OperationFailureKind.Storage,
-                    "temporary_cleanup_failed", "The operation was cancelled, but temporary files could not be removed.",
-                    "Close applications using the installation folder and retry cleanup.", false));
+                ReportSecondaryFailure(CurrentInstall, new OperationFailure(OperationFailureKind.Storage,
+                    "temporary_cleanup_failed", UiStrings.TheOperationWasCancelledButTemporaryFilesCouldNotBeRemoved,
+                    UiStrings.CloseApplicationsUsingTheInstallationFolderAndRetryCleanup, false));
             }
 
             CurrentInstall.Status = ActionStatus.Cancelled;
@@ -1648,8 +1793,8 @@ public class InstallManager : IDisposable
             var failure = OperationFailureClassifier.Classify(exception) with
             {
                 Code = "operation_state_save_failed",
-                Message = "Crimson could not save the operation's recovery state.",
-                SuggestedAction = "Restore free space and folder access, then restart Crimson and review pending operations.",
+                Message = UiStrings.CrimsonCouldNotSaveTheOperationSRecoveryState,
+                SuggestedAction = UiStrings.RestoreFreeSpaceAndFolderAccessThenRestartCrimsonAndReviewPendingOperations,
                 CanRetry = false
             };
             _recoveryStateFailure = failure;
@@ -1879,6 +2024,9 @@ public class InstallManager : IDisposable
         AddToQueue(new InstallItem(failed.AppName, failed.Action, failed.Location)
         {
             MoveLocation = failed.MoveLocation,
+            EpicImportSource = failed.EpicImportSource,
+            EpicImportOwner = failed.EpicImportOwner,
+            EpicImportAccountGeneration = failed.EpicImportAccountGeneration,
             CreateDesktopShortcut = failed.CreateDesktopShortcut,
             CreateStartMenuShortcut = failed.CreateStartMenuShortcut
         });
@@ -2011,12 +2159,17 @@ public class InstallManager : IDisposable
         {
             CreateDesktopShortcut = pending.CreateDesktopShortcut,
             CreateStartMenuShortcut = pending.CreateStartMenuShortcut,
+            EpicImportSource = pending.EpicImportSource,
+            EpicImportOwner = pending.EpicImportOwner,
+            Notice = pending.Notice,
             Status = ActionStatus.Paused,
             Phase = OperationPhase.Preparing
         };
-        if (!_libraryManager.TryQueueOperation(OperationSnapshot.From(restored), () => CurrentInstall = restored)) return;
+        if (!_libraryManager.TryQueueOperation(OperationSnapshot.From(restored), () => CurrentInstall = restored,
+            excludeRelatedOperations: restored.EpicImportSource is not null)) return;
         try
         {
+            if (restored.EpicImportSource is not null) await RestoreEpicImportAccountAsync(restored);
             state.IoQueue?.ForEach(task => _ioQueue.Add(task));
             var completedChunks = state.CompletedChunks ?? [];
             completedChunks.ForEach(chunk => _completedChunks.Add(chunk));
@@ -2033,6 +2186,19 @@ public class InstallManager : IDisposable
             ResetQueues();
             PublishStatusChanged(restored);
             CurrentInstall = null;
+        }
+    }
+
+    private async Task RestoreEpicImportAccountAsync(InstallItem install)
+    {
+        var generation = _storage.AccountGeneration;
+        await _libraryManager.GetLibraryData();
+        var owner = await GetEpicImportOwnerAsync();
+        lock (_storage.AccountDataLock)
+        {
+            if (_storage.AccountGeneration != generation || owner is null || install.EpicImportOwner != owner)
+                throw new InvalidDataException("This import belongs to a different account. Start a new import.");
+            install.EpicImportAccountGeneration = generation;
         }
     }
 
@@ -2060,8 +2226,8 @@ public class InstallManager : IDisposable
         catch (JsonException)
         {
             ReportPreparationFailure(string.Empty, ActionType.Install, new OperationFailure(
-                OperationFailureKind.Manifest, "pending_state_invalid", "The pending operation could not be restored.",
-                "Start the operation again from the library.", false));
+                OperationFailureKind.Manifest, "pending_state_invalid", UiStrings.ThePendingOperationCouldNotBeRestored,
+                UiStrings.StartTheOperationAgainFromTheLibrary, false));
             return null;
         }
     }

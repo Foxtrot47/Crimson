@@ -121,7 +121,7 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task InstallDialogInitializationFailurePublishesAnErrorBeforeClosing()
+    public async Task InstallDialogInitializationFailureStaysInlineAndKeepsTheDialogOpen()
     {
         var repository = new ControlledManifestRepository();
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
@@ -139,8 +139,12 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
 
         await viewModel.InitializeAsync(game);
 
-        Assert.True(closed);
+        Assert.False(closed);
+        Assert.True(viewModel.HasError);
+        Assert.False(viewModel.CanInstall);
+        Assert.Contains("Crimson could not download", viewModel.ErrorMessage);
         var error = Assert.Single(errors);
+        Assert.False(error.ShowErrorDialog);
         Assert.Equal(OperationPhase.Preparing, error.Phase);
         Assert.Equal("network_unavailable", error.Failure?.Code);
         Assert.DoesNotContain("synthetic-private-url", OperationDiagnostics.Create(error));
@@ -275,7 +279,10 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
 
         Assert.NotNull(installer.GameGameInQueue("new"));
-        Assert.Equal("install_folder_save_failed", Assert.Single(errors).Failure?.Code);
+        var error = Assert.Single(errors);
+        Assert.Equal("install_folder_save_failed", error.Failure?.Code);
+        Assert.False(error.ShowErrorDialog);
+        Assert.Equal("install_folder_save_failed", installer.GameGameInQueue("new")?.Notice?.Code);
     }
 
     [Fact]
@@ -327,6 +334,86 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         await Task.WhenAll(saves);
 
         Assert.Equal(settings.DefaultInstallLocation, CreateSettings(storage).DefaultInstallLocation);
+    }
+
+    [Fact]
+    public async Task SelectedDlcsContributeToTotalsAndTheBaseGameSizeIsPopulated()
+    {
+        var (model, _, _) = await CreateDlcSizeFixture();
+        Assert.Equal("10 B", model.BaseGameSize);
+        Assert.Equal("600 B", model.TotalDownloadSize);
+        Assert.Equal("60 B", model.TotalInstallSize);
+        Assert.True(model.CanInstall);
+
+        model.AvailableDlcs.Single(option => option.AppName == "dlc2").IsSelected = false;
+        Assert.Equal("300 B", model.TotalDownloadSize);
+        Assert.Equal("30 B", model.TotalInstallSize);
+        model.AvailableDlcs.Single(option => option.AppName == "dlc1").IsSelected = false;
+        Assert.Equal("100 B", model.TotalDownloadSize);
+        Assert.Equal("10 B", model.TotalInstallSize);
+        Assert.Equal("10 B", model.BaseGameSize);
+    }
+
+    [Fact]
+    public async Task SelectedDlcSizeImmediatelyUpdatesTheFreeSpaceGate()
+    {
+        var (model, _, _) = await CreateDlcSizeFixture();
+        var generation = typeof(AppInstallDialogViewModel).GetField("_initialization",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(model)!;
+        generation.GetType().GetField("AvailableFreeSpace")!.SetValue(generation, 25L);
+        foreach (var option in model.AvailableDlcs) option.IsSelected = false;
+        Assert.True(model.CanInstall);
+
+        model.AvailableDlcs.Single(option => option.AppName == "dlc1").IsSelected = true;
+        Assert.Equal("30 B", model.TotalInstallSize);
+        Assert.False(model.CanInstall);
+        model.AvailableDlcs.Single(option => option.AppName == "dlc1").IsSelected = false;
+        Assert.True(model.CanInstall);
+    }
+
+    [Fact]
+    public async Task MissingSelectedDlcSizesKeepInstallationDisabled()
+    {
+        var repository = new ControlledManifestRepository();
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var game = CreateGame("game", "Game", "box");
+        var dlc = CreateGame("dlc", "DLC", "box");
+        dlc.Metadata.MainGameItem = new MainGameItem { Id = game.Metadata.Id };
+        storage.SaveMetaData(game);
+        storage.SaveMetaData(dlc);
+        var library = CreateLibrary(storage, repository);
+        using var installer = new InstallManager(_logger, library, repository, storage, null!, null!, new AllowInstallPermissionChecker());
+        var model = new AppInstallDialogViewModel(_logger, installer, library, storage, new ImmediateUiDispatcher());
+        repository.Complete("game", CreateJsonManifest(100, 10));
+        repository.Fail("dlc", new HttpRequestException("Synthetic unavailable DLC size"));
+
+        await model.InitializeAsync(game);
+
+        Assert.True(model.HasError);
+        Assert.False(model.CanInstall);
+        Assert.False(model.IsLoadingContent);
+    }
+
+    private async Task<(AppInstallDialogViewModel Model, ControlledManifestRepository Repository, Storage Storage)> CreateDlcSizeFixture()
+    {
+        var repository = new ControlledManifestRepository();
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var game = CreateGame("game", "Game", "box");
+        storage.SaveMetaData(game);
+        foreach (var appName in new[] { "dlc1", "dlc2" })
+        {
+            var dlc = CreateGame(appName, appName, "box");
+            dlc.Metadata.MainGameItem = new MainGameItem { Id = game.Metadata.Id };
+            storage.SaveMetaData(dlc);
+        }
+        var library = CreateLibrary(storage, repository);
+        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, new AllowInstallPermissionChecker());
+        var model = new AppInstallDialogViewModel(_logger, installer, library, storage, new ImmediateUiDispatcher());
+        repository.Complete("game", CreateJsonManifest(100, 10));
+        repository.Complete("dlc1", CreateJsonManifest(200, 20));
+        repository.Complete("dlc2", CreateJsonManifest(300, 30));
+        await model.InitializeAsync(game);
+        return (model, repository, storage);
     }
 
     private SettingsManager CreateSettings(Storage storage) => new(

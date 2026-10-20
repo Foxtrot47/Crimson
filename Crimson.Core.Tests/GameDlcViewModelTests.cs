@@ -395,6 +395,8 @@ internal sealed class DlcTestFixture : IDisposable
     public Storage Storage { get; }
     public LibraryManager Library { get; }
     public InstallManager Installer { get; }
+    public EpicInstallDiscovery EpicDiscovery { get; }
+    public string EpicRecordsPath => Path.Combine(Root, "epic-records");
     public Game BaseGame { get; }
     public Game InstalledDlc { get; }
 
@@ -412,7 +414,8 @@ internal sealed class DlcTestFixture : IDisposable
         }
         var repository = new NoNetworkRepository();
         Library = new LibraryManager(_logger, repository, Storage, new AuthManager(_logger, Storage, new TestCredentialProtector(), _http));
-        Installer = new InstallManager(_logger, Library, repository, Storage, null!, null!, new AllowPermission());
+        EpicDiscovery = new EpicInstallDiscovery(EpicRecordsPath);
+        Installer = new InstallManager(_logger, Library, repository, Storage, null!, null!, new AllowPermission(), EpicDiscovery);
         SetOwned("base", "installed", "available");
     }
 

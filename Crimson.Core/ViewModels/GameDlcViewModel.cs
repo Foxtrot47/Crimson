@@ -1,3 +1,4 @@
+using Crimson.Resources;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -17,7 +18,7 @@ public partial class GameDlcItem : ObservableObject
     public required string Title { get; init; }
     public string? ImageUrl { get; init; }
     public bool IsInstalled { get; init; }
-    public string InstallLabel => $"Install {Title}";
+    public string InstallLabel => UiStrings.Format(UiStrings.InstallGameFormat, Title);
 
     [ObservableProperty]
     private bool _isSelected;
@@ -45,7 +46,7 @@ public partial class GameDlcViewModel : ObservableObject
     private string _searchText = string.Empty;
 
     [ObservableProperty]
-    private string _emptyMessage = "No DLC available.";
+    private string _emptyMessage = UiStrings.NoDLCAvailable;
 
     [ObservableProperty]
     private bool _isEmpty = true;
@@ -171,8 +172,8 @@ public partial class GameDlcViewModel : ObservableObject
         var busy = _baseAppName is not null && _installer.GetActiveOperationForGame(_baseAppName) is not null;
         CanEdit = installed && !busy;
         BlockedMessage = CanEdit ? string.Empty : installed
-            ? "Finish the current operation before changing DLC."
-            : "Install or repair the game before changing DLC.";
+            ? UiStrings.FinishTheCurrentOperationBeforeChangingDLC
+            : UiStrings.InstallOrRepairTheGameBeforeChangingDLC;
         foreach (var item in _allItems) item.CanEdit = CanEdit;
     }
 
@@ -188,7 +189,7 @@ public partial class GameDlcViewModel : ObservableObject
     {
         Items = _allItems.Where(item => item.Title.Contains(SearchText.Trim(), StringComparison.CurrentCultureIgnoreCase)).ToList();
         IsEmpty = Items.Count == 0;
-        EmptyMessage = _allItems.Count == 0 ? "No DLC available." : "No matching DLC.";
+        EmptyMessage = _allItems.Count == 0 ? UiStrings.NoDLCAvailable : UiStrings.NoMatchingDLC;
     }
 
     private void OperationUpdated(OperationSnapshot operation) => RefreshForGame(operation.AppName);

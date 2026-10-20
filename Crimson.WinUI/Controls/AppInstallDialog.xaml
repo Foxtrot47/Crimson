@@ -2,6 +2,7 @@
     x:Class="Crimson.Controls.AppInstallDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:strings="using:Crimson.Resources"
     xmlns:converters="using:Crimson.Utils"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Crimson.Controls"
@@ -31,7 +32,7 @@
                             FontSize="24"
                             Style="{StaticResource TitleTextBlockStyle}"
                             Text="{x:Bind ViewModel.GameTitle, Mode=OneWay}" />
-                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Installation Options" />
+                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.InstallationOptions}" />
                     </StackPanel>
                 </StackPanel>
 
@@ -49,7 +50,7 @@
 
             <!--  Installation Location  -->
             <StackPanel Spacing="8">
-                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Install Location" />
+                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.InstallLocation}" />
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -83,7 +84,7 @@
                         Value="{x:Bind ViewModel.DriveSpaceUsagePercent, Mode=OneWay}" />
                     <TextBlock>
                         <Run Text="{x:Bind ViewModel.DriveSpaceAvailable, Mode=OneWay}" />
-                        <Run Text="available of" />
+                        <Run Text="{x:Bind strings:UiStrings.AvailableOf}" />
                         <Run Text="{x:Bind ViewModel.DriveTotalSpace, Mode=OneWay}" />
                     </TextBlock>
                 </StackPanel>
@@ -91,18 +92,18 @@
 
             <!--  Shortcuts  -->
             <StackPanel Spacing="8">
-                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Shortcuts" />
+                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.Shortcuts}" />
                 <CheckBox
-                    Content="Create Start menu shortcut"
+                    Content="{x:Bind strings:UiStrings.CreateStartMenuShortcut}"
                     IsChecked="{x:Bind ViewModel.CreateStartMenuShortcut, Mode=TwoWay}" />
                 <CheckBox
-                    Content="Create desktop shortcut"
+                    Content="{x:Bind strings:UiStrings.CreateDesktopShortcut}"
                     IsChecked="{x:Bind ViewModel.CreateDesktopShortcut, Mode=TwoWay}" />
             </StackPanel>
 
             <!--  Content Selection  -->
             <StackPanel x:Name="ContentSelection" Visibility="{x:Bind ViewModel.IsLoadingContent, Mode=OneWay, Converter={StaticResource BoolToInverseVisibilityConverter}}">
-                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Content to Install" />
+                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.ContentToInstall}" />
 
                 <!--  Base Game  -->
                 <Grid
@@ -120,7 +121,7 @@
                         Grid.Column="1"
                         Margin="8,0,0,0"
                         VerticalAlignment="Center"
-                        Text="Base Game" />
+                        Text="{x:Bind strings:UiStrings.BaseGame}" />
                     <TextBlock
                         Grid.Column="2"
                         Margin="8,0,0,0"
@@ -161,8 +162,14 @@
                 <TextBlock
                     Margin="0,8,0,0"
                     HorizontalAlignment="Center"
-                    Text="Calculating required space..." />
+                    Text="{x:Bind strings:UiStrings.CalculatingRequiredSpace}" />
             </StackPanel>
+
+            <TextBlock
+                Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                TextWrapping="Wrap"
+                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
 
             <!--  Summary  -->
             <Grid ColumnDefinitions="*, Auto">
@@ -171,14 +178,14 @@
                         <FontIcon Glyph="&#xE896;" />
                         <TextBlock>
                             <Run Text="{x:Bind ViewModel.TotalDownloadSize, Mode=OneWay}" />
-                            <Run Text="download size" />
+                            <Run Text="{x:Bind strings:UiStrings.DownloadSize}" />
                         </TextBlock>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xEDA2;" />
                         <TextBlock>
                             <Run Text="{x:Bind ViewModel.TotalInstallSize, Mode=OneWay}" />
-                            <Run Text="install size" />
+                            <Run Text="{x:Bind strings:UiStrings.InstallSize}" />
                         </TextBlock>
                     </StackPanel>
                 </StackPanel>
@@ -191,12 +198,12 @@
                         Width="80"
                         Height="50"
                         Command="{x:Bind ViewModel.CloseDialogCommand}"
-                        Content="Cancel" />
+                        Content="{x:Bind strings:UiStrings.Cancel}" />
                     <Button
                         Width="80"
                         Height="50"
                         Command="{x:Bind ViewModel.ConfirmInstallCommand}"
-                        Content="Install"
+                        Content="{x:Bind strings:UiStrings.Install}"
                         IsEnabled="{x:Bind ViewModel.CanInstall, Mode=OneWay}"
                         Style="{StaticResource AccentButtonStyle}" />
                 </StackPanel>

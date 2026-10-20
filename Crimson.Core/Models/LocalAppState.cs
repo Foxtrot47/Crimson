@@ -32,6 +32,9 @@ public class LocalAppState
     [JsonPropertyName("install_size")]
     public long InstallSize { get; set; }
 
+    [JsonPropertyName("install_tags")]
+    public string[]? InstallTags { get; set; }
+
     [JsonPropertyName("is_dlc")]
     public bool IsDlc { get; set; }
 

@@ -227,7 +227,7 @@ public sealed class ImportFlowTests : IDisposable
         await _fixture.Storage.CacheManifestBytes(game.AppName, "latest-build", Encoding.UTF8.GetBytes(json.ToJsonString()));
     }
 
-    private static JsonObject CreateImportManifest(string[] files)
+    internal static JsonObject CreateImportManifest(string[] files)
     {
         const string guid = "00000001000000020000000300000004";
         var contents = Encoding.UTF8.GetBytes("synthetic game");

@@ -1,3 +1,4 @@
+using Crimson.Resources;
 using System;
 using System.IO;
 using System.Linq;
@@ -53,7 +54,7 @@ public sealed partial class GameManageDialog : UserControl
         ViewModel = viewModel;
         using var cancellation = new CancellationTokenSource();
         _dialogCancellation = cancellation;
-        InstalledSizeText.Text = "Loading…";
+        InstalledSizeText.Text = UiStrings.LoadingEllipsis;
         var loading = Task.WhenAll(
             Dlcs.LoadAsync(viewModel.Game, cancellation.Token),
             LoadInstalledSizeAsync(viewModel.Game.AppName, cancellation.Token));
@@ -91,7 +92,7 @@ public sealed partial class GameManageDialog : UserControl
             if (cancellationToken.IsCancellationRequested) return;
             InstalledSizeText.Text = size.HasValue
                 ? StorageSizeFormatter.FormatMebibytes(size.Value / 1048576d)
-                : "Unavailable";
+                : UiStrings.Unavailable;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -114,6 +115,7 @@ public sealed partial class GameManageDialog : UserControl
     private void ResetDialog()
     {
         _requestedStoreUri = null;
+        ClearActionError();
         SectionList.SelectedIndex = 0;
         GeneralPanel.Visibility = Visibility.Visible;
         InstalledFilesPanel.Visibility = Visibility.Collapsed;
@@ -159,9 +161,10 @@ public sealed partial class GameManageDialog : UserControl
 
     private void BrowseFilesClicked(object sender, RoutedEventArgs e)
     {
+        ClearActionError();
         if (!Directory.Exists(InstallLocation))
         {
-            ShowBrowseError("installation_folder_missing", "The installation folder could not be found.");
+            ShowBrowseError("installation_folder_missing", UiStrings.TheInstallationFolderCouldNotBeFound);
             return;
         }
 
@@ -175,21 +178,25 @@ public sealed partial class GameManageDialog : UserControl
                 "Failed to open installation folder for {AppName}: {ErrorType}",
                 ViewModel?.Game?.AppName,
                 exception.GetType().Name);
-            ShowBrowseError("installation_folder_open_failed", "The installation folder could not be opened.");
+            ShowBrowseError("installation_folder_open_failed", UiStrings.TheInstallationFolderCouldNotBeOpened);
         }
     }
 
     private async void CreateShortcutClicked(object sender, RoutedEventArgs e)
     {
-        if (ViewModel?.Game is not { } game) return;
+        if (ViewModel?.Game is not { } game || _dialogCancellation is not { } cancellation) return;
 
+        ClearActionError();
         CreateShortcutButton.IsEnabled = false;
         ShortcutIcon.Visibility = Visibility.Collapsed;
         ShortcutProgressRing.Visibility = Visibility.Visible;
         ShortcutProgressRing.IsActive = true;
         try
         {
-            await _shortcutManager.CreateAsync(game, GameShortcutLocation.Desktop);
+            await _shortcutManager.CreateAsync(game, GameShortcutLocation.Desktop, cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
         }
         catch (Exception exception)
         {
@@ -197,18 +204,22 @@ public sealed partial class GameManageDialog : UserControl
                 "Failed to create desktop shortcut for {AppName}: {ErrorType}",
                 game.AppName,
                 exception.GetType().Name);
-            Close();
+            if (!ReferenceEquals(cancellation, _dialogCancellation)) return;
+            ShowActionError(UiStrings.TheDesktopShortcutCouldNotBeCreated, UiStrings.TryCreatingItAgainFromGameProperties);
             App.GetService<InstallManager>().ReportPreparationFailure(game.AppName, Crimson.Models.ActionType.Install,
                 new Crimson.Models.OperationFailure(Crimson.Models.OperationFailureKind.Storage,
-                    "desktop_shortcut_failed", "The desktop shortcut could not be created.",
-                    "Try creating it again from game Properties.", false));
+                    "desktop_shortcut_failed", UiStrings.TheDesktopShortcutCouldNotBeCreated,
+                    UiStrings.TryCreatingItAgainFromGameProperties, false));
         }
         finally
         {
-            CreateShortcutButton.IsEnabled = true;
-            ShortcutProgressRing.IsActive = false;
-            ShortcutProgressRing.Visibility = Visibility.Collapsed;
-            ShortcutIcon.Visibility = Visibility.Visible;
+            if (ReferenceEquals(cancellation, _dialogCancellation))
+            {
+                CreateShortcutButton.IsEnabled = true;
+                ShortcutProgressRing.IsActive = false;
+                ShortcutProgressRing.Visibility = Visibility.Collapsed;
+                ShortcutIcon.Visibility = Visibility.Visible;
+            }
         }
     }
 
@@ -280,6 +291,7 @@ public sealed partial class GameManageDialog : UserControl
 
     private void QueueDlcChanges()
     {
+        ClearActionError();
         try
         {
             Dlcs.ApplyChanges();
@@ -294,11 +306,11 @@ public sealed partial class GameManageDialog : UserControl
     private void ShowDlcError(Exception exception)
     {
         Log.Warning("DLC changes could not be queued: {ErrorType}", exception.GetType().Name);
-        Close();
+        ShowActionError(UiStrings.DLCChangesCouldNotBeQueued, UiStrings.ReopenPropertiesAndTryAgain);
         App.GetService<InstallManager>().ReportPreparationFailure(ViewModel?.Game?.AppName ?? string.Empty,
             Crimson.Models.ActionType.Install, new Crimson.Models.OperationFailure(
                 Crimson.Models.OperationFailureKind.Unknown, "dlc_changes_failed",
-                "DLC changes could not be queued.", "Reopen Properties and try again.", false));
+                UiStrings.DLCChangesCouldNotBeQueued, UiStrings.ReopenPropertiesAndTryAgain, false));
     }
 
     private void CancelDlcClicked(object sender, RoutedEventArgs e) => CancelDlcConfirmation();
@@ -311,12 +323,24 @@ public sealed partial class GameManageDialog : UserControl
         DlcConfirmation.Visibility = Visibility.Collapsed;
     }
 
+    private void ClearActionError()
+    {
+        ActionErrorText.Text = string.Empty;
+        ActionErrorText.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowActionError(string message, string suggestion)
+    {
+        ActionErrorText.Text = UiStrings.Format(UiStrings.MessageSuggestionFormat, message, suggestion);
+        ActionErrorText.Visibility = Visibility.Visible;
+    }
+
     private void ShowBrowseError(string code, string message)
     {
-        Close();
+        ShowActionError(message, UiStrings.CheckThatTheInstallationFolderIsAvailableAndTryAgain);
         App.GetService<InstallManager>().ReportPreparationFailure(ViewModel?.Game?.AppName ?? string.Empty,
             Crimson.Models.ActionType.Install, new Crimson.Models.OperationFailure(
                 Crimson.Models.OperationFailureKind.Storage, code, message,
-                "Check that the installation folder is available and try again.", false));
+                UiStrings.CheckThatTheInstallationFolderIsAvailableAndTryAgain, false));
     }
 }

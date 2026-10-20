@@ -194,7 +194,7 @@ public class LibraryManager
         }
     }
 
-    private List<Game> GetOwnedGames()
+    internal List<Game> GetOwnedGames()
     {
         lock (_storage.AccountDataLock)
         {
@@ -327,11 +327,12 @@ public class LibraryManager
         }
     }
 
-    internal bool TryQueueOperation(OperationSnapshot operation, Action enqueue)
+    internal bool TryQueueOperation(OperationSnapshot operation, Action enqueue, bool excludeRelatedOperations = false)
     {
         lock (_operationLock)
         {
-            if (_activeOperationApps.ContainsKey(operation.AppName)) return false;
+            if (_activeOperationApps.ContainsKey(operation.AppName) ||
+                (excludeRelatedOperations && HasRelatedOperation(operation.AppName))) return false;
             _activeOperationApps[operation.AppName] = operation.OperationId;
             try
             {
