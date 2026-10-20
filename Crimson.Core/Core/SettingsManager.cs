@@ -32,9 +32,24 @@ public class SettingsManager
         _defaultInstallLocation = defaultInstallLocation;
         _logsDirectory = logsDirectory;
         Settings = LoadSettings();
+        StartupLanguage = Language;
     }
 
-    public bool MicEnabled { get => Settings.MicaEnabled; set { Settings.MicaEnabled = value; } }
+    public event EventHandler? AcrylicChanged;
+
+    public bool AcrylicEnabled
+    {
+        // Retain the existing JSON field so saved preferences remain compatible.
+        get => Settings.MicaEnabled;
+        set
+        {
+            if (Settings.MicaEnabled == value) return;
+            Settings.MicaEnabled = value;
+            AcrylicChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public bool MicEnabled { get => AcrylicEnabled; set => AcrylicEnabled = value; }
 
     public string DefaultInstallLocation
     {
@@ -43,6 +58,14 @@ public class SettingsManager
     }
 
     public string LogsDirectory => _logsDirectory;
+
+    public string? StartupLanguage { get; }
+
+    public string? Language
+    {
+        get => AppLanguage.NormalizePreference(Settings.Language);
+        set => Settings.Language = AppLanguage.NormalizePreference(value);
+    }
 
     private Settings LoadSettings()
     {

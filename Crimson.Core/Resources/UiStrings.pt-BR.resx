@@ -1,0 +1,856 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="About" xml:space="preserve">
+    <value>Sobre</value>
+  </data>
+  <data name="Accounts" xml:space="preserve">
+    <value>Contas</value>
+  </data>
+  <data name="AdvancedSettings" xml:space="preserve">
+    <value>Configurações avançadas</value>
+  </data>
+  <data name="Appearance" xml:space="preserve">
+    <value>Aparência</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>Aplicar</value>
+  </data>
+  <data name="ApplyChanges" xml:space="preserve">
+    <value>Aplicar alterações</value>
+  </data>
+  <data name="ApplyDLCRemovals" xml:space="preserve">
+    <value>Aplicar remoções de DLC?</value>
+  </data>
+  <data name="AvailableOf" xml:space="preserve">
+    <value>disponível de</value>
+  </data>
+  <data name="B" xml:space="preserve">
+    <value>B</value>
+  </data>
+  <data name="BaseGame" xml:space="preserve">
+    <value>Jogo base</value>
+  </data>
+  <data name="BrowseFiles" xml:space="preserve">
+    <value>Procurar arquivos</value>
+  </data>
+  <data name="BrowseInstallationFiles" xml:space="preserve">
+    <value>Procurar arquivos de instalação</value>
+  </data>
+  <data name="CalculatingRequiredSpace" xml:space="preserve">
+    <value>Calculando espaço necessário…</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancelar</value>
+  </data>
+  <data name="CancelOperation" xml:space="preserve">
+    <value>Cancelar operação</value>
+  </data>
+  <data name="Cancelling" xml:space="preserve">
+    <value>Cancelando</value>
+  </data>
+  <data name="CheckThatTheInstallationFolderIsAvailableAndTryAgain" xml:space="preserve">
+    <value>Verifique se a pasta de instalação está disponível e tente novamente.</value>
+  </data>
+  <data name="CheckYourConnectionAndRetry" xml:space="preserve">
+    <value>Verifique sua conexão e tente novamente.</value>
+  </data>
+  <data name="CheckYourConnectionAndWebView2RuntimeThenTryAgain" xml:space="preserve">
+    <value>Verifique sua conexão e o WebView2 Runtime, depois tente novamente.</value>
+  </data>
+  <data name="CheckingAuthenticationStatus" xml:space="preserve">
+    <value>Verificando status de autenticação</value>
+  </data>
+  <data name="ChooseAnotherFolderOrAllowCrimsonToWriteToThisLocation" xml:space="preserve">
+    <value>Escolha outra pasta ou permita que o Crimson grave neste local.</value>
+  </data>
+  <data name="ChooseTheFolderAgainNextTimeCheckAppDataPermissionsIfThisContinues" xml:space="preserve">
+    <value>Escolha a pasta novamente da próxima vez. Verifique as permissões da AppData se isso continuar.</value>
+  </data>
+  <data name="ChooseTheFolderContainingTheGameFilesThenImportAgain" xml:space="preserve">
+    <value>Escolha a pasta contendo os arquivos do jogo e importe novamente.</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Fechar</value>
+  </data>
+  <data name="CloseApplicationsUsingTheInstallationFolderAndRetryCleanup" xml:space="preserve">
+    <value>Feche os aplicativos que estão usando a pasta de instalação e tente novamente.</value>
+  </data>
+  <data name="CloseGameProperties" xml:space="preserve">
+    <value>Fechar propriedades do jogo</value>
+  </data>
+  <data name="CloseScreenshot" xml:space="preserve">
+    <value>Fechar captura de tela</value>
+  </data>
+  <data name="CloseTheImportWindowAndTryAgain" xml:space="preserve">
+    <value>Feche a janela de importação e tente novamente.</value>
+  </data>
+  <data name="Completed" xml:space="preserve">
+    <value>Concluído</value>
+  </data>
+  <data name="ConfirmUninstallGame" xml:space="preserve">
+    <value>Confirmar desinstalação do jogo</value>
+  </data>
+  <data name="ConnectionInterruptedRetrying" xml:space="preserve">
+    <value>Conexão interrompida. Tentando novamente…</value>
+  </data>
+  <data name="ContentToInstall" xml:space="preserve">
+    <value>Conteúdo a ser instalado</value>
+  </data>
+  <data name="Copied" xml:space="preserve">
+    <value>Copiado</value>
+  </data>
+  <data name="CopyDiagnostics" xml:space="preserve">
+    <value>Copiar diagnósticos</value>
+  </data>
+  <data name="CoverArtworkUnavailable" xml:space="preserve">
+    <value>Capa indisponível</value>
+  </data>
+  <data name="CreateDesktopShortcut" xml:space="preserve">
+    <value>Criar atalho na área de trabalho</value>
+  </data>
+  <data name="CreateShortcut" xml:space="preserve">
+    <value>Criar atalho</value>
+  </data>
+  <data name="CreateStartMenuShortcut" xml:space="preserve">
+    <value>Criar atalho no Menu Iniciar</value>
+  </data>
+  <data name="CreateTheShortcutAgainFromGameProperties" xml:space="preserve">
+    <value>Crie o atalho novamente a partir das Propriedades do jogo.</value>
+  </data>
+  <data name="Crimson" xml:space="preserve">
+    <value>Crimson</value>
+  </data>
+  <data name="CrimsonCouldNotDownloadTheRequiredData" xml:space="preserve">
+    <value>O Crimson não pôde baixar os dados necessários.</value>
+  </data>
+  <data name="CrimsonCouldNotReadTheInstallationData" xml:space="preserve">
+    <value>O Crimson não pôde ler os dados de instalação.</value>
+  </data>
+  <data name="CrimsonCouldNotSaveTheOperationSRecoveryState" xml:space="preserve">
+    <value>O Crimson não pôde salvar o estado de recuperação da operação.</value>
+  </data>
+  <data name="CrimsonCouldNotWriteToTheSelectedInstallationLocation" xml:space="preserve">
+    <value>O Crimson não pôde gravar no local de instalação selecionado.</value>
+  </data>
+  <data name="DLC" xml:space="preserve">
+    <value>DLC</value>
+  </data>
+  <data name="DLCArtwork" xml:space="preserve">
+    <value>Arte do DLC</value>
+  </data>
+  <data name="DLCChangesCouldNotBeQueued" xml:space="preserve">
+    <value>Não foi possível enfileirar as alterações de DLC.</value>
+  </data>
+  <data name="DesktopShortcut" xml:space="preserve">
+    <value>Atalho na área de trabalho</value>
+  </data>
+  <data name="DetectingEpicGamesLauncherInstallations" xml:space="preserve">
+    <value>Detectando instalações do Epic Games Launcher…</value>
+  </data>
+  <data name="DiskWriteRate" xml:space="preserve">
+    <value>Taxa de gravação no disco</value>
+  </data>
+  <data name="DownloadAndInstallerDiskWriteRatesOverTheLast60Seconds" xml:space="preserve">
+    <value>Taxas de download e de gravação no disco do instalador nos últimos 60 segundos</value>
+  </data>
+  <data name="DownloadRate" xml:space="preserve">
+    <value>Taxa de download</value>
+  </data>
+  <data name="DownloadSize" xml:space="preserve">
+    <value>tamanho do download</value>
+  </data>
+  <data name="Downloads" xml:space="preserve">
+    <value>Downloads</value>
+  </data>
+  <data name="EnableAcrylic" xml:space="preserve">
+    <value>Habilitar Acrylic</value>
+  </data>
+  <data name="EnableTheAcrylicEffectsAvailableOnWindows11" xml:space="preserve">
+    <value>Habilitar os efeitos Acrylic disponíveis no Windows 11</value>
+  </data>
+  <data name="EpicGamesStore" xml:space="preserve">
+    <value>Epic Games Store</value>
+  </data>
+  <data name="EpicInstallationsCouldNotBeDetected" xml:space="preserve">
+    <value>Não foi possível detectar instalações da Epic.</value>
+  </data>
+  <data name="ErrorCodeFormat" xml:space="preserve">
+    <value>Código de erro: {0}</value>
+  </data>
+  <data name="Exit" xml:space="preserve">
+    <value>Sair</value>
+  </data>
+  <data name="FilesSharedWithTheGameOrOtherInstalledContentWillBeKept" xml:space="preserve">
+    <value>Arquivos compartilhados com o jogo ou outro conteúdo instalado serão mantidos.</value>
+  </data>
+  <data name="FinishTheCurrentOperationBeforeChangingDLC" xml:space="preserve">
+    <value>Conclua a operação atual antes de alterar os DLCs.</value>
+  </data>
+  <data name="Finishing" xml:space="preserve">
+    <value>Finalizando</value>
+  </data>
+  <data name="FreeSomeDiskSpaceThenRetry" xml:space="preserve">
+    <value>Libere espaço em disco e tente novamente.</value>
+  </data>
+  <data name="GB" xml:space="preserve">
+    <value>GB</value>
+  </data>
+  <data name="GameArtwork" xml:space="preserve">
+    <value>Arte do jogo</value>
+  </data>
+  <data name="GameBackgroundArtwork" xml:space="preserve">
+    <value>Plano de fundo do jogo</value>
+  </data>
+  <data name="GameCoverArtwork" xml:space="preserve">
+    <value>Capa do jogo</value>
+  </data>
+  <data name="GameOperationFormat" xml:space="preserve">
+    <value>{0} - {1}</value>
+  </data>
+  <data name="GameScreenshot" xml:space="preserve">
+    <value>Captura de tela do jogo</value>
+  </data>
+  <data name="GameStatus" xml:space="preserve">
+    <value>Status do jogo</value>
+  </data>
+  <data name="General" xml:space="preserve">
+    <value>Geral</value>
+  </data>
+  <data name="GridView" xml:space="preserve">
+    <value>Visualização em grade</value>
+  </data>
+  <data name="History" xml:space="preserve">
+    <value>Histórico</value>
+  </data>
+  <data name="Import" xml:space="preserve">
+    <value>Importar</value>
+  </data>
+  <data name="ImportFromEpic" xml:space="preserve">
+    <value>Importar da Epic</value>
+  </data>
+  <data name="ImportRepairFilesFormat" xml:space="preserve">
+    <value>{0} arquivos verificados: {1} precisam de reparo</value>
+  </data>
+  <data name="ImportSelected" xml:space="preserve">
+    <value>Importar selecionados</value>
+  </data>
+  <data name="ImportVerifiedFilesFormat" xml:space="preserve">
+    <value>{0} arquivos verificados</value>
+  </data>
+  <data name="Imported" xml:space="preserve">
+    <value>Importado</value>
+  </data>
+  <data name="Importing" xml:space="preserve">
+    <value>Importando</value>
+  </data>
+  <data name="InYourLibrary" xml:space="preserve">
+    <value>Na sua biblioteca</value>
+  </data>
+  <data name="Install" xml:space="preserve">
+    <value>Instalar</value>
+  </data>
+  <data name="InstallGameFormat" xml:space="preserve">
+    <value>Instalar {0}</value>
+  </data>
+  <data name="InstallLocation" xml:space="preserve">
+    <value>Local de instalação</value>
+  </data>
+  <data name="InstallOrImportTheGameFirst" xml:space="preserve">
+    <value>Instale ou importe o jogo primeiro.</value>
+  </data>
+  <data name="InstallOrRepairTheGameBeforeChangingDLC" xml:space="preserve">
+    <value>Instale ou repare o jogo antes de alterar os DLCs.</value>
+  </data>
+  <data name="InstallSize" xml:space="preserve">
+    <value>tamanho da instalação</value>
+  </data>
+  <data name="InstallationOptions" xml:space="preserve">
+    <value>Opções de instalação</value>
+  </data>
+  <data name="Installed" xml:space="preserve">
+    <value>Instalado</value>
+  </data>
+  <data name="InstalledBuild" xml:space="preserve">
+    <value>Versão instalada</value>
+  </data>
+  <data name="InstalledFiles" xml:space="preserve">
+    <value>Arquivos instalados</value>
+  </data>
+  <data name="InstalledOnly" xml:space="preserve">
+    <value>Apenas instalados</value>
+  </data>
+  <data name="InstallerDestinationFileOutputNotTotalDeviceThroughput" xml:space="preserve">
+    <value>Rendimento de arquivo no destino do instalador, não o rendimento total do dispositivo.</value>
+  </data>
+  <data name="Installing" xml:space="preserve">
+    <value>Instalando</value>
+  </data>
+  <data name="KB" xml:space="preserve">
+    <value>KB</value>
+  </data>
+  <data name="LastUpdated" xml:space="preserve">
+    <value>Última atualização</value>
+  </data>
+  <data name="LessThanOneMinute" xml:space="preserve">
+    <value>&lt;1m</value>
+  </data>
+  <data name="Library" xml:space="preserve">
+    <value>Biblioteca</value>
+  </data>
+  <data name="ListView" xml:space="preserve">
+    <value>Visualização em lista</value>
+  </data>
+  <data name="LoadingEllipsis" xml:space="preserve">
+    <value>Carregando…</value>
+  </data>
+  <data name="LoadingFourDots" xml:space="preserve">
+    <value>Carregando….</value>
+  </data>
+  <data name="LoadingStoreDetails" xml:space="preserve">
+    <value>Carregando detalhes da loja</value>
+  </data>
+  <data name="LoadingThreeDots" xml:space="preserve">
+    <value>Carregando…</value>
+  </data>
+  <data name="LoginFailed" xml:space="preserve">
+    <value>Falha no login</value>
+  </data>
+  <data name="LoginSuccess" xml:space="preserve">
+    <value>Login efetuado com sucesso</value>
+  </data>
+  <data name="Logout" xml:space="preserve">
+    <value>Sair da conta</value>
+  </data>
+  <data name="MB" xml:space="preserve">
+    <value>MB</value>
+  </data>
+  <data name="Manage" xml:space="preserve">
+    <value>Gerenciar</value>
+  </data>
+  <data name="MessageSuggestionFormat" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="Minimum" xml:space="preserve">
+    <value>Mínimo</value>
+  </data>
+  <data name="Move" xml:space="preserve">
+    <value>Mover</value>
+  </data>
+  <data name="MoveGameInstallation" xml:space="preserve">
+    <value>Mover instalação do jogo</value>
+  </data>
+  <data name="MoveInstallation" xml:space="preserve">
+    <value>Mover instalação</value>
+  </data>
+  <data name="Moved" xml:space="preserve">
+    <value>Movido</value>
+  </data>
+  <data name="Moving" xml:space="preserve">
+    <value>Movendo</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>Nome</value>
+  </data>
+  <data name="NextScreenshots" xml:space="preserve">
+    <value>Próximas capturas de tela</value>
+  </data>
+  <data name="NoDLCAvailable" xml:space="preserve">
+    <value>Nenhum DLC disponível.</value>
+  </data>
+  <data name="NoDownloadsInQueue" xml:space="preserve">
+    <value>Nenhum download na fila</value>
+  </data>
+  <data name="NoDownloadsInQueueTitle" xml:space="preserve">
+    <value>Nenhum download na fila</value>
+  </data>
+  <data name="NoEligibleEpicGamesLauncherInstallationsFound" xml:space="preserve">
+    <value>Nenhuma instalação elegível do Epic Games Launcher foi encontrada.</value>
+  </data>
+  <data name="NoGameFilesWereFoundInTheSelectedFolder" xml:space="preserve">
+    <value>Nenhum arquivo de jogo foi encontrado na pasta selecionada.</value>
+  </data>
+  <data name="NoInstalledGames" xml:space="preserve">
+    <value>Nenhum jogo instalado</value>
+  </data>
+  <data name="NoInstalledGamesMessage" xml:space="preserve">
+    <value>Nenhum jogo instalado.</value>
+  </data>
+  <data name="NoMatchingDLC" xml:space="preserve">
+    <value>Nenhum DLC correspondente.</value>
+  </data>
+  <data name="NoTransferActivityRecorded" xml:space="preserve">
+    <value>Nenhuma atividade de transferência registrada</value>
+  </data>
+  <data name="NotInstalled" xml:space="preserve">
+    <value>Não instalado</value>
+  </data>
+  <data name="OneFileFailedVerification" xml:space="preserve">
+    <value>Um arquivo falhou na verificação.</value>
+  </data>
+  <data name="OpenGameProperties" xml:space="preserve">
+    <value>Abrir propriedades do jogo</value>
+  </data>
+  <data name="OpenLogsDirectory" xml:space="preserve">
+    <value>Abrir diretório de logs</value>
+  </data>
+  <data name="OpenScreenshot" xml:space="preserve">
+    <value>Abrir captura de tela</value>
+  </data>
+  <data name="Operation" xml:space="preserve">
+    <value>Operação</value>
+  </data>
+  <data name="OperationCancelledFormat" xml:space="preserve">
+    <value>{0} cancelado</value>
+  </data>
+  <data name="OperationErrorFormat" xml:space="preserve">
+    <value>Erro de {0}</value>
+  </data>
+  <data name="OperationFailedFormat" xml:space="preserve">
+    <value>Falha em {0}</value>
+  </data>
+  <data name="OperationInProgress" xml:space="preserve">
+    <value>Operação em andamento</value>
+  </data>
+  <data name="OperationPaused" xml:space="preserve">
+    <value>Operação pausada</value>
+  </data>
+  <data name="OperationPausedFormat" xml:space="preserve">
+    <value>{0} pausado</value>
+  </data>
+  <data name="OperationQueuedFormat" xml:space="preserve">
+    <value>{0} na fila</value>
+  </data>
+  <data name="Pause" xml:space="preserve">
+    <value>Pausar</value>
+  </data>
+  <data name="PauseOperation" xml:space="preserve">
+    <value>Pausar operação</value>
+  </data>
+  <data name="Play" xml:space="preserve">
+    <value>Jogar</value>
+  </data>
+  <data name="PlayGameFormat" xml:space="preserve">
+    <value>Jogar {0}</value>
+  </data>
+  <data name="PlaytimeHoursMinutesFormat" xml:space="preserve">
+    <value>{0}h {1}m</value>
+  </data>
+  <data name="PlaytimeMinutesFormat" xml:space="preserve">
+    <value>{0}m</value>
+  </data>
+  <data name="PleaseTryAgain" xml:space="preserve">
+    <value>Por favor, tente novamente</value>
+  </data>
+  <data name="PleaseWait" xml:space="preserve">
+    <value>Por favor, aguarde…</value>
+  </data>
+  <data name="PleaseWait2" xml:space="preserve">
+    <value>Por favor, aguarde</value>
+  </data>
+  <data name="Preparing" xml:space="preserve">
+    <value>Preparando</value>
+  </data>
+  <data name="PreviousScreenshots" xml:space="preserve">
+    <value>Capturas de tela anteriores</value>
+  </data>
+  <data name="ProgressPercentFormat" xml:space="preserve">
+    <value>{0}%</value>
+  </data>
+  <data name="Publisher" xml:space="preserve">
+    <value>Distribuidora</value>
+  </data>
+  <data name="Queue" xml:space="preserve">
+    <value>Fila</value>
+  </data>
+  <data name="QueuePositionFormat" xml:space="preserve">
+    <value>{0} · Posição {1}</value>
+  </data>
+  <data name="Queued" xml:space="preserve">
+    <value>Na fila</value>
+  </data>
+  <data name="RateBytesFormat" xml:space="preserve">
+    <value>{0:0.##} B/s</value>
+  </data>
+  <data name="RateKiBFormat" xml:space="preserve">
+    <value>{0:0.##} KiB/s</value>
+  </data>
+  <data name="RateMiBFormat" xml:space="preserve">
+    <value>{0:0.##} MiB/s</value>
+  </data>
+  <data name="ReadyToPlay" xml:space="preserve">
+    <value>Pronto para jogar</value>
+  </data>
+  <data name="Recommended" xml:space="preserve">
+    <value>Recomendado</value>
+  </data>
+  <data name="RefreshTheLibraryAndTryAgain" xml:space="preserve">
+    <value>Atualize a biblioteca e tente novamente.</value>
+  </data>
+  <data name="ReleaseDate" xml:space="preserve">
+    <value>Data de lançamento</value>
+  </data>
+  <data name="ReleaseDateFormat" xml:space="preserve">
+    <value>d 'de' MMMM 'de' yyyy</value>
+  </data>
+  <data name="RemoveTheRemainingCrimsonShortcutsManually" xml:space="preserve">
+    <value>Remova os atalhos restantes do Crimson manualmente.</value>
+  </data>
+  <data name="Removing" xml:space="preserve">
+    <value>Removendo</value>
+  </data>
+  <data name="ReopenPropertiesAndTryAgain" xml:space="preserve">
+    <value>Reabra as Propriedades e tente novamente.</value>
+  </data>
+  <data name="Repair" xml:space="preserve">
+    <value>Reparar</value>
+  </data>
+  <data name="RepairRequired" xml:space="preserve">
+    <value>Reparo necessário</value>
+  </data>
+  <data name="Repaired" xml:space="preserve">
+    <value>Reparado</value>
+  </data>
+  <data name="Repairing" xml:space="preserve">
+    <value>Reparando</value>
+  </data>
+  <data name="ReportProblem" xml:space="preserve">
+    <value>Relatar problema</value>
+  </data>
+  <data name="RestartCrimsonAndTryAgain" xml:space="preserve">
+    <value>Reinicie o Crimson e tente novamente.</value>
+  </data>
+  <data name="RestoreFreeSpaceAndFolderAccessThenRestartCrimsonAndReviewPendingOperations" xml:space="preserve">
+    <value>Restaure o espaço livre e o acesso à pasta, depois reinicie o Crimson e revise as operações pendentes.</value>
+  </data>
+  <data name="Resume" xml:space="preserve">
+    <value>Retomar</value>
+  </data>
+  <data name="ResumeOperation" xml:space="preserve">
+    <value>Retomar operação</value>
+  </data>
+  <data name="Retry" xml:space="preserve">
+    <value>Tentar novamente</value>
+  </data>
+  <data name="RetryLaterIfTheProblemContinuesReportIt" xml:space="preserve">
+    <value>Tente novamente mais tarde. Se o problema continuar, me informe.</value>
+  </data>
+  <data name="RetryTheOperationIfItFailsAgainReportTheProblem" xml:space="preserve">
+    <value>Tente a operação novamente. Se falhar de novo, relate o problema.</value>
+  </data>
+  <data name="RetryTheRepairIfItFailsAgainReportTheProblem" xml:space="preserve">
+    <value>Tente o reparo novamente. Se falhar de novo, relate o problema.</value>
+  </data>
+  <data name="Retrying" xml:space="preserve">
+    <value>Tentando novamente…</value>
+  </data>
+  <data name="ScreenshotCouldNotBeLoaded" xml:space="preserve">
+    <value>A captura de tela não pôde ser carregada.</value>
+  </data>
+  <data name="ScreenshotUnavailable" xml:space="preserve">
+    <value>Captura de tela indisponível</value>
+  </data>
+  <data name="Screenshots" xml:space="preserve">
+    <value>Capturas de tela</value>
+  </data>
+  <data name="SearchDLC" xml:space="preserve">
+    <value>Buscar DLC</value>
+  </data>
+  <data name="SearchStoreForQueryFormat" xml:space="preserve">
+    <value>Buscar “{0}” na Epic Games Store</value>
+  </data>
+  <data name="SearchYourLibrary" xml:space="preserve">
+    <value>Buscar na sua biblioteca</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>Configurações</value>
+  </data>
+  <data name="ShortcutDescriptionFormat" xml:space="preserve">
+    <value>Iniciar {0} com o Crimson</value>
+  </data>
+  <data name="Shortcuts" xml:space="preserve">
+    <value>Atalhos</value>
+  </data>
+  <data name="ShowAdavancedSettings" xml:space="preserve">
+    <value>Mostrar configurações avançadas</value>
+  </data>
+  <data name="ShowGamesInstalledOrBeingManagedByCrimson" xml:space="preserve">
+    <value>Mostrar jogos instalados ou gerenciados pelo Crimson</value>
+  </data>
+  <data name="Size" xml:space="preserve">
+    <value>Tamanho</value>
+  </data>
+  <data name="SizeGiBFormat" xml:space="preserve">
+    <value>{0:F2} GiB</value>
+  </data>
+  <data name="SizeMiBFormat" xml:space="preserve">
+    <value>{0:F2} MiB</value>
+  </data>
+  <data name="SizeOfInstallation" xml:space="preserve">
+    <value>Tamanho da instalação</value>
+  </data>
+  <data name="SizeWithUnitFormat" xml:space="preserve">
+    <value>{0:0.##} {1}</value>
+  </data>
+  <data name="Specification" xml:space="preserve">
+    <value>Especificações</value>
+  </data>
+  <data name="StartTheOperationAgainFromTheLibrary" xml:space="preserve">
+    <value>Inicie a operação novamente a partir da biblioteca.</value>
+  </data>
+  <data name="Store" xml:space="preserve">
+    <value>Loja</value>
+  </data>
+  <data name="TB" xml:space="preserve">
+    <value>TB</value>
+  </data>
+  <data name="MessageCloseAndRetryFormat" xml:space="preserve">
+    <value>{0} Feche e tente novamente.</value>
+  </data>
+  <data name="VerificationFailedSentenceFormat" xml:space="preserve">
+    <value>{0} arquivos falharam na verificação.</value>
+  </data>
+  <data name="ProgressOfTotalFormat" xml:space="preserve">
+    <value>{0} de {1}</value>
+  </data>
+  <data name="TheDesktopShortcutCouldNotBeCreated" xml:space="preserve">
+    <value>Não foi possível criar o atalho na área de trabalho.</value>
+  </data>
+  <data name="TheEpicGamesStoreCouldNotBeOpened" xml:space="preserve">
+    <value>A Epic Games Store não pôde ser aberta</value>
+  </data>
+  <data name="TheEpicGamesStoreDidNotFinishLoadingTryAgain" xml:space="preserve">
+    <value>A Epic Games Store não terminou de carregar. Tente novamente.</value>
+  </data>
+  <data name="TheEpicImportWindowCouldNotBeOpened" xml:space="preserve">
+    <value>A janela de importação da Epic não pôde ser aberta.</value>
+  </data>
+  <data name="TheFolderPickerCouldNotBeOpened" xml:space="preserve">
+    <value>O seletor de pasta não pôde ser aberto.</value>
+  </data>
+  <data name="TheGameWasInstalledButARequestedShortcutCouldNotBeCreated" xml:space="preserve">
+    <value>O jogo foi instalado, mas um atalho solicitado não pôde ser criado.</value>
+  </data>
+  <data name="TheGameWasRemovedButItsShortcutsCouldNotBeRemoved" xml:space="preserve">
+    <value>O jogo foi removido, mas seus atalhos não puderam ser removidos.</value>
+  </data>
+  <data name="TheInstallationDialogCouldNotBeOpened" xml:space="preserve">
+    <value>A caixa de diálogo de instalação não pôde ser aberta.</value>
+  </data>
+  <data name="TheInstallationFolderCouldNotBeFound" xml:space="preserve">
+    <value>A pasta de instalação não pôde ser encontrada.</value>
+  </data>
+  <data name="TheInstallationFolderCouldNotBeOpened" xml:space="preserve">
+    <value>A pasta de instalação não pôde ser aberta.</value>
+  </data>
+  <data name="TheInstallationWasQueuedButCrimsonCouldNotRememberItsFolder" xml:space="preserve">
+    <value>A instalação foi colocada na fila, mas o Crimson não conseguiu lembrar sua pasta.</value>
+  </data>
+  <data name="TheOperationStoppedUnexpectedly" xml:space="preserve">
+    <value>A operação parou inesperadamente.</value>
+  </data>
+  <data name="TheOperationWasCancelledButTemporaryFilesCouldNotBeRemoved" xml:space="preserve">
+    <value>A operação foi cancelada, mas os arquivos temporários não puderam ser removidos.</value>
+  </data>
+  <data name="ThePendingOperationCouldNotBeRestored" xml:space="preserve">
+    <value>A operação pendente não pôde ser restaurada.</value>
+  </data>
+  <data name="TheReportPageCouldNotBeOpenedErrorCodeReportOpenFailed" xml:space="preserve">
+    <value>A página de relatório não pôde ser aberta. Código de erro: report_open_failed.</value>
+  </data>
+  <data name="TheSelectedEpicInstallationsCouldNotBeQueued" xml:space="preserve">
+    <value>As instalações selecionadas da Epic não puderam ser enfileiradas.</value>
+  </data>
+  <data name="ThereIsNotEnoughFreeSpaceToCompleteThisOperation" xml:space="preserve">
+    <value>Não há espaço livre suficiente para concluir esta operação.</value>
+  </data>
+  <data name="TheseInstallationsAreNoLongerAvailableToImportCloseAndTryAgain" xml:space="preserve">
+    <value>Estas instalações não estão mais disponíveis para importação. Feche e tente novamente.</value>
+  </data>
+  <data name="ThisGameIsNoLongerAvailableInTheCurrentLibrary" xml:space="preserve">
+    <value>Este jogo não está mais disponível na biblioteca atual.</value>
+  </data>
+  <data name="ThisOperationRequiresAnInstalledGame" xml:space="preserve">
+    <value>Esta operação requer um jogo instalado.</value>
+  </data>
+  <data name="ThisRemovesTheManagedInstallationBackUpLocalFilesYouWantToKeep" xml:space="preserve">
+    <value>Isso remove a instalação gerenciada. Faça backup dos arquivos locais que deseja manter.</value>
+  </data>
+  <data name="ThisWillLogYouOutFromTheCurrentAccountAndReturnToTheSignInScreen" xml:space="preserve">
+    <value>Isso desconectará você da conta atual e retornará para a tela de login</value>
+  </data>
+  <data name="TitleDetailFormat" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="TotalPlayTime" xml:space="preserve">
+    <value>Tempo total de jogo</value>
+  </data>
+  <data name="TryAgain" xml:space="preserve">
+    <value>Tentar novamente</value>
+  </data>
+  <data name="TryAgainOrRestartCrimson" xml:space="preserve">
+    <value>Tente novamente ou reinicie o Crimson.</value>
+  </data>
+  <data name="TryCreatingItAgainFromGameProperties" xml:space="preserve">
+    <value>Tente criá-lo novamente a partir das Propriedades do jogo.</value>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>Indisponível</value>
+  </data>
+  <data name="Uninstall" xml:space="preserve">
+    <value>Desinstalar</value>
+  </data>
+  <data name="UninstallGame" xml:space="preserve">
+    <value>Desinstalar jogo</value>
+  </data>
+  <data name="UninstallThisGame" xml:space="preserve">
+    <value>Desinstalar este jogo?</value>
+  </data>
+  <data name="Uninstalled" xml:space="preserve">
+    <value>Desinstalado</value>
+  </data>
+  <data name="Uninstalling" xml:space="preserve">
+    <value>Desinstalando</value>
+  </data>
+  <data name="Update" xml:space="preserve">
+    <value>Atualizar</value>
+  </data>
+  <data name="UpdateAvailable" xml:space="preserve">
+    <value>Atualização disponível</value>
+  </data>
+  <data name="Updated" xml:space="preserve">
+    <value>Atualizado</value>
+  </data>
+  <data name="Updating" xml:space="preserve">
+    <value>Atualizando</value>
+  </data>
+  <data name="Verified" xml:space="preserve">
+    <value>Verificado</value>
+  </data>
+  <data name="Verify" xml:space="preserve">
+    <value>Verificar</value>
+  </data>
+  <data name="VerifyAndRepairFiles" xml:space="preserve">
+    <value>Verificar e reparar arquivos</value>
+  </data>
+  <data name="VerifyAndRepairGameFiles" xml:space="preserve">
+    <value>Verificar e reparar arquivos do jogo</value>
+  </data>
+  <data name="Verifying" xml:space="preserve">
+    <value>Verificando</value>
+  </data>
+  <data name="ViewAllStoreResults" xml:space="preserve">
+    <value>Ver todos os resultados da loja</value>
+  </data>
+  <data name="ViewInStore" xml:space="preserve">
+    <value>Ver na Loja</value>
+  </data>
+  <data name="WaitingToStart" xml:space="preserve">
+    <value>Aguardando início</value>
+  </data>
+  <data name="WindowsRequirements" xml:space="preserve">
+    <value>Requisitos para Windows</value>
+  </data>
+  <data name="Working" xml:space="preserve">
+    <value>Processando</value>
+  </data>
+  <data name="YourLibraryCouldNotBeRefreshedTryAgain" xml:space="preserve">
+    <value>Sua biblioteca não pôde ser atualizada. Tente novamente.</value>
+  </data>
+  <data name="ZeroBytes" xml:space="preserve">
+    <value>0 B</value>
+  </data>
+  <data name="ZeroMinutes" xml:space="preserve">
+    <value>0m</value>
+  </data>
+  <data name="ZeroTransferRate" xml:space="preserve">
+    <value>0 MiB/s</value>
+  </data>
+  <data name="Language" xml:space="preserve">
+    <value>Idioma</value>
+  </data>
+  <data name="LanguageRestartBusy" xml:space="preserve">
+    <value>Conclua ou cancele as operações ativas e na fila antes de reiniciar o Crimson. Sua escolha de idioma foi salva.</value>
+  </data>
+  <data name="LanguageRestartFailed" xml:space="preserve">
+    <value>Não foi possível reiniciar o Crimson. Sua escolha de idioma foi salva. Tente novamente pelo botão ou saia do Crimson pelo ícone da bandeja e abra-o novamente.</value>
+  </data>
+  <data name="LanguageRestartPrompt" xml:space="preserve">
+    <value>Reiniciar o Crimson agora para aplicar a alteração de idioma? O Crimson será encerrado, incluindo o ícone da bandeja, e aberto novamente.</value>
+  </data>
+  <data name="LanguageRestartRequired" xml:space="preserve">
+    <value>Reinicie o Crimson para aplicar a alteração de idioma.</value>
+  </data>
+  <data name="LanguageSaveFailed" xml:space="preserve">
+    <value>Não foi possível salvar o idioma. Tente novamente.</value>
+  </data>
+  <data name="Later" xml:space="preserve">
+    <value>Mais tarde</value>
+  </data>
+  <data name="RestartCrimson" xml:space="preserve">
+    <value>Reiniciar o Crimson</value>
+  </data>
+  <data name="SystemLanguage" xml:space="preserve">
+    <value>Idioma do sistema</value>
+  </data>
+  <data name="AcrylicSaveFailed" xml:space="preserve">
+    <value>Não foi possível salvar a configuração de Acrylic. A configuração anterior foi restaurada.</value>
+  </data>
+</root>

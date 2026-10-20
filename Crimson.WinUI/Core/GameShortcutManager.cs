@@ -1,3 +1,4 @@
+using Crimson.Resources;
 using System;
 using System.IO;
 using System.Linq;
@@ -311,7 +312,7 @@ public sealed class GameShortcutManager : IGameShortcutManager
             link.SetArguments(GameLaunchRequest.CreateCommandLineArgument(game.AppName));
 
 
-            link.SetDescription($"Launch {game.AppTitle} with Crimson");
+            link.SetDescription(UiStrings.Format(UiStrings.ShortcutDescriptionFormat, game.AppTitle));
             if (!string.IsNullOrEmpty(iconPath))
                 link.SetIconLocation(iconPath, 0);
             ((IPersistFile)link).Save(path, true);

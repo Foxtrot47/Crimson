@@ -1,4 +1,5 @@
-﻿using System;
+using Crimson.Resources;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
@@ -108,7 +109,7 @@ public sealed partial class GameInfoPage : Page
         ExpandedScreenshotLoadingRing.IsActive = true;
         AutomationProperties.SetName(
             ExpandedScreenshotImage,
-            string.IsNullOrWhiteSpace(screenshot.AltText) ? "Game screenshot" : screenshot.AltText);
+            string.IsNullOrWhiteSpace(screenshot.AltText) ? UiStrings.GameScreenshot : screenshot.AltText);
         ExpandedScreenshotImage.Source = new BitmapImage(uri);
         SizeScreenshotViewer();
         ScreenshotDialog.XamlRoot = XamlRoot;

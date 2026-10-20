@@ -1,3 +1,4 @@
+using Crimson.Resources;
 using System;
 using Crimson.Core;
 using Crimson.Models;
@@ -12,7 +13,7 @@ public sealed class DownloadSummary
     public bool HasActiveDownload { get; init; }
     public bool IsIndeterminate { get; init; }
     public int ProgressPercentage { get; init; }
-    public string ToolTip { get; init; } = "No downloads in queue";
+    public string ToolTip { get; init; } = UiStrings.NoDownloadsInQueue;
 }
 
 public sealed partial class CurrentDownloadControl : UserControl, IDisposable
@@ -97,7 +98,7 @@ public sealed partial class CurrentDownloadControl : UserControl, IDisposable
             HasActiveDownload = presentation.IsActive,
             IsIndeterminate = presentation.IsIndeterminate,
             ProgressPercentage = presentation.ProgressPercentage,
-            ToolTip = $"{title} - {presentation.Headline.ToLowerInvariant()}"
+            ToolTip = UiStrings.Format(UiStrings.GameOperationFormat, title, presentation.Headline.ToLowerInvariant())
         });
     }
 

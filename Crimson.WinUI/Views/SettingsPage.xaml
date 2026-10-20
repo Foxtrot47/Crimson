@@ -3,6 +3,8 @@
     x:Class="Crimson.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:strings="using:Crimson.Resources"
+    xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Crimson.Views"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -11,6 +13,7 @@
     mc:Ignorable="d">
 
     <Page.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <x:Double x:Key="SettingsCardSpacing">3</x:Double>
         <Style
             x:Key="SettingsSectionHeaderTextBlockStyle"
@@ -33,7 +36,7 @@
             x:Name="PageHeader"
             Margin="36,24,36,0"
             Style="{StaticResource TitleTextBlockStyle}"
-            Text="Settings" />
+            Text="{x:Bind strings:UiStrings.Settings}" />
 
         <ScrollViewer
             x:Name="contentSV"
@@ -50,32 +53,64 @@
                 </StackPanel.ChildrenTransitions>
 
 
-                <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Appearance" />
+                <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="{x:Bind strings:UiStrings.Appearance}" />
 
-                <toolkit:SettingsCard Description="Enable the mica effects available on Windows 11" Header="Enable Mica">
-                    <ToggleSwitch IsOn="{x:Bind ViewModel.MicaEnabled, Mode=TwoWay}" />
+                <toolkit:SettingsCard Description="{x:Bind strings:UiStrings.EnableTheAcrylicEffectsAvailableOnWindows11}" Header="{x:Bind strings:UiStrings.EnableAcrylic}">
+                    <ToggleSwitch
+                        IsEnabled="{x:Bind ViewModel.CanChangeAcrylic, Mode=OneWay}"
+                        IsOn="{x:Bind ViewModel.AcrylicEnabled, Mode=TwoWay}" />
                 </toolkit:SettingsCard>
+                <TextBlock
+                    Margin="12,6,12,6"
+                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                    Text="{x:Bind ViewModel.AcrylicErrorMessage, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasAcrylicError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
 
-                <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Accounts" />
+                <toolkit:SettingsCard Header="{x:Bind strings:UiStrings.Language}">
+                    <ComboBox
+                        x:Name="LanguagePicker"
+                        MinWidth="200"
+                        ItemsSource="{x:Bind ViewModel.Languages}"
+                        DisplayMemberPath="DisplayName"
+                        SelectedItem="{x:Bind ViewModel.SelectedLanguage, Mode=OneWay}"
+                        SelectionChanged="LanguageSelectionChanged"
+                        AutomationProperties.Name="{x:Bind strings:UiStrings.Language}" />
+                </toolkit:SettingsCard>
+                <StackPanel
+                    Margin="12,6,12,6"
+                    Spacing="8"
+                    Visibility="{x:Bind ViewModel.IsLanguageRestartRequired, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="{x:Bind strings:UiStrings.LanguageRestartRequired}" TextWrapping="Wrap" />
+                    <Button Content="{x:Bind strings:UiStrings.RestartCrimson}" Click="RestartClicked" />
+                </StackPanel>
+                <TextBlock
+                    Margin="12,6,12,6"
+                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                    Text="{x:Bind ViewModel.LanguageErrorMessage, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasLanguageError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="{x:Bind strings:UiStrings.Accounts}" />
 
                 <toolkit:SettingsCard
                     Command="{x:Bind ViewModel.LogoutCommand}"
-                    Description="This will log you out from the current account and return to the sign-in screen"
-                    Header="Logout"
+                    Description="{x:Bind strings:UiStrings.ThisWillLogYouOutFromTheCurrentAccountAndReturnToTheSignInScreen}"
+                    Header="{x:Bind strings:UiStrings.Logout}"
                     IsClickEnabled="True" />
 
-                <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Advanced Settings" />
+                <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="{x:Bind strings:UiStrings.AdvancedSettings}" />
 
                 <toolkit:SettingsExpander
                     x:Name="AdvancedSettingsCard"
-                    Header="Show adavanced Settings"
+                    Header="{x:Bind strings:UiStrings.ShowAdavancedSettings}"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE713;}"
                     IsExpanded="{x:Bind ViewModel.AdvancedSettingsExpanded, Mode=TwoWay}">
 
                     <toolkit:SettingsExpander.Items>
                         <toolkit:SettingsCard
                             Command="{x:Bind ViewModel.OpenLogsDirectoryCommand}"
-                            Header="Open Logs Directory"
+                            Header="{x:Bind strings:UiStrings.OpenLogsDirectory}"
                             IsClickEnabled="True" />
                     </toolkit:SettingsExpander.Items>
                 </toolkit:SettingsExpander>

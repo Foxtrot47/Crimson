@@ -1,4 +1,5 @@
-﻿using System;
+using Crimson.Resources;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -70,7 +71,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     private string _currentDownloadSize = string.Empty;
 
     [ObservableProperty]
-    private string _currentDiskWriteSpeed = "0 MiB/s";
+    private string _currentDiskWriteSpeed = UiStrings.ZeroTransferRate;
 
     [ObservableProperty]
     private IReadOnlyList<TransferRateSample> _transferHistory = [];
@@ -108,7 +109,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
                     Name = operation.AppName,
                     Title = gameInfo.AppTitle,
                     ImageUrl = GetRowArtworkUrl(gameInfo),
-                    StatusText = $"{OperationPresenter.Present(operation).Headline} · Position {index + 1}"
+                    StatusText = UiStrings.Format(UiStrings.QueuePositionFormat, OperationPresenter.Present(operation).Headline, index + 1)
                 });
             }
             QueueItems = itemList;
@@ -134,12 +135,13 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
                     Title = gameInfo.AppTitle,
                     ImageUrl = GetRowArtworkUrl(gameInfo),
                     StatusText = OperationPresenter.Present(operation).Headline,
-                    FailureText = operation.Failure is null
-                        ? string.Empty
-                        : $"{operation.Failure.Message} {operation.Failure.SuggestedAction}",
-                    HasFailure = operation.Failure is not null,
+                    FailureText = (operation.Failure ?? operation.Notice) is { } failure
+                        ? UiStrings.Format(UiStrings.MessageSuggestionFormat, failure.Message, failure.SuggestedAction)
+                        : string.Empty,
+                    HasFailure = operation.Failure is not null || operation.Notice is not null,
                     CanRetry = operation.Failure?.CanRetry == true,
-                    Operation = operation
+                    Operation = operation.Failure is null && operation.Notice is not null
+                        ? operation with { Failure = operation.Notice } : operation
                 });
             }
             HistoryItems = itemList;
@@ -225,7 +227,8 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
         left.Phase == right.Phase &&
         left.IsRetrying == right.IsRetrying &&
         left.StatusMessage == right.StatusMessage &&
-        left.Failure == right.Failure;
+        left.Failure == right.Failure &&
+        left.Notice == right.Notice;
 
     private void SetCurrentInstallItem(OperationSnapshot operation)
     {
@@ -268,7 +271,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
         var transferring = operation.Phase == OperationPhase.Transferring &&
             operation.Status is ActionStatus.OnGoing or ActionStatus.Processing;
         CurrentDownloadSpeed = OperationPresenter.IsRetryingTransfer(operation)
-            ? "Retrying…"
+            ? UiStrings.Retrying
             : FormatTransferRate(transferring ? operation.DownloadSpeedMiB : 0);
         CurrentDiskWriteSpeed = FormatTransferRate(transferring ? operation.WriteSpeedMiB : 0);
         TransferHistory = operation.TransferHistory ?? [];
@@ -280,11 +283,11 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 
     internal static string FormatTransferRate(double rate)
     {
-        if (!double.IsFinite(rate) || rate <= 0) return "0 MiB/s";
-        if (rate >= 1) return $"{rate:0.##} MiB/s";
+        if (!double.IsFinite(rate) || rate <= 0) return UiStrings.ZeroTransferRate;
+        if (rate >= 1) return UiStrings.Format(UiStrings.RateMiBFormat, rate);
         return rate >= 1d / 1024
-            ? $"{rate * 1024:0.##} KiB/s"
-            : $"{rate * 1024 * 1024:0.##} B/s";
+            ? UiStrings.Format(UiStrings.RateKiBFormat, rate * 1024)
+            : UiStrings.Format(UiStrings.RateBytesFormat, rate * 1024 * 1024);
     }
 
     public bool RetryFailedOperation(DownloadManagerItem? item)

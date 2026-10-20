@@ -1,3 +1,4 @@
+using Crimson.Resources;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -107,7 +108,7 @@ public sealed partial class StorePage : Page
                 return;
 
             _log.Error(ex, "StorePage: failed to initialize the store WebView");
-            ShowError("Check your connection and WebView2 Runtime, then try again.");
+            ShowError(UiStrings.CheckYourConnectionAndWebView2RuntimeThenTryAgain);
         }
     }
 
@@ -138,7 +139,7 @@ public sealed partial class StorePage : Page
         if (!e.IsSuccess)
         {
             _log.Warning("StorePage: navigation failed with {WebErrorStatus}", e.WebErrorStatus);
-            ShowError("The Epic Games Store did not finish loading. Try again.");
+            ShowError(UiStrings.TheEpicGamesStoreDidNotFinishLoadingTryAgain);
         }
     }
 
@@ -209,7 +210,7 @@ public sealed partial class StorePage : Page
         {
             LoadingRing.IsActive = false;
             _log.Error(ex, "StorePage: failed to open an Epic launcher request");
-            ShowError("Your library could not be refreshed. Try again.");
+            ShowError(UiStrings.YourLibraryCouldNotBeRefreshedTryAgain);
         }
 
         return true;

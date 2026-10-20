@@ -2,6 +2,7 @@
     x:Class="Crimson.Views.DownloadsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:strings="using:Crimson.Resources"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Crimson.ViewModels"
@@ -28,7 +29,7 @@
         </VisualStateManager.VisualStateGroups>
 
         <StackPanel Spacing="20">
-            <TextBlock Style="{ThemeResource TitleTextBlockStyle}" Text="Downloads" />
+            <TextBlock Style="{ThemeResource TitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.Downloads}" />
             <Grid
                 x:Name="ActiveDownloadSection"
                 Visibility="{x:Bind ViewModel.ShowCurrentDownload, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
@@ -42,7 +43,7 @@
                 </Grid.RowDefinitions>
 
                 <Grid x:Name="ActivityChart" Grid.ColumnSpan="2" Height="204"
-                      AutomationProperties.Name="Download and installer disk-write rates over the last 60 seconds">
+                      AutomationProperties.Name="{x:Bind strings:UiStrings.DownloadAndInstallerDiskWriteRatesOverTheLast60Seconds}">
                     <Border Opacity="0.22" IsHitTestVisible="False">
                         <Border.Background>
                             <utils:FadingArtworkBrush
@@ -55,7 +56,7 @@
                         <Polyline x:Name="DiskWriteRateLine" Stroke="{ThemeResource SystemFillColorSuccessBrush}" StrokeThickness="2" />
                     </Canvas>
                     <TextBlock x:Name="GraphWaitingLabel" HorizontalAlignment="Center" VerticalAlignment="Center"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="No transfer activity recorded" />
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind strings:UiStrings.NoTransferActivityRecorded}" />
                 </Grid>
 
                 <StackPanel x:Name="TransferDetails" Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0"
@@ -71,17 +72,16 @@
                             <TextBlock FontSize="18" FontWeight="SemiBold" Text="{x:Bind ViewModel.CurrentDownloadSpeed, Mode=OneWay}" />
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <Border Width="3" Height="10" Background="{ThemeResource AccentFillColorDefaultBrush}" />
-                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" Text="Download Rate" />
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" Text="{x:Bind strings:UiStrings.DownloadRate}" />
                             </StackPanel>
                         </StackPanel>
-                        <StackPanel Grid.Column="1" Spacing="3"
-                                    ToolTipService.ToolTip="Bytes written to game installation files, not total device throughput or temporary download-cache writes.">
+                        <StackPanel Grid.Column="1" Spacing="3">
                             <TextBlock FontSize="18" FontWeight="SemiBold"
-                                       AutomationProperties.HelpText="Installer destination-file output, not total device throughput."
+                                       AutomationProperties.HelpText="{x:Bind strings:UiStrings.InstallerDestinationFileOutputNotTotalDeviceThroughput}"
                                        Text="{x:Bind ViewModel.CurrentDiskWriteSpeed, Mode=OneWay}" />
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <Border Width="16" Height="2" Background="{ThemeResource SystemFillColorSuccessBrush}" />
-                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" Text="Disk Write Rate" />
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" Text="{x:Bind strings:UiStrings.DiskWriteRate}" />
                             </StackPanel>
                         </StackPanel>
                     </Grid>
@@ -96,21 +96,21 @@
                     <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
                         <Grid>
                             <Button Width="36" Height="36" Padding="6"
-                                    AutomationProperties.Name="Pause operation" ToolTipService.ToolTip="Pause"
+                                    AutomationProperties.Name="{x:Bind strings:UiStrings.PauseOperation}" ToolTipService.ToolTip="{x:Bind strings:UiStrings.Pause}"
                                     Command="{x:Bind ViewModel.PauseInstallCommand}"
                                     IsEnabled="{x:Bind ViewModel.EnablePauseButton, Mode=OneWay}"
                                     Visibility="{x:Bind ViewModel.ShowPauseButton, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <FontIcon Glyph="&#xE769;" />
                             </Button>
                             <Button Width="36" Height="36" Padding="6"
-                                    AutomationProperties.Name="Resume operation" ToolTipService.ToolTip="Resume"
+                                    AutomationProperties.Name="{x:Bind strings:UiStrings.ResumeOperation}" ToolTipService.ToolTip="{x:Bind strings:UiStrings.Resume}"
                                     Command="{x:Bind ViewModel.ResumeInstallCommand}"
                                     Visibility="{x:Bind ViewModel.ShowPauseButton, Mode=OneWay, Converter={StaticResource BoolToInverseVisibilityConverter}}">
                                 <FontIcon Glyph="&#xE768;" />
                             </Button>
                         </Grid>
                         <Button x:Name="CancelInstallButton" Width="36" Height="36" Padding="6"
-                                AutomationProperties.Name="Cancel operation" ToolTipService.ToolTip="Cancel"
+                                AutomationProperties.Name="{x:Bind strings:UiStrings.CancelOperation}" ToolTipService.ToolTip="{x:Bind strings:UiStrings.Cancel}"
                                 Command="{x:Bind ViewModel.CancelInstallCommand}"
                                 IsEnabled="{x:Bind ViewModel.EnableCancelButton, Mode=OneWay}">
                             <FontIcon Glyph="&#xE711;" />
@@ -124,7 +124,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Queue" />
+                <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.Queue}" />
                 <Border Grid.Column="1" Height="1" VerticalAlignment="Center" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
             </Grid>
             <ListView x:Name="InstallQueueListView" Background="Transparent" ItemsSource="{x:Bind ViewModel.QueueItems, Mode=OneWay}">
@@ -156,7 +156,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="History" />
+                <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.History}" />
                 <Border Grid.Column="1" Height="1" VerticalAlignment="Center" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
             </Grid>
             <ListView x:Name="HistoryItemsList" Background="Transparent" ItemsSource="{x:Bind ViewModel.HistoryItems, Mode=OneWay}">
@@ -175,10 +175,10 @@
                                 <StackPanel Spacing="8" Visibility="{x:Bind HasFailure, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <TextBlock Foreground="{ThemeResource SystemFillColorCriticalBrush}" Text="{x:Bind FailureText}" TextWrapping="Wrap" />
                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Button Click="RetryOperation_Click" Content="Retry" IsEnabled="{x:Bind CanRetry}" />
-                                        <Button Click="ReportProblem_Click" Content="Report problem" />
+                                        <Button Click="RetryOperation_Click" Content="{x:Bind strings:UiStrings.Retry}" IsEnabled="{x:Bind CanRetry}" />
+                                        <Button Click="ReportProblem_Click" Content="{x:Bind strings:UiStrings.ReportProblem}" />
                                     </StackPanel>
-                                    <Button HorizontalAlignment="Left" Click="CopyDiagnostics_Click" Content="Copy diagnostics" />
+                                    <Button HorizontalAlignment="Left" Click="CopyDiagnostics_Click" Content="{x:Bind strings:UiStrings.CopyDiagnostics}" />
                                 </StackPanel>
                             </StackPanel>
                         </Grid>

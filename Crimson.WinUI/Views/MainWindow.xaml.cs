@@ -1,8 +1,8 @@
-﻿using System;
+using Crimson.Resources;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
@@ -18,8 +18,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Navigation;
 using Serilog;
-using WinRT;
 
 namespace Crimson.Views;
 
@@ -43,7 +43,9 @@ public sealed partial class MainWindow : Window
     private const string GameNavTagPrefix = "game:";
 
     public bool IsLoggedIn;
+    private Crimson.Controls.EpicImportDialog? _epicImportDialog;
     private ILogger _log = App.GetService<ILogger>();
+    private readonly SettingsManager _settingsManager;
     private readonly AuthManager _authManager;
     private readonly InstallManager _installManager;
     private readonly LibraryManager _libraryManager;
@@ -89,18 +91,16 @@ public sealed partial class MainWindow : Window
         public Visibility SkeletonVisibility { get; init; } = Visibility.Collapsed;
     }
 
-    WindowsSystemDispatcherQueueHelper _mWsdqHelper;
-    MicaController _mBackdropController;
-    SystemBackdropConfiguration _mConfigurationSource;
+    private bool _windowClosed;
 
     public MainWindow()
     {
         InitializeComponent();
         SetWindowIcon();
 
-        // Disable setting mica as default
-        // We will config later when we do configuration manager
-        TrySetSystemBackdrop();
+        _settingsManager = App.GetService<SettingsManager>();
+        _settingsManager.AcrylicChanged += AcrylicPreferenceChanged;
+        ApplyBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         _windowSizeConstraints = new WindowSizeConstraints(WinRT.Interop.WindowNative.GetWindowHandle(this), _log);
@@ -268,7 +268,7 @@ public sealed partial class MainWindow : Window
             suggestions.AddRange(storeResults.Select(result => new SearchSuggestion
             {
                 DisplayText = result.Title,
-                Subtitle = "Epic Games Store",
+                Subtitle = UiStrings.EpicGamesStore,
                 StoreProductSlug = result.ProductSlug,
                 Thumbnail = CreateSearchThumbnail(result.ImageUrl)
             }));
@@ -296,7 +296,7 @@ public sealed partial class MainWindow : Window
             .Select(game => new SearchSuggestion
             {
                 DisplayText = string.IsNullOrWhiteSpace(game.AppTitle) ? game.AppName : game.AppTitle,
-                Subtitle = "In your library",
+                Subtitle = UiStrings.InYourLibrary,
                 AppName = game.AppName,
                 Thumbnail = CreateSearchThumbnail(game)
             })
@@ -336,8 +336,8 @@ public sealed partial class MainWindow : Window
 
     private static SearchSuggestion CreateStoreSearchSuggestion(string query) => new()
     {
-        DisplayText = $"Search Epic Games Store for “{query}”",
-        Subtitle = "View all Store results",
+        DisplayText = UiStrings.Format(UiStrings.SearchStoreForQueryFormat, query),
+        Subtitle = UiStrings.ViewAllStoreResults,
         StoreQuery = query,
         IconGlyph = "\uE719"
     };
@@ -392,6 +392,49 @@ public sealed partial class MainWindow : Window
 
         _currentGameAppName = null;
         ContentFrame.Navigate(typeof(StorePage), uri, new EntranceNavigationTransitionInfo());
+    }
+
+    private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
+    {
+        if (e.Content is LibraryPage)
+        {
+            ContentScroller.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
+            ContentScroller.VerticalScrollMode = ScrollMode.Disabled;
+            ContentScroller.VerticalContentAlignment = VerticalAlignment.Stretch;
+            ContentScroller.ChangeView(null, 0, null, true);
+            return;
+        }
+        ContentScroller.ClearValue(ScrollViewer.VerticalScrollBarVisibilityProperty);
+        ContentScroller.ClearValue(ScrollViewer.VerticalScrollModeProperty);
+        ContentScroller.ClearValue(ScrollViewer.VerticalContentAlignmentProperty);
+    }
+
+    internal async Task ShowEpicImportAsync()
+    {
+        if (_authManager.AuthenticationStatus != AuthenticationStatus.LoggedIn || _epicImportDialog is not null) return;
+        Crimson.Controls.EpicImportDialog? dialog = null;
+        try
+        {
+            if (ContentFrame.Content is LibraryPage libraryPage) libraryPage.ViewModel.ActionErrorMessage = string.Empty;
+            dialog = new Crimson.Controls.EpicImportDialog { XamlRoot = Content.XamlRoot };
+            _epicImportDialog = dialog;
+            await dialog.ShowPickerAsync();
+        }
+        catch (Exception error)
+        {
+            _log.Error("Epic import dialog failed: {ErrorType}", error.GetType().Name);
+            if (ContentFrame.Content is LibraryPage libraryPage)
+                libraryPage.ViewModel.ActionErrorMessage = UiStrings.Format(UiStrings.MessageSuggestionFormat,
+                    UiStrings.TheEpicImportWindowCouldNotBeOpened, UiStrings.TryAgainOrRestartCrimson);
+            _installManager.ReportPreparationFailure(string.Empty, ActionType.Import, new OperationFailure(
+                OperationFailureKind.Unknown, "epic_import_dialog_failed", UiStrings.TheEpicImportWindowCouldNotBeOpened,
+                UiStrings.TryAgainOrRestartCrimson, false));
+        }
+        finally
+        {
+            dialog?.ClosePicker();
+            _epicImportDialog = null;
+        }
     }
 
     private void ClearGlobalSearch()
@@ -473,11 +516,13 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    private void RefreshTrayMenu() =>
-        TrayIconView.UpdateInstalledGames(
-            _libraryManager.GetSidebarGames(_libraryCache, null),
-            _authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn,
+    private void RefreshTrayMenu()
+    {
+        var isLoggedIn = _authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn;
+        var games = isLoggedIn ? _libraryManager.GetSidebarGames(_libraryCache, null) : [];
+        TrayIconView.UpdateInstalledGames(games, isLoggedIn,
             appName => _installManager.GetActiveOperationForGame(appName) is not null);
+    }
 
     private void RebuildInstalledMenu(bool force = false)
     {
@@ -553,7 +598,7 @@ public sealed partial class MainWindow : Window
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderThickness = new Thickness(0)
         };
-        ToolTipService.SetToolTip(playButton, $"Play {title}");
+        ToolTipService.SetToolTip(playButton, UiStrings.Format(UiStrings.PlayGameFormat, title));
         playButton.Click += (_, _) => LaunchGame(appName, title);
         playButton.Tapped += (_, e) => e.Handled = true;
         Grid.SetColumn(playButton, 2);
@@ -642,7 +687,7 @@ public sealed partial class MainWindow : Window
 
         SetProgressFill(target.ProgressBrush, presentation.IsIndeterminate ? 0 : percent);
         ToolTipService.SetToolTip(target.Item,
-            $"{target.Title} - {presentation.Headline.ToLowerInvariant()}");
+            UiStrings.Format(UiStrings.GameOperationFormat, target.Title, presentation.Headline.ToLowerInvariant()));
     }
 
     private string? GetDisplayedGameAppName(OperationSnapshot? operation) =>
@@ -663,25 +708,25 @@ public sealed partial class MainWindow : Window
         OperationSnapshot operation,
         OperationPresentation presentation)
     {
-        if (OperationPresenter.IsRetryingTransfer(operation)) return "Retrying…";
+        if (OperationPresenter.IsRetryingTransfer(operation)) return UiStrings.Retrying;
         if (!presentation.IsIndeterminate)
-            return $"{presentation.ProgressPercentage}%";
+            return UiStrings.Format(UiStrings.ProgressPercentFormat, presentation.ProgressPercentage);
 
         return operation.Status == ActionStatus.Cancelling
-            ? "Cancelling"
+            ? UiStrings.Cancelling
             : GetPhaseStatus(operation.Phase);
     }
 
     private static string GetPhaseStatus(OperationPhase phase) => phase switch
     {
-        OperationPhase.Queued => "Queued",
-        OperationPhase.Preparing => "Preparing",
-        OperationPhase.Verifying => "Verifying",
-        OperationPhase.Uninstalling => "Removing",
-        OperationPhase.Importing => "Importing",
-        OperationPhase.Moving => "Moving",
-        OperationPhase.Finalizing => "Finishing",
-        _ => "Working"
+        OperationPhase.Queued => UiStrings.Queued,
+        OperationPhase.Preparing => UiStrings.Preparing,
+        OperationPhase.Verifying => UiStrings.Verifying,
+        OperationPhase.Uninstalling => UiStrings.Removing,
+        OperationPhase.Importing => UiStrings.Importing,
+        OperationPhase.Moving => UiStrings.Moving,
+        OperationPhase.Finalizing => UiStrings.Finishing,
+        _ => UiStrings.Working
     };
 
     private static string GetActionGlyph(ActionType action, ActionStatus status) => status switch
@@ -806,8 +851,8 @@ public sealed partial class MainWindow : Window
                 NavControl.Visibility = Visibility.Collapsed;
                 LoginPage.Visibility = Visibility.Collapsed;
                 LoginModal.Visibility = Visibility.Visible;
-                LoginModalTitle.Text = "Checking authentication status";
-                LoginModalDescription.Text = "Please wait...";
+                LoginModalTitle.Text = UiStrings.CheckingAuthenticationStatus;
+                LoginModalDescription.Text = UiStrings.PleaseWait;
                 break;
 
             case AuthenticationStatus.LoggedOut:
@@ -821,7 +866,7 @@ public sealed partial class MainWindow : Window
 
             case AuthenticationStatus.LoggedIn:
                 Log.Information("Logged in");
-                LoginModalTitle.Text = "Login Success";
+                LoginModalTitle.Text = UiStrings.LoginSuccess;
 
                 LoginPage.CloseWebView();
 
@@ -849,8 +894,8 @@ public sealed partial class MainWindow : Window
                 break;
 
             case AuthenticationStatus.LoginFailed:
-                LoginModalTitle.Text = "Login failed";
-                LoginModalDescription.Text = "Please try again";
+                LoginModalTitle.Text = UiStrings.LoginFailed;
+                LoginModalDescription.Text = UiStrings.PleaseTryAgain;
                 LoginModal.Visibility = Visibility.Visible;
                 NavControl.Visibility = Visibility.Collapsed;
                 LoginPage.Visibility = Visibility.Visible;
@@ -860,52 +905,32 @@ public sealed partial class MainWindow : Window
 
     private void AuthStatusChangedHandler(object sender, AuthStatusChangedEventArgs e)
     {
-        DispatcherQueue.TryEnqueue(() => UpdateUIBasedOnAuthenticationStatus(e.NewStatus));
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (e.NewStatus == AuthenticationStatus.LoggedOut) _epicImportDialog?.ClosePicker();
+            UpdateUIBasedOnAuthenticationStatus(e.NewStatus);
+        });
     }
-    private bool TrySetSystemBackdrop()
+    private void AcrylicPreferenceChanged(object? sender, EventArgs args) =>
+        DispatcherQueue.TryEnqueue(ApplyBackdrop);
+
+    private void ApplyBackdrop()
     {
-        if (!MicaController.IsSupported())
-            return false; // Mica is not supported on this system
-        _mWsdqHelper = new WindowsSystemDispatcherQueueHelper();
-        _mWsdqHelper.EnsureWindowsSystemDispatcherQueueController();
-
-        // Create the policy object.
-        _mConfigurationSource = new SystemBackdropConfiguration();
-        this.Activated += Window_Activated;
-        ((FrameworkElement)this.Content).ActualThemeChanged += Window_ThemeChanged;
-
-        // Initial configuration state.
-        _mConfigurationSource.IsInputActive = true;
-        SetConfigurationSourceTheme();
-
-        _mBackdropController = new MicaController();
-
-        // Enable the system backdrop.
-        // Note: Be sure to have "using WinRT;" to support the Window.As<...>() call.
-        _mBackdropController.AddSystemBackdropTarget(this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>());
-        _mBackdropController.SetSystemBackdropConfiguration(_mConfigurationSource);
-        return true; // succeeded
-
-    }
-
-    private void Window_Activated(object sender, WindowActivatedEventArgs args)
-    {
-        _mConfigurationSource.IsInputActive = args.WindowActivationState != WindowActivationState.Deactivated;
+        if (_windowClosed) return;
+        SystemBackdrop = _settingsManager.AcrylicEnabled && DesktopAcrylicController.IsSupported()
+            ? new DesktopAcrylicBackdrop()
+            : null;
+        SolidBackdrop.Visibility = SystemBackdrop is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void Window_Closed(object sender, WindowEventArgs args)
     {
         if (App.HandleClosedEvents) return;
+        _windowClosed = true;
+        _settingsManager.AcrylicChanged -= AcrylicPreferenceChanged;
+        SystemBackdrop = null;
+        _epicImportDialog?.ClosePicker();
         _windowSizeConstraints.Dispose();
-        // Make sure any Mica/Acrylic controller is disposed
-        // so it doesn't try to use this closed window.
-        if (_mBackdropController != null)
-        {
-            _mBackdropController.Dispose();
-            _mBackdropController = null;
-        }
-        this.Activated -= Window_Activated;
-        _mConfigurationSource = null;
 
         _operationErrors.Dispose();
         _libraryManager.LibraryUpdated -= LibraryUpdatedHandler;
@@ -917,55 +942,6 @@ public sealed partial class MainWindow : Window
         _installManager.Dispose();
     }
 
-    private void Window_ThemeChanged(FrameworkElement sender, object args)
-    {
-        if (_mConfigurationSource != null)
-        {
-            SetConfigurationSourceTheme();
-        }
-    }
-
-    private void SetConfigurationSourceTheme()
-    {
-        switch (((FrameworkElement)this.Content).ActualTheme)
-        {
-            case ElementTheme.Dark: _mConfigurationSource.Theme = SystemBackdropTheme.Dark; break;
-            case ElementTheme.Light: _mConfigurationSource.Theme = SystemBackdropTheme.Light; break;
-            case ElementTheme.Default: _mConfigurationSource.Theme = SystemBackdropTheme.Default; break;
-        }
-    }
-}
-
-internal class WindowsSystemDispatcherQueueHelper
-{
-    [StructLayout(LayoutKind.Sequential)]
-    private struct DispatcherQueueOptions
-    {
-        internal int dwSize;
-        internal int threadType;
-        internal int apartmentType;
-    }
-
-    [DllImport("CoreMessaging.dll")]
-    private static extern int CreateDispatcherQueueController([In] DispatcherQueueOptions options, [In, Out, MarshalAs(UnmanagedType.IUnknown)] ref object dispatcherQueueController);
-
-    private object _mDispatcherQueueController = null;
-    public void EnsureWindowsSystemDispatcherQueueController()
-    {
-        if (Windows.System.DispatcherQueue.GetForCurrentThread() != null)
-        {
-            // one already exists, so we'll just use it.
-            return;
-        }
-
-        if (_mDispatcherQueueController != null) return;
-        DispatcherQueueOptions options;
-        options.dwSize = Marshal.SizeOf(typeof(DispatcherQueueOptions));
-        options.threadType = 2;    // DQTYPE_THREAD_CURRENT
-        options.apartmentType = 2; // DQTAT_COM_STA
-
-        CreateDispatcherQueueController(options, ref _mDispatcherQueueController);
-    }
 }
 
 

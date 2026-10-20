@@ -1,3 +1,4 @@
+using Crimson.Resources;
 using Crimson.Models;
 using Crimson.Utils;
 
@@ -39,65 +40,65 @@ public static class OperationPresenter
 
     public static string GetActionLabel(ActionType action) => action switch
     {
-        ActionType.Install => "Install",
-        ActionType.Update => "Update",
-        ActionType.Repair => "Repair",
-        ActionType.Verify => "Verify",
-        ActionType.Uninstall => "Uninstall",
-        ActionType.Move => "Move",
-        ActionType.Import => "Import",
-        _ => "Operation"
+        ActionType.Install => UiStrings.Install,
+        ActionType.Update => UiStrings.Update,
+        ActionType.Repair => UiStrings.Repair,
+        ActionType.Verify => UiStrings.Verify,
+        ActionType.Uninstall => UiStrings.Uninstall,
+        ActionType.Move => UiStrings.Move,
+        ActionType.Import => UiStrings.Import,
+        _ => UiStrings.Operation
     };
 
     private static string GetHeadline(OperationSnapshot operation, string label)
     {
         return operation.Status switch
         {
-            ActionStatus.Paused => $"{label} paused",
-            ActionStatus.Cancelling => "Cancelling",
+            ActionStatus.Paused => UiStrings.Format(UiStrings.OperationPausedFormat, label),
+            ActionStatus.Cancelling => UiStrings.Cancelling,
             ActionStatus.Success => GetCompletedHeadline(operation.Action),
-            ActionStatus.Failed => $"{label} failed",
-            ActionStatus.Cancelled => $"{label} cancelled",
-            _ when IsRetryingTransfer(operation) => "Retrying…",
+            ActionStatus.Failed => UiStrings.Format(UiStrings.OperationFailedFormat, label),
+            ActionStatus.Cancelled => UiStrings.Format(UiStrings.OperationCancelledFormat, label),
+            _ when IsRetryingTransfer(operation) => UiStrings.Retrying,
             _ => GetPhaseHeadline(operation, label)
         };
     }
 
     private static string GetPhaseHeadline(OperationSnapshot operation, string label) => operation.Phase switch
     {
-        OperationPhase.Queued => $"{label} queued",
-        OperationPhase.Preparing => "Preparing",
+        OperationPhase.Queued => UiStrings.Format(UiStrings.OperationQueuedFormat, label),
+        OperationPhase.Preparing => UiStrings.Preparing,
         OperationPhase.Transferring => GetActiveHeadline(operation.Action, label),
-        OperationPhase.Verifying => "Verifying",
-        OperationPhase.Uninstalling => "Uninstalling",
-        OperationPhase.Importing => "Importing",
-        OperationPhase.Moving => "Moving",
-        OperationPhase.Finalizing => "Finishing",
+        OperationPhase.Verifying => UiStrings.Verifying,
+        OperationPhase.Uninstalling => UiStrings.Uninstalling,
+        OperationPhase.Importing => UiStrings.Importing,
+        OperationPhase.Moving => UiStrings.Moving,
+        OperationPhase.Finalizing => UiStrings.Finishing,
         _ => label
     };
 
     private static string GetActiveHeadline(ActionType action, string fallback) => action switch
     {
-        ActionType.Install => "Installing",
-        ActionType.Update => "Updating",
-        ActionType.Repair => "Repairing",
-        ActionType.Verify => "Verifying",
-        ActionType.Uninstall => "Uninstalling",
-        ActionType.Move => "Moving",
-        ActionType.Import => "Importing",
+        ActionType.Install => UiStrings.Installing,
+        ActionType.Update => UiStrings.Updating,
+        ActionType.Repair => UiStrings.Repairing,
+        ActionType.Verify => UiStrings.Verifying,
+        ActionType.Uninstall => UiStrings.Uninstalling,
+        ActionType.Move => UiStrings.Moving,
+        ActionType.Import => UiStrings.Importing,
         _ => fallback
     };
 
     private static string GetCompletedHeadline(ActionType action) => action switch
     {
-        ActionType.Install => "Installed",
-        ActionType.Update => "Updated",
-        ActionType.Repair => "Repaired",
-        ActionType.Verify => "Verified",
-        ActionType.Uninstall => "Uninstalled",
-        ActionType.Move => "Moved",
-        ActionType.Import => "Imported",
-        _ => "Completed"
+        ActionType.Install => UiStrings.Installed,
+        ActionType.Update => UiStrings.Updated,
+        ActionType.Repair => UiStrings.Repaired,
+        ActionType.Verify => UiStrings.Verified,
+        ActionType.Uninstall => UiStrings.Uninstalled,
+        ActionType.Move => UiStrings.Moved,
+        ActionType.Import => UiStrings.Imported,
+        _ => UiStrings.Completed
     };
 
     private static bool IsIndeterminate(OperationSnapshot operation)
@@ -116,18 +117,19 @@ public static class OperationPresenter
 
     private static string GetDetail(OperationSnapshot operation, bool isIndeterminate)
     {
-        if (operation.Failure is { } failure)
-            return $"{failure.Message} {failure.SuggestedAction}";
+        if ((operation.Failure ?? operation.Notice) is { } failure)
+            return UiStrings.Format(UiStrings.MessageSuggestionFormat, failure.Message, failure.SuggestedAction);
         if (IsRetryingTransfer(operation))
-            return "Connection interrupted. Retrying…";
+            return UiStrings.ConnectionInterruptedRetrying;
         if (!string.IsNullOrWhiteSpace(operation.StatusMessage))
             return operation.StatusMessage;
         if (operation.Phase == OperationPhase.Queued)
-            return "Waiting to start";
+            return UiStrings.WaitingToStart;
         if (isIndeterminate || operation.TotalWriteSizeMiB <= 0)
             return string.Empty;
 
-        return $"{StorageSizeFormatter.FormatMebibytes(operation.WrittenSizeMiB)} of " +
-            StorageSizeFormatter.FormatMebibytes(operation.TotalWriteSizeMiB);
+        return UiStrings.Format(UiStrings.ProgressOfTotalFormat,
+            StorageSizeFormatter.FormatMebibytes(operation.WrittenSizeMiB),
+            StorageSizeFormatter.FormatMebibytes(operation.TotalWriteSizeMiB));
     }
 }

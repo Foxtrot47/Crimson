@@ -1,4 +1,5 @@
-﻿using Microsoft.UI.Xaml;
+using Crimson.Resources;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -49,7 +50,7 @@ namespace Crimson.Views
                 });
             }
             if (items.Count == 0)
-                TrayMenu.Items.Insert(insertIndex, new MenuFlyoutItem { Text = "No installed games", IsEnabled = false });
+                TrayMenu.Items.Insert(insertIndex, new MenuFlyoutItem { Text = UiStrings.NoInstalledGames, IsEnabled = false });
         }
 
         [RelayCommand]

@@ -1,4 +1,5 @@
-﻿using System;
+using Crimson.Resources;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -111,7 +112,7 @@ public sealed partial class DownloadsPage : Page
         Clipboard.SetContent(package);
         Clipboard.Flush();
         if (sender is Button button)
-            button.Content = "Copied";
+            button.Content = UiStrings.Copied;
     }
 
     private async void ReportProblem_Click(object sender, RoutedEventArgs e)
