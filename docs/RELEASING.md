@@ -45,6 +45,26 @@ Binary distributions include the repository's `LICENSE.txt`. Release validation 
 
 Publish the source matching each distributed binary, including build scripts and required dependency information. For release `X.Y.Z`, link to `https://github.com/Foxtrot47/Crimson/tree/vX.Y.Z` next to the binary downloads and in the Microsoft Store listing. Verify that the tag is public and identifies the source actually used to build that package. Do not publish packages built from uncommitted changes under an unrelated source tag.
 
+## Versioning
+
+The first stable release is `1.0.0`, with MSIX version `1.0.0.0`. `Directory.Build.props` defines the product, assembly, file, and default package versions. Keep `Package.appxmanifest` synchronized with the product version and leave the fourth MSIX component at zero.
+
+For future releases, bump the version in source before creating the matching `vX.Y.Z` tag. The release build rejects a version that does not match `Directory.Build.props`.
+
+## Build locally with an existing signing key
+
+Close Crimson first. The build clears generated `Crimson.WinUI/bin` and `Crimson.WinUI/obj` between package variants; it does not install or launch the application. Existing release directories are not overwritten.
+
+Use the existing code-signing certificate in the current user's Personal certificate store. This does not generate a new certificate or export its private key:
+
+```powershell
+./scripts/build-release.ps1 -Version 1.0.0 -MsixVersion 1.0.0.0 `
+  -CertificateThumbprint '<existing certificate thumbprint>' `
+  -OutputDirectory './dist/1.0.0' -SkipCertificateTrust
+```
+
+`-SkipCertificateTrust` leaves certificate trust stores unchanged. Signature verification must succeed using the workstation's existing trust configuration. Without that switch, the pipeline temporarily trusts the public certificate and removes only trust added by that build afterward. The exported `.cer` contains the same public certificate, never the private key. CI can continue importing the existing encrypted PFX from its protected secrets.
+
 ## Publish a release
 
 Pushing a canonical `vX.Y.Z` tag whose commit is on `origin/main` runs the release workflow. The workflow maps the tag to MSIX version `X.Y.Z.0`, runs both test suites, builds every release format, validates the package identity and signatures, and publishes the five files listed above.
@@ -58,32 +78,10 @@ The certificate subject must be exactly `CN=B3628FD3-BCE4-4EF1-ADE8-7B0F73A4FC3F
 
 Protect the `release` environment with required reviewers. Protect release tags and do not allow tags to be moved or reused.
 
-### Create the signing secrets
+### Preserve the existing signing key
 
-Run this once on a controlled Windows workstation:
+Routine releases must reuse the existing signing certificate and private key. Do not generate a replacement certificate or rotate the key while preparing a release: doing so changes the trust chain for existing installations.
 
-```powershell
-$publisher = 'CN=B3628FD3-BCE4-4EF1-ADE8-7B0F73A4FC3F'
-$password = Read-Host 'PFX password' -AsSecureString
-$cert = New-SelfSignedCertificate `
-  -Type CodeSigningCert `
-  -Subject $publisher `
-  -CertStoreLocation 'Cert:\CurrentUser\My' `
-  -KeyAlgorithm RSA `
-  -KeyLength 3072 `
-  -HashAlgorithm SHA256 `
-  -KeyExportPolicy Exportable `
-  -NotAfter (Get-Date).AddYears(5)
+Local builds use the current user's existing Personal-store certificate by thumbprint. CI reuses the existing protected `MSIX_PFX_BASE64` and `MSIX_PFX_PASSWORD` secrets. If those secrets need recovery, restore them from the existing encrypted recovery PFX on a trusted workstation. Never print secret values or commit signing material to the repository. Any key rotation requires separate approval and an installation-trust migration plan.
 
-$pfxPath = Join-Path $env:TEMP 'Crimson-signing.pfx'
-Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $password
-[Convert]::ToBase64String([IO.File]::ReadAllBytes($pfxPath)) |
-  gh secret set MSIX_PFX_BASE64 --env release
-
-$plainPassword = [Net.NetworkCredential]::new('', $password).Password
-$plainPassword | gh secret set MSIX_PFX_PASSWORD --env release
-$plainPassword = $null
-Remove-Item $pfxPath
-```
-
-The workflow imports the PFX only for the signing job, timestamps and verifies the public MSIX, exports the matching CER, and removes imported certificates in an unconditional cleanup block. Partner Center receives an unsigned `.msixupload` for Microsoft to sign.
+The workflow imports the existing PFX only for the signing job, timestamps and verifies the public MSIX, exports the matching public CER, and removes only certificates imported by that build in an unconditional cleanup block. Partner Center receives an unsigned `.msixupload` for Microsoft to sign.

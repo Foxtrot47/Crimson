@@ -6,21 +6,28 @@ param(
 
   [Parameter(Mandatory)]
   [ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.0$')]
-  [string]$MsixVersion
+  [string]$MsixVersion,
+
+  [ValidatePattern('^[0-9a-fA-F]{40}$')]
+  [string]$CertificateThumbprint,
+
+  [string]$OutputDirectory,
+
+  [switch]$SkipCertificateTrust
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $repo 'Crimson.WinUI\Crimson.WinUI.csproj'
 $manifestPath = Join-Path $repo 'Crimson.WinUI\Package.appxmanifest'
-$dist = Join-Path $repo 'dist'
-$staging = Join-Path $repo 'artifacts\release-staging'
-$signedOutput = Join-Path $repo 'artifacts\msix-test'
-$storeOutput = Join-Path $repo 'artifacts\msix'
+$dist = if ($OutputDirectory) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory) } else { Join-Path $repo 'dist' }
+$staging = Join-Path $repo ('artifacts\release-staging-' + [guid]::NewGuid().ToString('N'))
+$signedOutput = Join-Path $staging 'msix-test'
+$storeOutput = Join-Path $staging 'msix'
 $publisher = 'CN=B3628FD3-BCE4-4EF1-ADE8-7B0F73A4FC3F'
 $packageName = 'Foxtrot47.CrimsonLauncher'
 $temporaryDirectory = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
-$pfxPath = Join-Path $temporaryDirectory 'Crimson-signing.pfx'
+$pfxPath = Join-Path $temporaryDirectory ('Crimson-signing-' + [guid]::NewGuid().ToString('N') + '.pfx')
 $originalManifest = [IO.File]::ReadAllBytes($manifestPath)
 $signingThumbprint = $null
 $importedCertificateThumbprints = @()
@@ -55,12 +62,16 @@ function Find-WindowsSdkTool {
 }
 
 function Clear-ProjectOutput {
+  if (Get-Process -Name 'Crimson' -ErrorAction SilentlyContinue) {
+    throw 'Close Crimson before building release packages. No running process was stopped.'
+  }
   Remove-Item (Join-Path $repo 'Crimson.WinUI\bin'), (Join-Path $repo 'Crimson.WinUI\obj') -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 function Assert-ReleaseInputs {
-  if ([string]::IsNullOrWhiteSpace($env:MSIX_PFX_BASE64) -or
-      [string]::IsNullOrWhiteSpace($env:MSIX_PFX_PASSWORD)) {
+  if (-not $CertificateThumbprint -and
+      ([string]::IsNullOrWhiteSpace($env:MSIX_PFX_BASE64) -or
+       [string]::IsNullOrWhiteSpace($env:MSIX_PFX_PASSWORD))) {
     throw 'MSIX_PFX_BASE64 and MSIX_PFX_PASSWORD must be configured in the release environment.'
   }
 
@@ -73,10 +84,24 @@ function Assert-ReleaseInputs {
   if ($MsixVersion -cne "$Version.0") {
     throw "MSIX version '$MsixVersion' does not correspond to product version '$Version'."
   }
+  Assert-SourceVersions
+}
+
+function Assert-SourceVersions {
+  [xml]$versionProperties = [IO.File]::ReadAllText((Join-Path $repo 'Directory.Build.props'))
+  if ($versionProperties.Project.PropertyGroup.Version -cne $Version) {
+    throw 'The requested release version does not match Directory.Build.props.'
+  }
+  [xml]$sourceManifest = [IO.File]::ReadAllText($manifestPath)
+  if ($sourceManifest.Package.Identity.Version -cne $MsixVersion) {
+    throw 'The requested MSIX version does not match Package.appxmanifest.'
+  }
 }
 
 function Initialize-ReleaseDirectories {
-  Remove-Item $dist, $staging, $signedOutput, $storeOutput -Recurse -Force -ErrorAction SilentlyContinue
+  foreach ($directory in @($dist, $staging)) {
+    if (Test-Path $directory) { throw "Release output already exists and will not be overwritten: $directory" }
+  }
   New-Item $dist, $staging -ItemType Directory | Out-Null
 }
 
@@ -205,6 +230,14 @@ function Import-SigningCertificate {
   return $signingCertificate
 }
 
+function Get-ReleaseSigningCertificate {
+  if (-not $CertificateThumbprint) { return Import-SigningCertificate }
+  $certificate = Get-Item "Cert:\CurrentUser\My\$CertificateThumbprint" -ErrorAction Stop
+  Assert-SigningCertificate $certificate
+  $script:signingThumbprint = $certificate.Thumbprint
+  return $certificate
+}
+
 function Export-PublicCertificate {
   param([Parameter(Mandatory)]$Certificate)
 
@@ -230,6 +263,7 @@ function Build-SignedAsset {
     '-p:EnablePackaging=true', '-p:EnableTestSigning=true',
     '-p:UapAppxPackageBuildMode=SideloadOnly',
     "-p:PackageCertificateThumbprint=$signingThumbprint",
+    "-p:AppxPackageDir=$signedOutput/",
     "-p:AppxPackageVersion=$MsixVersion", "-p:Version=$Version",
     '--nologo', '-v', 'minimal'
   )
@@ -260,7 +294,7 @@ function Assert-PackageIdentity {
     [Parameter(Mandatory)][string]$MakeAppx
   )
 
-  Remove-Item $Destination -Recurse -Force -ErrorAction SilentlyContinue
+  if (Test-Path $Destination) { throw 'Package verification output already exists.' }
   Invoke-Checked $MakeAppx @('unpack', '/p', $PackagePath, '/d', $Destination, '/o')
   Assert-LicenseFile $Destination
   [xml]$packageManifest = Get-Content (Join-Path $Destination 'AppxManifest.xml') -Raw
@@ -286,7 +320,7 @@ function Confirm-SignedAsset {
   Invoke-Checked $signTool @(
     'sign', '/fd', 'SHA256', '/sha1', $signingThumbprint,
     '/tr', 'http://timestamp.digicert.com', '/td', 'SHA256', $SignedPath)
-  Trust-ReleaseCertificate $CerPath
+  if (-not $SkipCertificateTrust) { Trust-ReleaseCertificate $CerPath }
   Invoke-Checked $signTool @('verify', '/pa', '/v', $SignedPath)
 
   $makeAppx = Find-WindowsSdkTool 'makeappx.exe'
@@ -300,6 +334,7 @@ function Build-StoreAsset {
     '-c', 'Release', '-r', 'win-x64', '-p:Platform=x64',
     '-p:EnablePackaging=true', '-p:EnableTestSigning=false',
     '-p:UapAppxPackageBuildMode=StoreUpload',
+    "-p:AppxPackageDir=$storeOutput/",
     "-p:AppxPackageVersion=$MsixVersion", "-p:Version=$Version",
     '--nologo', '-v', 'minimal'
   )
@@ -376,7 +411,7 @@ try {
   Set-PackageVersion
   Invoke-ReleaseTests
   Publish-PortableAsset
-  $signingCertificate = Import-SigningCertificate
+  $signingCertificate = Get-ReleaseSigningCertificate
   $cerPath = Export-PublicCertificate $signingCertificate
   $signedPath = Build-SignedAsset
   Confirm-SignedAsset $signedPath $cerPath

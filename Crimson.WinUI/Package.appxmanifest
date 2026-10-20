@@ -15,7 +15,7 @@
   <Identity
     Name="Foxtrot47.CrimsonLauncher"
     Publisher="CN=B3628FD3-BCE4-4EF1-ADE8-7B0F73A4FC3F"
-    Version="0.2.0.0" />
+    Version="1.0.0.0" />
 
   <Properties>
     <DisplayName>Crimson</DisplayName>
