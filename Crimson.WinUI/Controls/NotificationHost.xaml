@@ -1,0 +1,16 @@
+<UserControl
+    x:Class="Crimson.Controls.NotificationHost"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    GotFocus="Host_GotFocus"
+    LostFocus="Host_LostFocus"
+    PointerEntered="Host_PointerEntered"
+    PointerExited="Host_PointerExited"
+    Visibility="Collapsed">
+    <InfoBar
+        x:Name="NotificationBar"
+        AutomationProperties.LiveSetting="Polite"
+        CloseButtonClick="NotificationBar_CloseButtonClick"
+        IsClosable="True"
+        IsOpen="False" />
+</UserControl>

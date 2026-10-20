@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:crimson="using:Crimson.Views"
+    xmlns:controls="using:Crimson.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Crimson.Views"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -213,6 +214,13 @@
             </Grid>
             <local:LoginPage x:Name="LoginPage" Visibility="Collapsed" />
         </Grid>
+        <controls:NotificationHost
+            x:Name="Notifications"
+            Grid.Row="1"
+            MaxWidth="420"
+            Margin="24"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom" />
         <crimson:TrayIconView x:Name="TrayIconView" />
     </Grid>
 </Window>

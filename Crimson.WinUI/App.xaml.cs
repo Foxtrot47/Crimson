@@ -139,6 +139,7 @@ namespace Crimson
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
                     provider.GetRequiredService<ILogger>(),
                     Path.Combine(GetAppDataPath(), "artwork")));
+                services.AddSingleton<NotificationService>();
                 services.AddSingleton<LibraryManager>();
                 services.AddSingleton<IGameShortcutManager>(provider => new GameShortcutManager(
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
