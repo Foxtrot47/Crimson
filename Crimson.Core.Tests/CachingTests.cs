@@ -72,6 +72,22 @@ public sealed class CachingTests : IDisposable
     }
 
     [Fact]
+    public async Task InvalidSnapshotAssetRecordsAreRefetched()
+    {
+        var storage = CreateStorage();
+        await storage.SaveUserData(new UserData { AccountId = "account" });
+        var snapshot = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            AccountId = "account", UpdatedAt = DateTimeOffset.UtcNow,
+            Assets = new object?[] { null }
+        });
+        File.WriteAllText(Path.Combine(_root, "library-cache.json"), snapshot);
+        var repository = new Repository();
+        Assert.Single(await CreateLibrary(storage, repository).GetLibraryData());
+        Assert.Equal(1, repository.AssetRequests);
+    }
+
+    [Fact]
     public async Task SnapshotBelongsToAccountAndLogoutDeletesIt()
     {
         var storage = CreateStorage();
