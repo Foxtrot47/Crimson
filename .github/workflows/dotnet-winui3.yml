@@ -39,6 +39,9 @@ jobs:
         with:
           dotnet-version: 10.0.400
 
+      - name: Test portable core on Windows
+        run: dotnet test Crimson.Core.Tests/Crimson.Core.Tests.csproj --configuration $env:Configuration --nologo
+
       - name: Restore
         run: dotnet restore Crimson.sln -r win-$env:Platform -p:Platform=$env:Platform -p:PublishReadyToRun=true
 

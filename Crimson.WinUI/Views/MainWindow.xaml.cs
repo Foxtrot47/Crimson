@@ -92,6 +92,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ContentFrame.CacheSize = 3;
         SetWindowIcon();
 
         // Disable setting mica as default
@@ -739,6 +740,8 @@ public sealed partial class MainWindow : Window
                 break;
 
             case AuthenticationStatus.LoggedOut:
+                ContentFrame.CacheSize = 0;
+                ContentFrame.CacheSize = 3;
                 _libraryCache.Clear();
                 RebuildInstalledMenu(force: true);
                 ClearGlobalSearch();
@@ -767,7 +770,8 @@ public sealed partial class MainWindow : Window
                 {
                     try
                     {
-                        await _libraryManager.GetLibraryData();
+                        var games = await _libraryManager.GetLibraryData();
+                        LibraryUpdatedHandler(games);
                     }
                     catch (Exception ex)
                     {

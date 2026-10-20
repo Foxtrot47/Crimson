@@ -25,7 +25,7 @@
                             Height="300"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}"
+                            Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}, Mode=OneWay}"
                             Stretch="UniformToFill" />
                         <TextBlock
                             MaxWidth="200"

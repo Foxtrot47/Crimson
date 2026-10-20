@@ -1,4 +1,7 @@
 ﻿using System;
+using System.IO;
+using System.Threading.Tasks;
+using Serilog;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml;
 using CommunityToolkit.WinUI.Converters;
@@ -33,9 +36,27 @@ public class ImageUrlConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
-        return value is string imageUrl && !string.IsNullOrWhiteSpace(imageUrl)
-            ? new BitmapImage(new Uri(imageUrl))
-            : null!;
+        if (value is not string imageUrl || !Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri))
+            return null!;
+
+        if (!uri.IsFile) return new BitmapImage(uri);
+        var image = new BitmapImage();
+        _ = LoadCachedImageAsync(image, uri.LocalPath);
+        return image;
+    }
+
+    private static async Task LoadCachedImageAsync(BitmapImage image, string path)
+    {
+        try
+        {
+            using var file = File.OpenRead(path);
+            using var stream = file.AsRandomAccessStream();
+            await image.SetSourceAsync(stream);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Failed to decode cached artwork");
+        }
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)

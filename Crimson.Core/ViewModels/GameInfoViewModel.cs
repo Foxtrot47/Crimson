@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -19,6 +20,8 @@ namespace Crimson.ViewModels;
 public partial class GameInfoViewModel : ObservableObject, INavigationAware
 {
     private readonly IUiDispatcher _uiDispatcher;
+    private readonly IArtworkCache? _artworkCache;
+    private int _navigationGeneration;
     private readonly InstallManager _installer;
     private readonly LibraryManager _libraryManager;
     private readonly Storage _storage;
@@ -65,9 +68,11 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
             InstallManager installer,
             LibraryManager libraryManager,
             Storage storage,
-            IUiDispatcher uiDispatcher)
+            IUiDispatcher uiDispatcher,
+            IArtworkCache? artworkCache = null)
     {
         _uiDispatcher = uiDispatcher;
+        _artworkCache = artworkCache;
         _log = logger;
         _installer = installer;
         _libraryManager = libraryManager;
@@ -77,21 +82,34 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
     public async Task OnNavigatedTo(object parameter)
     {
-        if (parameter is not string appName) return;
+        OnNavigatedFrom();
+        var generation = Volatile.Read(ref _navigationGeneration);
+        var accountGeneration = _libraryManager.AccountGeneration;
+        Game = parameter is string appName ? _libraryManager.GetGameInfo(appName) : null;
+        TitleImageUrl = null;
+        if (Game is null) return;
 
-        Game = _libraryManager.GetGameInfo((string)appName);
-        var gameImage = Game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBox");
-        TitleImageUrl = gameImage?.Url;
-
+        var image = Game.Metadata?.KeyImages?.FirstOrDefault(image => image.Type == "DieselGameBox")?.Url
+            ?? Game.Metadata?.KeyImages?.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url;
         CheckGameStatus(Game);
-
-        // Unregister event handlers on start
-        UnregisterEventHandlers();
-
         _libraryManager.GameStatusUpdated += CheckGameStatus;
         _installer.InstallationStatusChanged += HandleInstallationStatusChanged;
         _installer.InstallProgressUpdate += HandleInstallationStatusChanged;
 
+        try
+        {
+            var uri = _artworkCache is null ? image : await _artworkCache.GetImageUriAsync(image);
+            _uiDispatcher.TryEnqueue(() =>
+            {
+                if (generation == Volatile.Read(ref _navigationGeneration) &&
+                    accountGeneration == _libraryManager.AccountGeneration)
+                    TitleImageUrl = uri;
+            });
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to load game artwork");
+        }
     }
 
     private void UnregisterEventHandlers()
@@ -237,8 +255,8 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
     public void OnNavigatedFrom()
     {
+        Interlocked.Increment(ref _navigationGeneration);
         UnregisterEventHandlers();
-
     }
 
     [RelayCommand]

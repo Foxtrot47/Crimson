@@ -23,10 +23,13 @@ public class LibraryManager
     private readonly Storage _storage;
     private readonly AuthManager _authManager;
 
+    internal int AccountGeneration => _storage.AccountGeneration;
+
     public event Action<IEnumerable<Game>> LibraryUpdated;
     public event Action<Game> GameStatusUpdated;
 
-    private DateTime _lastUpdateDateTime = DateTime.MinValue;
+    private DateTimeOffset _lastUpdateDateTime = DateTimeOffset.MinValue;
+    private int _cacheRevision;
     private readonly SemaphoreSlim _updateGate = new(1, 1);
     private IReadOnlySet<string> _ownedAppNames = new HashSet<string>();
     private int _ownedAccountGeneration = -1;
@@ -49,14 +52,19 @@ public class LibraryManager
         {
             _ownedAppNames = new HashSet<string>();
             _ownedAccountGeneration = -1;
-            _lastUpdateDateTime = DateTime.MinValue;
+            _lastUpdateDateTime = DateTimeOffset.MinValue;
         }
+        LibraryUpdated?.Invoke([]);
     }
 
     public void InvalidateCache()
     {
         lock (_storage.AccountDataLock)
-            _lastUpdateDateTime = DateTime.MinValue;
+        {
+            _cacheRevision++;
+            _lastUpdateDateTime = DateTimeOffset.MinValue;
+            _storage.InvalidateLibraryCache();
+        }
     }
 
     /// <summary>
@@ -70,21 +78,39 @@ public class LibraryManager
         try
         {
             int generation;
+            int revision;
             lock (_storage.AccountDataLock)
             {
                 generation = _storage.AccountGeneration;
+                revision = _cacheRevision;
+                if (_ownedAccountGeneration != generation)
+                    RestoreCachedLibrary(generation);
                 if (!forceUpdate && _ownedAccountGeneration == generation &&
-                    DateTime.Now - _lastUpdateDateTime <= TimeSpan.FromMinutes(20))
+                    DateTimeOffset.UtcNow - _lastUpdateDateTime <= TimeSpan.FromMinutes(20))
                     return GetOwnedGames();
             }
 
-            await UpdateLibraryData(generation, forceUpdate);
+            await UpdateLibraryData(generation, revision, forceUpdate);
             return GetOwnedGames();
         }
         finally
         {
             _updateGate.Release();
         }
+    }
+
+    private void RestoreCachedLibrary(int generation)
+    {
+        var snapshot = _storage.ReadLibraryCache();
+        if (snapshot is null) return;
+
+        _ownedAppNames = snapshot.Assets.Select(asset => asset.AppName).ToHashSet(StringComparer.Ordinal);
+        _ownedAccountGeneration = generation;
+        _storage.HydrateAllLocalAppStates();
+        CheckForGameUpdates(snapshot.Assets);
+        _lastUpdateDateTime = _cacheRevision == 0 && GetMetadataFetchList(snapshot.Assets, false).Count == 0
+            ? snapshot.UpdatedAt : DateTimeOffset.MinValue;
+        LibraryUpdated?.Invoke(GetOwnedGames());
     }
 
     private List<Game> GetOwnedGames()
@@ -318,7 +344,7 @@ public class LibraryManager
     /// <summary>
     ///  Updates library data and triggers LibraryUpdated event
     /// </summary>
-    private async Task UpdateLibraryData(int generation, bool forceMetadataUpdate)
+    private async Task UpdateLibraryData(int generation, int revision, bool forceMetadataUpdate)
     {
         try
         {
@@ -335,7 +361,7 @@ public class LibraryManager
             }
 
             var fetchedGames = await FetchMetadataAsync(fetchList, gameAssets);
-            PublishLibrary(generation, gameAssets, fetchedGames);
+            PublishLibrary(generation, revision, gameAssets, fetchedGames);
         }
         catch (Exception ex)
         {
@@ -343,7 +369,7 @@ public class LibraryManager
         }
     }
 
-    private void PublishLibrary(int generation, List<Asset> assets, IReadOnlyList<Game> fetchedGames)
+    private void PublishLibrary(int generation, int revision, List<Asset> assets, IReadOnlyList<Game> fetchedGames)
     {
         lock (_storage.AccountDataLock)
         {
@@ -359,7 +385,10 @@ public class LibraryManager
             var ownedGames = SelectOwnedGames(assets, _storage.GameMetaDataDictionary);
             _ownedAppNames = ownedGames.Select(game => game.AppName).ToHashSet(StringComparer.Ordinal);
             _ownedAccountGeneration = generation;
-            _lastUpdateDateTime = DateTime.Now;
+            var complete = GetMetadataFetchList(assets, false).Count == 0;
+            _lastUpdateDateTime = complete && revision == _cacheRevision
+                ? DateTimeOffset.UtcNow : DateTimeOffset.MinValue;
+            _storage.SaveLibraryCache(assets, _lastUpdateDateTime);
             _log.Information("UpdateLibraryAsync: Library updated");
             LibraryUpdated?.Invoke(ownedGames);
         }
@@ -369,7 +398,7 @@ public class LibraryManager
     {
         _log.Information("UpdateLibraryData: Refreshing game assets");
         var assets = (await _storeRepository.FetchGameAssets())?.ToList();
-        if (assets is null || assets.Count == 0)
+        if (assets is null)
         {
             _log.Error("GetLibraryData: Error while fetching game assets");
             return null;
@@ -390,7 +419,9 @@ public class LibraryManager
 
             var game = _storage.GetGameMetaData(asset.AppName);
             var assetUpdated = game is not null &&
-                asset.BuildVersion != game.AssetInfos.Windows.BuildVersion;
+                (asset.BuildVersion != game.AssetInfos?.Windows?.BuildVersion ||
+                 asset.CatalogItemId != game.AssetInfos?.Windows?.CatalogItemId ||
+                 asset.Namespace != game.AssetInfos?.Windows?.Namespace);
             if (game is not null && !forceMetadataUpdate && !assetUpdated)
                 continue;
 

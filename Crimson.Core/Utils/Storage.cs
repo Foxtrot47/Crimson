@@ -15,6 +15,7 @@ namespace Crimson.Utils
         private readonly string DefaultInstallDirectory;
         private readonly string UserDataFile;
         private readonly string GameAssetsFile;
+        private readonly string LibraryCacheFile;
         private readonly string MetaDataDirectory;
         private readonly string SettingsDataFile;
         private readonly string InstallationStateFile;
@@ -50,6 +51,7 @@ namespace Crimson.Utils
             DefaultInstallDirectory = Path.GetFullPath(defaultInstallPath);
             UserDataFile = ResolveAppDataPath("user.json");
             GameAssetsFile = ResolveAppDataPath("assets.json");
+            LibraryCacheFile = ResolveAppDataPath("library-cache.json");
             MetaDataDirectory = ResolveAppDataPath("metadata");
             SettingsDataFile = ResolveAppDataPath("settings.json");
             InstallationStateFile = ResolveAppDataPath("install_state.json");
@@ -129,7 +131,12 @@ namespace Crimson.Utils
         public Task SaveUserData(UserData data)
         {
             lock (AccountDataLock)
+            {
+                var previous = GetUserData().GetAwaiter().GetResult();
+                if (previous?.AccountId is { Length: > 0 } account && account != data.AccountId)
+                    ClearAccountData();
                 File.WriteAllText(UserDataFile, JsonSerializer.Serialize(data));
+            }
             return Task.CompletedTask;
         }
 
@@ -137,20 +144,73 @@ namespace Crimson.Utils
         {
             lock (AccountDataLock)
             {
-                AccountGeneration++;
-                if (File.Exists(UserDataFile))
-                    File.Delete(UserDataFile);
-
-                if (File.Exists(GameAssetsFile))
-                    File.Delete(GameAssetsFile);
-
-                if (Directory.Exists(MetaDataDirectory))
-                    Directory.Delete(MetaDataDirectory, true);
-                Directory.CreateDirectory(MetaDataDirectory);
-
-                _gameMetaDataDictionary.Clear();
+                ClearAccountData();
             }
             return Task.CompletedTask;
+        }
+
+        private void ClearAccountData()
+        {
+            AccountGeneration++;
+            File.Delete(UserDataFile);
+            File.Delete(GameAssetsFile);
+            File.Delete(LibraryCacheFile);
+            if (Directory.Exists(MetaDataDirectory))
+                Directory.Delete(MetaDataDirectory, true);
+            Directory.CreateDirectory(MetaDataDirectory);
+            _gameMetaDataDictionary.Clear();
+        }
+
+        internal LibraryCacheSnapshot? ReadLibraryCache()
+        {
+            lock (AccountDataLock)
+            {
+                try
+                {
+                    if (!File.Exists(LibraryCacheFile)) return null;
+                    var snapshot = JsonSerializer.Deserialize<LibraryCacheSnapshot>(File.ReadAllText(LibraryCacheFile));
+                    var account = GetUserData().GetAwaiter().GetResult()?.AccountId;
+                    return snapshot is not null && !string.IsNullOrEmpty(account) &&
+                        snapshot.AccountId == account && snapshot.Assets is not null &&
+                        snapshot.UpdatedAt <= DateTimeOffset.UtcNow
+                        ? snapshot : null;
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Failed to read library cache");
+                    return null;
+                }
+            }
+        }
+
+        internal void InvalidateLibraryCache()
+        {
+            var snapshot = ReadLibraryCache();
+            if (snapshot is not null) SaveLibraryCache(snapshot.Assets, DateTimeOffset.MinValue);
+        }
+
+        internal void SaveLibraryCache(List<Asset> assets, DateTimeOffset updatedAt)
+        {
+            lock (AccountDataLock)
+            {
+                var temporary = LibraryCacheFile + ".tmp";
+                try
+                {
+                    var account = GetUserData().GetAwaiter().GetResult()?.AccountId;
+                    if (string.IsNullOrEmpty(account)) return;
+                    var snapshot = new LibraryCacheSnapshot(account, updatedAt, assets);
+                    File.WriteAllText(temporary, JsonSerializer.Serialize(snapshot));
+                    File.Move(temporary, LibraryCacheFile, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Failed to save library cache");
+                }
+                finally
+                {
+                    if (File.Exists(temporary)) File.Delete(temporary);
+                }
+            }
         }
 
         public async Task<IEnumerable<Asset>> GetGameAssetsData()
@@ -363,4 +423,6 @@ namespace Crimson.Utils
             return candidate;
         }
     }
+
+    internal sealed record LibraryCacheSnapshot(string AccountId, DateTimeOffset UpdatedAt, List<Asset> Assets);
 }

@@ -16,16 +16,19 @@ internal sealed class StorePopupWindow : Window
     private readonly CoreWebView2Environment _environment;
     private readonly Func<string, Task<bool>> _handleLauncherRequest;
     private readonly ILogger _log;
+    private readonly Action<string> _observeNavigation;
     private readonly WebView2 _webView;
 
     private StorePopupWindow(
         CoreWebView2Environment environment,
         ILogger log,
-        Func<string, Task<bool>> handleLauncherRequest)
+        Func<string, Task<bool>> handleLauncherRequest,
+        Action<string> observeNavigation)
     {
         _environment = environment;
         _log = log;
         _handleLauncherRequest = handleLauncherRequest;
+        _observeNavigation = observeNavigation;
         Title = "Epic Games Store";
 
         _webView = new WebView2();
@@ -45,9 +48,10 @@ internal sealed class StorePopupWindow : Window
     public static async Task<StorePopupWindow> CreateAsync(
         CoreWebView2Environment environment,
         ILogger log,
-        Func<string, Task<bool>> handleLauncherRequest)
+        Func<string, Task<bool>> handleLauncherRequest,
+        Action<string> observeNavigation)
     {
-        var window = new StorePopupWindow(environment, log, handleLauncherRequest);
+        var window = new StorePopupWindow(environment, log, handleLauncherRequest, observeNavigation);
         OpenWindows.Add(window);
         window.Activate();
 
@@ -59,6 +63,8 @@ internal sealed class StorePopupWindow : Window
                 throw new InvalidOperationException("Popup CoreWebView2 was null after initialization");
 
             await StoreWebIntegration.ApplyAsync(window._webView.CoreWebView2);
+            window._webView.CoreWebView2.NavigationStarting += window.NavigationStarting;
+            window._webView.CoreWebView2.FrameNavigationStarting += window.NavigationStarting;
             window._webView.CoreWebView2.DownloadStarting += window.DownloadStarting;
             window._webView.CoreWebView2.NewWindowRequested += window.NewWindowRequested;
             return window;
@@ -69,6 +75,9 @@ internal sealed class StorePopupWindow : Window
             throw;
         }
     }
+
+    private void NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e) =>
+        _observeNavigation(e.Uri);
 
     private async void DownloadStarting(object? sender, CoreWebView2DownloadStartingEventArgs e)
     {
@@ -98,7 +107,7 @@ internal sealed class StorePopupWindow : Window
             if (await _handleLauncherRequest(e.Uri))
                 return;
 
-            var popup = await CreateAsync(_environment, _log, _handleLauncherRequest);
+            var popup = await CreateAsync(_environment, _log, _handleLauncherRequest, _observeNavigation);
             e.NewWindow = popup.CoreWebView2;
         }
         catch (Exception ex)
@@ -116,6 +125,8 @@ internal sealed class StorePopupWindow : Window
         Closed -= OnClosed;
         if (_webView.CoreWebView2 is not null)
         {
+            _webView.CoreWebView2.NavigationStarting -= NavigationStarting;
+            _webView.CoreWebView2.FrameNavigationStarting -= NavigationStarting;
             _webView.CoreWebView2.DownloadStarting -= DownloadStarting;
             _webView.CoreWebView2.NewWindowRequested -= NewWindowRequested;
         }
