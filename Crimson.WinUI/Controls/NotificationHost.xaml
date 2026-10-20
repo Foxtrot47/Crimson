@@ -6,7 +6,7 @@
     LostFocus="Host_LostFocus"
     PointerEntered="Host_PointerEntered"
     PointerExited="Host_PointerExited"
-    Visibility="Collapsed">
+    IsHitTestVisible="False">
     <InfoBar
         x:Name="NotificationBar"
         AutomationProperties.LiveSetting="Polite"

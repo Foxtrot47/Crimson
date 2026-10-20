@@ -79,7 +79,7 @@ public sealed partial class NotificationHost : UserControl
             };
         }
         NotificationBar.IsOpen = notification is not null;
-        Visibility = notification is null ? Visibility.Collapsed : Visibility.Visible;
+        IsHitTestVisible = notification is not null;
         UpdatePause();
     }
 
