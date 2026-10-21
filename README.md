@@ -109,6 +109,11 @@ dotnet build Crimson.WinUI/Crimson.WinUI.csproj -c Release -r win-x64 -p:Platfor
 - `Crimson.Tests`: Windows-specific adapter tests
 - `scripts`: deployment, packaging, and release validation tools
 
+Crimson's shared library, search and downloads support independently connected
+store providers. Epic is currently implemented; EA and Ubisoft integrations can
+be added through the [provider contracts and integration guide](docs/LAUNCHER_PROVIDERS.md).
+Connect or disconnect each available store account in **Settings → Accounts**.
+
 See [Installing and releasing Crimson](docs/RELEASING.md) for the tagged release process.
 
 ## License
