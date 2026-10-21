@@ -9,6 +9,133 @@ namespace Crimson.Tests;
 public sealed class LauncherProviderTests
 {
     [Fact]
+    public async Task UnifiedLibraryContainsAllThreeStoresAndRoutesDuplicateNativeIds()
+    {
+        var epic = new TestLauncherProvider("epic");
+        var ea = new TestLauncherProvider("ea");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        var games = new[] { epic.Games.Add("123"), ea.Games.Add("123"), ubisoft.Games.Add("123") };
+        var registry = new LauncherRegistry([epic, ea, ubisoft]);
+        var library = new LauncherLibrary(registry);
+
+        Assert.Equal(games.Select(game => game.Id), (await library.GetLibraryData()).Select(game => game.Id));
+        foreach (var game in games)
+        {
+            Assert.Equal(game.Id, library.GetGameInfo(game.AppName)!.Id);
+            Assert.True(await library.LaunchApp(game.AppName));
+        }
+        Assert.Equal(["epic:123"], epic.Games.Launched);
+        Assert.Equal(["ea:123"], ea.Games.Launched);
+        Assert.Equal(["ubisoft:123"], ubisoft.Games.Launched);
+        Assert.Equal(games[0].Id, library.GetGameInfo("123")!.Id); // legacy shortcut
+    }
+
+    [Fact]
+    public async Task DisconnectRemovesOnlyThatAccountsGamesFromUnifiedLibrary()
+    {
+        var ea = new TestLauncherProvider("ea");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        ea.Games.Add("123");
+        var kept = ubisoft.Games.Add("123");
+        var library = new LauncherLibrary(new LauncherRegistry([ea, ubisoft]));
+        Assert.Equal(2, (await library.GetLibraryData()).Count());
+        IReadOnlyList<LauncherGame> published = [];
+        library.LibraryUpdated += games => published = games.ToList();
+        await ea.Auth.Logout();
+        Assert.Equal(kept.Id, Assert.Single(published).Id);
+        Assert.Equal(kept.Id, Assert.Single(await library.GetLibraryData()).Id);
+    }
+
+    [Fact]
+    public async Task BrokenStoreLibraryDoesNotHideGamesFromHealthyStore()
+    {
+        var ea = new TestLauncherProvider("ea");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        ea.Games.Failure = new HttpRequestException("Store unavailable");
+        var kept = ubisoft.Games.Add("123");
+        var library = new LauncherLibrary(new LauncherRegistry([ea, ubisoft]));
+        Assert.Equal(kept.Id, Assert.Single(await library.GetLibraryData()).Id);
+    }
+
+    [Fact]
+    public async Task PreviousAccountRefreshCannotPublishAfterDisconnectAndReconnect()
+    {
+        var provider = new TestLauncherProvider("ea");
+        var old = provider.Games.Add("123");
+        provider.Games.Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var library = new LauncherLibrary(new LauncherRegistry([provider]));
+        var pending = library.GetLibraryData();
+        await provider.Auth.Logout();
+        provider.Auth.SignIn();
+        provider.Games.Pending.SetResult([old]);
+        Assert.Empty(await pending);
+    }
+
+    [Fact]
+    public async Task SignedOutProviderCannotLaunchThroughAnotherSignedInAccount()
+    {
+        var ea = new TestLauncherProvider("ea");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        var game = ea.Games.Add("123");
+        var library = new LauncherLibrary(new LauncherRegistry([ea, ubisoft]));
+        await ea.Auth.Logout();
+
+        Assert.False(await library.LaunchApp(game.AppName));
+        Assert.Empty(ea.Games.Launched);
+        Assert.Equal(AuthenticationStatus.LoggedIn, ubisoft.Auth.AuthenticationStatus);
+    }
+
+    [Fact]
+    public async Task ProviderCanDeclineLaunchForIndividualGames()
+    {
+        var provider = new TestLauncherProvider("ea");
+        var game = provider.Games.Add("123", canLaunch: false);
+        Assert.False(await new LauncherLibrary(new LauncherRegistry([provider])).LaunchApp(game.AppName));
+        Assert.Empty(provider.Games.Launched);
+    }
+
+    [Fact]
+    public void DuplicateOrUnknownProvidersAreRejectedWithoutFallingBackToEpic()
+    {
+        Assert.Throws<ArgumentException>(() => new LauncherRegistry([]));
+        Assert.Throws<ArgumentException>(() => new LauncherRegistry([new TestLauncherProvider("ea"), new TestLauncherProvider("ea")]));
+        var registry = new LauncherRegistry([new TestLauncherProvider("epic")]);
+        Assert.Throws<KeyNotFoundException>(() => registry.Get("ea"));
+        Assert.Throws<KeyNotFoundException>(() => new LauncherLibrary(registry).GetGameInfo("ea:123"));
+        Assert.Equal("epic", Assert.Single(registry.Providers).Id);
+    }
+
+    [Fact]
+    public async Task LoggedOutProviderSlowResultsCannotReturnToCombinedLibrary()
+    {
+        var ea = new TestLauncherProvider("ea");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        ea.Games.Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new LauncherRegistry([ea, ubisoft]);
+        var library = new LauncherLibrary(registry);
+        var received = new List<LauncherGame>();
+        library.LibraryUpdated += games => received.AddRange(games);
+        var pending = library.GetLibraryData();
+        await ea.Auth.Logout();
+        var old = ea.Games.Add("123");
+        ea.Games.Publish();
+        ea.Games.Pending.SetResult([old]);
+
+        Assert.Empty(await pending);
+        Assert.Empty(received);
+    }
+
+    [Fact]
+    public void ForeignIdentitiesCannotBePublishedByAProvider()
+    {
+        var provider = new TestLauncherProvider("ea");
+        var library = new LauncherLibrary(new LauncherRegistry([provider]));
+        library.GameStatusUpdated += _ => { };
+        var foreign = new LauncherGame { Id = new GameId("ubisoft", "123"), AppTitle = "Foreign" };
+        Assert.Throws<InvalidOperationException>(() => provider.Games.PublishStatus(foreign));
+    }
+
+    [Fact]
     public async Task DisconnectingOneAccountDoesNotDisconnectOtherStoreAccounts()
     {
         var ea = new TestLauncherProvider("ea");

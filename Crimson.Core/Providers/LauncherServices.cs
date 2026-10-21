@@ -72,3 +72,137 @@ public sealed class LauncherAuthentication
     }
 }
 
+/// <summary>One combined library. Account failures and logout affect only that provider's entries.</summary>
+public sealed class LauncherLibrary : ILauncherLibrary
+{
+    private readonly LauncherRegistry _registry;
+    private readonly ILogger? _log;
+    private readonly object _gate = new();
+    private readonly Dictionary<string, List<LauncherGame>> _libraries = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _sessions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SemaphoreSlim> _refreshGates = new(StringComparer.Ordinal);
+    public event Action<IEnumerable<LauncherGame>>? LibraryUpdated;
+    public event Action<LauncherGame>? GameStatusUpdated;
+    public IReadOnlyList<LauncherGame> CachedGames { get { lock (_gate) return Snapshot(); } }
+
+    public LauncherLibrary(LauncherRegistry registry, ILogger? log = null)
+    {
+        _registry = registry;
+        _log = log;
+        foreach (var provider in registry.Providers)
+        {
+            _sessions[provider.Id] = 0;
+            _refreshGates[provider.Id] = new(1, 1);
+            provider.Library.LibraryUpdated += games => PublishProvider(provider, games);
+            provider.Library.GameStatusUpdated += game =>
+            {
+                var valid = ValidateGame(provider, game);
+                if (provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
+                lock (_gate)
+                {
+                    if (_libraries.TryGetValue(provider.Id, out var games))
+                    {
+                        var index = games.FindIndex(existing => existing.Id == valid.Id);
+                        if (index >= 0) games[index] = valid;
+                    }
+                }
+                GameStatusUpdated?.Invoke(valid);
+            };
+            provider.Authentication.StatusChanged += status =>
+            {
+                if (status is not AuthenticationStatus.LoggedOut and not AuthenticationStatus.LoginFailed) return;
+                lock (_gate)
+                {
+                    _sessions[provider.Id]++;
+                    _libraries.Remove(provider.Id);
+                }
+                NotifyLibraryUpdated();
+            };
+        }
+    }
+
+    public async Task<IEnumerable<LauncherGame>> GetLibraryData(bool forceUpdate = false)
+    {
+        await Task.WhenAll(_registry.Providers.Select(provider => Refresh(provider, forceUpdate)));
+        lock (_gate) return Snapshot();
+    }
+
+    private async Task Refresh(ILauncherProvider provider, bool forceUpdate)
+    {
+        await _refreshGates[provider.Id].WaitAsync();
+        try
+        {
+            int session;
+            lock (_gate) session = _sessions[provider.Id];
+            if (provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
+            var games = ValidateGames(provider, await provider.Library.GetLibraryData(forceUpdate));
+            lock (_gate)
+            {
+                if (session != _sessions[provider.Id] ||
+                    provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
+                _libraries[provider.Id] = games;
+            }
+            NotifyLibraryUpdated();
+        }
+        catch (Exception ex)
+        {
+            _log?.Warning(ex, "Could not refresh library for {ProviderId}", provider.Id);
+        }
+        finally { _refreshGates[provider.Id].Release(); }
+    }
+
+    private void PublishProvider(ILauncherProvider provider, IEnumerable<LauncherGame> games)
+    {
+        var valid = ValidateGames(provider, games);
+        lock (_gate)
+        {
+            if (provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
+            _libraries[provider.Id] = valid;
+        }
+        NotifyLibraryUpdated();
+    }
+
+    private void NotifyLibraryUpdated()
+    {
+        lock (_gate) LibraryUpdated?.Invoke(Snapshot());
+    }
+
+    // Called under _gate; sort/filter belongs to presentation, never to a selected store.
+    private List<LauncherGame> Snapshot() => _registry.Providers
+        .Where(provider => provider.Authentication.AuthenticationStatus == AuthenticationStatus.LoggedIn)
+        .SelectMany(provider => _libraries.GetValueOrDefault(provider.Id) ?? []).ToList();
+
+    public LauncherGame? GetGameInfo(string appName)
+    {
+        var provider = Resolve(appName);
+        var game = provider.Library.GetGameInfo(GameId.Parse(appName).ToString());
+        return game is null ? null : ValidateGame(provider, game);
+    }
+
+    public List<LauncherGame> GetDlcsForGame(string appName)
+    {
+        var provider = Resolve(appName);
+        return ValidateGames(provider, provider.Library.GetDlcsForGame(GameId.Parse(appName).ToString()));
+    }
+
+    public async Task<bool> LaunchApp(string appName)
+    {
+        var id = GameId.Parse(appName);
+        var provider = _registry.Get(id.ProviderId);
+        if (provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn ||
+            provider.Library.GetGameInfo(id.ToString()) is not { CanLaunch: true }) return false;
+        // Licenses, IPC, helper processes and their lifetimes remain provider-owned.
+        return await provider.Library.LaunchApp(id.ToString());
+    }
+
+    public void InvalidateCache()
+    {
+        foreach (var provider in _registry.Providers) provider.Library.InvalidateCache();
+    }
+    private ILauncherProvider Resolve(string appName) => _registry.Get(GameId.Parse(appName).ProviderId);
+    private static List<LauncherGame> ValidateGames(ILauncherProvider provider, IEnumerable<LauncherGame> games) =>
+        games.Select(game => ValidateGame(provider, game)).ToList();
+    private static LauncherGame ValidateGame(ILauncherProvider provider, LauncherGame game) =>
+        game.Id.ProviderId == provider.Id ? game : throw new InvalidOperationException("Provider returned a foreign game identity.");
+}
+
