@@ -1,6 +1,6 @@
-using System;
-using System.IO;
+﻿using System.IO;
 using System.Linq;
+using System;
 
 namespace Crimson.Core;
 
@@ -11,7 +11,7 @@ public static class GameShortcutNaming
         var sanitized = string.Concat(title.Select(character =>
             Path.GetInvalidFileNameChars().Contains(character) ? '_' : character)).Trim(' ', '.');
         if (string.IsNullOrWhiteSpace(sanitized))
-            sanitized = "Epic Game";
+            sanitized = "Game";
         if (sanitized.Length > 120)
             sanitized = sanitized[..120].TrimEnd(' ', '.');
         return $"{sanitized}.lnk";

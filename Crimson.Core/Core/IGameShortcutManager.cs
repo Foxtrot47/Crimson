@@ -1,6 +1,6 @@
+﻿using System.Threading.Tasks;
 using System.Threading;
-using System.Threading.Tasks;
-using Crimson.Models;
+using Crimson.Providers;
 
 namespace Crimson.Core;
 
@@ -13,8 +13,8 @@ public enum GameShortcutLocation
 public interface IGameShortcutManager
 {
     Task CreateAsync(
-        Game game,
+        LauncherGame game,
         GameShortcutLocation location,
         CancellationToken cancellationToken = default);
-    void Remove(Game game);
+    void Remove(LauncherGame game);
 }

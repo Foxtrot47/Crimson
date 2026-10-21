@@ -813,7 +813,7 @@ public class EpicInstallManager
     {
         try
         {
-            _shortcutManager.Remove(game);
+            _shortcutManager.Remove(Crimson.Providers.Epic.EpicLauncherProvider.ToLauncherGame(game));
         }
         catch (Exception ex)
         {
@@ -842,7 +842,7 @@ public class EpicInstallManager
         var cancellationToken = _cancellationTokenSource.Token;
         try
         {
-            await _shortcutManager.CreateAsync(game, location, cancellationToken);
+            await _shortcutManager.CreateAsync(Crimson.Providers.Epic.EpicLauncherProvider.ToLauncherGame(game), location, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

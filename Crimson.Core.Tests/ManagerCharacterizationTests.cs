@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Repository;
 using Crimson.Utils;
 using Serilog;
@@ -262,10 +263,10 @@ public sealed class ManagerCharacterizationTests
 
     private sealed class UnusedGameShortcutManager : IGameShortcutManager
     {
-        public Task CreateAsync(Game game, GameShortcutLocation location, CancellationToken cancellationToken = default) =>
+        public Task CreateAsync(LauncherGame game, GameShortcutLocation location, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public void Remove(Game game)
+        public void Remove(LauncherGame game)
         {
         }
     }

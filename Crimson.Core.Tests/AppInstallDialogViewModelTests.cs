@@ -279,10 +279,10 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
 
     private sealed class UnusedShortcutManager : IGameShortcutManager
     {
-        public Task CreateAsync(Game game, GameShortcutLocation location, CancellationToken cancellationToken = default) =>
+        public Task CreateAsync(Crimson.Providers.LauncherGame game, GameShortcutLocation location, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public void Remove(Game game)
+        public void Remove(Crimson.Providers.LauncherGame game)
         {
         }
     }

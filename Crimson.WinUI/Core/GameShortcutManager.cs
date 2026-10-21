@@ -1,14 +1,16 @@
-using System;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Crimson.Models;
+using Crimson.Providers;
 using Serilog;
 using Windows.ApplicationModel;
 using Windows.Graphics.Imaging;
@@ -19,11 +21,12 @@ public sealed class GameShortcutManager : IGameShortcutManager
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _log;
+    private readonly IReadOnlyDictionary<string, IProviderContentPolicy> _policies;
     private readonly string _desktopDirectory;
     private readonly string _startMenuDirectory;
     private readonly string _iconDirectory;
 
-    public GameShortcutManager(HttpClient httpClient, ILogger log)
+    public GameShortcutManager(HttpClient httpClient, ILogger log, IEnumerable<IProviderContentPolicy>? policies = null)
         : this(
             httpClient,
             log,
@@ -35,7 +38,7 @@ public sealed class GameShortcutManager : IGameShortcutManager
             Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Crimson",
-                "shortcut-icons"))
+                "shortcut-icons"), policies)
     {
     }
 
@@ -44,8 +47,10 @@ public sealed class GameShortcutManager : IGameShortcutManager
         ILogger log,
         string desktopDirectory,
         string startMenuDirectory,
-        string iconDirectory)
+        string iconDirectory,
+        IEnumerable<IProviderContentPolicy>? policies = null)
     {
+        _policies = (policies ?? []).ToDictionary(policy => policy.ProviderId, StringComparer.Ordinal);
         _httpClient = httpClient;
         _log = log;
         _desktopDirectory = desktopDirectory;
@@ -53,7 +58,7 @@ public sealed class GameShortcutManager : IGameShortcutManager
         _iconDirectory = iconDirectory;
     }
 
-    public async Task CreateAsync(Game game, GameShortcutLocation location, CancellationToken cancellationToken = default)
+    public async Task CreateAsync(LauncherGame game, GameShortcutLocation location, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var path = GetShortcutPath(game, location);
@@ -64,21 +69,22 @@ public sealed class GameShortcutManager : IGameShortcutManager
         CreateShellLink(path, game, iconPath);
     }
 
-    public void Remove(Game game)
+    public void Remove(LauncherGame game)
     {
         RemoveOwnedShortcut(GetShortcutPath(game, GameShortcutLocation.StartMenu), game.AppName);
         RemoveOwnedShortcut(GetShortcutPath(game, GameShortcutLocation.Desktop), game.AppName);
         TryDeleteFile(
-            Path.Combine(_iconDirectory, "games", GameShortcutNaming.GetIconFileName(game.AppName)),
+            Path.Combine(_iconDirectory, "games", GetIconFileName(game.Id)),
             game.AppName);
     }
 
-    private string GetShortcutPath(Game game, GameShortcutLocation location)
+    private string GetShortcutPath(LauncherGame game, GameShortcutLocation location)
     {
         var directory = location == GameShortcutLocation.Desktop
             ? _desktopDirectory
             : _startMenuDirectory;
-        return Path.Combine(directory, GameShortcutNaming.GetShortcutFileName(game.AppTitle));
+        return Path.Combine(directory, GameShortcutNaming.GetShortcutFileName(game.Id.ProviderId == GameId.LegacyProviderId
+            ? game.AppTitle : $"{game.AppTitle} ({game.Id.ProviderId})"));
     }
 
     private void RemoveOwnedShortcut(string path, string appName)
@@ -114,6 +120,10 @@ public sealed class GameShortcutManager : IGameShortcutManager
         {
             return false;
         }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 
     private static bool ReadShortcutOwnership(string path, string appName)
@@ -128,8 +138,8 @@ public sealed class GameShortcutManager : IGameShortcutManager
             link.GetArguments(arguments, arguments.Capacity);
             var targetsCrimson = string.Equals(target.ToString(), GetPackagedAliasPath(), StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(target.ToString(), Environment.ProcessPath, StringComparison.OrdinalIgnoreCase);
-            return targetsCrimson && string.Equals(arguments.ToString(),
-                GameLaunchRequest.CreateCommandLineArgument(appName), StringComparison.Ordinal);
+            return targetsCrimson && GameLaunchRequest.TryParseCommandLine(arguments.ToString(), out var recorded) &&
+                GameId.Parse(recorded) == GameId.Parse(appName);
         }
         finally
         {
@@ -149,20 +159,20 @@ public sealed class GameShortcutManager : IGameShortcutManager
         }
     }
 
-    private async Task<string> GetIconPathAsync(Game game, CancellationToken cancellationToken)
+    private async Task<string> GetIconPathAsync(LauncherGame game, CancellationToken cancellationToken)
     {
         var gameIconDirectory = Path.Combine(_iconDirectory, "games");
         Directory.CreateDirectory(gameIconDirectory);
-        var iconPath = Path.Combine(gameIconDirectory, GameShortcutNaming.GetIconFileName(game.AppName));
+        var iconPath = Path.Combine(gameIconDirectory, GetIconFileName(game.Id));
         if (File.Exists(iconPath))
             return iconPath;
 
         var imageUrl = FindImageUrl(game);
-        if (!string.IsNullOrWhiteSpace(imageUrl))
+        if (!string.IsNullOrWhiteSpace(imageUrl) && _policies.TryGetValue(game.Id.ProviderId, out var policy))
         {
             try
             {
-                var imageUri = EpicEndpointPolicy.RequireContentUri(imageUrl);
+                var imageUri = policy.RequireArtworkUri(imageUrl);
                 await using var source = await _httpClient.GetStreamAsync(imageUri, cancellationToken);
                 await CreateIconFileAsync(source, iconPath);
                 return iconPath;
@@ -200,15 +210,10 @@ public sealed class GameShortcutManager : IGameShortcutManager
         }
     }
 
-    private static string? FindImageUrl(Game game)
-    {
-        var images = game.Metadata?.KeyImages;
-        if (images is null)
-            return null;
+    private static string? FindImageUrl(LauncherGame game) => game.CoverImageUrl ?? game.LandscapeImageUrl;
 
-        return images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
-            ?? images.FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
-    }
+    private static string GetIconFileName(GameId id) => id.ProviderId == GameId.LegacyProviderId
+        ? GameShortcutNaming.GetIconFileName(id.LocalId) : ProviderDataPaths.GameFileKey(id) + ".ico";
 
     internal static async Task CreateIconFileAsync(Stream source, string path)
     {
@@ -291,7 +296,7 @@ public sealed class GameShortcutManager : IGameShortcutManager
 
     internal static void CreateShellLink(
         string path,
-        Game game,
+        LauncherGame game,
         string iconPath,
         bool? packaged = null)
     {

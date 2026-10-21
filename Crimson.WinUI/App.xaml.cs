@@ -140,7 +140,7 @@ namespace Crimson
                 services.AddSingleton<EpicLibraryManager>();
                 services.AddSingleton<IGameShortcutManager>(provider => new GameShortcutManager(
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
-                    provider.GetRequiredService<ILogger>()));
+                    provider.GetRequiredService<ILogger>(), provider.GetServices<IProviderContentPolicy>()));
                 services.AddSingleton<IInstallPermissionChecker, FileSystemInstallPermissionChecker>();
                 services.AddSingleton<EpicInstallManager>();
                 services.AddSingleton<EpicDownloadManager>(provider => new EpicDownloadManager(
@@ -265,17 +265,27 @@ namespace Crimson
 
         private async Task LaunchFromShortcutAsync(string appName)
         {
-            var authenticationStatus = await EnsureAuthenticationAsync();
+            GameId id;
+            try
+            {
+                id = GameId.Parse(appName);
+                GetService<LauncherRegistry>().Get(id.ProviderId);
+            }
+            catch (ArgumentException) { ShowMainWindow(); return; }
+            catch (KeyNotFoundException) { ShowMainWindow(); return; }
+            var authenticationStatus = await GetService<LauncherAuthentication>().CheckAuthStatus(id.ProviderId);
             if (authenticationStatus == AuthenticationStatus.LoggedIn)
             {
-                var libraryManager = GetService<EpicLibraryManager>();
+                var libraryManager = GetService<LauncherLibrary>();
                 var library = await libraryManager.GetLibraryData();
-                if (library.Any(game => game.AppName == appName) &&
-                    await libraryManager.LaunchApp(appName))
+                if (library.Any(game => game.Id == id) &&
+                    await libraryManager.LaunchApp(id.ToString()))
                     return;
             }
 
             ShowMainWindow();
+            if (authenticationStatus != AuthenticationStatus.LoggedIn)
+                GetService<LauncherAuthentication>().RequestSignIn(id.ProviderId);
         }
 
         private async Task<AuthenticationStatus> EnsureAuthenticationAsync()

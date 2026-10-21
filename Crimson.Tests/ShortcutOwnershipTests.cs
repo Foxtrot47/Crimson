@@ -1,5 +1,6 @@
-using Crimson.Core;
+﻿using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 using Serilog;
 
 namespace Crimson.Tests;
@@ -67,6 +68,23 @@ public sealed class ShortcutOwnershipTests : IDisposable
         Assert.False(File.Exists(path));
     }
 
+    [Fact]
+    public void RemovePreservesAnotherStoresGameWithTheSameNativeIdAndTitle()
+    {
+        var manager = CreateManager();
+        var ea = new LauncherGame { Id = new GameId("ea", "123"), AppTitle = "Same Title" };
+        var ubisoft = new LauncherGame { Id = new GameId("ubisoft", "123"), AppTitle = "Same Title" };
+        var eaPath = Path.Combine(_root, "desktop", GameShortcutNaming.GetShortcutFileName("Same Title (ea)"));
+        var ubisoftPath = Path.Combine(_root, "desktop", GameShortcutNaming.GetShortcutFileName("Same Title (ubisoft)"));
+        GameShortcutManager.CreateShellLink(eaPath, ea, string.Empty, packaged: true);
+        GameShortcutManager.CreateShellLink(ubisoftPath, ubisoft, string.Empty, packaged: true);
+
+        manager.Remove(ea);
+
+        Assert.False(File.Exists(eaPath));
+        Assert.True(File.Exists(ubisoftPath));
+    }
+
     private GameShortcutManager CreateManager()
     {
         var desktop = Path.Combine(_root, "desktop");
@@ -75,15 +93,13 @@ public sealed class ShortcutOwnershipTests : IDisposable
             Path.Combine(_root, "start"), Path.Combine(_root, "icons"));
     }
 
-    private string GetDesktopPath(Game game) =>
+    private string GetDesktopPath(LauncherGame game) =>
         Path.Combine(_root, "desktop", GameShortcutNaming.GetShortcutFileName(game.AppTitle));
 
-    private static Game CreateGame(string appName) => new()
+    private static LauncherGame CreateGame(string appName) => new()
     {
-        AppName = appName,
+        Id = new GameId("epic", appName),
         AppTitle = "Shared Game Title",
-        Metadata = null!,
-        AssetInfos = null!
     };
 
     public void Dispose()

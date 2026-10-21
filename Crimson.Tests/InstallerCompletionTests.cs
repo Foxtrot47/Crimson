@@ -1,7 +1,7 @@
 ﻿using System.Net;
 using System.Reflection;
-using System.Text;
 using System.Text.Json;
+using System.Text;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Repository;
@@ -47,7 +47,8 @@ public sealed class InstallerCompletionTests : IDisposable
             _storage,
             new EpicAuthManager(_logger, _storage, new UnusedCredentialProtector(), _http));
         var shortcuts = new GameShortcutManager(_http, _logger,
-            Path.Combine(_root, "desktop"), Path.Combine(_root, "start"), Path.Combine(_root, "icons"));
+            Path.Combine(_root, "desktop"), Path.Combine(_root, "start"), Path.Combine(_root, "icons"),
+            policies: [new Crimson.Providers.Epic.EpicContentPolicy()]);
         _installer = new EpicInstallManager(_logger, library, repository, _storage,
             new EpicDownloadManager(_logger, _http), shortcuts, new AllowInstallPermissionChecker());
     }
