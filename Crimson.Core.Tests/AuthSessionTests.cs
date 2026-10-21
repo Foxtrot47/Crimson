@@ -1,6 +1,6 @@
-using System.Net;
-using System.Text;
+﻿using System.Net;
 using System.Text.Json;
+using System.Text;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Utils;
@@ -31,7 +31,7 @@ public sealed class AuthSessionTests : IDisposable
         }));
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         await storage.SaveUserData(CreateUser("old", DateTimeOffset.UtcNow.AddHours(1)));
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), client);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), client);
         Assert.Equal(AuthenticationStatus.LoggedIn, await auth.CheckAuthStatus());
         await storage.SaveUserData(CreateUser("old", DateTimeOffset.UtcNow.AddMinutes(-10)));
 

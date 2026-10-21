@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Repository;
@@ -25,12 +25,12 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         storage.SaveMetaData(firstGame);
         storage.SaveMetaData(secondGame);
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(
+        var installer = new EpicInstallManager(
             _logger,
             library,
             repository,
             storage,
-            new DownloadManager(_logger, new HttpClient()),
+            new EpicDownloadManager(_logger, new HttpClient()),
             new UnusedShortcutManager(),
             new AllowInstallPermissionChecker());
         var viewModel = new AppInstallDialogViewModel(
@@ -66,8 +66,8 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         storage.SaveMetaData(first);
         storage.SaveMetaData(second);
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage,
-            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var installer = new EpicInstallManager(_logger, library, repository, storage,
+            new EpicDownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
         var vm = new AppInstallDialogViewModel(_logger, installer, library, storage, dispatcher);
 
         var oldInitialization = vm.InitializeAsync(first);
@@ -104,8 +104,8 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         var game = CreateGame("game", "Game", "box");
         storage.SaveMetaData(game);
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage,
-            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var installer = new EpicInstallManager(_logger, library, repository, storage,
+            new EpicDownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
         var viewModel = new AppInstallDialogViewModel(
             _logger, installer, library, storage, new ImmediateUiDispatcher());
         var requestedClose = false;
@@ -142,8 +142,8 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
             storage.AddToLocalAppState(game.AppName, game.LocalAppState);
         }
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage,
-            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var installer = new EpicInstallManager(_logger, library, repository, storage,
+            new EpicDownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
         var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var success = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         repository.ManifestRequested += app => { if (app == "uninstall") requested.TrySetResult(); };
@@ -172,14 +172,14 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
             Directory.Delete(_root, recursive: true);
     }
 
-    private LibraryManager CreateLibrary(Storage storage, IStoreRepository repository)
+    private EpicLibraryManager CreateLibrary(Storage storage, IEpicGamesRepository repository)
     {
-        var auth = new AuthManager(
+        var auth = new EpicAuthManager(
             _logger,
             storage,
             new TestCredentialProtector(),
             new HttpClient());
-        return new LibraryManager(_logger, repository, storage, auth);
+        return new EpicLibraryManager(_logger, repository, storage, auth);
     }
 
     private static Game CreateGame(string appName, string title, string imageUrl) => new()
@@ -287,7 +287,7 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         }
     }
 
-    private sealed class ControlledManifestRepository : IStoreRepository
+    private sealed class ControlledManifestRepository : IEpicGamesRepository
     {
         private readonly Dictionary<string, TaskCompletionSource<byte[]>> _manifests = new();
 

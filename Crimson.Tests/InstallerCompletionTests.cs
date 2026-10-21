@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -17,7 +17,7 @@ public sealed class InstallerCompletionTests : IDisposable
     private readonly HttpClient _http;
     private readonly HeldImageHandler _handler = new();
     private readonly Storage _storage;
-    private readonly InstallManager _installer;
+    private readonly EpicInstallManager _installer;
     private readonly Game _game;
 
     public InstallerCompletionTests()
@@ -41,15 +41,15 @@ public sealed class InstallerCompletionTests : IDisposable
         _storage.SaveMetaData(_game);
         _storage.AddToLocalAppState(_game.AppName, _game.LocalAppState);
         var repository = new EmptyManifestRepository();
-        var library = new LibraryManager(
+        var library = new EpicLibraryManager(
             _logger,
             repository,
             _storage,
-            new AuthManager(_logger, _storage, new UnusedCredentialProtector(), _http));
+            new EpicAuthManager(_logger, _storage, new UnusedCredentialProtector(), _http));
         var shortcuts = new GameShortcutManager(_http, _logger,
             Path.Combine(_root, "desktop"), Path.Combine(_root, "start"), Path.Combine(_root, "icons"));
-        _installer = new InstallManager(_logger, library, repository, _storage,
-            new DownloadManager(_logger, _http), shortcuts, new AllowInstallPermissionChecker());
+        _installer = new EpicInstallManager(_logger, library, repository, _storage,
+            new EpicDownloadManager(_logger, _http), shortcuts, new AllowInstallPermissionChecker());
     }
 
     [Fact]
@@ -72,10 +72,10 @@ public sealed class InstallerCompletionTests : IDisposable
     public async Task CancellationAfterFinalizationStartsFinishesShortcuts()
     {
         var item = NewInstall();
-        typeof(InstallManager).GetProperty(nameof(InstallManager.CurrentInstall))!.SetValue(_installer, item);
-        var begin = typeof(InstallManager).GetMethod("TryBeginFinalization", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        typeof(EpicInstallManager).GetProperty(nameof(EpicInstallManager.CurrentInstall))!.SetValue(_installer, item);
+        var begin = typeof(EpicInstallManager).GetMethod("TryBeginFinalization", BindingFlags.Instance | BindingFlags.NonPublic)!;
         Assert.True((bool)begin.Invoke(_installer, [item])!);
-        var method = typeof(InstallManager).GetMethod("CreateRequestedShortcutsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var method = typeof(EpicInstallManager).GetMethod("CreateRequestedShortcutsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var creating = (Task)method.Invoke(_installer, [item, _game, _game.LocalAppState!])!;
         await _handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -93,7 +93,7 @@ public sealed class InstallerCompletionTests : IDisposable
         var manifest = Manifest.ReadAll(Encoding.UTF8.GetBytes("""
             {"FileManifestList":[{"Filename":"../outside.bin","FileHash":"000000000000000000000000000000000000000000000000000000000000","FileChunkParts":[]}],"ChunkHashList":{},"ChunkShaList":{},"DataGroupList":{},"ChunkFilesizeList":{}}
             """));
-        var method = typeof(InstallManager).GetMethod("PrepareUninstallTasks", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var method = typeof(EpicInstallManager).GetMethod("PrepareUninstallTasks", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
         var exception = Assert.Throws<TargetInvocationException>(() => method.Invoke(_installer, [NewInstall(), manifest]));
 
@@ -136,7 +136,7 @@ public sealed class InstallerCompletionTests : IDisposable
         public InstallPermissionCheckResult Check(string folderPath) => new(true);
     }
 
-    private sealed class EmptyManifestRepository : IStoreRepository
+    private sealed class EmptyManifestRepository : IEpicGamesRepository
     {
         public Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live", CancellationToken cancellationToken = default) => Task.FromResult(new GetManifestUrlData {
             BaseUrls = [], ManifestUrls = ["test"], ManifestHash = string.Empty

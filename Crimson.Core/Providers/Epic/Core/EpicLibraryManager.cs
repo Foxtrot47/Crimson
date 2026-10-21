@@ -1,14 +1,14 @@
-﻿using System;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Crimson.Models;
 using Crimson.Repository;
 using Crimson.Utils;
@@ -16,12 +16,12 @@ using Serilog;
 
 namespace Crimson.Core;
 
-public class LibraryManager
+public class EpicLibraryManager
 {
     private readonly ILogger _log;
-    private readonly IStoreRepository _storeRepository;
+    private readonly IEpicGamesRepository _storeRepository;
     private readonly Storage _storage;
-    private readonly AuthManager _authManager;
+    private readonly EpicAuthManager _authManager;
 
     public event Action<IEnumerable<Game>> LibraryUpdated;
     public event Action<Game> GameStatusUpdated;
@@ -31,7 +31,7 @@ public class LibraryManager
     private IReadOnlySet<string> _ownedAppNames = new HashSet<string>();
     private int _ownedAccountGeneration = -1;
 
-    public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager)
+    public EpicLibraryManager(ILogger log, IEpicGamesRepository repository, Storage storage, EpicAuthManager authManager)
     {
         _log = log;
         _storeRepository = repository;
@@ -124,7 +124,7 @@ public class LibraryManager
 
     /// <summary>
     /// Updates stored game data and fired GameStatusUpdated event
-    /// Only thing that would call this function would be InstallManager
+    /// Only thing that would call this function would be EpicInstallManager
     /// </summary>
     /// <param name="game"></param>
     public void UpdateGameInfo(Game game)

@@ -15,8 +15,8 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 {
 
     private readonly ILogger _log;
-    private readonly InstallManager _installManager;
-    private readonly LibraryManager _libraryManager;
+    private readonly EpicInstallManager _installManager;
+    private readonly EpicLibraryManager _libraryManager;
     private readonly IUiDispatcher _uiDispatcher;
 
     [ObservableProperty]
@@ -63,8 +63,8 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 
     public DownloadsViewModel(
         ILogger logger,
-        InstallManager installManager,
-        LibraryManager libraryManager,
+        EpicInstallManager installManager,
+        EpicLibraryManager libraryManager,
         IUiDispatcher uiDispatcher)
     {
         _log = logger;

@@ -1,11 +1,11 @@
 ﻿using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
+using System.Threading;
 using Crimson.Models;
 
 namespace Crimson.Repository;
 
-public interface IStoreRepository
+public interface IEpicGamesRepository
 {
     public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId);
 

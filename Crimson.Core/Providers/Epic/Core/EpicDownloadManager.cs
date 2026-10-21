@@ -1,17 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Threading;
 using System.Threading.Tasks;
-using Serilog;
+using System.Threading;
+using System;
 using Crimson.Models;
+using Serilog;
 
 namespace Crimson.Core;
 
-public class DownloadManager
+public class EpicDownloadManager
 {
     private readonly Dictionary<string, MirrorStats> _mirrorStats = new();
     private readonly ILogger _log;
@@ -19,7 +19,7 @@ public class DownloadManager
     private readonly SemaphoreSlim _statLock = new(1);
 
 
-    public DownloadManager(ILogger log, HttpClient httpClient)
+    public EpicDownloadManager(ILogger log, HttpClient httpClient)
     {
         _log = log;
         _httpClient = httpClient;

@@ -1,11 +1,11 @@
+﻿using System.Net.Http.Headers;
 using System.Net;
-using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using Crimson.Core;
 using Crimson.Utils;
-using Serilog;
 using Serilog.Core;
 using Serilog.Events;
+using Serilog;
 
 namespace Crimson.Tests;
 
@@ -115,7 +115,7 @@ public sealed class SecurityContainmentTests
         var sink = new CapturingSink();
         using var logger = new LoggerConfiguration().WriteTo.Sink(sink).CreateLogger();
         var storage = (Storage)RuntimeHelpers.GetUninitializedObject(typeof(Storage));
-        var manager = new AuthManager(
+        var manager = new EpicAuthManager(
             logger,
             storage,
             new TestCredentialProtector(),

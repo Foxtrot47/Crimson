@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Crimson.Core;
@@ -16,7 +16,7 @@ public sealed partial class StorePage : Page
     private static readonly Uri StoreUri = new("https://store.epicgames.com/");
 
     private readonly ILogger _log = App.GetService<ILogger>();
-    private readonly LibraryManager _libraryManager = App.GetService<LibraryManager>();
+    private readonly EpicLibraryManager _libraryManager = App.GetService<EpicLibraryManager>();
     private bool _cancelledLauncherNavigation;
     private Uri _targetUri = StoreUri;
     private CoreWebView2Environment? _environment;

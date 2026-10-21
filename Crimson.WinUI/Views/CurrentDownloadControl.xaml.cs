@@ -20,14 +20,14 @@ public sealed partial class CurrentDownloadControl : UserControl
     public event Action<DownloadSummary>? SummaryChanged;
 
     private readonly ILogger _log;
-    private readonly LibraryManager _libraryManager;
-    private readonly InstallManager _installManager;
+    private readonly EpicLibraryManager _libraryManager;
+    private readonly EpicInstallManager _installManager;
     public CurrentDownloadControl()
     {
         InitializeComponent();
         _log = App.GetService<ILogger>();
-        _installManager = App.GetService<InstallManager>();
-        _libraryManager = App.GetService<LibraryManager>();
+        _installManager = App.GetService<EpicInstallManager>();
+        _libraryManager = App.GetService<EpicLibraryManager>();
 
         var gameInQueue = _installManager.CurrentInstall;
         HandleInstallationStatusChanged(gameInQueue);

@@ -8,7 +8,7 @@ namespace Crimson.ViewModels
     public partial class SettingsViewModel : ObservableObject
     {
         private readonly SettingsManager _settingsManager;
-        private readonly AuthManager _authManager;
+        private readonly EpicAuthManager _authManager;
         private readonly IFolderLauncher _folderLauncher;
 
         public bool MicaEnabled
@@ -40,7 +40,7 @@ namespace Crimson.ViewModels
 
         public SettingsViewModel(
             SettingsManager settingsManager,
-            AuthManager authManager,
+            EpicAuthManager authManager,
             IFolderLauncher folderLauncher)
         {
             _settingsManager = settingsManager;

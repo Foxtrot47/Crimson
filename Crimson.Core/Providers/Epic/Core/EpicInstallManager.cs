@@ -1,14 +1,14 @@
-﻿using System;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.IO.Pipes;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Crimson.Models;
 using Crimson.Repository;
 using Crimson.Utils;
@@ -16,17 +16,17 @@ using Serilog;
 
 namespace Crimson.Core;
 
-public class InstallManager
+public class EpicInstallManager
 {
     public event Action<InstallItem> InstallationStatusChanged;
     public event Action<InstallItem> InstallProgressUpdate;
 
     private readonly ILogger _logger;
-    private readonly LibraryManager _libraryManager;
-    private readonly DownloadManager _downloadManager;
+    private readonly EpicLibraryManager _libraryManager;
+    private readonly EpicDownloadManager _downloadManager;
     private readonly IGameShortcutManager _shortcutManager;
     private readonly IInstallPermissionChecker _permissionChecker;
-    private readonly IStoreRepository _repository;
+    private readonly IEpicGamesRepository _repository;
     private readonly Storage _storage;
 
     private readonly List<InstallItem> _installQueue = [];
@@ -58,12 +58,12 @@ public class InstallManager
 
     public InstallItem? CurrentInstall { get; private set; }
 
-    public InstallManager(
+    public EpicInstallManager(
         ILogger logger,
-        LibraryManager libraryManager,
-        IStoreRepository repository,
+        EpicLibraryManager libraryManager,
+        IEpicGamesRepository repository,
         Storage storage,
-        DownloadManager downloadManager,
+        EpicDownloadManager downloadManager,
         IGameShortcutManager shortcutManager,
         IInstallPermissionChecker permissionChecker)
     {

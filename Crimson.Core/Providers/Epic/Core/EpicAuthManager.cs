@@ -1,19 +1,19 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net.Http;
+﻿using System.Collections.Generic;
 using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
+using System.Net.Http;
 using System.Text.Json.Serialization;
-using System.Threading;
+using System.Text.Json;
+using System.Text;
 using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Crimson.Models;
 using Crimson.Utils;
 using Serilog;
 
 namespace Crimson.Core;
 
-public class AuthManager
+public class EpicAuthManager
 {
     private readonly ILogger _log;
     private readonly Storage _storage;
@@ -38,7 +38,7 @@ public class AuthManager
     public AuthenticationStatus AuthenticationStatus => _authenticationStatus;
 
 
-    public AuthManager(
+    public EpicAuthManager(
         ILogger log,
         Storage storage,
         ICredentialProtector credentialProtector,

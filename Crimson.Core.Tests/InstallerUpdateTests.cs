@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using System.Reflection;
 using Crimson.Core;
 using Crimson.Models;
@@ -10,12 +10,12 @@ public sealed class InstallerUpdateTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"crimson-update-{Guid.NewGuid():N}");
     private readonly Serilog.Core.Logger _logger = new LoggerConfiguration().CreateLogger();
-    private readonly InstallManager _installer;
+    private readonly EpicInstallManager _installer;
 
     public InstallerUpdateTests()
     {
         Directory.CreateDirectory(_root);
-        _installer = new InstallManager(_logger, null!, null!, null!, null!, null!, null!);
+        _installer = new EpicInstallManager(_logger, null!, null!, null!, null!, null!, null!);
     }
 
     [Fact]
@@ -34,7 +34,7 @@ public sealed class InstallerUpdateTests : IDisposable
             GuidNum = BigInteger.Zero,
             SourceChunkGuidNum = BigInteger.Zero
         };
-        var method = typeof(InstallManager).GetMethod("ProcessCopyTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var method = typeof(EpicInstallManager).GetMethod("ProcessCopyTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
         await ((Task)method.Invoke(_installer, [task, _root])!).WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -45,7 +45,7 @@ public sealed class InstallerUpdateTests : IDisposable
     public void VerificationFailureCannotReportSuccess()
     {
         var install = new InstallItem("test", ActionType.Update, _root);
-        var method = typeof(InstallManager).GetMethod("EnsureVerificationSucceeded", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var method = typeof(EpicInstallManager).GetMethod("EnsureVerificationSucceeded", BindingFlags.Static | BindingFlags.NonPublic)!;
 
         var exception = Assert.Throws<TargetInvocationException>(() => method.Invoke(null, [install, 2]));
 

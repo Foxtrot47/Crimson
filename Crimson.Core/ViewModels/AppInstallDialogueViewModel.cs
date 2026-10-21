@@ -16,8 +16,8 @@ namespace Crimson.ViewModels;
 
 public partial class AppInstallDialogViewModel : ObservableObject
 {
-    private readonly InstallManager _installManager;
-    private readonly LibraryManager _libraryManager;
+    private readonly EpicInstallManager _installManager;
+    private readonly EpicLibraryManager _libraryManager;
     private readonly Storage _storageService;
     private readonly ILogger _logger;
     private readonly IUiDispatcher _uiDispatcher;
@@ -92,8 +92,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
 
     public AppInstallDialogViewModel(
         ILogger logger,
-        InstallManager installManager,
-        LibraryManager libraryManager,
+        EpicInstallManager installManager,
+        EpicLibraryManager libraryManager,
         Storage storage,
         IUiDispatcher uiDispatcher)
     {

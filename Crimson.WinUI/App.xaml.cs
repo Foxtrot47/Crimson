@@ -124,24 +124,24 @@ namespace Crimson
                     @"C:\Games\",
                     Path.Combine(GetAppDataPath(), "logs")));
                 services.AddSingleton<ICredentialProtector, WindowsCredentialProtector>();
-                services.AddSingleton<AuthManager>(provider => new AuthManager(
+                services.AddSingleton<EpicAuthManager>(provider => new EpicAuthManager(
                     provider.GetRequiredService<ILogger>(),
                     provider.GetRequiredService<Storage>(),
                     provider.GetRequiredService<ICredentialProtector>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicOAuth")));
-                services.AddSingleton<IStoreRepository>(provider => new EpicGamesRepository(
-                    provider.GetRequiredService<AuthManager>(),
+                services.AddSingleton<IEpicGamesRepository>(provider => new EpicGamesRepository(
+                    provider.GetRequiredService<EpicAuthManager>(),
                     provider.GetRequiredService<ILogger>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicApi"),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicStore")));
-                services.AddSingleton<LibraryManager>();
+                services.AddSingleton<EpicLibraryManager>();
                 services.AddSingleton<IGameShortcutManager>(provider => new GameShortcutManager(
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
                     provider.GetRequiredService<ILogger>()));
                 services.AddSingleton<IInstallPermissionChecker, FileSystemInstallPermissionChecker>();
-                services.AddSingleton<InstallManager>();
-                services.AddSingleton<DownloadManager>(provider => new DownloadManager(
+                services.AddSingleton<EpicInstallManager>();
+                services.AddSingleton<EpicDownloadManager>(provider => new EpicDownloadManager(
                     provider.GetRequiredService<ILogger>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
 
@@ -257,7 +257,7 @@ namespace Crimson
             var authenticationStatus = await EnsureAuthenticationAsync();
             if (authenticationStatus == AuthenticationStatus.LoggedIn)
             {
-                var libraryManager = GetService<LibraryManager>();
+                var libraryManager = GetService<EpicLibraryManager>();
                 var library = await libraryManager.GetLibraryData();
                 if (library.Any(game => game.AppName == appName) &&
                     await libraryManager.LaunchApp(appName))
@@ -272,7 +272,7 @@ namespace Crimson
             await _authenticationGate.WaitAsync();
             try
             {
-                var authManager = GetService<AuthManager>();
+                var authManager = GetService<EpicAuthManager>();
                 return authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn
                     ? AuthenticationStatus.LoggedIn
                     : await authManager.CheckAuthStatus();

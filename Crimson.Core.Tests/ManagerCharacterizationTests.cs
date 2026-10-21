@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -46,7 +46,7 @@ public sealed class ManagerCharacterizationTests
             Asset("metadata-not-fetched")
         };
 
-        var games = LibraryManager.SelectOwnedGames(assets, metadata);
+        var games = EpicLibraryManager.SelectOwnedGames(assets, metadata);
 
         Assert.Equal([owned], games);
     }
@@ -63,7 +63,7 @@ public sealed class ManagerCharacterizationTests
         state.LaunchParameters = "-from-manifest";
         var user = new UserData { AccountId = "account", DisplayName = "Player Name" };
 
-        var arguments = LibraryManager.BuildLaunchArguments(
+        var arguments = EpicLibraryManager.BuildLaunchArguments(
             state,
             game,
             "exchange-code",
@@ -135,7 +135,7 @@ public sealed class ManagerCharacterizationTests
         var manifests = GetPrivateField<ConcurrentDictionary<BigInteger, List<FileManifest>>>(
             manager,
             "_chunkToFileManifestsDictionary");
-        var createIoTasks = typeof(InstallManager).GetMethod(
+        var createIoTasks = typeof(EpicInstallManager).GetMethod(
             "CreateIoTasksForChunk",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         var downloadTasks = Enumerable.Range(1, taskCount).Select(index =>
@@ -175,22 +175,22 @@ public sealed class ManagerCharacterizationTests
         Assert.Equal(["beta", "alpha"], manager.GetHistoryItemsNames());
     }
 
-    private LibraryManager LibraryManagerWith(Storage storage)
+    private EpicLibraryManager LibraryManagerWith(Storage storage)
     {
-        var auth = new AuthManager(
+        var auth = new EpicAuthManager(
             _logger,
             storage,
             new TestCredentialProtector(),
             new HttpClient());
-        return new LibraryManager(_logger, new UnusedStoreRepository(), storage, auth);
+        return new EpicLibraryManager(_logger, new UnusedStoreRepository(), storage, auth);
     }
 
-    private InstallManager InstallManagerWith(params Game[] games)
+    private EpicInstallManager InstallManagerWith(params Game[] games)
     {
         var storage = StorageWith(games);
         var library = LibraryManagerWith(storage);
-        var downloads = new DownloadManager(_logger, new HttpClient());
-        return new InstallManager(
+        var downloads = new EpicDownloadManager(_logger, new HttpClient());
+        return new EpicInstallManager(
             _logger,
             library,
             new UnusedStoreRepository(),
@@ -249,9 +249,9 @@ public sealed class ManagerCharacterizationTests
         }
     };
 
-    private static void SetCurrentInstall(InstallManager manager, InstallItem item) =>
-        typeof(InstallManager)
-            .GetProperty(nameof(InstallManager.CurrentInstall), BindingFlags.Instance | BindingFlags.Public)!
+    private static void SetCurrentInstall(EpicInstallManager manager, InstallItem item) =>
+        typeof(EpicInstallManager)
+            .GetProperty(nameof(EpicInstallManager.CurrentInstall), BindingFlags.Instance | BindingFlags.Public)!
             .SetValue(manager, item);
 
     private static T GetPrivateField<T>(object instance, string name) =>
@@ -275,7 +275,7 @@ public sealed class ManagerCharacterizationTests
         public InstallPermissionCheckResult Check(string folderPath) => new(true);
     }
 
-    private sealed class UnusedStoreRepository : IStoreRepository
+    private sealed class UnusedStoreRepository : IEpicGamesRepository
     {
         public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId) =>
             throw new NotSupportedException();

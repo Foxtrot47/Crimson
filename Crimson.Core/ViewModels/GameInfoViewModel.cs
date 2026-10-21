@@ -19,8 +19,8 @@ namespace Crimson.ViewModels;
 public partial class GameInfoViewModel : ObservableObject, INavigationAware
 {
     private readonly IUiDispatcher _uiDispatcher;
-    private readonly InstallManager _installer;
-    private readonly LibraryManager _libraryManager;
+    private readonly EpicInstallManager _installer;
+    private readonly EpicLibraryManager _libraryManager;
     private readonly Storage _storage;
     private readonly ILogger<GameInfoViewModel> _log;
 
@@ -62,8 +62,8 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     public event Func<Task<string>> FolderPickerRequested;
 
     public GameInfoViewModel(ILogger<GameInfoViewModel> logger,
-            InstallManager installer,
-            LibraryManager libraryManager,
+            EpicInstallManager installer,
+            EpicLibraryManager libraryManager,
             Storage storage,
             IUiDispatcher uiDispatcher)
     {

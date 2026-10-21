@@ -1,20 +1,20 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Text;
+using System.Net.Http;
 using System.Text.Json;
-using System.Threading;
+using System.Text;
 using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Crimson.Core;
 using Crimson.Models;
 using Serilog;
 
 namespace Crimson.Repository
 {
-    internal class EpicGamesRepository : IStoreRepository
+    internal class EpicGamesRepository : IEpicGamesRepository
     {
         private const string LauncherHost = "launcher-public-service-prod06.ol.epicgames.com";
         private const string CatalogHost = "catalog-public-service-prod06.ol.epicgames.com";
@@ -58,10 +58,10 @@ namespace Crimson.Repository
         private readonly HttpClient _contentClient;
         private readonly HttpClient _storeClient;
         private readonly ILogger _log;
-        private readonly AuthManager _authManager;
+        private readonly EpicAuthManager _authManager;
 
         public EpicGamesRepository(
-            AuthManager authManager,
+            EpicAuthManager authManager,
             ILogger logger,
             HttpClient apiClient,
             HttpClient contentClient,

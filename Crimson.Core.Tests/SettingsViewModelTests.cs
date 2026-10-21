@@ -1,4 +1,4 @@
-using Crimson.Core;
+﻿using Crimson.Core;
 using Crimson.Utils;
 using Crimson.ViewModels;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -24,7 +24,7 @@ public sealed class SettingsViewModelTests : IDisposable
             NullLogger<SettingsManager>.Instance,
             installPath,
             logsPath);
-        var auth = new AuthManager(
+        var auth = new EpicAuthManager(
             _logger,
             storage,
             new TestCredentialProtector(),

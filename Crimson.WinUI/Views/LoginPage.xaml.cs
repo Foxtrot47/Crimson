@@ -17,7 +17,7 @@ namespace Crimson.Views;
 /// </summary>
 public sealed partial class LoginPage : Page
 {
-    private readonly AuthManager _authManager = App.GetService<AuthManager>();
+    private readonly EpicAuthManager _authManager = App.GetService<EpicAuthManager>();
     private readonly ILogger _log;
     private readonly EpicLoginMessageGate _loginMessageGate = new();
     private const string EpicGamesLauncherVersion = "11.0.1-14907503+++Portal+Release-Live";

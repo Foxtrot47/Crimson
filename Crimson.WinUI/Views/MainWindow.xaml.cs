@@ -42,10 +42,10 @@ public sealed partial class MainWindow : Window
 
     public bool IsLoggedIn;
     private ILogger _log = App.GetService<ILogger>();
-    private readonly AuthManager _authManager;
-    private readonly InstallManager _installManager;
-    private readonly LibraryManager _libraryManager;
-    private readonly IStoreRepository _storeRepository;
+    private readonly EpicAuthManager _authManager;
+    private readonly EpicInstallManager _installManager;
+    private readonly EpicLibraryManager _libraryManager;
+    private readonly IEpicGamesRepository _storeRepository;
 
     private List<Game> _libraryCache = new();
     private CancellationTokenSource? _storeSearchCancellation;
@@ -102,10 +102,10 @@ public sealed partial class MainWindow : Window
         GlobalSearchBox.Loaded += (_, _) => UpdateTitleBarInteractiveRegion();
         GlobalSearchBox.SizeChanged += (_, _) => UpdateTitleBarInteractiveRegion();
 
-        _authManager = App.GetService<AuthManager>();
-        _installManager = App.GetService<InstallManager>();
-        _libraryManager = App.GetService<LibraryManager>();
-        _storeRepository = App.GetService<IStoreRepository>();
+        _authManager = App.GetService<EpicAuthManager>();
+        _installManager = App.GetService<EpicInstallManager>();
+        _libraryManager = App.GetService<EpicLibraryManager>();
+        _storeRepository = App.GetService<IEpicGamesRepository>();
         _log = App.GetService<ILogger>();
 
         _libraryManager.LibraryUpdated += LibraryUpdatedHandler;

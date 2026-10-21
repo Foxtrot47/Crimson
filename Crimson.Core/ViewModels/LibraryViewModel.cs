@@ -29,14 +29,14 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     private bool _showQueueItems = false;
 
     private readonly ILogger _log;
-    private readonly LibraryManager _libraryManager;
+    private readonly EpicLibraryManager _libraryManager;
     private readonly IUiDispatcher _uiDispatcher;
     private int _navigationGeneration;
     private Action<IEnumerable<Game>>? _libraryUpdatedHandler;
 
     public LibraryViewModel(
         ILogger logger,
-        LibraryManager libraryManager,
+        EpicLibraryManager libraryManager,
         IUiDispatcher uiDispatcher)
     {
         _log = logger;
