@@ -118,7 +118,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
             OnPropertyChanged(nameof(SupportsShortcuts));
             GameTitle = gameInfo.AppTitle;
             GameImageUrl = SelectImageUrl(gameInfo);
-            InstallLocation = Path.Combine(_storageService.DefaultInstallPath, gameInfo.AppTitle);
+            InstallLocation = ProviderDataPaths.SuggestedInstallPath(_storageService.DefaultInstallPath, gameInfo.Id, gameInfo.AppTitle);
 
             AvailableDlcs.Clear();
             var dlcs = _libraryManager.GetDlcsForGame(gameInfo.AppName);
@@ -264,7 +264,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
             var newPath = await FolderPickerRequested.Invoke();
             if (!string.IsNullOrEmpty(newPath) && IsCurrentInitialization(generation))
             {
-                InstallLocation = Path.Combine(newPath, GameTitle);
+                InstallLocation = ProviderDataPaths.SuggestedInstallPath(newPath, GameId.Parse(_gameAppName), GameTitle);
                 await UpdateDriveSpace(InstallLocation, generation.InstallSize, generation);
             }
         }

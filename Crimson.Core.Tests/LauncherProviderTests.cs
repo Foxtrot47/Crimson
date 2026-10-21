@@ -258,6 +258,30 @@ public sealed class LauncherProviderTests
         Assert.NotEqual(key, ProviderDataPaths.GameFileKey(new GameId("ubisoft", "../../evil/id")));
     }
 
+    [Fact]
+    public void SameTitleFromThreeStoresHasDistinctDefaultInstallPaths()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "games");
+        var paths = new[] { "epic", "ea", "ubisoft" }.Select(provider =>
+            ProviderDataPaths.SuggestedInstallPath(root, new GameId(provider, "123"), "Same Game")).ToList();
+        Assert.Equal(3, paths.Distinct().Count());
+        Assert.All(paths, path => Assert.Equal("Same Game", Path.GetFileName(path)));
+    }
+
+    [Theory]
+    [InlineData("../../outside")]
+    [InlineData("C:\\outside")]
+    [InlineData("CON.txt")]
+    [InlineData("NUL")]
+    [InlineData("...")]
+    public void SuggestedInstallTitlesCannotEscapeTheirProviderDirectory(string title)
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "games"));
+        var path = ProviderDataPaths.SuggestedInstallPath(root, new GameId("ea", "123"), title);
+        Assert.Equal(Path.Combine(root, "ea"), Path.GetDirectoryName(path));
+        Assert.NotEqual("CON.txt", Path.GetFileName(path));
+        Assert.NotEqual("NUL", Path.GetFileName(path));
+    }
     private sealed class ImmediateUiDispatcher : IUiDispatcher
     {
         public bool TryEnqueue(Action callback) { callback(); return true; }
