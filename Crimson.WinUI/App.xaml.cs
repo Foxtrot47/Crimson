@@ -1,13 +1,13 @@
-﻿using Crimson.Providers;
-using Crimson.Providers.Epic;
-using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Threading;
 using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Crimson.Core;
+using Crimson.Providers.Epic;
+using Crimson.Providers;
 using Crimson.Repository;
 using Crimson.Utils;
 using Crimson.ViewModels;
@@ -92,65 +92,29 @@ namespace Crimson
                     Log.Logger = logger;
                     return logger;
                 });
-                services.AddHttpClient("EpicOAuth", ConfigureEpicClient)
-                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
-                services.AddHttpClient("EpicApi", ConfigureEpicClient)
-                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler)
-                    .AddResilienceHandler(
-                        "CustomPipeline",
-                        static builder =>
-                        {
-                            // See: https://www.pollydocs.org/strategies/retry.html
-                            builder.AddRetry(new HttpRetryStrategyOptions
-                            {
-                                BackoffType = DelayBackoffType.Exponential,
-                                MaxRetryAttempts = 5,
-                                UseJitter = true
-                            });
-
-                            // See: https://www.pollydocs.org/strategies/timeout.html
-                            builder.AddTimeout(TimeSpan.FromSeconds(5));
-                        });
-                services.AddHttpClient("EpicContent", ConfigureEpicClient)
-                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
-                services.AddHttpClient("EpicStore", ConfigureEpicStoreClient)
-                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
-
                 services.AddSingleton<Storage>(provider => new Storage(
                     provider.GetRequiredService<ILogger>(),
                     GetAppDataPath(),
                     Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)));
+                services.AddSingleton<IApplicationStorage>(provider => provider.GetRequiredService<Storage>());
                 services.AddSingleton<SettingsManager>(provider => new SettingsManager(
                     provider.GetRequiredService<Storage>(),
                     provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<SettingsManager>>(),
                     @"C:\Games\",
                     Path.Combine(GetAppDataPath(), "logs")));
                 services.AddSingleton<ICredentialProtector, WindowsCredentialProtector>();
-                services.AddSingleton<EpicAuthManager>(provider => new EpicAuthManager(
-                    provider.GetRequiredService<ILogger>(),
-                    provider.GetRequiredService<Storage>(),
-                    provider.GetRequiredService<ICredentialProtector>(),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicOAuth")));
-                services.AddSingleton<IEpicGamesRepository>(provider => new EpicGamesRepository(
-                    provider.GetRequiredService<EpicAuthManager>(),
-                    provider.GetRequiredService<ILogger>(),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicApi"),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicStore")));
-                services.AddSingleton<EpicLibraryManager>();
-                services.AddSingleton<IGameShortcutManager>(provider => new GameShortcutManager(
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
-                    provider.GetRequiredService<ILogger>(), provider.GetServices<IProviderContentPolicy>()));
                 services.AddSingleton<IInstallPermissionChecker, FileSystemInstallPermissionChecker>();
-                services.AddSingleton<EpicInstallManager>();
-                services.AddSingleton<EpicDownloadManager>(provider => new EpicDownloadManager(
-                    provider.GetRequiredService<ILogger>(),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
-
-                services.AddSingleton<IApplicationStorage>(provider => provider.GetRequiredService<Storage>());
-                services.AddSingleton<IProviderContentPolicy, EpicContentPolicy>();
-                services.AddSingleton<ILauncherProvider, EpicLauncherProvider>();
-                services.AddSingleton<LauncherRegistry>(provider => new LauncherRegistry(provider.GetServices<ILauncherProvider>()));
+                services.AddHttpClient("Artwork").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+                {
+                    AllowAutoRedirect = true, UseCookies = false, MaxConnectionsPerServer = 16
+                });
+                services.AddSingleton<IGameShortcutManager>(provider => new GameShortcutManager(
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("Artwork"),
+                    provider.GetRequiredService<ILogger>(), provider.GetServices<IProviderContentPolicy>()));
+                services.AddEpicLauncher();
+                services.AddSingleton<LauncherRegistry>(provider => new LauncherRegistry(
+                    provider.GetServices<ILauncherProvider>()));
+                services.AddSingleton<LauncherFrontendRegistry>();
                 services.AddSingleton<LauncherAuthentication>();
                 services.AddSingleton<LauncherLibrary>();
                 services.AddSingleton<LauncherInstaller>();
@@ -168,27 +132,6 @@ namespace Crimson
         private static string GetAppDataPath() => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Crimson");
-
-        private static void ConfigureEpicClient(HttpClient client)
-        {
-            client.DefaultRequestHeaders.UserAgent.ParseAdd(
-                "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit");
-            client.Timeout = TimeSpan.FromSeconds(100);
-        }
-
-        private static void ConfigureEpicStoreClient(HttpClient client)
-        {
-            client.DefaultRequestHeaders.UserAgent.ParseAdd(
-                "EpicGamesLauncher/14.0.8-22004686+++Portal+Release-Live");
-            client.Timeout = TimeSpan.FromSeconds(10);
-        }
-
-        private static HttpMessageHandler CreateSecureHttpHandler() => new HttpClientHandler
-        {
-            AllowAutoRedirect = true,
-            UseCookies = false,
-            MaxConnectionsPerServer = 16
-        };
 
         /// <summary>
         /// Invoked when the application is launched normally by the end user.  Other entry points
