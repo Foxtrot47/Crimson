@@ -1,12 +1,12 @@
-using System;
+﻿using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Buffers;
-using System.Diagnostics;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
+using System.Text;
+using System;
 using Ionic.Zlib;
 
 namespace Crimson.Models;
@@ -175,7 +175,7 @@ public sealed class ManifestMeta
     public string PrereqName { get; internal set; } = string.Empty;
     public string PrereqPath { get; internal set; } = string.Empty;
     public string PrereqArgs { get; internal set; } = string.Empty;
-    // Null when the manifest predates DataVersion 2. InstallManager null-checks this before
+    // Null when the manifest predates DataVersion 2. EpicInstallManager null-checks this before
     // persisting an uninstaller into localstate.json, so it must not default to empty.
     public string? UninstallActionPath { get; internal set; }
     public string UninstallActionArgs { get; internal set; } = string.Empty;
