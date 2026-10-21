@@ -1,11 +1,12 @@
-﻿using System;
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Utils;
 using Serilog;
 
@@ -15,8 +16,8 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 {
 
     private readonly ILogger _log;
-    private readonly EpicInstallManager _installManager;
-    private readonly EpicLibraryManager _libraryManager;
+    private readonly LauncherInstaller _installManager;
+    private readonly LauncherLibrary _libraryManager;
     private readonly IUiDispatcher _uiDispatcher;
 
     [ObservableProperty]
@@ -63,8 +64,8 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 
     public DownloadsViewModel(
         ILogger logger,
-        EpicInstallManager installManager,
-        EpicLibraryManager libraryManager,
+        LauncherInstaller installManager,
+        LauncherLibrary libraryManager,
         IUiDispatcher uiDispatcher)
     {
         _log = logger;
@@ -100,8 +101,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
                 {
                     Name = queueItemName,
                     Title = gameInfo.AppTitle,
-                    ImageUrl = gameInfo.Metadata.KeyImages
-                        .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
+                    ImageUrl = gameInfo.CoverImageUrl
                 });
 
             }
@@ -133,8 +133,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
                 {
                     Name = historyItemName,
                     Title = gameInfo.AppTitle,
-                    ImageUrl = gameInfo.Metadata.KeyImages
-                        .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
+                    ImageUrl = gameInfo.CoverImageUrl
                 });
             }
             HistoryItems = itemList;
@@ -150,7 +149,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     {
         try
         {
-            UpdateUIProperties(() => RefreshAndApplyStatus(installItem));
+            UpdateUIProperties(() => RefreshAndApplyStatus(_installManager.CurrentInstall ?? installItem));
         }
         catch (Exception ex)
         {
@@ -180,14 +179,13 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     private void SetCurrentInstallItem(InstallItem installItem)
     {
         var gameInfo = _libraryManager.GetGameInfo(installItem.AppName);
-        _log.Debug("HandleInstallationStatusChanged: Loaded {AppName}", gameInfo.AppName);
+        _log.Debug("HandleInstallationStatusChanged: Loaded {AppName}", installItem.AppName);
         CurrentInstallItem = new DownloadManagerItem
         {
-            Name = gameInfo.AppName,
-            Title = gameInfo.AppTitle,
-            InstallState = gameInfo.LocalAppState?.InstallStatus ?? InstallState.NotInstalled,
-            ImageUrl = gameInfo.Metadata.KeyImages
-                .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
+            Name = installItem.AppName,
+            Title = gameInfo?.AppTitle ?? GameId.Parse(installItem.AppName).LocalId,
+            InstallState = gameInfo?.LocalAppState?.InstallStatus ?? InstallState.NotInstalled,
+            ImageUrl = gameInfo?.CoverImageUrl
         };
         CurrentInstallItemName = CurrentInstallItem.Title;
         CurrentInstallItemImageUrl = CurrentInstallItem.ImageUrl;
@@ -246,6 +244,12 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 
     private void UpdatePauseResumeControls(ActionStatus status)
     {
+        if (!_installManager.SupportsPause)
+        {
+            ShowResumeButton = false;
+            ShowPauseButton = false;
+            return;
+        }
         if (status == ActionStatus.Paused)
         {
             ShowResumeButton = true;
@@ -265,7 +269,7 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
         try
         {
 
-            if (installItem == null) return;
+            if (installItem == null || _installManager.CurrentInstall?.AppName != installItem.AppName) return;
 
             if (installItem.Status != ActionStatus.Processing) return;
             _ = UpdateUIProperties(() =>
@@ -292,13 +296,15 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void PauseInstall()
     {
-        Task.Run(() => _installManager.PauseInstall());
+        var appName = CurrentInstallItem.Name;
+        Task.Run(() => _installManager.PauseInstall(appName));
     }
 
     [RelayCommand]
     private void ResumeInstall()
     {
-        Task.Run(() => _installManager.ResumeInstall());
+        var appName = CurrentInstallItem.Name;
+        Task.Run(() => _installManager.ResumeInstall(appName));
     }
 
     private bool UpdateUIProperties(Action updateAction)
@@ -313,5 +319,3 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     }
 
 }
-
-

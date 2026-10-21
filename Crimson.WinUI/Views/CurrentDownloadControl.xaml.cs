@@ -1,9 +1,10 @@
-﻿using System;
+﻿using Crimson.Providers;
+using System;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Utils;
-using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml;
 using Serilog;
 
 namespace Crimson.Views;
@@ -20,14 +21,14 @@ public sealed partial class CurrentDownloadControl : UserControl
     public event Action<DownloadSummary>? SummaryChanged;
 
     private readonly ILogger _log;
-    private readonly EpicLibraryManager _libraryManager;
-    private readonly EpicInstallManager _installManager;
+    private readonly LauncherLibrary _libraryManager;
+    private readonly LauncherInstaller _installManager;
     public CurrentDownloadControl()
     {
         InitializeComponent();
         _log = App.GetService<ILogger>();
-        _installManager = App.GetService<EpicInstallManager>();
-        _libraryManager = App.GetService<EpicLibraryManager>();
+        _installManager = App.GetService<LauncherInstaller>();
+        _libraryManager = App.GetService<LauncherLibrary>();
 
         var gameInQueue = _installManager.CurrentInstall;
         HandleInstallationStatusChanged(gameInQueue);
@@ -45,6 +46,7 @@ public sealed partial class CurrentDownloadControl : UserControl
     {
         try
         {
+            installItem = _installManager.CurrentInstall ?? installItem;
             if (installItem == null)
             {
                 DispatcherQueue.TryEnqueue(() =>
@@ -57,12 +59,12 @@ public sealed partial class CurrentDownloadControl : UserControl
             }
 
             var gameInfo = _libraryManager.GetGameInfo(installItem.AppName);
-            if (gameInfo == null) return;
+            var title = gameInfo?.AppTitle ?? GameId.Parse(installItem.AppName).LocalId;
 
             DispatcherQueue.TryEnqueue(() =>
             {
-                UpdateStatus(installItem, gameInfo.AppTitle);
-                RaiseSummary(installItem, gameInfo.AppTitle);
+                UpdateStatus(installItem, title);
+                RaiseSummary(installItem, title);
             });
         }
         catch (Exception ex)
@@ -122,7 +124,7 @@ public sealed partial class CurrentDownloadControl : UserControl
     {
         try
         {
-            if (installItem == null) return;
+            if (installItem == null || _installManager.CurrentInstall?.AppName != installItem.AppName) return;
 
             if (installItem.Status != ActionStatus.Processing) return;
             DispatcherQueue.TryEnqueue(() =>
