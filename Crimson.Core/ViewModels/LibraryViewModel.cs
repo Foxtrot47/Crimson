@@ -1,12 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
+using System.Threading;
+using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Crimson.Core;
 using Crimson.Interfaces;
 using Crimson.Models;
+using Crimson.Providers;
 using Serilog;
 
 namespace Crimson.ViewModels;
@@ -14,7 +15,7 @@ namespace Crimson.ViewModels;
 public partial class LibraryViewModel : ObservableObject, INavigationAware
 {
     [ObservableProperty]
-    private List<LibraryItem> _gamesList;
+    private List<LibraryItem> _gamesList = [];
 
     [ObservableProperty]
     private bool _loadingFinished = false;
@@ -29,18 +30,24 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     private bool _showQueueItems = false;
 
     private readonly ILogger _log;
-    private readonly EpicLibraryManager _libraryManager;
+    private readonly LauncherLibrary _libraryManager;
+    private readonly LauncherRegistry _launchers;
     private readonly IUiDispatcher _uiDispatcher;
     private int _navigationGeneration;
-    private Action<IEnumerable<Game>>? _libraryUpdatedHandler;
+    private Action<IEnumerable<LauncherGame>>? _libraryUpdatedHandler;
+
+    [ObservableProperty]
+    private bool _showEmptyLibrary;
 
     public LibraryViewModel(
         ILogger logger,
-        EpicLibraryManager libraryManager,
+        LauncherLibrary libraryManager,
+        LauncherRegistry launchers,
         IUiDispatcher uiDispatcher)
     {
         _log = logger;
         _libraryManager = libraryManager;
+        _launchers = launchers;
         _uiDispatcher = uiDispatcher;
     }
 
@@ -64,7 +71,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         _libraryUpdatedHandler = null;
     }
 
-    private void UpdateLibrary(IEnumerable<Game> games, int generation)
+    private void UpdateLibrary(IEnumerable<LauncherGame> games, int generation)
     {
         try
         {
@@ -75,21 +82,21 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
             {
                 if (generation != Volatile.Read(ref _navigationGeneration)) return;
                 GamesList = new List<LibraryItem>();
-                foreach (var game in games)
+                foreach (var game in _libraryManager.CachedGames)
                 {
                     if (game.IsDlc()) continue;
                     var item = new LibraryItem
                     {
                         Name = game.AppName,
                         Title = game.AppTitle,
-                        //InstallState = game.State,
-                        ImageUrl = game.Metadata.KeyImages
-                            .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
+                        ProviderName = _launchers.Get(game.Id.ProviderId).DisplayName,
+                        ImageUrl = game.CoverImageUrl
                     };
                     _log.Debug("UpdateLibrary: Adding {AppName} to library", item.Name);
                     GamesList.Add(item);
                 }
                 GamesList = GamesList.OrderBy(item => item.Title).ToList();
+                ShowEmptyLibrary = GamesList.Count == 0;
                 ShowLoadingScreen = false;
                 ShowAppGrid = true;
             });

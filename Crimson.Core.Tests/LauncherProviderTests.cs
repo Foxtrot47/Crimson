@@ -72,6 +72,23 @@ public sealed class LauncherProviderTests
     }
 
     [Fact]
+    public async Task CombinedLibraryCardsCarryStoreNamesWithoutEpicMetadata()
+    {
+        var ea = new TestLauncherProvider("ea");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        ea.Games.Add("123");
+        ubisoft.Games.Add("123");
+        var registry = new LauncherRegistry([ea, ubisoft]);
+        using var log = new Serilog.LoggerConfiguration().CreateLogger();
+        var vm = new LibraryViewModel(log, new LauncherLibrary(registry), registry, new ImmediateUiDispatcher());
+        await vm.OnNavigatedTo(null!);
+        Assert.Equal(2, vm.GamesList.Count);
+        Assert.Equal(["ea", "ubisoft"], vm.GamesList.Select(item => item.ProviderName).Order().ToList());
+        Assert.False(vm.ShowEmptyLibrary);
+        vm.OnNavigatedFrom();
+    }
+
+    [Fact]
     public async Task SignedOutProviderCannotLaunchThroughAnotherSignedInAccount()
     {
         var ea = new TestLauncherProvider("ea");
