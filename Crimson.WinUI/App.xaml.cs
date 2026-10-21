@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Crimson.Providers;
+using Crimson.Providers.Epic;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -144,6 +146,15 @@ namespace Crimson
                 services.AddSingleton<EpicDownloadManager>(provider => new EpicDownloadManager(
                     provider.GetRequiredService<ILogger>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
+
+                services.AddSingleton<IApplicationStorage>(provider => provider.GetRequiredService<Storage>());
+                services.AddSingleton<IProviderContentPolicy, EpicContentPolicy>();
+                services.AddSingleton<ILauncherProvider, EpicLauncherProvider>();
+                services.AddSingleton<LauncherRegistry>(provider => new LauncherRegistry(provider.GetServices<ILauncherProvider>()));
+                services.AddSingleton<LauncherAuthentication>();
+                services.AddSingleton<LauncherLibrary>();
+                services.AddSingleton<LauncherInstaller>();
+                services.AddSingleton<LauncherStores>();
 
                 services.AddTransient<SettingsViewModel>();
                 services.AddTransient<DownloadsViewModel>();
