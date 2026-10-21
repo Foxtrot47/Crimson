@@ -152,6 +152,43 @@ public sealed class LauncherProviderTests
         Assert.Equal(2, statuses.Count);
     }
 
+    [Fact]
+    public void CombinedInstallationQueueKeepsEachJobsOwner()
+    {
+        var ea = new TestLauncherProvider("ea");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        var registry = new LauncherRegistry([ea, ubisoft]);
+        var installer = new LauncherInstaller(registry);
+        installer.AddToQueue(new InstallItem("ea:123", ActionType.Install, "ea-install"));
+        ea.Jobs.Start();
+        installer.AddToQueue(new InstallItem("ubisoft:123", ActionType.Install, "ubisoft-install"));
+        installer.PauseInstall();
+        installer.CancelInstall("ea:123");
+
+        Assert.Equal("ea:123", installer.CurrentInstall!.AppName);
+        Assert.Equal(["ea:123", "ubisoft:123"], installer.GetQueueItemNames());
+        Assert.Equal(1, ea.Jobs.Pauses);
+        Assert.Equal(0, ubisoft.Jobs.Pauses);
+        Assert.Equal(["ea:123"], ea.Jobs.Cancelled);
+        Assert.Empty(ubisoft.Jobs.Cancelled);
+        Assert.Throws<NotSupportedException>(() => installer.AddToQueue(new InstallItem("ubisoft:123", ActionType.Repair, "path")));
+    }
+
+    [Fact]
+    public async Task OptionalInstallerAndStoreDoNotPreventLibraryOrLaunch()
+    {
+        var provider = new TestLauncherProvider("ea") { Installer = null };
+        var game = provider.Games.Add("123");
+        var registry = new LauncherRegistry([provider]);
+        var installer = new LauncherInstaller(registry);
+        var library = new LauncherLibrary(registry);
+        Assert.Null(Assert.Single(registry.Providers).Store);
+        Assert.False(installer.Supports(ActionType.Install));
+        Assert.Empty(installer.GetQueueItemNames());
+        Assert.True(await library.LaunchApp(game.AppName));
+        Assert.Throws<NotSupportedException>(() => installer.AddToQueue(new InstallItem(game.AppName, ActionType.Install, "path")));
+    }
+
     [Theory]
     [InlineData("ea", "offer/id:with spaces % and 雪")]
     [InlineData("ubisoft", "123")]

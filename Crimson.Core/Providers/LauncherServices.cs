@@ -206,3 +206,82 @@ public sealed class LauncherLibrary : ILauncherLibrary
         game.Id.ProviderId == provider.Id ? game : throw new InvalidOperationException("Provider returned a foreign game identity.");
 }
 
+/// <summary>Routes qualified jobs to their owner independently of account connection and UI navigation.</summary>
+public sealed class LauncherInstaller : ILauncherInstaller
+{
+    private readonly LauncherRegistry _registry;
+    public event Action<InstallItem>? InstallationStatusChanged;
+    public event Action<InstallItem>? InstallProgressUpdate;
+    private ILauncherInstaller? CurrentInstaller => _registry.Providers
+        .Select(provider => provider.Installer).FirstOrDefault(installer => installer?.CurrentInstall is
+            { Status: not ActionStatus.Success and not ActionStatus.Failed and not ActionStatus.Cancelled });
+    public InstallItem? CurrentInstall => CurrentInstaller?.CurrentInstall;
+    public bool SupportsPause => CurrentInstaller?.SupportsPause == true;
+    public bool SupportsShortcuts => _registry.Providers.Any(provider => provider.Installer?.SupportsShortcuts == true);
+
+    public LauncherInstaller(LauncherRegistry registry)
+    {
+        _registry = registry;
+        foreach (var provider in registry.Providers)
+        {
+            if (provider.Installer is not { } installer) continue;
+            installer.InstallationStatusChanged += item =>
+            {
+                RequireOwner(provider, item);
+                InstallationStatusChanged?.Invoke(item);
+            };
+            installer.InstallProgressUpdate += item =>
+            {
+                RequireOwner(provider, item);
+                InstallProgressUpdate?.Invoke(item);
+            };
+        }
+    }
+
+    public bool Supports(ActionType action) => _registry.Providers.Any(provider => provider.Installer?.Supports(action) == true);
+    public bool Supports(string appName, ActionType action) =>
+        _registry.Get(GameId.Parse(appName).ProviderId).Installer?.Supports(action) == true;
+    public bool SupportsShortcutsFor(string appName) =>
+        _registry.Get(GameId.Parse(appName).ProviderId).Installer?.SupportsShortcuts == true;
+
+    public void AddToQueue(InstallItem item)
+    {
+        var installer = Resolve(item.AppName);
+        if (!installer.Supports(item.Action))
+            throw new NotSupportedException($"This launcher does not support {item.Action}.");
+        installer.AddToQueue(item.ForGame(GameId.Parse(item.AppName).ToString()));
+    }
+
+    public List<string> GetQueueItemNames() => _registry.Providers
+        .SelectMany(provider => provider.Installer?.GetQueueItemNames() ?? []).ToList();
+    public List<string> GetHistoryItemsNames() => _registry.Providers
+        .SelectMany(provider => provider.Installer?.GetHistoryItemsNames() ?? []).ToList();
+    public void CancelInstall(string appName) => Resolve(appName).CancelInstall(appName);
+    public void PauseInstall() { if (SupportsPause) CurrentInstaller?.PauseInstall(); }
+    public void ResumeInstall() { if (SupportsPause) CurrentInstaller?.ResumeInstall(); }
+    public void PauseInstall(string appName)
+    {
+        var installer = Resolve(appName);
+        if (installer.SupportsPause && installer.CurrentInstall?.AppName == appName) installer.PauseInstall();
+    }
+    public void ResumeInstall(string appName)
+    {
+        var installer = Resolve(appName);
+        if (installer.SupportsPause && installer.CurrentInstall?.AppName == appName) installer.ResumeInstall();
+    }
+    public Task StopProcessing() => CurrentInstaller?.StopProcessing() ?? Task.CompletedTask;
+    public Task LoadPendingInstalls() => Task.WhenAll(_registry.Providers
+        .Where(provider => provider.Authentication.AuthenticationStatus == AuthenticationStatus.LoggedIn)
+        .Select(provider => provider.Installer?.LoadPendingInstalls() ?? Task.CompletedTask));
+    public Task<(double DownloadBytes, double InstallBytes)> GetGameDownloadInstallSizes(
+        string appName, CancellationToken cancellationToken = default) =>
+        Resolve(appName).GetGameDownloadInstallSizes(appName, cancellationToken);
+    private ILauncherInstaller Resolve(string appName) =>
+        _registry.Get(GameId.Parse(appName).ProviderId).Installer
+        ?? throw new NotSupportedException("This launcher does not provide installation support.");
+    private static void RequireOwner(ILauncherProvider provider, InstallItem item)
+    {
+        if (GameId.Parse(item.AppName).ProviderId != provider.Id)
+            throw new InvalidOperationException("Provider emitted a foreign installation identity.");
+    }
+}
