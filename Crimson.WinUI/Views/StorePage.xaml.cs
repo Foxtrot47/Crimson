@@ -82,7 +82,7 @@ public sealed partial class StorePage : Page
             if (!ReferenceEquals(_storeWebView, webView))
                 return;
 
-            var environment = await WebViewEnvironmentFactory.CreateAsync();
+            var environment = await WebViewEnvironmentFactory.CreateAsync(Crimson.Providers.Epic.EpicLauncherProvider.ProviderId);
             if (!ReferenceEquals(_storeWebView, webView))
                 return;
 

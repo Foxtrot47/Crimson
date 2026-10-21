@@ -1,29 +1,34 @@
-﻿using System;
-using System.Text.Json;
+﻿using System.Text.Json;
+using System;
 using Crimson.Core;
 using Crimson.Utils;
-using Microsoft.UI.Xaml;
+using Crimson.Views;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml;
 using Microsoft.Web.WebView2.Core;
 using Serilog;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
 
-namespace Crimson.Views;
+namespace Crimson.Providers.Epic;
 
 /// <summary>
 /// An empty page that can be used on its own or navigated to within a Frame.
 /// </summary>
-public sealed partial class LoginPage : Page
+public sealed partial class EpicLoginPage : Page, ILauncherSignInView
 {
+    public FrameworkElement Element => this;
+    public void InitializeSignIn() => InitWebView();
+    public void CloseSignIn() => CloseWebView();
+
     private readonly EpicAuthManager _authManager = App.GetService<EpicAuthManager>();
     private readonly ILogger _log;
     private readonly EpicLoginMessageGate _loginMessageGate = new();
     private const string EpicGamesLauncherVersion = "11.0.1-14907503+++Portal+Release-Live";
     private WebView2? _loginWebView;
 
-    public LoginPage()
+    public EpicLoginPage()
     {
         this.InitializeComponent();
         _log = App.GetService<ILogger>();
@@ -74,9 +79,12 @@ public sealed partial class LoginPage : Page
             _loginWebView = webView;
 
             await WebViewEnvironmentFactory.WaitForLoadedAsync(webView);
+            if (!ReferenceEquals(_loginWebView, webView)) return;
 
-            var environment = await WebViewEnvironmentFactory.CreateAsync();
+            var environment = await WebViewEnvironmentFactory.CreateAsync(EpicLauncherProvider.ProviderId);
+            if (!ReferenceEquals(_loginWebView, webView)) return;
             await webView.EnsureCoreWebView2Async(environment);
+            if (!ReferenceEquals(_loginWebView, webView)) return;
             if (webView.CoreWebView2 is null)
             {
                 _log.Error("InitWebView: CoreWebView2 was still null after initialisation");

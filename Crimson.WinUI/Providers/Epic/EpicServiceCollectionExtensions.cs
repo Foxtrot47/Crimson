@@ -57,6 +57,7 @@ public static class EpicServiceCollectionExtensions
 
         services.AddSingleton<IProviderContentPolicy, EpicContentPolicy>();
         services.AddSingleton<ILauncherProvider, EpicLauncherProvider>();
+        services.AddSingleton<ILauncherFrontend, EpicFrontend>();
         return services;
     }
 

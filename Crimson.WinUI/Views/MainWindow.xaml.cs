@@ -744,14 +744,14 @@ public sealed partial class MainWindow : Window
                 ClearGlobalSearch();
                 NavControl.Visibility = Visibility.Collapsed;
                 LoginPage.Visibility = Visibility.Visible;
-                LoginPage.InitWebView();
+                LoginPage.InitializeSignIn(Crimson.Providers.Epic.EpicLauncherProvider.ProviderId);
                 break;
 
             case AuthenticationStatus.LoggedIn:
                 Log.Information("Logged in");
                 LoginModalTitle.Text = "Login Success";
 
-                LoginPage.CloseWebView();
+                LoginPage.CloseSignIn();
 
                 NavControl.Visibility = Visibility.Visible;
                 NavControl.IsEnabled = true;
