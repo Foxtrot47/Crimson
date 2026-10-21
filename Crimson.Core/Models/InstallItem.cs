@@ -4,6 +4,13 @@ namespace Crimson.Models;
 
 public class InstallItem(string appName, ActionType action, string location)
 {
+    public InstallItem ForGame(string appName)
+    {
+        var copy = (InstallItem)MemberwiseClone();
+        copy.AppName = appName;
+        return copy;
+    }
+
     public string AppName { get; set; } = appName;
     public ActionType Action { get; set; } = action;
     public string Location { get; set; } = location;
