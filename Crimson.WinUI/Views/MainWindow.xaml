@@ -180,38 +180,6 @@
                 </NavigationView.FooterMenuItems>
             </NavigationView>
 
-            <Grid
-                x:Name="LoginModal"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Stretch"
-                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
-                <Border
-                    Padding="40"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
-                    <StackPanel Orientation="Vertical" Spacing="20">
-                        <StackPanel
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Orientation="Horizontal"
-                            Spacing="20">
-                            <ProgressRing IsActive="True" />
-                            <TextBlock
-                                x:Name="LoginModalTitle"
-                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                Style="{ThemeResource TitleTextBlockStyle}"
-                                Text="Loading...." />
-                        </StackPanel>
-                        <TextBlock
-                            x:Name="LoginModalDescription"
-                            HorizontalAlignment="Center"
-                            Style="{ThemeResource SubtitleTextBlockStyle}"
-                            Text="Please wait" />
-                    </StackPanel>
-                </Border>
-            </Grid>
-            <local:LoginPage x:Name="LoginPage" Visibility="Collapsed" />
         </Grid>
         <crimson:TrayIconView x:Name="TrayIconView" />
     </Grid>

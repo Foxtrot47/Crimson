@@ -1,4 +1,5 @@
 ﻿using Crimson.Core;
+using Crimson.Providers;
 using Crimson.Utils;
 using Crimson.ViewModels;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -24,13 +25,8 @@ public sealed class SettingsViewModelTests : IDisposable
             NullLogger<SettingsManager>.Instance,
             installPath,
             logsPath);
-        var auth = new EpicAuthManager(
-            _logger,
-            storage,
-            new TestCredentialProtector(),
-            new HttpClient());
         var folderLauncher = new RecordingFolderLauncher();
-        var viewModel = new SettingsViewModel(settings, auth, folderLauncher);
+        var viewModel = new SettingsViewModel(settings, new LauncherAuthentication(new LauncherRegistry([new TestLauncherProvider("test")]), new TestUiDispatcher()), folderLauncher);
 
         viewModel.OpenLogsDirectoryCommand.Execute(null);
 

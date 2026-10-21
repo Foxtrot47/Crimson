@@ -2,13 +2,14 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
+using Crimson.Providers;
 
 namespace Crimson.ViewModels
 {
     public partial class SettingsViewModel : ObservableObject
     {
         private readonly SettingsManager _settingsManager;
-        private readonly EpicAuthManager _authManager;
+        private readonly LauncherAuthentication _authManager;
         private readonly IFolderLauncher _folderLauncher;
 
         public bool MicaEnabled
@@ -34,13 +35,14 @@ namespace Crimson.ViewModels
         }
 
         public string LogsDirectory => _settingsManager.LogsDirectory;
+        public System.Collections.Generic.IReadOnlyList<LauncherAccount> Accounts => _authManager.Accounts;
 
         [ObservableProperty]
         private bool _advancedSettingsExpanded;
 
         public SettingsViewModel(
             SettingsManager settingsManager,
-            EpicAuthManager authManager,
+            LauncherAuthentication authManager,
             IFolderLauncher folderLauncher)
         {
             _settingsManager = settingsManager;
@@ -49,10 +51,13 @@ namespace Crimson.ViewModels
         }
 
         [RelayCommand]
-        private async Task Logout()
+        private async Task DisconnectAccount(LauncherAccount account)
         {
-            await _authManager.Logout();
+            await _authManager.Logout(account.ProviderId);
         }
+
+        [RelayCommand]
+        private void ConnectAccount(LauncherAccount account) => _authManager.RequestSignIn(account.ProviderId);
 
         private async Task SaveSettingsAsync()
         {

@@ -146,7 +146,10 @@ namespace Crimson
             var activationArguments = InitialActivationArguments;
             InitialActivationArguments = null;
             if (activationArguments is not null && TryGetLaunchAppName(activationArguments, out var appName))
+            {
+                await EnsureAuthenticationAsync();
                 await LaunchFromShortcutAsync(appName);
+            }
             else
             {
                 ShowMainWindow();
@@ -231,20 +234,16 @@ namespace Crimson
                 GetService<LauncherAuthentication>().RequestSignIn(id.ProviderId);
         }
 
-        private async Task<AuthenticationStatus> EnsureAuthenticationAsync()
+        private async Task EnsureAuthenticationAsync()
         {
             await _authenticationGate.WaitAsync();
             try
             {
-                var authManager = GetService<EpicAuthManager>();
-                return authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn
-                    ? AuthenticationStatus.LoggedIn
-                    : await authManager.CheckAuthStatus();
+                await GetService<LauncherAuthentication>().CheckAllAuthStatuses();
+                await GetService<LauncherLibrary>().GetLibraryData();
+                await GetService<LauncherInstaller>().LoadPendingInstalls();
             }
-            finally
-            {
-                _authenticationGate.Release();
-            }
+            finally { _authenticationGate.Release(); }
         }
 
         private void ShowMainWindow()

@@ -58,11 +58,7 @@
 
                 <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Accounts" />
 
-                <toolkit:SettingsCard
-                    Command="{x:Bind ViewModel.LogoutCommand}"
-                    Description="This will log you out from the current account and return to the sign-in screen"
-                    Header="Logout"
-                    IsClickEnabled="True" />
+                <StackPanel x:Name="AccountList" Spacing="8" />
 
                 <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="Advanced Settings" />
 

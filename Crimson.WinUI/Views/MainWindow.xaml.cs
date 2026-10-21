@@ -42,7 +42,7 @@ public sealed partial class MainWindow : Window
     private const string GameNavTagPrefix = "game:";
 
     private ILogger _log = App.GetService<ILogger>();
-    private readonly EpicAuthManager _authManager;
+    private readonly LauncherAuthentication _authManager;
     private readonly LauncherInstaller _installManager;
     private readonly LauncherLibrary _libraryManager;
     private readonly LauncherRegistry _launchers;
@@ -106,7 +106,7 @@ public sealed partial class MainWindow : Window
         GlobalSearchBox.Loaded += (_, _) => UpdateTitleBarInteractiveRegion();
         GlobalSearchBox.SizeChanged += (_, _) => UpdateTitleBarInteractiveRegion();
 
-        _authManager = App.GetService<EpicAuthManager>();
+        _authManager = App.GetService<LauncherAuthentication>();
         _installManager = App.GetService<LauncherInstaller>();
         _libraryManager = App.GetService<LauncherLibrary>();
         _launchers = App.GetService<LauncherRegistry>();
@@ -126,7 +126,9 @@ public sealed partial class MainWindow : Window
         _activeInstall = IsActionRunning(_installManager.CurrentInstall) ? _installManager.CurrentInstall : null;
         RebuildInstalledMenu();
 
-        _authManager.AuthStatusChanged += AuthStatusChangedHandler;
+        _authManager.StatusChanged += AccountStatusChanged;
+        _authManager.SignInRequested += SignInRequested;
+        ContentFrame.Navigate(typeof(LibraryPage));
     }
 
     private void SetWindowIcon()
@@ -718,72 +720,51 @@ public sealed partial class MainWindow : Window
         if (navPageType is not null && !Equals(preNavPageType, navPageType))
             ContentFrame.Navigate(navPageType, null, transitionInfo);
     }
-    private void UpdateUIBasedOnAuthenticationStatus(AuthenticationStatus authStatus)
+    private void AccountStatusChanged(string providerId, AuthenticationStatus status)
     {
-        Log.Information("Auth status: {AuthStatus}", authStatus);
-
-        switch (authStatus)
+        DispatcherQueue.TryEnqueue(async () =>
         {
-            case AuthenticationStatus.Checking:
-                NavControl.Visibility = Visibility.Collapsed;
-                LoginPage.Visibility = Visibility.Collapsed;
-                LoginModal.Visibility = Visibility.Visible;
-                LoginModalTitle.Text = "Checking authentication status";
-                LoginModalDescription.Text = "Please wait...";
-                break;
-
-            case AuthenticationStatus.LoggedOut:
-                _libraryCache.Clear();
-                RebuildInstalledMenu(force: true);
-                ClearGlobalSearch();
-                NavControl.Visibility = Visibility.Collapsed;
-                LoginPage.Visibility = Visibility.Visible;
-                LoginPage.InitializeSignIn(Crimson.Providers.Epic.EpicLauncherProvider.ProviderId);
-                break;
-
-            case AuthenticationStatus.LoggedIn:
-                Log.Information("Logged in");
-                LoginModalTitle.Text = "Login Success";
-
-                LoginPage.CloseSignIn();
-
-                NavControl.Visibility = Visibility.Visible;
-                NavControl.IsEnabled = true;
-                LoginPage.Visibility = Visibility.Collapsed;
-                LoginModal.Visibility = Visibility.Collapsed;
-                NavControl.SelectedItem = NavControl.MenuItems[0];
-                NavControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
-                Log.Information("Opening Library Page");
-
-                _installManager.LoadPendingInstalls();
-
-                Task.Run(async () =>
+            if (status == AuthenticationStatus.LoggedIn && _signInProviderId == providerId)
+                _signInDialog?.Hide();
+            if (status is AuthenticationStatus.LoggedIn or AuthenticationStatus.LoggedOut or AuthenticationStatus.LoginFailed)
+            {
+                try
                 {
-                    try
-                    {
-                        await _libraryManager.GetLibraryData();
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.Error(ex, "MainWindow: could not load the installed games list");
-                    }
-                });
-                break;
-
-            case AuthenticationStatus.LoginFailed:
-                LoginModalTitle.Text = "Login failed";
-                LoginModalDescription.Text = "Please try again";
-                LoginModal.Visibility = Visibility.Visible;
-                NavControl.Visibility = Visibility.Collapsed;
-                LoginPage.Visibility = Visibility.Visible;
-                break;
-        }
+                    await _libraryManager.GetLibraryData();
+                    if (status == AuthenticationStatus.LoggedIn) await _installManager.LoadPendingInstalls();
+                }
+                catch (Exception ex) { _log.Error(ex, "Could not refresh connected libraries"); }
+            }
+        });
     }
 
-    private void AuthStatusChangedHandler(object sender, AuthStatusChangedEventArgs e)
+    private void SignInRequested(string providerId) => DispatcherQueue.TryEnqueue(async () =>
     {
-        DispatcherQueue.TryEnqueue(() => UpdateUIBasedOnAuthenticationStatus(e.NewStatus));
-    }
+        if (_signInDialog is not null) return;
+        _signInProviderId = providerId;
+        var page = new LoginPage { Width = 900, Height = 620 };
+        _signInPage = page;
+        var dialog = new ContentDialog
+        {
+            Title = "Connect " + _launchers.Get(providerId).DisplayName,
+            Content = page,
+            CloseButtonText = "Close",
+            XamlRoot = Content.XamlRoot,
+            Style = (Style)Application.Current.Resources["DefaultContentDialogStyle"]
+        };
+        _signInDialog = dialog;
+        dialog.Opened += (_, _) => page.InitializeSignIn(providerId);
+        try { await dialog.ShowAsync(); }
+        catch (Exception ex) { _log.Error(ex, "Could not open account sign-in for {ProviderId}", providerId); }
+        finally
+        {
+            page.CloseSignIn();
+            _signInPage = null;
+            _signInDialog = null;
+            _signInProviderId = null;
+        }
+    });
+
     private bool TrySetSystemBackdrop()
     {
         if (!MicaController.IsSupported())
@@ -828,8 +809,10 @@ public sealed partial class MainWindow : Window
         this.Activated -= Window_Activated;
         _mConfigurationSource = null;
 
-        _authManager.AuthStatusChanged -= AuthStatusChangedHandler;
-        LoginPage.CloseSignIn();
+        _authManager.StatusChanged -= AccountStatusChanged;
+        _authManager.SignInRequested -= SignInRequested;
+        _signInDialog?.Hide();
+        _signInPage?.CloseSignIn();
         _libraryManager.LibraryUpdated -= LibraryUpdatedHandler;
         _libraryManager.GameStatusUpdated -= GameStatusUpdatedHandler;
         CancelStoreSearch();
