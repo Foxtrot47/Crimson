@@ -6,5 +6,5 @@ public sealed class EpicFrontend : ILauncherFrontend
 {
     public string ProviderId => EpicLauncherProvider.ProviderId;
     public ILauncherSignInView CreateSignInView() => new EpicLoginPage();
-    public Type StorePageType => typeof(Crimson.Views.StorePage);
+    public Type StorePageType => typeof(EpicStorePage);
 }

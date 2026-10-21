@@ -1,10 +1,11 @@
+﻿using System.Threading.Tasks;
 using System;
-using System.Threading.Tasks;
+using Crimson.Views;
 using Microsoft.Web.WebView2.Core;
 
-namespace Crimson.Views;
+namespace Crimson.Providers.Epic;
 
-internal static class StoreWebIntegration
+internal static class EpicStoreWebIntegration
 {
     private const string Script = """
         (() => {

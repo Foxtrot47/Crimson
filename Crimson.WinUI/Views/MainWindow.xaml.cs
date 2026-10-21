@@ -1,21 +1,22 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Repository;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
-using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml;
 using Serilog;
 using WinRT;
 
@@ -40,14 +41,17 @@ public sealed partial class MainWindow : Window
 
     private const string GameNavTagPrefix = "game:";
 
-    public bool IsLoggedIn;
     private ILogger _log = App.GetService<ILogger>();
     private readonly EpicAuthManager _authManager;
-    private readonly EpicInstallManager _installManager;
-    private readonly EpicLibraryManager _libraryManager;
-    private readonly IEpicGamesRepository _storeRepository;
+    private readonly LauncherInstaller _installManager;
+    private readonly LauncherLibrary _libraryManager;
+    private readonly LauncherRegistry _launchers;
+    private readonly LauncherStores _stores;
+    private ContentDialog? _signInDialog;
+    private LoginPage? _signInPage;
+    private string? _signInProviderId;
 
-    private List<Game> _libraryCache = new();
+    private List<LauncherGame> _libraryCache = new();
     private CancellationTokenSource? _storeSearchCancellation;
     private string? _currentGameAppName;
 
@@ -78,7 +82,7 @@ public sealed partial class MainWindow : Window
         public required string Subtitle { get; init; }
         public string? AppName { get; init; }
         public string? StoreQuery { get; init; }
-        public string? StoreProductSlug { get; init; }
+        public StoreDestination? StoreTarget { get; init; }
         public ImageSource? Thumbnail { get; init; }
         public string? IconGlyph { get; init; }
         public bool IsLoading { get; init; }
@@ -103,9 +107,11 @@ public sealed partial class MainWindow : Window
         GlobalSearchBox.SizeChanged += (_, _) => UpdateTitleBarInteractiveRegion();
 
         _authManager = App.GetService<EpicAuthManager>();
-        _installManager = App.GetService<EpicInstallManager>();
-        _libraryManager = App.GetService<EpicLibraryManager>();
-        _storeRepository = App.GetService<IEpicGamesRepository>();
+        _installManager = App.GetService<LauncherInstaller>();
+        _libraryManager = App.GetService<LauncherLibrary>();
+        _launchers = App.GetService<LauncherRegistry>();
+        _stores = App.GetService<LauncherStores>();
+        StoreNavItem.Visibility = _stores.HasStores ? Visibility.Visible : Visibility.Collapsed;
         _log = App.GetService<ILogger>();
 
         _libraryManager.LibraryUpdated += LibraryUpdatedHandler;
@@ -120,7 +126,6 @@ public sealed partial class MainWindow : Window
         _activeInstall = IsActionRunning(_installManager.CurrentInstall) ? _installManager.CurrentInstall : null;
         RebuildInstalledMenu();
 
-        IsLoggedIn = false;
         _authManager.AuthStatusChanged += AuthStatusChangedHandler;
     }
 
@@ -185,7 +190,7 @@ public sealed partial class MainWindow : Window
         CancelStoreSearch();
 
         var query = NormalizeSearchQuery(value);
-        var shouldSearchStore = query.Length >= 2;
+        var shouldSearchStore = query.Length >= 2 && _stores.HasStores;
         UpdateSearchSuggestions(query, showStoreLoading: shouldSearchStore);
         if (!shouldSearchStore)
             return;
@@ -202,7 +207,7 @@ public sealed partial class MainWindow : Window
         try
         {
             await Task.Delay(TimeSpan.FromMilliseconds(400), cancellationSource.Token);
-            var results = await _storeRepository.SearchStore(query, cancellationSource.Token);
+            var results = await _stores.SearchStore(query, cancellationSource.Token);
             if (ReferenceEquals(_storeSearchCancellation, cancellationSource) &&
                 string.Equals(NormalizeSearchQuery(GlobalSearchBox.Text), query, StringComparison.Ordinal))
                 UpdateSearchSuggestions(query, results);
@@ -229,7 +234,8 @@ public sealed partial class MainWindow : Window
 
         var suggestion = args.ChosenSuggestion as SearchSuggestion
                          ?? GetLocalSearchSuggestions(query).FirstOrDefault()
-                         ?? CreateStoreSearchSuggestion(query);
+                         ?? (!_stores.HasStores ? null : CreateStoreSearchSuggestion(query));
+        if (suggestion is null) return;
 
         ClearGlobalSearch();
         if (suggestion.AppName is not null)
@@ -238,15 +244,15 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (suggestion.StoreProductSlug is not null)
-            NavigateToStore(StorePage.CreateProductUri(suggestion.StoreProductSlug));
-        else
-            NavigateToStore(StorePage.CreateSearchUri(suggestion.StoreQuery!));
+        if (suggestion.StoreTarget is not null)
+            NavigateToStore(suggestion.StoreTarget);
+        else if (_stores.HasStores)
+            NavigateToStore(suggestion.StoreQuery!);
     }
 
     private void UpdateSearchSuggestions(
         string query,
-        IReadOnlyList<StoreSearchResult>? storeResults = null,
+        IReadOnlyList<StoreProduct>? storeResults = null,
         bool showStoreLoading = false)
     {
         if (query.Length == 0)
@@ -261,8 +267,8 @@ public sealed partial class MainWindow : Window
             suggestions.AddRange(storeResults.Select(result => new SearchSuggestion
             {
                 DisplayText = result.Title,
-                Subtitle = "Epic Games Store",
-                StoreProductSlug = result.ProductSlug,
+                Subtitle = _stores.DisplayName(result.ProviderId),
+                StoreTarget = _stores.ProductDestination(result),
                 Thumbnail = CreateSearchThumbnail(result.ImageUrl)
             }));
         }
@@ -272,14 +278,14 @@ public sealed partial class MainWindow : Window
                 suggestions.Add(CreateStoreLoadingSuggestion());
         }
 
-        suggestions.Add(CreateStoreSearchSuggestion(query));
+        if (_stores.HasStores) suggestions.Add(CreateStoreSearchSuggestion(query));
         GlobalSearchBox.ItemsSource = suggestions;
     }
 
     private List<SearchSuggestion> GetLocalSearchSuggestions(string query)
     {
         return _libraryCache
-            .Where(game => game.Metadata is not null && !game.IsDlc())
+            .Where(game => !game.IsDlc())
             .Where(game =>
                 (game.AppTitle?.Contains(query, StringComparison.CurrentCultureIgnoreCase) ?? false) ||
                 game.AppName.Contains(query, StringComparison.OrdinalIgnoreCase))
@@ -289,19 +295,16 @@ public sealed partial class MainWindow : Window
             .Select(game => new SearchSuggestion
             {
                 DisplayText = string.IsNullOrWhiteSpace(game.AppTitle) ? game.AppName : game.AppTitle,
-                Subtitle = "In your library",
+                Subtitle = "In your library · " + _launchers.Get(game.Id.ProviderId).DisplayName,
                 AppName = game.AppName,
                 Thumbnail = CreateSearchThumbnail(game)
             })
             .ToList();
     }
 
-    private static ImageSource? CreateSearchThumbnail(Game game)
+    private static ImageSource? CreateSearchThumbnail(LauncherGame game)
     {
-        var url = game.Metadata?.KeyImages?
-            .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
-                  ?? game.Metadata?.KeyImages?
-                      .FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
+        var url = game.CoverImageUrl ?? game.LandscapeImageUrl;
         return CreateSearchThumbnail(url);
     }
 
@@ -327,25 +330,19 @@ public sealed partial class MainWindow : Window
         SkeletonVisibility = Visibility.Visible
     };
 
-    private static SearchSuggestion CreateStoreSearchSuggestion(string query) => new()
+    private SearchSuggestion CreateStoreSearchSuggestion(string query) => new()
     {
-        DisplayText = $"Search Epic Games Store for “{query}”",
+        DisplayText = $"Search all stores for “{query}”",
         Subtitle = "View all Store results",
         StoreQuery = query,
         IconGlyph = "\uE719"
     };
 
-    private void NavigateToStore(Uri uri)
+    private void NavigateToStore(object destination)
     {
         NavControl.SelectedItem = StoreNavItem;
-        if (ContentFrame.Content is StorePage storePage)
-        {
-            storePage.Open(uri);
-            return;
-        }
-
         _currentGameAppName = null;
-        ContentFrame.Navigate(typeof(StorePage), uri, new EntranceNavigationTransitionInfo());
+        ContentFrame.Navigate(typeof(StorePage), destination, new EntranceNavigationTransitionInfo());
     }
 
     private void ClearGlobalSearch()
@@ -398,24 +395,24 @@ public sealed partial class MainWindow : Window
         ContentFrame.Navigate(typeof(GameInfoPage), appName, transitionInfo);
     }
 
-    private void LibraryUpdatedHandler(IEnumerable<Game> games)
+    private void LibraryUpdatedHandler(IEnumerable<LauncherGame> games)
     {
         if (games == null) return;
-        var snapshot = games.ToList();
         DispatcherQueue.TryEnqueue(() =>
         {
-            _libraryCache = snapshot;
+            _libraryCache = _libraryManager.CachedGames.ToList();
             RebuildInstalledMenu();
             if (!string.IsNullOrWhiteSpace(GlobalSearchBox.Text))
                 BeginSearch(GlobalSearchBox.Text);
         });
     }
 
-    private void GameStatusUpdatedHandler(Game game)
+    private void GameStatusUpdatedHandler(LauncherGame game)
     {
         if (game == null) return;
         DispatcherQueue.TryEnqueue(() =>
         {
+            if (_launchers.Get(game.Id.ProviderId).Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
             var index = _libraryCache.FindIndex(cached =>
                 string.Equals(cached.AppName, game.AppName, StringComparison.Ordinal));
             if (index >= 0)
@@ -431,7 +428,7 @@ public sealed partial class MainWindow : Window
     {
         var activeAppName = _activeInstall?.AppName;
         var installed = _libraryCache
-            .Where(game => game.Metadata is not null && !game.IsDlc())
+            .Where(game => !game.IsDlc())
             .Where(game => IsPaneListed(game, activeAppName))
             .OrderBy(game => game.AppTitle, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
@@ -459,14 +456,14 @@ public sealed partial class MainWindow : Window
         ApplyInstallVisual(_activeInstall);
     }
 
-    private static bool IsPaneListed(Game game, string? activeAppName) =>
+    private static bool IsPaneListed(LauncherGame game, string? activeAppName) =>
         string.Equals(game.AppName, activeAppName, StringComparison.Ordinal) ||
         game.LocalAppState?.InstallStatus is InstallState.Installed or InstallState.NeedUpdate
             or InstallState.Installing or InstallState.InstallationPaused
             or InstallState.Updating or InstallState.UpdatingPaused
             or InstallState.Repairing;
 
-    private NavigationViewItem CreateInstalledGameItem(Game game)
+    private NavigationViewItem CreateInstalledGameItem(LauncherGame game)
     {
         var appName = game.AppName;
         var title = string.IsNullOrWhiteSpace(game.AppTitle) ? appName : game.AppTitle;
@@ -561,7 +558,8 @@ public sealed partial class MainWindow : Window
     {
         DispatcherQueue.TryEnqueue(() =>
         {
-            _activeInstall = IsActionRunning(installItem) ? installItem : null;
+            var current = _installManager.CurrentInstall;
+            _activeInstall = IsActionRunning(current) ? current : null;
             RebuildInstalledMenu();
             ApplyInstallVisual(_activeInstall);
         });
@@ -569,7 +567,7 @@ public sealed partial class MainWindow : Window
 
     private void InstallProgressUpdateHandler(InstallItem? installItem)
     {
-        if (installItem is null) return;
+        if (installItem is null || _installManager.CurrentInstall?.AppName != installItem.AppName) return;
         DispatcherQueue.TryEnqueue(() => ApplyInstallVisual(installItem));
     }
 
@@ -666,13 +664,9 @@ public sealed partial class MainWindow : Window
         brush.GradientStops[2].Offset = offset;
     }
 
-    private static IconElement? CreateGameIcon(Game game)
+    private static IconElement? CreateGameIcon(LauncherGame game)
     {
-        var keyImages = game.Metadata?.KeyImages;
-        if (keyImages is null) return null;
-
-        var url = keyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
-                  ?? keyImages.FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
+        var url = game.CoverImageUrl ?? game.LandscapeImageUrl;
 
         if (string.IsNullOrEmpty(url)) return null;
 
@@ -834,6 +828,8 @@ public sealed partial class MainWindow : Window
         this.Activated -= Window_Activated;
         _mConfigurationSource = null;
 
+        _authManager.AuthStatusChanged -= AuthStatusChangedHandler;
+        LoginPage.CloseSignIn();
         _libraryManager.LibraryUpdated -= LibraryUpdatedHandler;
         _libraryManager.GameStatusUpdated -= GameStatusUpdatedHandler;
         CancelStoreSearch();
@@ -892,5 +888,3 @@ internal class WindowsSystemDispatcherQueueHelper
         CreateDispatcherQueueController(options, ref _mDispatcherQueueController);
     }
 }
-
-

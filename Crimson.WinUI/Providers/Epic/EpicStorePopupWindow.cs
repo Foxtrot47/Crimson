@@ -1,24 +1,25 @@
-using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
+using System;
 using Crimson.Utils;
-using Microsoft.UI.Xaml;
+using Crimson.Views;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml;
 using Microsoft.Web.WebView2.Core;
 using Serilog;
 
-namespace Crimson.Views;
+namespace Crimson.Providers.Epic;
 
-internal sealed class StorePopupWindow : Window
+internal sealed class EpicStorePopupWindow : Window
 {
-    private static readonly HashSet<StorePopupWindow> OpenWindows = [];
+    private static readonly HashSet<EpicStorePopupWindow> OpenWindows = [];
 
     private readonly CoreWebView2Environment _environment;
     private readonly Func<string, Task<bool>> _handleLauncherRequest;
     private readonly ILogger _log;
     private readonly WebView2 _webView;
 
-    private StorePopupWindow(
+    private EpicStorePopupWindow(
         CoreWebView2Environment environment,
         ILogger log,
         Func<string, Task<bool>> handleLauncherRequest)
@@ -38,16 +39,16 @@ internal sealed class StorePopupWindow : Window
 
     public static void CloseAll()
     {
-        foreach (var window in new List<StorePopupWindow>(OpenWindows))
+        foreach (var window in new List<EpicStorePopupWindow>(OpenWindows))
             window.Close();
     }
 
-    public static async Task<StorePopupWindow> CreateAsync(
+    public static async Task<EpicStorePopupWindow> CreateAsync(
         CoreWebView2Environment environment,
         ILogger log,
         Func<string, Task<bool>> handleLauncherRequest)
     {
-        var window = new StorePopupWindow(environment, log, handleLauncherRequest);
+        var window = new EpicStorePopupWindow(environment, log, handleLauncherRequest);
         OpenWindows.Add(window);
         window.Activate();
 
@@ -58,7 +59,7 @@ internal sealed class StorePopupWindow : Window
             if (window._webView.CoreWebView2 is null)
                 throw new InvalidOperationException("Popup CoreWebView2 was null after initialization");
 
-            await StoreWebIntegration.ApplyAsync(window._webView.CoreWebView2);
+            await EpicStoreWebIntegration.ApplyAsync(window._webView.CoreWebView2);
             window._webView.CoreWebView2.DownloadStarting += window.DownloadStarting;
             window._webView.CoreWebView2.NewWindowRequested += window.NewWindowRequested;
             return window;
@@ -80,7 +81,7 @@ internal sealed class StorePopupWindow : Window
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "StorePopupWindow: failed to handle a download request");
+            _log.Error(ex, "EpicStorePopupWindow: failed to handle a download request");
         }
         finally
         {
@@ -103,7 +104,7 @@ internal sealed class StorePopupWindow : Window
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "StorePopupWindow: failed to open a nested popup");
+            _log.Error(ex, "EpicStorePopupWindow: failed to open a nested popup");
         }
         finally
         {

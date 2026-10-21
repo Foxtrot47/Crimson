@@ -1,17 +1,18 @@
-﻿using System;
-using System.Linq;
+﻿using System.Linq;
 using System.Threading.Tasks;
+using System;
 using Crimson.Core;
 using Crimson.Utils;
-using Microsoft.UI.Xaml;
+using Crimson.Views;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using Microsoft.UI.Xaml;
 using Microsoft.Web.WebView2.Core;
 using Serilog;
 
-namespace Crimson.Views;
+namespace Crimson.Providers.Epic;
 
-public sealed partial class StorePage : Page
+public sealed partial class EpicStorePage : Page, ILauncherStoreView
 {
     private static readonly Uri StoreUri = new("https://store.epicgames.com/");
 
@@ -23,7 +24,7 @@ public sealed partial class StorePage : Page
     private WebView2? _storeWebView;
     private bool _ownershipRefreshed;
 
-    public StorePage()
+    public EpicStorePage()
     {
         InitializeComponent();
     }
@@ -59,7 +60,7 @@ public sealed partial class StorePage : Page
     {
         if (!_ownershipRefreshed)
             _libraryManager.InvalidateCache();
-        StorePopupWindow.CloseAll();
+        EpicStorePopupWindow.CloseAll();
         CloseWebView();
         base.OnNavigatedFrom(e);
     }
@@ -82,7 +83,7 @@ public sealed partial class StorePage : Page
             if (!ReferenceEquals(_storeWebView, webView))
                 return;
 
-            var environment = await WebViewEnvironmentFactory.CreateAsync(Crimson.Providers.Epic.EpicLauncherProvider.ProviderId);
+            var environment = await WebViewEnvironmentFactory.CreateAsync(EpicLauncherProvider.ProviderId);
             if (!ReferenceEquals(_storeWebView, webView))
                 return;
 
@@ -94,7 +95,7 @@ public sealed partial class StorePage : Page
             if (webView.CoreWebView2 is null)
                 throw new InvalidOperationException("CoreWebView2 was null after initialization");
 
-            await StoreWebIntegration.ApplyAsync(webView.CoreWebView2);
+            await EpicStoreWebIntegration.ApplyAsync(webView.CoreWebView2);
             webView.NavigationStarting += StoreNavigationStarting;
             webView.NavigationCompleted += StoreNavigationCompleted;
             webView.CoreWebView2.DownloadStarting += StoreDownloadStarting;
@@ -106,7 +107,7 @@ public sealed partial class StorePage : Page
             if (!ReferenceEquals(_storeWebView, webView))
                 return;
 
-            _log.Error(ex, "StorePage: failed to initialize the store WebView");
+            _log.Error(ex, "EpicStorePage: failed to initialize the store WebView");
             ShowError("Check your connection and WebView2 Runtime, then try again.");
         }
     }
@@ -137,7 +138,7 @@ public sealed partial class StorePage : Page
 
         if (!e.IsSuccess)
         {
-            _log.Warning("StorePage: navigation failed with {WebErrorStatus}", e.WebErrorStatus);
+            _log.Warning("EpicStorePage: navigation failed with {WebErrorStatus}", e.WebErrorStatus);
             ShowError("The Epic Games Store did not finish loading. Try again.");
         }
     }
@@ -161,13 +162,13 @@ public sealed partial class StorePage : Page
             if (await HandleLauncherRequestAsync(e.Uri) || _environment is null)
                 return;
 
-            var popup = await StorePopupWindow.CreateAsync(
+            var popup = await EpicStorePopupWindow.CreateAsync(
                 _environment, _log, HandleLauncherRequestAsync);
             e.NewWindow = popup.CoreWebView2;
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "StorePage: failed to open an embedded popup");
+            _log.Error(ex, "EpicStorePage: failed to open an embedded popup");
         }
         finally
         {
@@ -201,14 +202,14 @@ public sealed partial class StorePage : Page
 
             LoadingRing.IsActive = false;
             if (game is not null)
-                Frame.Navigate(typeof(GameInfoPage), game.AppName);
+                Frame.Navigate(typeof(GameInfoPage), new GameId(EpicLauncherProvider.ProviderId, game.AppName).ToString());
             else
                 Frame.Navigate(typeof(LibraryPage));
         }
         catch (Exception ex)
         {
             LoadingRing.IsActive = false;
-            _log.Error(ex, "StorePage: failed to open an Epic launcher request");
+            _log.Error(ex, "EpicStorePage: failed to open an Epic launcher request");
             ShowError("Your library could not be refreshed. Try again.");
         }
 
