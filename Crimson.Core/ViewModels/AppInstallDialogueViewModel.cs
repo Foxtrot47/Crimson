@@ -1,14 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
+using System.Threading;
+using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Utils;
 using Serilog;
 
@@ -16,9 +17,9 @@ namespace Crimson.ViewModels;
 
 public partial class AppInstallDialogViewModel : ObservableObject
 {
-    private readonly EpicInstallManager _installManager;
-    private readonly EpicLibraryManager _libraryManager;
-    private readonly Storage _storageService;
+    private readonly LauncherInstaller _installManager;
+    private readonly LauncherLibrary _libraryManager;
+    private readonly IApplicationStorage _storageService;
     private readonly ILogger _logger;
     private readonly IUiDispatcher _uiDispatcher;
 
@@ -72,6 +73,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
     private bool _hasDlcs;
 
     private bool _createDesktopShortcut;
+    public bool SupportsShortcuts => !string.IsNullOrEmpty(_gameAppName) &&
+        _installManager.SupportsShortcutsFor(_gameAppName);
     public bool CreateDesktopShortcut
     {
         get => _createDesktopShortcut;
@@ -92,9 +95,9 @@ public partial class AppInstallDialogViewModel : ObservableObject
 
     public AppInstallDialogViewModel(
         ILogger logger,
-        EpicInstallManager installManager,
-        EpicLibraryManager libraryManager,
-        Storage storage,
+        LauncherInstaller installManager,
+        LauncherLibrary libraryManager,
+        IApplicationStorage storage,
         IUiDispatcher uiDispatcher)
     {
         _logger = logger;
@@ -104,7 +107,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
         _uiDispatcher = uiDispatcher;
     }
 
-    public async Task InitializeAsync(Game gameInfo, CancellationToken cancellationToken = default)
+    public async Task InitializeAsync(LauncherGame gameInfo, CancellationToken cancellationToken = default)
     {
         var generation = new InitializationState(cancellationToken);
         Interlocked.Exchange(ref _initialization, generation);
@@ -112,6 +115,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
         {
             Activate();
             _gameAppName = gameInfo.AppName;
+            OnPropertyChanged(nameof(SupportsShortcuts));
             GameTitle = gameInfo.AppTitle;
             GameImageUrl = SelectImageUrl(gameInfo);
             InstallLocation = Path.Combine(_storageService.DefaultInstallPath, gameInfo.AppTitle);
@@ -136,17 +140,17 @@ public partial class AppInstallDialogViewModel : ObservableObject
             if (!IsCurrentInitialization(generation))
                 return;
 
-            generation.InstallSize = sizes.totalWriteSizeMb;
+            generation.InstallSize = sizes.InstallBytes;
             _uiDispatcher.TryEnqueue(() =>
             {
                 if (!IsCurrentInitialization(generation))
                     return;
 
-                TotalDownloadSize = FormatSize(sizes.totalDownloadSizeMb);
-                TotalInstallSize = FormatSize(sizes.totalWriteSizeMb);
+                TotalDownloadSize = FormatSize(sizes.DownloadBytes);
+                TotalInstallSize = FormatSize(sizes.InstallBytes);
             });
 
-            await UpdateDriveSpace(InstallLocation, sizes.totalWriteSizeMb, generation).ConfigureAwait(false);
+            await UpdateDriveSpace(InstallLocation, sizes.InstallBytes, generation).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -168,11 +172,9 @@ public partial class AppInstallDialogViewModel : ObservableObject
         }
     }
 
-    internal static string? SelectImageUrl(Game gameInfo)
+    internal static string? SelectImageUrl(LauncherGame gameInfo)
     {
-        var images = gameInfo.Metadata.KeyImages;
-        return images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
-            ?? images.FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
+        return gameInfo.CoverImageUrl ?? gameInfo.LandscapeImageUrl;
     }
 
     public void Activate()
@@ -284,8 +286,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
         // Queue base game install
         _installManager.AddToQueue(new InstallItem(_gameAppName, ActionType.Install, InstallLocation)
         {
-            CreateDesktopShortcut = CreateDesktopShortcut,
-            CreateStartMenuShortcut = CreateStartMenuShortcut
+            CreateDesktopShortcut = SupportsShortcuts && CreateDesktopShortcut,
+            CreateStartMenuShortcut = SupportsShortcuts && CreateStartMenuShortcut
         });
         _logger.Information("GameInfoViewModel: Added {Game} to Installation Queue", GameTitle);
 
@@ -312,4 +314,3 @@ public partial class AppInstallDialogViewModel : ObservableObject
         return $"{size:0.##} {sizes[order]}";
     }
 }
-

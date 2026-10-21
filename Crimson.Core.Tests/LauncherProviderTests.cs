@@ -206,6 +206,24 @@ public sealed class LauncherProviderTests
         Assert.Throws<NotSupportedException>(() => installer.AddToQueue(new InstallItem(game.AppName, ActionType.Install, "path")));
     }
 
+    [Fact]
+    public async Task NeutralGamePresentationHonorsProviderCapabilities()
+    {
+        var provider = new TestLauncherProvider("ea");
+        var game = provider.Games.Add("123");
+        var registry = new LauncherRegistry([provider]);
+        var vm = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance,
+            new LauncherInstaller(registry), new LauncherLibrary(registry), new ImmediateUiDispatcher());
+        await vm.OnNavigatedTo(game.AppName);
+        Assert.Equal(game.Id, vm.Game!.Id);
+        Assert.Equal(game.CoverImageUrl, vm.TitleImageUrl);
+        Assert.True(vm.IsPrimaryActionEnabled);
+        Assert.False(vm.VerifyRepairCommand.CanExecute(null));
+        Assert.False(vm.MoveGameCommand.CanExecute(null));
+        Assert.False(vm.UninstallCommand.CanExecute(null));
+        vm.OnNavigatedFrom();
+    }
+
     [Theory]
     [InlineData("ea", "offer/id:with spaces % and 雪")]
     [InlineData("ubisoft", "123")]

@@ -1,4 +1,5 @@
-using Crimson.Models;
+﻿using Crimson.Models;
+using Crimson.Providers.Epic;
 using Crimson.ViewModels;
 
 namespace Crimson.Tests;
@@ -26,7 +27,7 @@ public sealed class PortablePresentationTests
             new KeyImage { Type = "DieselGameBox", Url = "box" },
             new KeyImage { Type = "DieselGameBoxTall", Url = "tall" });
 
-        Assert.Equal("tall", AppInstallDialogViewModel.SelectImageUrl(game));
+        Assert.Equal("tall", AppInstallDialogViewModel.SelectImageUrl(EpicLauncherProvider.ToLauncherGame(game)));
     }
 
     [Fact]
@@ -34,13 +35,13 @@ public sealed class PortablePresentationTests
     {
         var game = GameWithImages(new KeyImage { Type = "DieselGameBox", Url = "box" });
 
-        Assert.Equal("box", AppInstallDialogViewModel.SelectImageUrl(game));
+        Assert.Equal("box", AppInstallDialogViewModel.SelectImageUrl(EpicLauncherProvider.ToLauncherGame(game)));
     }
 
     [Fact]
     public void MissingInstallArtworkProducesNull()
     {
-        Assert.Null(AppInstallDialogViewModel.SelectImageUrl(GameWithImages()));
+        Assert.Null(AppInstallDialogViewModel.SelectImageUrl(EpicLauncherProvider.ToLauncherGame(GameWithImages())));
     }
 
     private static Game GameWithImages(params KeyImage[] images) => new()

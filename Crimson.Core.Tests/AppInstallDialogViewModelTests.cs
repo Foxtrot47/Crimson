@@ -1,6 +1,8 @@
 ﻿using System.Text;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers.Epic;
+using Crimson.Providers;
 using Crimson.Repository;
 using Crimson.Utils;
 using Crimson.ViewModels;
@@ -14,6 +16,11 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         Path.GetTempPath(),
         $"crimson-install-dialog-{Guid.NewGuid():N}");
     private readonly ILogger _logger = new LoggerConfiguration().CreateLogger();
+
+    private LauncherRegistry CreateLaunchers(Storage storage, IEpicGamesRepository repository,
+        EpicLibraryManager library, EpicInstallManager installer) => new([
+            new EpicLauncherProvider(new EpicAuthManager(_logger, storage, new TestCredentialProtector(), new HttpClient()),
+                library, installer, repository)]);
 
     [Fact]
     public async Task OlderInitializationCannotOverwriteNewerGame()
@@ -33,15 +40,16 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
             new EpicDownloadManager(_logger, new HttpClient()),
             new UnusedShortcutManager(),
             new AllowInstallPermissionChecker());
+        var launchers = CreateLaunchers(storage, repository, library, installer);
         var viewModel = new AppInstallDialogViewModel(
             _logger,
-            installer,
-            library,
+            new LauncherInstaller(launchers),
+            new LauncherLibrary(launchers),
             storage,
             new ImmediateUiDispatcher());
 
-        var firstInitialization = viewModel.InitializeAsync(firstGame);
-        var secondInitialization = viewModel.InitializeAsync(secondGame);
+        var firstInitialization = viewModel.InitializeAsync(EpicLauncherProvider.ToLauncherGame(firstGame));
+        var secondInitialization = viewModel.InitializeAsync(EpicLauncherProvider.ToLauncherGame(secondGame));
         repository.Complete("second", CreateJsonManifest(downloadBytes: 200, writeBytes: 20));
         await secondInitialization;
         repository.Complete("first", CreateJsonManifest(downloadBytes: 100, writeBytes: 10));
@@ -68,12 +76,13 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         var library = CreateLibrary(storage, repository);
         var installer = new EpicInstallManager(_logger, library, repository, storage,
             new EpicDownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
-        var vm = new AppInstallDialogViewModel(_logger, installer, library, storage, dispatcher);
+        var launchers = CreateLaunchers(storage, repository, library, installer);
+        var vm = new AppInstallDialogViewModel(_logger, new LauncherInstaller(launchers), new LauncherLibrary(launchers), storage, dispatcher);
 
-        var oldInitialization = vm.InitializeAsync(first);
+        var oldInitialization = vm.InitializeAsync(EpicLauncherProvider.ToLauncherGame(first));
         repository.Complete("first", CreateJsonManifest(100, 10));
         await dispatcher.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var currentInitialization = vm.InitializeAsync(second);
+        var currentInitialization = vm.InitializeAsync(EpicLauncherProvider.ToLauncherGame(second));
         repository.Complete("second", CreateJsonManifest(200, 20));
         try
         {
@@ -106,13 +115,14 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         var library = CreateLibrary(storage, repository);
         var installer = new EpicInstallManager(_logger, library, repository, storage,
             new EpicDownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var launchers = CreateLaunchers(storage, repository, library, installer);
         var viewModel = new AppInstallDialogViewModel(
-            _logger, installer, library, storage, new ImmediateUiDispatcher());
+            _logger, new LauncherInstaller(launchers), new LauncherLibrary(launchers), storage, new ImmediateUiDispatcher());
         var requestedClose = false;
         viewModel.RequestClose += () => requestedClose = true;
         using var cancellation = new CancellationTokenSource();
 
-        var initialization = viewModel.InitializeAsync(game, cancellation.Token);
+        var initialization = viewModel.InitializeAsync(EpicLauncherProvider.ToLauncherGame(game), cancellation.Token);
         await requested.Task.WaitAsync(TimeSpan.FromSeconds(5));
         cancellation.Cancel();
         await initialization.WaitAsync(TimeSpan.FromSeconds(5));
@@ -279,10 +289,10 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
 
     private sealed class UnusedShortcutManager : IGameShortcutManager
     {
-        public Task CreateAsync(Crimson.Providers.LauncherGame game, GameShortcutLocation location, CancellationToken cancellationToken = default) =>
+        public Task CreateAsync(LauncherGame game, GameShortcutLocation location, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public void Remove(Crimson.Providers.LauncherGame game)
+        public void Remove(LauncherGame game)
         {
         }
     }

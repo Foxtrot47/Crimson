@@ -94,9 +94,11 @@
                 <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Shortcuts" />
                 <CheckBox
                     Content="Create Start menu shortcut"
+                    IsEnabled="{x:Bind ViewModel.SupportsShortcuts, Mode=OneWay}"
                     IsChecked="{x:Bind ViewModel.CreateStartMenuShortcut, Mode=TwoWay}" />
                 <CheckBox
                     Content="Create desktop shortcut"
+                    IsEnabled="{x:Bind ViewModel.SupportsShortcuts, Mode=OneWay}"
                     IsChecked="{x:Bind ViewModel.CreateDesktopShortcut, Mode=TwoWay}" />
             </StackPanel>
 

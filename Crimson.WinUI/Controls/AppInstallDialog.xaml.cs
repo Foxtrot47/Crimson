@@ -1,10 +1,10 @@
-﻿using System;
+﻿using System.Threading.Tasks;
 using System.Threading;
-using System.Threading.Tasks;
-using Crimson.Models;
+using System;
+using Crimson.Providers;
 using Crimson.ViewModels;
-using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml;
 using Serilog;
 
 namespace Crimson.Controls
@@ -22,7 +22,7 @@ namespace Crimson.Controls
             ViewModel.FolderPickerRequested += ShowFolderPicker;
         }
 
-        public async Task ShowAsync(Game gameInfo)
+        public async Task ShowAsync(LauncherGame gameInfo)
         {
             var cancellation = new CancellationTokenSource();
             var previous = Interlocked.Exchange(ref _initializationCancellation, cancellation);

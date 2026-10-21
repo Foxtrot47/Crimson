@@ -1,12 +1,13 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Interfaces;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Utils;
 using Microsoft.Extensions.Logging;
 
@@ -19,13 +20,12 @@ namespace Crimson.ViewModels;
 public partial class GameInfoViewModel : ObservableObject, INavigationAware
 {
     private readonly IUiDispatcher _uiDispatcher;
-    private readonly EpicInstallManager _installer;
-    private readonly EpicLibraryManager _libraryManager;
-    private readonly Storage _storage;
+    private readonly LauncherInstaller _installer;
+    private readonly LauncherLibrary _libraryManager;
     private readonly ILogger<GameInfoViewModel> _log;
 
     [ObservableProperty]
-    private Game? _game;
+    private LauncherGame? _game;
 
     [ObservableProperty]
     private bool _isInstalled;
@@ -61,17 +61,23 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     // Event for requesting folder picker from view
     public event Func<Task<string>> FolderPickerRequested;
 
+    public bool CanRepair => Game?.LocalAppState is { InstallStatus: not InstallState.NotInstalled } &&
+        _installer.Supports(Game.AppName, ActionType.Repair);
+    public bool CanMove => Game?.LocalAppState is { InstallStatus: not InstallState.NotInstalled } &&
+        _installer.Supports(Game.AppName, ActionType.Move);
+    public bool CanUninstall => Game?.LocalAppState is { InstallStatus: not InstallState.NotInstalled } &&
+        _installer.Supports(Game.AppName, ActionType.Uninstall);
+    public bool CanImport => Game is not null && _installer.Supports(Game.AppName, ActionType.Import);
+
     public GameInfoViewModel(ILogger<GameInfoViewModel> logger,
-            EpicInstallManager installer,
-            EpicLibraryManager libraryManager,
-            Storage storage,
+            LauncherInstaller installer,
+            LauncherLibrary libraryManager,
             IUiDispatcher uiDispatcher)
     {
         _uiDispatcher = uiDispatcher;
         _log = logger;
         _installer = installer;
         _libraryManager = libraryManager;
-        _storage = storage;
 
     }
 
@@ -80,8 +86,8 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         if (parameter is not string appName) return;
 
         Game = _libraryManager.GetGameInfo((string)appName);
-        var gameImage = Game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBox");
-        TitleImageUrl = gameImage?.Url;
+        if (Game is null) return;
+        TitleImageUrl = Game.LandscapeImageUrl ?? Game.CoverImageUrl;
 
         CheckGameStatus(Game);
 
@@ -106,8 +112,9 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     {
         try
         {
-            _log.LogInformation("GameInfoPage: Primary Action Button Clicked for {Game}", Game.AppTitle);
             if (Game == null) return;
+            if (!IsPrimaryActionEnabled) return;
+            _log.LogInformation("GameInfoPage: Primary Action Button Clicked for {Game}", Game.AppTitle);
 
             if (Game.LocalAppState?.InstallStatus == InstallState.Installed)
             {
@@ -188,7 +195,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         }
     }
 
-    private void CheckGameStatus(Game updatedGame)
+    private void CheckGameStatus(LauncherGame updatedGame)
     {
         if (updatedGame == null || updatedGame.AppName != Game.AppName) return;
         _log.LogInformation("GameInfoPage: Game Status Changed for {Game}", updatedGame.AppTitle);
@@ -197,13 +204,24 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _uiDispatcher.TryEnqueue(() =>
         {
             IsProgressRingVisible = false;
-            IsPrimaryActionEnabled = true;
             PrimaryAction = GetPrimaryAction(Game.LocalAppState?.InstallStatus);
+            IsPrimaryActionEnabled = PrimaryAction switch
+            {
+                GamePrimaryAction.Play => Game.CanLaunch,
+                GamePrimaryAction.Install => _installer.Supports(Game.AppName, ActionType.Install),
+                GamePrimaryAction.Update => _installer.Supports(Game.AppName, ActionType.Update),
+                GamePrimaryAction.Repair => _installer.Supports(Game.AppName, ActionType.Repair),
+                _ => false
+            };
+            VerifyRepairCommand.NotifyCanExecuteChanged();
+            MoveGameCommand.NotifyCanExecuteChanged();
+            UninstallCommand.NotifyCanExecuteChanged();
+            ImportGameCommand.NotifyCanExecuteChanged();
             if (PrimaryAction is GamePrimaryAction.Install)
             {
                 PrimaryActionButtonText = "Install";
                 IsInstalled = false;
-                IsImportVisible = true;
+                IsImportVisible = CanImport;
                 return;
             }
 
@@ -241,12 +259,12 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanUninstall))]
     private void Uninstall()
     {
         if (Game?.LocalAppState == null || Game.LocalAppState.InstallStatus == InstallState.NotInstalled) return;
 
-        _storage.LocalAppStateDictionary.TryGetValue(Game.AppName, out var installedGame);
+        var installedGame = Game.LocalAppState;
 
         if (installedGame == null)
         {
@@ -258,12 +276,12 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _log.LogInformation("GameInfoPage: Added {Game} to Installation Queue", Game.AppTitle);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRepair))]
     private void VerifyRepair()
     {
         if (Game?.LocalAppState == null || Game.LocalAppState.InstallStatus == InstallState.NotInstalled) return;
 
-        _storage.LocalAppStateDictionary.TryGetValue(Game.AppName, out var installedGame);
+        var installedGame = Game.LocalAppState;
 
         if (installedGame == null)
         {
@@ -275,7 +293,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Repair, installedGame.InstallPath));
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanImport))]
     private async Task ImportGameAsync()
     {
         if (Game == null) return;
@@ -293,7 +311,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Import, folderPath));
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanMove))]
     private async Task MoveGameAsync()
     {
         if (Game?.LocalAppState == null || Game.LocalAppState.InstallStatus == InstallState.NotInstalled) return;
@@ -308,7 +326,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         if (string.IsNullOrEmpty(folderPath)) return;
 
         var currentPath = Game.LocalAppState.InstallPath;
-        var destPath = Path.Combine(folderPath, Game.AppName);
+        var destPath = Path.Combine(folderPath, ProviderDataPaths.GameFileKey(Game.Id));
 
         _log.LogInformation("GameInfoPage: Moving {Game} from {Src} to {Dest}", Game.AppTitle, currentPath, destPath);
         var item = new InstallItem(Game.AppName, ActionType.Move, currentPath)
@@ -325,4 +343,3 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _installer.InstallProgressUpdate -= HandleInstallationStatusChanged;
     }
 }
-
