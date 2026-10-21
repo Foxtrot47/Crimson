@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 
 namespace Crimson.Tests
 {
@@ -16,5 +16,13 @@ namespace Crimson.Tests
 
             return Encoding.UTF8.GetString(Convert.FromBase64String(protectedValue[Prefix.Length..]));
         }
+    }
+}
+
+namespace Crimson.Tests
+{
+    internal sealed class TestUiDispatcher : Crimson.Core.IUiDispatcher
+    {
+        public bool TryEnqueue(Action callback) { callback(); return true; }
     }
 }

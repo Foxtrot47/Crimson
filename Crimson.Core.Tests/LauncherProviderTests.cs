@@ -8,6 +8,23 @@ namespace Crimson.Tests;
 
 public sealed class LauncherProviderTests
 {
+    [Fact]
+    public async Task DisconnectingOneAccountDoesNotDisconnectOtherStoreAccounts()
+    {
+        var ea = new TestLauncherProvider("ea");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        var registry = new LauncherRegistry([ea, ubisoft]);
+        var authentication = new LauncherAuthentication(registry, new ImmediateUiDispatcher());
+        var statuses = new List<(string, AuthenticationStatus)>();
+        authentication.StatusChanged += (id, status) => statuses.Add((id, status));
+        await ubisoft.Auth.Logout();
+        Assert.Equal([("ubisoft", AuthenticationStatus.LoggedOut)], statuses);
+        Assert.True(authentication.Accounts.Single(account => account.ProviderId == "ea").IsConnected);
+        Assert.False(authentication.Accounts.Single(account => account.ProviderId == "ubisoft").IsConnected);
+        await authentication.Logout("ea");
+        Assert.Equal(2, statuses.Count);
+    }
+
     [Theory]
     [InlineData("ea", "offer/id:with spaces % and 雪")]
     [InlineData("ubisoft", "123")]
