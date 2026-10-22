@@ -18,7 +18,7 @@ Findings that determine this implementation:
 | The Denuvo service expects the game challenge in its encoded form. | Relay its bytes unchanged; no base64 decoding or local token generation. Ubisoft validates ownership and issues the answer. |
 | Issuance can consume activation quota, including requests whose replies time out. | No automatic network retry. Identical challenges share an in-memory task, including failed tasks, for that launch. A new launch starts fresh. No persistent/offline activation cache. |
 | Session application IDs must come from current entitlements. The session product list uses the ownership catalog's filters/order. | Refuse launch without a valid entitlement application ID; use the live ownership catalog for session products. |
-| The PoC aux init contains fixed WD2 addon IDs. | Generate the addon validation list from owned, released addon records in the ownership catalog. This generalization needs native testing. |
+| The PoC aux init contains fixed WD2 addon IDs. | Accept optional per-game addon IDs in configuration and validate them against the live owned/released addon catalog. Do not send unrelated addons from the account or assume WD2 IDs apply to other titles. The default list is empty; DLC behavior needs native testing. |
 | Runtime/SDK pipe lifetime matters across EAC starter/process handoffs. | Current-user pipes, inherited starter event, persistent connections, process registration and handoff grace periods. One Ubisoft title at a time. |
 | Installer-init is a distinct IPC operation. | Answer `f13` initialization through response `f10`, with empty optional chunk catalog and configured language. This does not implement game installation. |
 | Permanent cloud-save synchronization and general installer metadata remain incomplete in the PoC. | Leave both capabilities unavailable. Keep writable local saves isolated under Crimson's Ubisoft/account directory. |
@@ -47,9 +47,11 @@ steam_api.dll               steam_api64.dll
 ```
 
 1. Build/run Crimson on Windows. Close Ubisoft Connect so its named pipes do not conflict with Crimson's bridge.
-2. Ensure the 32-bit machine key `HKLM\SOFTWARE\Ubisoft\Launcher`, value `InstallDir`, points to the runtime directory you intend to use. On a 64-bit registry viewer this appears under `WOW6432Node`. Crimson only reads this setting and rejects a mismatch; it does not overwrite it. Keep the original value if changing it for your test.
+2. Ensure both views of the machine key `HKLM\SOFTWARE\Ubisoft\Launcher`, value `InstallDir`, points to the runtime directory you intend to use. The 32-bit view appears under `WOW6432Node`; 64-bit games also read the normal view. Crimson only reads this setting and rejects a mismatch; it does not overwrite it. Keep the original value if changing it for your test.
 3. In **Settings > Accounts**, connect Ubisoft. Complete the authenticator step if requested. Epic can stay connected.
-4. Open Ubisoft **Configure**, set the runtime directory, and choose **Load account games**. Select an owned game, set a title, absolute installation directory, absolute game executable inside that directory, optional arguments, and installed language. Save.
+4. Open Ubisoft **Configure**, set the runtime directory, and choose **Load account games**. Select an owned game, set a title, absolute installation directory, absolute game executable inside that directory, optional arguments, and installed language. Optional addon validation IDs must belong to this game and be owned/released in the live catalog. Save.
+Game-specific registry/prerequisite installation remains the responsibility of the existing game installation; merely copying a game folder may not supply those prerequisites.
+
 5. Open that game's page in the unified Crimson library and select **Play**. Runtime validation and a refreshed entitlement check happen before startup. The game must have a valid live application ID and be marked playable. EAC is not disabled automatically.
 6. Test startup, a Denuvo-protected title, starter/EAC handoffs, gameplay, exit, and a second launch. Check `Settings > Accounts > Configure` and Crimson's logs for failures. Runtime logs include stages, product IDs, activation result names, and exit codes, not credentials or challenge/answer bytes.
 7. Disconnect the account and confirm its library disappears. The bridge closes; Crimson does not terminate game processes or delete game files.

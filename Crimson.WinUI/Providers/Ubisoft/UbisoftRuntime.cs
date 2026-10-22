@@ -22,12 +22,14 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
     public async Task<IUbisoftRunningGame> Start(UbisoftSession session, UbisoftEntitlement game,
         UbisoftInstalledGame installation, UbisoftConfigurationStore configuration, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         ValidateRuntime(configuration.Current.RuntimeDirectory);
         UbisoftConfigurationStore.ValidateGame(installation);
         var profile = await api.Get(session, "/v3/users/me", token);
         if (!profile.TryGetProperty("userId", out var user) || user.GetString() != session.UserId)
             throw new InvalidOperationException("Ubisoft account identity could not be validated.");
         var pc = await tickets.GetPcSession(session.Ticket, session.SessionId, game.ProductId, token);
+        token.ThrowIfCancellationRequested();
         var protocol = new UbisoftGameSession(session, game, installation, pc, profile,
             configuration.Saves(session.UserId, game.ProductId), tickets);
         var running = new Running(api, log, session, game.ProductId, protocol, configuration.ProviderRoot, token);
@@ -40,12 +42,15 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
             throw new InvalidOperationException("Configure your Ubisoft runtime directory in Settings > Accounts > Configure.");
         if (RuntimeFiles.Any(file => !File.Exists(Path.Combine(directory, file))))
             throw new InvalidOperationException("The Ubisoft runtime is incomplete. See docs/UBISOFT_INTEGRATION.md for the required files.");
-        using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32);
-        using var launcher = machine.OpenSubKey(@"SOFTWARE\Ubisoft\Launcher");
-        var registered = launcher?.GetValue("InstallDir") as string;
-        if (string.IsNullOrWhiteSpace(registered) || !string.Equals(Path.GetFullPath(registered).TrimEnd('\\', '/'),
-            Path.GetFullPath(directory).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Ubisoft's 32-bit Launcher InstallDir registry setting must point to your runtime directory. Crimson does not modify it.");
+        foreach (var view in Environment.Is64BitOperatingSystem ? new[] { RegistryView.Registry32, RegistryView.Registry64 } : new[] { RegistryView.Registry32 })
+        {
+            using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using var launcher = machine.OpenSubKey(@"SOFTWARE\Ubisoft\Launcher");
+            var registered = launcher?.GetValue("InstallDir") as string;
+            if (string.IsNullOrWhiteSpace(registered) || !string.Equals(Path.GetFullPath(registered).TrimEnd('\\', '/'),
+                Path.GetFullPath(directory).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Ubisoft Launcher InstallDir ({view}) must point to your runtime directory. Crimson does not modify the registry.");
+        }
     }
 
     private sealed class Running : IUbisoftRunningGame
@@ -78,6 +83,7 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
             // Reserve every pipe before starting the game. FirstPipeInstance rejects conflicts with Connect or another Crimson instance.
             var listeners = names.Select(name => (Name: name, Pipe: CreatePipe(prefix + name, true))).ToList();
             foreach (var (name, pipe) in listeners) _workers.Add(Accept(name, prefix + name, pipe));
+            _stop.Token.ThrowIfCancellationRequested();
             _startup.Start(game);
             _workers.Add(WatchStartup());
             _heartbeat = Heartbeat();
