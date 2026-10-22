@@ -143,3 +143,5 @@ search, store failure isolation and cancellation. Existing Epic parsing,
 authentication, installation and security tests continue to exercise its adapter
 dependencies. Windows CI additionally builds WinUI and runs the shortcut/platform
 adapter tests.
+
+The first additional provider is [Ubisoft Connect](UBISOFT_INTEGRATION.md): account authentication, shared-library entitlements, explicit installed-game paths, native SDK session pipes, and live Denuvo authentication. Its optional installer/store capabilities remain absent. Frontends can implement `ILauncherConfigurationFrontend` to expose provider-owned configuration from account settings independently of sign-in.
