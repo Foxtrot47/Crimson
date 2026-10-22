@@ -1,4 +1,5 @@
-﻿using Crimson.Providers;
+﻿using System;
+using Crimson.Providers;
 using Crimson.ViewModels;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
