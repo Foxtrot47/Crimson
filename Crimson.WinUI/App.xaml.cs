@@ -7,6 +7,7 @@ using System.Threading;
 using System;
 using Crimson.Core;
 using Crimson.Providers.Epic;
+using Crimson.Providers.Ubisoft;
 using Crimson.Providers;
 using Crimson.Repository;
 using Crimson.Utils;
@@ -112,6 +113,7 @@ namespace Crimson
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("Artwork"),
                     provider.GetRequiredService<ILogger>(), provider.GetServices<IProviderContentPolicy>()));
                 services.AddEpicLauncher();
+                services.AddUbisoftLauncher(GetAppDataPath());
                 services.AddSingleton<LauncherRegistry>(provider => new LauncherRegistry(
                     provider.GetServices<ILauncherProvider>()));
                 services.AddSingleton<LauncherFrontendRegistry>();
