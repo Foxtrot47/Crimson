@@ -118,7 +118,8 @@ public sealed class UbisoftLibrary : ILauncherLibrary
         {
             LastLaunchError = null;
             if (_running is not null) throw new InvalidOperationException("A Ubisoft game is already running in Crimson.");
-            await _auth.RequireSession();
+            var session = await _auth.RequireSession();
+            var epoch = Volatile.Read(ref _epoch);
             // Refresh entitlement immediately before requesting live tickets.
             await GetLibraryData(true);
             var entitlement = _entitlements?.FirstOrDefault(e => e.ProductId == NativeId(appName));
@@ -128,12 +129,11 @@ public sealed class UbisoftLibrary : ILauncherLibrary
             CancellationToken lifetime;
             lock (_lifetimeSync)
             {
-                if (_auth.AuthenticationStatus != AuthenticationStatus.LoggedIn) throw new InvalidOperationException("Connect your Ubisoft account again.");
+                if (_auth.AuthenticationStatus != AuthenticationStatus.LoggedIn || !ReferenceEquals(session, _auth.Session) || epoch != Volatile.Read(ref _epoch)) throw new InvalidOperationException("Connect your Ubisoft account again.");
                 _runtimeLifetime.Dispose();
                 _runtimeLifetime = new CancellationTokenSource();
                 lifetime = _runtimeLifetime.Token;
             }
-            var session = _auth.Session ?? throw new InvalidOperationException("Connect your Ubisoft account again.");
             var running = await _runtime.Start(session, entitlement, installation, _configuration, lifetime);
             if (lifetime.IsCancellationRequested) { await running.DisposeAsync(); lifetime.ThrowIfCancellationRequested(); }
             _running = running;
