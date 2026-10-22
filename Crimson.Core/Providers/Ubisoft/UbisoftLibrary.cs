@@ -31,6 +31,8 @@ public sealed class UbisoftLibrary : ILauncherLibrary
     private IUbisoftRunningGame? _running;
     private uint? _playing;
     private int _epoch;
+    private readonly object _lifetimeSync = new();
+    private CancellationTokenSource _runtimeLifetime = new();
     public event Action<IEnumerable<LauncherGame>>? LibraryUpdated;
     public event Action<LauncherGame>? GameStatusUpdated;
     public IReadOnlyList<UbisoftEntitlement> Entitlements => _entitlements?.ToArray() ?? [];
@@ -44,6 +46,7 @@ public sealed class UbisoftLibrary : ILauncherLibrary
             if (status is AuthenticationStatus.LoggedOut or AuthenticationStatus.LoginFailed)
             {
                 Interlocked.Increment(ref _epoch);
+                lock (_lifetimeSync) _runtimeLifetime.Cancel();
                 _entitlements = null;
                 _ = StopRuntime();
             }
@@ -51,6 +54,7 @@ public sealed class UbisoftLibrary : ILauncherLibrary
     }
     public async Task<IEnumerable<LauncherGame>> GetLibraryData(bool forceUpdate = false)
     {
+        await _configuration.Load();
         if (_entitlements is not null && !forceUpdate) return Snapshot();
         var session = await _auth.RequireSession();
         var epoch = Volatile.Read(ref _epoch);
@@ -114,14 +118,25 @@ public sealed class UbisoftLibrary : ILauncherLibrary
         {
             LastLaunchError = null;
             if (_running is not null) throw new InvalidOperationException("A Ubisoft game is already running in Crimson.");
-            var session = await _auth.RequireSession();
+            await _auth.RequireSession();
             // Refresh entitlement immediately before requesting live tickets.
             await GetLibraryData(true);
             var entitlement = _entitlements?.FirstOrDefault(e => e.ProductId == NativeId(appName));
             if (entitlement is null || !ToGame(entitlement).CanLaunch) throw new InvalidOperationException("Configure an installed, playable Ubisoft game first.");
             var installation = _configuration.Current.Games.Single(g => g.ProductId == entitlement.ProductId);
             UbisoftConfigurationStore.ValidateGame(installation);
-            _running = await _runtime.Start(session, entitlement, installation, _configuration, default);
+            CancellationToken lifetime;
+            lock (_lifetimeSync)
+            {
+                if (_auth.AuthenticationStatus != AuthenticationStatus.LoggedIn) throw new InvalidOperationException("Connect your Ubisoft account again.");
+                _runtimeLifetime.Dispose();
+                _runtimeLifetime = new CancellationTokenSource();
+                lifetime = _runtimeLifetime.Token;
+            }
+            var session = _auth.Session ?? throw new InvalidOperationException("Connect your Ubisoft account again.");
+            var running = await _runtime.Start(session, entitlement, installation, _configuration, lifetime);
+            if (lifetime.IsCancellationRequested) { await running.DisposeAsync(); lifetime.ThrowIfCancellationRequested(); }
+            _running = running;
             _playing = entitlement.ProductId;
             GameStatusUpdated?.Invoke(ToGame(entitlement));
             _ = ObserveGame(_running, entitlement);
@@ -138,7 +153,11 @@ public sealed class UbisoftLibrary : ILauncherLibrary
     private async Task ObserveGame(IUbisoftRunningGame running, UbisoftEntitlement game)
     {
         try { await running.Completion; }
-        catch (Exception error) { _log.Warning("Ubisoft runtime ended ({ErrorType})", error.GetType().Name); }
+        catch (Exception error)
+        {
+            LastLaunchError = error is InvalidOperationException ? error.Message : $"Ubisoft runtime failed ({error.GetType().Name}).";
+            _log.Warning("Ubisoft runtime ended: {Reason}", LastLaunchError);
+        }
         finally
         {
             await running.DisposeAsync();

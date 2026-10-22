@@ -19,6 +19,7 @@ public sealed record UbisoftConfiguration(string RuntimeDirectory, IReadOnlyList
 public sealed class UbisoftConfigurationStore(string providerRoot)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _loaded;
     public string ProviderRoot { get; } = Path.GetFullPath(providerRoot);
     public UbisoftConfiguration Current { get; private set; } = UbisoftConfiguration.Empty;
     public event Action? Changed;
@@ -27,9 +28,11 @@ public sealed class UbisoftConfigurationStore(string providerRoot)
         await _gate.WaitAsync();
         try
         {
+            if (_loaded) return;
             var file = Path.Combine(ProviderRoot, "configuration.json");
             Current = File.Exists(file) ? JsonSerializer.Deserialize<UbisoftConfiguration>(await File.ReadAllTextAsync(file))
                 ?? UbisoftConfiguration.Empty : UbisoftConfiguration.Empty;
+            _loaded = true;
         }
         finally { _gate.Release(); }
     }
@@ -47,6 +50,7 @@ public sealed class UbisoftConfigurationStore(string providerRoot)
             await File.WriteAllTextAsync(file + ".tmp", JsonSerializer.Serialize(configuration with { RuntimeDirectory = runtime }));
             File.Move(file + ".tmp", file, overwrite: true);
             Current = configuration with { RuntimeDirectory = runtime };
+            _loaded = true;
         }
         finally { _gate.Release(); }
         Changed?.Invoke();

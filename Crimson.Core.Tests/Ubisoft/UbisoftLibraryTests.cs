@@ -57,6 +57,46 @@ public class UbisoftLibraryTests
         }
         finally { Directory.Delete(root, true); }
     }
+    [Fact]
+    public async Task DisconnectCancelsTicketPreparationBeforeGameCanStart()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        Directory.CreateDirectory(root);
+        var executable = Path.Combine(root, "game.exe");
+        await File.WriteAllTextAsync(executable, "fixture");
+        try
+        {
+            var api = new UbisoftApi(new HttpClient(new Handler(r => Task.FromResult(
+                r.RequestUri!.AbsolutePath.EndsWith("sessions") ? Json(SessionPayload()) : Json(new[] {
+                    new { productId = 2688, type = "game", playable = true, applicationId = "61ec338e-d607-4042-a55b-fc009cfc2dc6" }
+                })))));
+            var auth = new UbisoftAuthentication(api, new MemoryStore());
+            await auth.SignIn("email", "password", false);
+            var config = new UbisoftConfigurationStore(Path.Combine(root, "provider"));
+            await config.Save(new(root, [new(2688, "Title", root, executable)]));
+            var runtime = new WaitingRuntime();
+            var library = new UbisoftLibrary(auth, api, config, runtime, new LoggerConfiguration().CreateLogger());
+            var launch = library.LaunchApp("ubisoft:2688");
+            await runtime.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await auth.Logout();
+            Assert.False(await launch.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.True(runtime.Cancelled);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+    private sealed class WaitingRuntime : IUbisoftRuntime
+    {
+        public readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool Cancelled;
+        public async Task<IUbisoftRunningGame> Start(UbisoftSession session, UbisoftEntitlement game,
+            UbisoftInstalledGame installation, UbisoftConfigurationStore configuration, CancellationToken token)
+        {
+            Entered.TrySetResult();
+            try { await Task.Delay(Timeout.Infinite, token); }
+            catch (OperationCanceledException) { Cancelled = true; throw; }
+            throw new InvalidOperationException();
+        }
+    }
     private sealed class Runtime : IUbisoftRuntime
     {
         public uint ProductId;
