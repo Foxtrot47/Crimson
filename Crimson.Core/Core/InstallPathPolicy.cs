@@ -1,10 +1,23 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace Crimson.Core;
 
 internal static class InstallPathPolicy
 {
+    public static string GetDirectoryName(string title)
+    {
+        // Use Windows rules even when the portable core runs on another OS.
+        var name = string.Concat(title.Select(character =>
+            character < ' ' || "<>:\"/\\|?*".Contains(character) ? '_' : character)).TrimEnd(' ', '.');
+        if (string.IsNullOrWhiteSpace(name)) return "Game";
+        var reserved = Regex.IsMatch(name, @"^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³]) *(\.|$)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return reserved ? "_" + name : name;
+    }
+
     public static string ResolveFile(string installRoot, string relativePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installRoot);

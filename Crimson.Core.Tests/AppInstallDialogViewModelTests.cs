@@ -207,6 +207,27 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task GeneratedInstallFoldersSanitizeTitlesWithoutChangingTheDisplayTitle(bool chooseParent)
+    {
+        const string title = "Honkai: Star Rail";
+        var (viewModel, _, settings, _) = await CreateLocationFixture(title);
+        var parent = settings.DefaultInstallLocation;
+        if (chooseParent)
+        {
+            parent = Path.Combine(_root, "picked-library");
+            viewModel.FolderPickerRequested += () => Task.FromResult(parent);
+            await viewModel.SelectLocationCommand.ExecuteAsync(null);
+        }
+
+        Assert.Equal(title, viewModel.GameTitle);
+        Assert.Equal(Path.Combine(parent, "Honkai_ Star Rail"), viewModel.InstallLocation);
+        Directory.CreateDirectory(viewModel.InstallLocation);
+        Assert.True(Directory.Exists(viewModel.InstallLocation));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task ConfirmedInstallRemembersOnlyParentAcrossRestart(bool trailingSeparator)
     {
         var (viewModel, storage, settings, installer) = await CreateLocationFixture();
@@ -299,14 +320,14 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         Assert.Equal(parent, settings.DefaultInstallLocation);
     }
 
-    private async Task<(AppInstallDialogViewModel ViewModel, Storage Storage, SettingsManager Settings, InstallManager Installer)> CreateLocationFixture()
+    private async Task<(AppInstallDialogViewModel ViewModel, Storage Storage, SettingsManager Settings, InstallManager Installer)> CreateLocationFixture(string title = "New Game")
     {
         var repository = new ControlledManifestRepository();
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         var settings = CreateSettings(storage);
         settings.DefaultInstallLocation = Path.Combine(_root, "configured-library");
         await settings.SaveSettings();
-        var game = CreateGame("new", "New Game", "box");
+        var game = CreateGame("new", title, "box");
         storage.SaveMetaData(game);
         repository.Complete("new", CreateJsonManifest(100, 10));
         var library = CreateLibrary(storage, repository);
