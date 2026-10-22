@@ -33,6 +33,13 @@ public class UbisoftGameSessionTests
         Assert.Equal(1UL, installer.Number(1));
         Assert.Equal("en-US", installer.String(3));
     }
+    [Fact]
+    public void StarterRequestCannotSelectAnUnconfiguredProduct()
+    {
+        var session = Create(new Tickets());
+        Assert.Throws<InvalidDataException>(() => session.GameStartResponse(Bytes(1, Bytes(1, Integer(2, 999)))));
+        Assert.True(Read(session.GameStartResponse(Bytes(1, Bytes(1, Integer(2, 2688))))).Has(2));
+    }
     private static byte[] Challenge(byte[] bytes) => Message(Integer(1, 42), Bytes(3, Bytes(2, Bytes(2, bytes))));
     [Fact]
     public async Task AuxAnswersUseOnlyLiveActivationAndCoalesceIdenticalChallenges()

@@ -76,10 +76,15 @@ internal sealed class UbisoftGameSession(UbisoftSession login, UbisoftEntitlemen
         }
         finally { _activationGate.Release(); }
     }
-    internal byte[] GameStartResponse() => Bytes(2, Bytes(1, Message(Integer(1, 1), Integer(2, 0),
+    internal byte[] GameStartResponse(byte[] request)
+    {
+        var launch = Read(Read(Read(request).Data(1)).Data(1));
+        if (launch.Number(2) != entitlement.ProductId) throw new InvalidDataException("Ubisoft starter requested another product.");
+        return Bytes(2, Bytes(1, Message(Integer(1, 1), Integer(2, 0),
         Text(3, installation.Executable.Replace('\\', '/')), Text(4, installation.InstallDirectory.Replace('\\', '/')), Integer(8, 3),
         Bytes(9, Message(
             Bytes(1, Message(Integer(1, 1), Integer(2, 113), Integer(3, 0), Integer(4, 1), Integer(5, 0))),
             Bytes(1, Message(Integer(1, 3), Integer(2, 123), Integer(3, 0), Integer(4, 0), Integer(5, 0))))))));
+    }
     internal static byte[] ProcessResponse() => Bytes(13, Message(Integer(1, 1), Integer(3, 1), Integer(4, 3), Integer(6, 0)));
 }

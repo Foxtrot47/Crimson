@@ -126,7 +126,7 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
                     byte[]? response = null;
                     switch (kind)
                     {
-                        case "game_start_ipc_pipe_": response = _protocol.GameStartResponse(); break;
+                        case "game_start_ipc_pipe_": response = _protocol.GameStartResponse(request); break;
                         case "uplay_api_process_ipc_pipe_":
                             var process = Read(Read(request).Data(2));
                             if (process.Number(1) != _productId || process.Number(2) == 0) throw new InvalidDataException("Invalid game process registration.");
