@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 namespace Crimson.Providers.Ubisoft;
 
 public sealed record UbisoftInstalledGame(uint ProductId, string Title, string InstallDirectory, string Executable,
-    string Arguments = "", string Language = "en-US");
+    string Arguments = "", string Language = "en-US", IReadOnlyList<uint>? AddonValidationIds = null);
 public sealed record UbisoftConfiguration(string RuntimeDirectory, IReadOnlyList<UbisoftInstalledGame> Games)
 {
     public static UbisoftConfiguration Empty { get; } = new("", []);
@@ -40,7 +40,7 @@ public sealed class UbisoftConfigurationStore(string providerRoot)
     {
         var duplicates = configuration.Games.GroupBy(g => g.ProductId).Any(g => g.Count() > 1);
         if (duplicates) throw new ArgumentException("Each Ubisoft product can have one installation.");
-        foreach (var game in configuration.Games) ValidateGame(game);
+        foreach (var game in configuration.Games) ValidateGame(game, requireExecutable: false);
         var runtime = string.IsNullOrWhiteSpace(configuration.RuntimeDirectory) ? "" : Path.GetFullPath(configuration.RuntimeDirectory);
         await _gate.WaitAsync();
         try
@@ -55,7 +55,7 @@ public sealed class UbisoftConfigurationStore(string providerRoot)
         finally { _gate.Release(); }
         Changed?.Invoke();
     }
-    public static void ValidateGame(UbisoftInstalledGame game)
+    public static void ValidateGame(UbisoftInstalledGame game, bool requireExecutable = true)
     {
         if (game.ProductId == 0 || string.IsNullOrWhiteSpace(game.Title)) throw new ArgumentException("Product ID and title are required.");
         if (!Path.IsPathFullyQualified(game.InstallDirectory) || !Path.IsPathFullyQualified(game.Executable))
@@ -64,7 +64,8 @@ public sealed class UbisoftConfigurationStore(string providerRoot)
         var executable = Path.GetFullPath(game.Executable);
         if (!executable.StartsWith(root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
             throw new ArgumentException("The executable must be inside the installation directory.");
-        if (!File.Exists(executable)) throw new FileNotFoundException("The configured game executable does not exist.");
+        if (game.AddonValidationIds?.Any(id => id == 0) == true) throw new ArgumentException("Addon IDs must be positive product IDs.");
+        if (requireExecutable && !File.Exists(executable)) throw new FileNotFoundException("The configured game executable does not exist.");
         if (game.Arguments.IndexOf('\0') >= 0 || string.IsNullOrWhiteSpace(game.Language)) throw new ArgumentException("Invalid launch options.");
     }
     public string Saves(string userId, uint productId)

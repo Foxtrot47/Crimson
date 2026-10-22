@@ -7,12 +7,15 @@ namespace Crimson.Core.Tests.Ubisoft;
 
 public class UbisoftGameSessionTests
 {
-    private static UbisoftGameSession Create(Tickets tickets) => new(
+    private static UbisoftGameSession Create(Tickets tickets, uint[]? addons = null) => new(
         new UbisoftSession { Ticket = "login", SessionId = "session", ProfileId = "profile", UserId = "user" },
         new(2688, "Title", "game", "61ec338e-d607-4042-a55b-fc009cfc2dc6", true),
-        new(2688, "Title", "/games", "/games/game.exe"),
-        new([1, 2, 3], [2688, 90]) { AddonsToValidate = [90] },
+        new(2688, "Title", "/games", "/games/game.exe", AddonValidationIds: addons ?? [90]),
+        new([1, 2, 3], [2688, 90]) { AddonsToValidate = [90, 91] },
         JsonSerializer.SerializeToElement(new { username = "Player", email = "email", country = "GB" }), "/saves/user/2688/", tickets);
+    [Fact]
+    public void UnownedAddonCannotBeSentToTheRuntime() =>
+        Assert.Throws<InvalidOperationException>(() => Create(new Tickets(), [999]));
     [Fact]
     public void SessionCarriesPcTicketRealAppIdAndEmptyPassword()
     {

@@ -18,6 +18,7 @@ public sealed class UbisoftConfigurationView : UserControl
     private readonly TextBox _executable = new() { Header = "Game executable", PlaceholderText = @"D:\Games\MyGame\bin\Game.exe" };
     private readonly TextBox _arguments = new() { Header = "Launch arguments (optional)" };
     private readonly TextBox _language = new() { Header = "Game language", Text = "en-US" };
+    private readonly TextBox _addons = new() { Header = "Addon validation product IDs (optional)", PlaceholderText = "Comma-separated IDs for this game" };
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap };
     private readonly Button _save = new() { Content = "Save configuration" };
     private readonly Button _remove = new() { Content = "Forget installation" };
@@ -32,11 +33,11 @@ public sealed class UbisoftConfigurationView : UserControl
             TextWrapping = TextWrapping.Wrap
         });
         panel.Children.Add(_runtime);
-        panel.Children.Add(new TextBlock { Text = "The machine's 32-bit Ubisoft Launcher InstallDir must already point to this runtime. Crimson leaves the registry unchanged.", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = "The machine's 32-bit and 64-bit Ubisoft Launcher InstallDir settings must already point to this runtime. Crimson leaves the registry unchanged.", TextWrapping = TextWrapping.Wrap });
         var refresh = new Button { Content = "Load account games" };
         refresh.Click += async (_, _) => await LoadGames();
         panel.Children.Add(refresh); panel.Children.Add(_game); panel.Children.Add(_title);
-        panel.Children.Add(_directory); panel.Children.Add(_executable); panel.Children.Add(_arguments); panel.Children.Add(_language);
+        panel.Children.Add(_directory); panel.Children.Add(_executable); panel.Children.Add(_arguments); panel.Children.Add(_language); panel.Children.Add(_addons);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
         buttons.Children.Add(_save); buttons.Children.Add(_remove); panel.Children.Add(buttons); panel.Children.Add(_status);
         Content = new ScrollViewer { Content = panel, MaxHeight = 560, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -67,6 +68,7 @@ public sealed class UbisoftConfigurationView : UserControl
         _executable.Text = installed?.Executable ?? "";
         _arguments.Text = installed?.Arguments ?? "";
         _language.Text = installed?.Language ?? "en-US";
+        _addons.Text = string.Join(", ", installed?.AddonValidationIds ?? []);
     }
     private async Task LoadGames()
     {
@@ -87,7 +89,10 @@ public sealed class UbisoftConfigurationView : UserControl
             if (_game.SelectedItem is Choice choice && (!string.IsNullOrWhiteSpace(_directory.Text) || !string.IsNullOrWhiteSpace(_executable.Text)))
             {
                 selected = choice.Id;
-                var game = new UbisoftInstalledGame(choice.Id, _title.Text.Trim(), _directory.Text.Trim(), _executable.Text.Trim(), _arguments.Text, _language.Text.Trim());
+                var addons = _addons.Text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                    .Select(value => uint.TryParse(value, out var id) && id != 0 ? id : throw new ArgumentException("Addon IDs must be positive numbers."))
+                    .Distinct().ToArray();
+                var game = new UbisoftInstalledGame(choice.Id, _title.Text.Trim(), _directory.Text.Trim(), _executable.Text.Trim(), _arguments.Text, _language.Text.Trim(), addons);
                 UbisoftConfigurationStore.ValidateGame(game);
                 games.RemoveAll(g => g.ProductId == choice.Id);
                 games.Add(game);

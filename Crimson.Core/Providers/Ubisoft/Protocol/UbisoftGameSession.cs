@@ -14,6 +14,14 @@ namespace Crimson.Providers.Ubisoft.Protocol;
 internal sealed class UbisoftGameSession(UbisoftSession login, UbisoftEntitlement entitlement,
     UbisoftInstalledGame installation, UbisoftPcSession pc, JsonElement profile, string saveDirectory, IUbisoftTickets tickets)
 {
+    private readonly IReadOnlyList<uint> _addons = ValidateAddons(installation, pc);
+    private static IReadOnlyList<uint> ValidateAddons(UbisoftInstalledGame installation, UbisoftPcSession pc)
+    {
+        var addons = installation.AddonValidationIds ?? [];
+        if (addons.Except(pc.AddonsToValidate).Any())
+            throw new InvalidOperationException("Configured addon IDs must be owned, released addons in Ubisoft's live catalog.");
+        return addons;
+    }
     private readonly SemaphoreSlim _activationGate = new(1, 1);
     // Include failed answers so an IPC retry cannot silently consume another activation after a timeout.
     private readonly Dictionary<string, Task<byte[]>> _answers = new(StringComparer.Ordinal);
@@ -49,9 +57,9 @@ internal sealed class UbisoftGameSession(UbisoftSession login, UbisoftEntitlemen
         if (fields.Has(2))
         {
             if (Read(fields.Data(2)).Number(1) != entitlement.ProductId) throw new InvalidDataException("Ubisoft aux requested another product.");
-            // Avoid the PoC's hardcoded WD2 addon IDs; select owned addons from the live ownership catalog.
+            // Per-game addon metadata is not available yet; only explicitly configured, server-confirmed IDs are sent.
             return Message(Integer(1, id), Bytes(2, Message(Integer(1, 1), Integer(2, launcherPid),
-                Message(pc.AddonsToValidate.Select(p => Integer(3, p)).ToArray()))));
+                Message(_addons.Select(p => Integer(3, p)).ToArray()))));
         }
         var activation = Read(fields.Data(3));
         if (activation.Has(1)) throw new NotSupportedException("Activation cache invalidation is not supported in this initial integration.");
