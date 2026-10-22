@@ -25,6 +25,12 @@ public interface ILauncherFrontend
     Type? StorePageType { get; }
 }
 
+/// <summary>Optional provider-owned account/runtime/game configuration, independent of sign-in.</summary>
+public interface ILauncherConfigurationFrontend
+{
+    FrameworkElement CreateConfigurationView();
+}
+
 public sealed class LauncherFrontendRegistry(IEnumerable<ILauncherFrontend> frontends)
 {
     private readonly Dictionary<string, ILauncherFrontend> _frontends =

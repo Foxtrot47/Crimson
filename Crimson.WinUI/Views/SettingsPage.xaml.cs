@@ -30,6 +30,22 @@ namespace Crimson.Views
                 disconnect.SetBinding(Button.IsEnabledProperty, new Binding { Source = account, Path = new PropertyPath(nameof(LauncherAccount.IsConnected)), Mode = BindingMode.OneWay });
                 row.Children.Add(connect);
                 row.Children.Add(disconnect);
+                if (App.GetService<LauncherFrontendRegistry>().Get(account.ProviderId) is ILauncherConfigurationFrontend configuration)
+                {
+                    var configure = new Button { Content = "Configure" };
+                    configure.Click += async (_, _) =>
+                    {
+                        var dialog = new ContentDialog
+                        {
+                            Title = account.DisplayName,
+                            Content = configuration.CreateConfigurationView(),
+                            CloseButtonText = "Close",
+                            XamlRoot = XamlRoot
+                        };
+                        await dialog.ShowAsync();
+                    };
+                    row.Children.Add(configure);
+                }
                 AccountList.Children.Add(row);
             }
         }
