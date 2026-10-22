@@ -16,7 +16,10 @@ public sealed class UbisoftActivationException(UbisoftActivationResult result)
 {
     public UbisoftActivationResult Result { get; } = result;
 }
-public sealed record UbisoftPcSession(byte[] PcTicket, IReadOnlyList<uint> OwnedProducts);
+public sealed record UbisoftPcSession(byte[] PcTicket, IReadOnlyList<uint> OwnedProducts)
+{
+    public IReadOnlyList<uint> AddonsToValidate { get; init; } = [];
+}
 public interface IUbisoftTickets
 {
     Task<UbisoftPcSession> GetPcSession(string loginTicket, string sessionId, uint productId, CancellationToken token);
@@ -57,7 +60,8 @@ public sealed class UbisoftTickets : IUbisoftTickets
         var ticket = Read(response.Data(13));
         if (ticket.Number(1) != 1 || ticket.Data(2).Length == 0)
             throw new InvalidDataException("Ubisoft did not issue a PC session ticket.");
-        return new(ticket.Data(2), UbisoftDemuxClient.SessionProducts(catalog));
+        return new(ticket.Data(2), UbisoftDemuxClient.SessionProducts(catalog))
+        { AddonsToValidate = UbisoftDemuxClient.SessionAddons(catalog) };
     }
     public async Task<byte[]> Activate(string loginTicket, string sessionId, uint productId, byte[] challenge, CancellationToken token)
     {
@@ -134,6 +138,10 @@ internal sealed class UbisoftDemuxClient(Stream stream)
             if (fields.Number(1) == requestId) return fields; // omitted requestId means zero
         }
     }
+    internal static IReadOnlyList<uint> SessionAddons(byte[] catalog) => Read(catalog)
+        .Where(f => f.Number == 1 && f.WireType == 2).Select(f => Read(f.Data))
+        .Where(f => f.Number(20) == 1 && f.Number(8) == 1 && f.Number(13) is 0 or 3)
+        .Select(f => checked((uint)f.Number(1))).Where(id => id != 0).ToList();
     internal static IReadOnlyList<uint> SessionProducts(byte[] catalog) => Read(catalog)
         .Where(f => f.Number == 1 && f.WireType == 2).Select(f => Read(f.Data))
         .Where(f => f.Number(20) == 1 && f.Number(8) is 0 or 1 && f.Number(13) is 0 or 3)
