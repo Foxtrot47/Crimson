@@ -574,7 +574,8 @@ public class InstallManager : IDisposable
     private async Task PrepareBaseUninstallTasks(InstallItem install, Game game, Manifest data)
     {
         var files = data.FileManifestList.Elements.ToList();
-        foreach (var dlc in GetInstalledDlcsInRoot(game, install.Location))
+        var dlcs = GetInstalledDlcsInRoot(game, install.Location);
+        foreach (var dlc in dlcs)
         {
             var manifest = Manifest.ReadAll(await GetInstalledManifestBytes(dlc.AppName));
             foreach (var file in manifest.FileManifestList.Elements)
@@ -590,7 +591,9 @@ public class InstallManager : IDisposable
         var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
         var uniqueFiles = files.GroupBy(file => InstallPathPolicy.ResolveFile(install.Location, file.Filename), comparer)
             .Select(group => group.First()).ToList();
-        QueueUninstallFiles(install, uniqueFiles);
+        var protectedPaths = await GetProtectedInstallPathsAsync(install, dlcs.Select(dlc => dlc.AppName).Append(install.AppName));
+        QueueUninstallFiles(install, uniqueFiles.Where(file =>
+            !protectedPaths.Contains(InstallPathPolicy.ResolveFile(install.Location, file.Filename))));
     }
 
     private List<Game> GetInstalledDlcsInRoot(Game game, string root) =>
@@ -619,24 +622,37 @@ public class InstallManager : IDisposable
 
     private async Task PrepareDlcUninstallTasks(InstallItem install, Manifest data)
     {
+        var protectedPaths = await GetProtectedInstallPathsAsync(install, [install.AppName]);
+        var removable = data.FileManifestList.Elements.Where(file =>
+            !protectedPaths.Contains(InstallPathPolicy.ResolveFile(install.Location, file.Filename))).ToList();
+        QueueUninstallFiles(install, removable);
+    }
+
+    private async Task<HashSet<string>> GetProtectedInstallPathsAsync(InstallItem install, IEnumerable<string> removedAppNames)
+    {
+        var removed = removedAppNames.ToHashSet(StringComparer.Ordinal);
         var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
         var protectedPaths = new HashSet<string>(comparer);
         foreach (var state in _storage.LocalAppStateDictionary.Values.ToList())
         {
-            if (state.AppName == install.AppName || state.InstallStatus == InstallState.NotInstalled ||
+            if (removed.Contains(state.AppName) || state.InstallStatus == InstallState.NotInstalled ||
                 string.IsNullOrWhiteSpace(state.InstallPath))
                 continue;
             if (!InstallRootsOverlap(install.Location, state.InstallPath)) continue;
 
-            var bytes = await GetInstalledManifestBytes(state.AppName);
-            var manifest = Manifest.ReadAll(bytes);
+            var manifest = Manifest.ReadAll(await GetInstalledManifestBytes(state.AppName));
             foreach (var file in manifest.FileManifestList.Elements)
                 protectedPaths.Add(InstallPathPolicy.ResolveFile(state.InstallPath, file.Filename));
         }
+        return protectedPaths;
+    }
 
-        var removable = data.FileManifestList.Elements.Where(file =>
-            !protectedPaths.Contains(InstallPathPolicy.ResolveFile(install.Location, file.Filename))).ToList();
-        QueueUninstallFiles(install, removable);
+    private List<string> GetRemainingInstallRoots(IEnumerable<string> removedAppNames)
+    {
+        var removed = removedAppNames.ToHashSet(StringComparer.Ordinal);
+        return _storage.LocalAppStateDictionary.Values
+            .Where(state => !removed.Contains(state.AppName) && state.InstallStatus != InstallState.NotInstalled)
+            .Select(state => state.InstallPath).Where(path => !string.IsNullOrWhiteSpace(path)).ToList();
     }
 
     private static bool InstallRootsOverlap(string first, string second)
@@ -865,7 +881,7 @@ public class InstallManager : IDisposable
                             await ProcessCopyTask(ioTask, install.Location);
                             break;
                         case IoTaskType.Delete:
-                            File.Delete(InstallPathPolicy.RequireFile(install.Location, ioTask.DestinationFilePath));
+                            InstallPathPolicy.DeleteFile(install.Location, ioTask.DestinationFilePath);
                             break;
                     }
                     UpdateInstallWriteProgress(ioTask.Size);
@@ -1091,6 +1107,10 @@ public class InstallManager : IDisposable
     private void CompleteUninstall(InstallItem install, Game game, LocalAppState localAppState)
     {
         var dlcs = GetInstalledDlcsInRoot(game, install.Location);
+        var preservedRoots = GetRemainingInstallRoots(dlcs.Select(dlc => dlc.AppName).Append(install.AppName));
+        if (!preservedRoots.Any(root => InstallRootsOverlap(install.Location, root)))
+            RemoveTemporaryChunks(install.Location);
+        InstallPathPolicy.RemoveEmptyDirectories(install.Location, preservedRoots);
         ClearInstallationState(localAppState);
         SaveLocalAppState(game, localAppState);
         foreach (var dlc in dlcs)
@@ -1746,19 +1766,19 @@ public class InstallManager : IDisposable
 
             await WaitForInstallWorkersAsync();
 
-            // Clean up only the temp chunk directory, not the entire game folder
-            var tempChunkDir = Path.Combine(CurrentInstall.Location, ".Crimson");
             try
             {
-                if (Directory.Exists(tempChunkDir))
-                    Directory.Delete(tempChunkDir, true);
+                RemoveTemporaryChunks(CurrentInstall.Location);
+                await RemoveCancelledInstallFilesAsync(CurrentInstall);
             }
             catch (Exception ex)
             {
-                _logger.Warning("Failed to clean up temporary installation files: {ErrorType}", ex.GetType().Name);
-                ReportSecondaryFailure(CurrentInstall, new OperationFailure(OperationFailureKind.Storage,
-                    "temporary_cleanup_failed", UiStrings.TheOperationWasCancelledButTemporaryFilesCouldNotBeRemoved,
-                    UiStrings.CloseApplicationsUsingTheInstallationFolderAndRetryCleanup, false));
+                _logger.Warning("Failed to clean up cancelled installation files: {ErrorType}", ex.GetType().Name);
+                ReportSecondaryFailure(CurrentInstall, OperationFailureClassifier.Classify(ex) with
+                {
+                    Code = "cancelled_install_cleanup_failed",
+                    CanRetry = false
+                });
             }
 
             CurrentInstall.Status = ActionStatus.Cancelled;
@@ -1779,6 +1799,47 @@ public class InstallManager : IDisposable
         CurrentInstall = null;
 
         ProcessNext();
+    }
+
+    private static void RemoveTemporaryChunks(string installRoot)
+    {
+        var directory = InstallPathPolicy.ResolveFile(installRoot, ".Crimson");
+        if (!Directory.Exists(directory)) return;
+        var paths = Directory.EnumerateFiles(directory).Where(IsTemporaryChunk)
+            .Select(path => InstallPathPolicy.RequireFile(installRoot, path)).ToList();
+        foreach (var path in paths) File.Delete(path);
+        InstallPathPolicy.RemoveEmptyDirectories(directory, []);
+    }
+
+    private static bool IsTemporaryChunk(string path)
+    {
+        var name = Path.GetFileName(path);
+        if (name.EndsWith(".partial", StringComparison.Ordinal))
+            name = Path.GetFileNameWithoutExtension(name);
+        return name.EndsWith(".chunk", StringComparison.Ordinal) &&
+            BigInteger.TryParse(Path.GetFileNameWithoutExtension(name), out _);
+    }
+
+    private async Task RemoveCancelledInstallFilesAsync(InstallItem install)
+    {
+        if (install.Action != ActionType.Install) return;
+        _storage.LocalAppStateDictionary.TryGetValue(install.AppName, out var state);
+        if (state is not null && state.InstallStatus != InstallState.NotInstalled) return;
+
+        if (!string.IsNullOrWhiteSpace(state?.CachedManifestVersion))
+        {
+            var bytes = await _storage.GetCachedManifestBytes(install.AppName, state.CachedManifestVersion)
+                ?? throw new InvalidDataException("The installation manifest is unavailable. Partial files were preserved.");
+            var manifest = Manifest.ReadAll(bytes);
+            ApplyOperationInstallTags(install, manifest);
+            var protectedPaths = await GetProtectedInstallPathsAsync(install, [install.AppName]);
+            var paths = manifest.FileManifestList.Elements
+                .Select(file => InstallPathPolicy.ResolveFile(install.Location, file.Filename))
+                .Where(path => !protectedPaths.Contains(path)).ToList();
+            foreach (var path in paths)
+                InstallPathPolicy.DeleteFile(install.Location, path);
+        }
+        InstallPathPolicy.RemoveEmptyDirectories(install.Location, GetRemainingInstallRoots([install.AppName]));
     }
 
     private bool TrySaveStoppedState(InstallItem install, string json)
