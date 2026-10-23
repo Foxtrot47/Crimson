@@ -88,11 +88,9 @@ public sealed partial class CurrentDownloadControl : UserControl, IDisposable
         EmptyDownloadText.Visibility = Visibility.Collapsed;
         DownloadStatus.Visibility = Visibility.Visible;
         GameName.Text = title;
-        OperationStatus.Text = presentation.Headline;
         ProgressBar.IsEnabled = true;
         ProgressBar.IsIndeterminate = presentation.IsIndeterminate;
         ProgressBar.Value = presentation.ProgressPercentage;
-        DownloadedSize.Text = presentation.Detail;
         ApplyDownloadSpeed(operation);
 
         SummaryChanged?.Invoke(new DownloadSummary

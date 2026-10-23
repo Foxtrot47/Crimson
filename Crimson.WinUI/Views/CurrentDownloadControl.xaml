@@ -22,13 +22,11 @@
 
         <Grid
             x:Name="DownloadStatus"
-            MinHeight="100"
-            Margin="5"
+            Margin="0,0,4,0"
+            VerticalAlignment="Center"
             Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="25" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
@@ -37,34 +35,24 @@
                 Grid.Row="0"
                 MaxWidth="260"
                 HorizontalAlignment="Left"
-                Style="{ThemeResource SubtitleTextBlockStyle}"
-                TextTrimming="WordEllipsis"
+                TextTrimming="CharacterEllipsis"
                 TextWrapping="NoWrap" />
-            <TextBlock
-                x:Name="OperationStatus"
-                Grid.Row="1"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                TextTrimming="CharacterEllipsis" />
-            <ProgressBar
-                x:Name="ProgressBar"
-                Grid.Row="2"
-                Height="10" />
-
-            <Grid Grid.Row="3">
+            <Grid Grid.Row="1" Margin="0,6,0,0" ColumnSpacing="6">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-
-                <TextBlock
-                    x:Name="DownloadedSize"
+                <ProgressBar
+                    x:Name="ProgressBar"
                     Grid.Column="0"
-                    Margin="0,0,10,0"
-                    FontSize="16" />
+                    Height="4"
+                    VerticalAlignment="Center" />
                 <TextBlock
                     x:Name="DownloadSpeed"
                     Grid.Column="1"
-                    FontSize="16" />
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
         </Grid>
     </Grid>

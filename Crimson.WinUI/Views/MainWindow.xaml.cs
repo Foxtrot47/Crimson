@@ -127,9 +127,6 @@ public sealed partial class MainWindow : Window
         CurrentDownload.SummaryChanged += OnDownloadSummaryChanged;
         _installManager.OperationUpdated += OperationUpdatedHandler;
         DownloadsNavItem.Resources["NavigationViewItemOnLeftIconBoxHeight"] = 32d;
-        NavControl.PaneOpened += (_, _) => UpdateDownloadItemHeight();
-        NavControl.PaneClosed += (_, _) => UpdateDownloadItemHeight();
-        NavControl.DisplayModeChanged += (_, _) => UpdateDownloadItemHeight();
         DownloadIcon.Loaded += (_, _) => InitializeDownloadRing();
         DownloadIcon.ActualThemeChanged += (_, _) => UpdateDownloadRing();
         CurrentDownload.PublishCurrentSummary();
@@ -813,19 +810,11 @@ public sealed partial class MainWindow : Window
     private void OnDownloadSummaryChanged(DownloadSummary summary)
     {
         _lastDownloadSummary = summary;
-        UpdateDownloadItemHeight();
         ToolTipService.SetToolTip(DownloadsNavItem, summary.ToolTip);
         DownloadIcon.Glyph = summary.HasActiveDownload
             ? GetActionGlyph(summary.Action, summary.Status)
             : "\uE896";
         UpdateDownloadRing();
-    }
-
-    private void UpdateDownloadItemHeight()
-    {
-        DownloadsNavItem.Height = NavControl.IsPaneOpen && _lastDownloadSummary is { HasActiveDownload: true }
-            ? double.NaN
-            : (double)NavControl.Resources["NavigationViewItemOnLeftMinHeight"];
     }
 
     private void InitializeDownloadRing()

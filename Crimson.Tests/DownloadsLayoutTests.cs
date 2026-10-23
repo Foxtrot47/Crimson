@@ -72,7 +72,18 @@ public sealed class DownloadsLayoutTests
         Assert.Equal("Auto", (string?)Assert.Single(layout.Descendants(Ui + "RowDefinition"),
             row => row.Parent?.Parent == layout).Attribute("Height"));
         Assert.Equal("Collapsed", (string?)Named(control, "DownloadStatus").Attribute("Visibility"));
-        Assert.Equal("100", (string?)Named(control, "DownloadStatus").Attribute("MinHeight"));
+    }
+
+    [Fact]
+    public void ActiveSidebarDownloadsStayWithinTheSharedNavigationRowHeight()
+    {
+        var control = PresentationXaml.Load("CurrentDownloadControl.xaml");
+        var status = Named(control, "DownloadStatus");
+
+        Assert.Null(status.Attribute("Height"));
+        Assert.Null(status.Attribute("MinHeight"));
+        Assert.Equal(2, status.Elements(Ui + "Grid.RowDefinitions").Single().Elements(Ui + "RowDefinition").Count());
+        Assert.Equal("4", (string?)Named(control, "ProgressBar").Attribute("Height"));
     }
 
     [Fact]
