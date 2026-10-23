@@ -6,6 +6,7 @@ using System.Linq;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.ViewModels;
+using Serilog;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
@@ -107,18 +108,38 @@ public sealed partial class DownloadsPage : Page
     {
         if (GetItem(sender)?.Operation is not { } operation) return;
 
-        var package = new DataPackage();
-        package.SetText(OperationDiagnostics.Create(operation));
-        Clipboard.SetContent(package);
-        Clipboard.Flush();
+        var copied = OperationDiagnosticActions.TryCopy(operation, diagnostic =>
+        {
+            var package = new DataPackage();
+            package.SetText(diagnostic);
+            Clipboard.SetContent(package);
+            Clipboard.Flush();
+        }, App.GetService<ILogger>());
         if (sender is Button button)
-            button.Content = UiStrings.Copied;
+        {
+            button.Content = copied ? UiStrings.Copied
+                : UiStrings.Format(UiStrings.TitleDetailFormat, UiStrings.CopyDiagnostics, UiStrings.TryAgain);
+            ToolTipService.SetToolTip(button, copied ? UiStrings.Copied : UiStrings.TryAgain);
+        }
     }
 
     private async void ReportProblem_Click(object sender, RoutedEventArgs e)
     {
-        if (GetItem(sender)?.Operation is { } operation)
-            await Launcher.LaunchUriAsync(OperationDiagnostics.CreateIssueUri(operation));
+        if (sender is not Button button || GetItem(sender)?.Operation is not { } operation) return;
+        button.IsEnabled = false;
+        try
+        {
+            var opened = await OperationDiagnosticActions.TryReportAsync(operation,
+                async uri => await Launcher.LaunchUriAsync(uri), App.GetService<ILogger>());
+            button.Content = opened ? UiStrings.ReportProblem
+                : UiStrings.Format(UiStrings.TitleDetailFormat, UiStrings.ReportProblem, UiStrings.TryAgain);
+            ToolTipService.SetToolTip(button, opened ? UiStrings.ReportProblem
+                : UiStrings.TheReportPageCouldNotBeOpenedErrorCodeReportOpenFailed);
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
     }
 
     private static DownloadManagerItem? GetItem(object sender) =>

@@ -117,14 +117,8 @@ internal sealed class OperationErrorPresenter : IDisposable
     private async Task ReportAsync(OperationSnapshot operation, TextBlock feedback)
     {
         feedback.Visibility = Visibility.Collapsed;
-        try
-        {
-            if (await Launcher.LaunchUriAsync(OperationDiagnostics.CreateIssueUri(operation))) return;
-        }
-        catch (Exception exception)
-        {
-            _log.Warning("Report page could not be opened: {ErrorType}", exception.GetType().Name);
-        }
+        if (await OperationDiagnosticActions.TryReportAsync(operation,
+            async uri => await Launcher.LaunchUriAsync(uri), _log)) return;
         feedback.Text = UiStrings.TheReportPageCouldNotBeOpenedErrorCodeReportOpenFailed;
         feedback.Visibility = Visibility.Visible;
     }
