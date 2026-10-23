@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Repository;
@@ -323,9 +324,22 @@ public sealed class LibrarySessionTests : IDisposable
         return new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance, installer, library, storage, dispatcher);
     }
 
+    [Fact]
+    public void QueuedDispatcherPreservesConcurrentCallbacks()
+    {
+        var dispatcher = new QueuedDispatcher();
+        var calls = new int[2000];
+
+        Parallel.For(0, calls.Length, index =>
+            dispatcher.TryEnqueue(() => calls[index]++));
+        dispatcher.Flush();
+
+        Assert.All(calls, count => Assert.Equal(1, count));
+    }
+
     private sealed class QueuedDispatcher : IUiDispatcher
     {
-        private readonly Queue<Action> _callbacks = new();
+        private readonly ConcurrentQueue<Action> _callbacks = new();
         public bool TryEnqueue(Action callback)
         {
             _callbacks.Enqueue(callback);
