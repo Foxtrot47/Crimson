@@ -49,6 +49,12 @@ public sealed class ManifestPathSafetyTests
             Assert.Equal(0, process.ExitCode);
 
             Assert.Throws<InvalidDataException>(() => InstallPathPolicy.ResolveFile(installation, "linked/file.bin"));
+
+            InstallPathPolicy.RemoveEmptyDirectories(installation, []);
+            InstallPathPolicy.RemoveEmptyDirectories(link, []);
+
+            Assert.True(Directory.Exists(link));
+            Assert.True(Directory.Exists(outside));
         }
         finally
         {

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -66,10 +67,31 @@ public class DownloadManager
         string destinationPath,
         int maxRetries = 7,
         CancellationToken cancellationToken = default,
-        long? expectedSize = null)
+        long? expectedSize = null,
+        Action<bool>? retryStateChanged = null,
+        Action<long>? bytesTransferred = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxRetries, 1);
+        var retrying = false;
+        try
+        {
+            return await DownloadWithRetriesAsync(relativePath, destinationPath, maxRetries, cancellationToken, expectedSize, () =>
+            {
+                if (retrying) return;
+                retrying = true;
+                retryStateChanged?.Invoke(true);
+            }, bytesTransferred);
+        }
+        finally
+        {
+            if (retrying) retryStateChanged?.Invoke(false);
+        }
+    }
 
+    private async Task<bool> DownloadWithRetriesAsync(
+        string relativePath, string destinationPath, int maxRetries,
+        CancellationToken cancellationToken, long? expectedSize, Action retrying, Action<long>? bytesTransferred)
+    {
         for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
             var orderedMirrors = await GetPrioritizedMirrors(cancellationToken);
@@ -87,12 +109,16 @@ public class DownloadManager
                 try
                 {
                     var success = await MeasureDownloadSpeed(
-                        mirror, fullUrl, destinationPath, expectedSize, cancellationToken);
+                        mirror, fullUrl, destinationPath, expectedSize, cancellationToken, bytesTransferred);
                     if (success) return true;
 
                     await UpdateMirrorStats(mirror.BaseUrl, false, 0, cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex) when (IsLocalWriteFailure(ex))
                 {
                     throw;
                 }
@@ -111,13 +137,39 @@ public class DownloadManager
             // Exponential backoff, capped. A flat 100ms burned all attempts inside a second and
             // turned a brief network blip into a failed install.
             if (attempt < maxRetries)
+            {
+                retrying();
                 await Task.Delay(
                     TimeSpan.FromMilliseconds(Math.Min(500 * Math.Pow(2, attempt - 1), 15_000)),
                     cancellationToken);
+            }
         }
 
         return false;
     }
+
+    private static async Task CopyWithProgressAsync(
+        Stream source, Stream destination, Action<long>? bytesTransferred, CancellationToken cancellationToken)
+    {
+        var buffer = ArrayPool<byte>.Shared.Rent(81920);
+        try
+        {
+            int read;
+            while ((read = await source.ReadAsync(buffer.AsMemory(), cancellationToken)) > 0)
+            {
+                await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                bytesTransferred?.Invoke(read);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private static bool IsLocalWriteFailure(Exception exception) =>
+        exception is UnauthorizedAccessException ||
+        exception is IOException ioException && OperationFailureClassifier.Classify(ioException).Code == "storage_full";
 
     private async Task<List<MirrorStats>> GetPrioritizedMirrors(CancellationToken cancellationToken = default)
     {
@@ -140,7 +192,8 @@ public class DownloadManager
         string url,
         string destinationPath,
         long? expectedSize,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<long>? bytesTransferred)
     {
         var stopwatch = Stopwatch.StartNew();
         var partialPath = destinationPath + ".partial";
@@ -167,7 +220,7 @@ public class DownloadManager
                 partialPath, FileMode.Create, FileAccess.Write, FileShare.None,
                 bufferSize: 81920, useAsync: true))
             {
-                await stream.CopyToAsync(fileStream, cancellationToken);
+                await CopyWithProgressAsync(stream, fileStream, bytesTransferred, cancellationToken);
                 await fileStream.FlushAsync(cancellationToken);
             }
 

@@ -9,6 +9,14 @@ public interface IStoreRepository
 {
     public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId);
 
+    public Task<StoreProductDetails?> FetchStoreProductDetails(
+        string nameSpace,
+        CancellationToken cancellationToken = default);
+
+    public Task<long?> FetchGamePlaytimeSeconds(
+        string appName,
+        CancellationToken cancellationToken = default);
+
     public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live");
 
     public Task<IReadOnlyList<StoreSearchResult>> SearchStore(

@@ -1,0 +1,862 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="About" xml:space="preserve">
+    <value>关于</value>
+  </data>
+  <data name="Accounts" xml:space="preserve">
+    <value>账户</value>
+  </data>
+  <data name="AcrylicOpacity" xml:space="preserve">
+    <value>亚克力不透明度</value>
+  </data>
+  <data name="AcrylicOpacityDescription" xml:space="preserve">
+    <value>模糊效果之上窗口背景保持不透明的程度</value>
+  </data>
+  <data name="AdvancedSettings" xml:space="preserve">
+    <value>高级设置</value>
+  </data>
+  <data name="Appearance" xml:space="preserve">
+    <value>外观</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>应用</value>
+  </data>
+  <data name="ApplyChanges" xml:space="preserve">
+    <value>应用更改</value>
+  </data>
+  <data name="ApplyDLCRemovals" xml:space="preserve">
+    <value>应用 DLC 移除？</value>
+  </data>
+  <data name="AvailableOf" xml:space="preserve">
+    <value>可用 /</value>
+  </data>
+  <data name="B" xml:space="preserve">
+    <value>B</value>
+  </data>
+  <data name="BaseGame" xml:space="preserve">
+    <value>基础游戏</value>
+  </data>
+  <data name="BrowseFiles" xml:space="preserve">
+    <value>浏览文件</value>
+  </data>
+  <data name="BrowseInstallationFiles" xml:space="preserve">
+    <value>浏览安装文件</value>
+  </data>
+  <data name="CalculatingRequiredSpace" xml:space="preserve">
+    <value>正在计算所需空间…</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="CancelOperation" xml:space="preserve">
+    <value>取消操作</value>
+  </data>
+  <data name="Cancelling" xml:space="preserve">
+    <value>正在取消</value>
+  </data>
+  <data name="CheckThatTheInstallationFolderIsAvailableAndTryAgain" xml:space="preserve">
+    <value>请检查安装文件夹是否可用，然后重试。</value>
+  </data>
+  <data name="CheckYourConnectionAndRetry" xml:space="preserve">
+    <value>请检查网络连接后重试。</value>
+  </data>
+  <data name="CheckYourConnectionAndWebView2RuntimeThenTryAgain" xml:space="preserve">
+    <value>请检查网络连接和 WebView2 Runtime，然后重试。</value>
+  </data>
+  <data name="CheckingAuthenticationStatus" xml:space="preserve">
+    <value>正在检查身份验证状态</value>
+  </data>
+  <data name="ChooseAnotherFolderOrAllowCrimsonToWriteToThisLocation" xml:space="preserve">
+    <value>请选择其他文件夹，或允许 Crimson 写入此位置。</value>
+  </data>
+  <data name="ChooseTheFolderAgainNextTimeCheckAppDataPermissionsIfThisContinues" xml:space="preserve">
+    <value>下次请重新选择文件夹。如果问题持续存在，请检查 AppData 权限。</value>
+  </data>
+  <data name="ChooseTheFolderContainingTheGameFilesThenImportAgain" xml:space="preserve">
+    <value>请选择包含游戏文件的文件夹，然后重新导入。</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="CloseApplicationsUsingTheInstallationFolderAndRetryCleanup" xml:space="preserve">
+    <value>请关闭使用该安装文件夹的应用，然后重试。</value>
+  </data>
+  <data name="CloseGameProperties" xml:space="preserve">
+    <value>关闭游戏属性</value>
+  </data>
+  <data name="CloseScreenshot" xml:space="preserve">
+    <value>关闭截图</value>
+  </data>
+  <data name="CloseTheImportWindowAndTryAgain" xml:space="preserve">
+    <value>请关闭导入窗口后重试。</value>
+  </data>
+  <data name="Completed" xml:space="preserve">
+    <value>已完成</value>
+  </data>
+  <data name="ConfirmUninstallGame" xml:space="preserve">
+    <value>确认卸载游戏</value>
+  </data>
+  <data name="ConnectionInterruptedRetrying" xml:space="preserve">
+    <value>网络连接中断，正在重试…</value>
+  </data>
+  <data name="ContentToInstall" xml:space="preserve">
+    <value>要安装的内容</value>
+  </data>
+  <data name="Copied" xml:space="preserve">
+    <value>已复制</value>
+  </data>
+  <data name="CopyDiagnostics" xml:space="preserve">
+    <value>复制诊断信息</value>
+  </data>
+  <data name="CoverArtworkUnavailable" xml:space="preserve">
+    <value>封面图不可用</value>
+  </data>
+  <data name="CreateDesktopShortcut" xml:space="preserve">
+    <value>创建桌面快捷方式</value>
+  </data>
+  <data name="CreateShortcut" xml:space="preserve">
+    <value>创建快捷方式</value>
+  </data>
+  <data name="CreateStartMenuShortcut" xml:space="preserve">
+    <value>创建开始菜单快捷方式</value>
+  </data>
+  <data name="CreateTheShortcutAgainFromGameProperties" xml:space="preserve">
+    <value>请通过游戏“属性”重新创建快捷方式。</value>
+  </data>
+  <data name="Crimson" xml:space="preserve">
+    <value>Crimson</value>
+  </data>
+  <data name="CrimsonCouldNotDownloadTheRequiredData" xml:space="preserve">
+    <value>Crimson 无法下载所需数据。</value>
+  </data>
+  <data name="CrimsonCouldNotReadTheInstallationData" xml:space="preserve">
+    <value>Crimson 无法读取安装数据。</value>
+  </data>
+  <data name="CrimsonCouldNotSaveTheOperationSRecoveryState" xml:space="preserve">
+    <value>Crimson 无法保存操作的恢复状态。</value>
+  </data>
+  <data name="CrimsonCouldNotWriteToTheSelectedInstallationLocation" xml:space="preserve">
+    <value>Crimson 无法写入所选的安装位置。</value>
+  </data>
+  <data name="DLC" xml:space="preserve">
+    <value>DLC</value>
+  </data>
+  <data name="DLCArtwork" xml:space="preserve">
+    <value>DLC 艺术图</value>
+  </data>
+  <data name="DLCChangesCouldNotBeQueued" xml:space="preserve">
+    <value>无法将 DLC 更改加入队列。</value>
+  </data>
+  <data name="DesktopShortcut" xml:space="preserve">
+    <value>桌面快捷方式</value>
+  </data>
+  <data name="DetectingEpicGamesLauncherInstallations" xml:space="preserve">
+    <value>正在检测 Epic Games Launcher 安装…</value>
+  </data>
+  <data name="DiskWriteRate" xml:space="preserve">
+    <value>磁盘写入速率</value>
+  </data>
+  <data name="DownloadAndInstallerDiskWriteRatesOverTheLast60Seconds" xml:space="preserve">
+    <value>过去 60 秒内的下载和安装程序磁盘写入速率</value>
+  </data>
+  <data name="DownloadRate" xml:space="preserve">
+    <value>下载速率</value>
+  </data>
+  <data name="DownloadSize" xml:space="preserve">
+    <value>下载大小</value>
+  </data>
+  <data name="Downloads" xml:space="preserve">
+    <value>下载</value>
+  </data>
+  <data name="EnableAcrylic" xml:space="preserve">
+    <value>启用亚克力（Acrylic）效果</value>
+  </data>
+  <data name="EnableTheAcrylicEffectsAvailableOnWindows11" xml:space="preserve">
+    <value>启用 Windows 11 上可用的亚克力（Acrylic）模糊效果</value>
+  </data>
+  <data name="EpicGamesStore" xml:space="preserve">
+    <value>Epic Games Store</value>
+  </data>
+  <data name="EpicInstallationsCouldNotBeDetected" xml:space="preserve">
+    <value>无法检测到 Epic 安装。</value>
+  </data>
+  <data name="ErrorCodeFormat" xml:space="preserve">
+    <value>错误代码：{0}</value>
+  </data>
+  <data name="Exit" xml:space="preserve">
+    <value>退出</value>
+  </data>
+  <data name="FilesSharedWithTheGameOrOtherInstalledContentWillBeKept" xml:space="preserve">
+    <value>与该游戏或其他已安装内容共享的文件将被保留。</value>
+  </data>
+  <data name="FinishTheCurrentOperationBeforeChangingDLC" xml:space="preserve">
+    <value>更改 DLC 之前，请先完成当前操作。</value>
+  </data>
+  <data name="Finishing" xml:space="preserve">
+    <value>正在完成</value>
+  </data>
+  <data name="FreeSomeDiskSpaceThenRetry" xml:space="preserve">
+    <value>请释放一些磁盘空间，然后重试。</value>
+  </data>
+  <data name="GB" xml:space="preserve">
+    <value>GB</value>
+  </data>
+  <data name="GameArtwork" xml:space="preserve">
+    <value>游戏艺术图</value>
+  </data>
+  <data name="GameBackgroundArtwork" xml:space="preserve">
+    <value>游戏背景图</value>
+  </data>
+  <data name="GameCoverArtwork" xml:space="preserve">
+    <value>游戏封面图</value>
+  </data>
+  <data name="GameOperationFormat" xml:space="preserve">
+    <value>{0} - {1}</value>
+  </data>
+  <data name="GameScreenshot" xml:space="preserve">
+    <value>游戏截图</value>
+  </data>
+  <data name="GameStatus" xml:space="preserve">
+    <value>游戏状态</value>
+  </data>
+  <data name="General" xml:space="preserve">
+    <value>常规</value>
+  </data>
+  <data name="GridView" xml:space="preserve">
+    <value>网格视图</value>
+  </data>
+  <data name="History" xml:space="preserve">
+    <value>历史记录</value>
+  </data>
+  <data name="Import" xml:space="preserve">
+    <value>导入</value>
+  </data>
+  <data name="ImportFromEpic" xml:space="preserve">
+    <value>从 Epic 导入</value>
+  </data>
+  <data name="ImportRepairFilesFormat" xml:space="preserve">
+    <value>已验证 {0} 个文件：{1} 个需要修复</value>
+  </data>
+  <data name="ImportSelected" xml:space="preserve">
+    <value>导入所选项目</value>
+  </data>
+  <data name="ImportVerifiedFilesFormat" xml:space="preserve">
+    <value>已验证 {0} 个文件</value>
+  </data>
+  <data name="Imported" xml:space="preserve">
+    <value>已导入</value>
+  </data>
+  <data name="Importing" xml:space="preserve">
+    <value>正在导入</value>
+  </data>
+  <data name="InYourLibrary" xml:space="preserve">
+    <value>在您的库中</value>
+  </data>
+  <data name="Install" xml:space="preserve">
+    <value>安装</value>
+  </data>
+  <data name="InstallGameFormat" xml:space="preserve">
+    <value>安装 {0}</value>
+  </data>
+  <data name="InstallLocation" xml:space="preserve">
+    <value>安装位置</value>
+  </data>
+  <data name="InstallOrImportTheGameFirst" xml:space="preserve">
+    <value>请先安装或导入游戏。</value>
+  </data>
+  <data name="InstallOrRepairTheGameBeforeChangingDLC" xml:space="preserve">
+    <value>在更改 DLC 之前，请先安装或修复游戏。</value>
+  </data>
+  <data name="InstallSize" xml:space="preserve">
+    <value>安装大小</value>
+  </data>
+  <data name="InstallationOptions" xml:space="preserve">
+    <value>安装选项</value>
+  </data>
+  <data name="Installed" xml:space="preserve">
+    <value>已安装</value>
+  </data>
+  <data name="InstalledBuild" xml:space="preserve">
+    <value>已安装版本</value>
+  </data>
+  <data name="InstalledFiles" xml:space="preserve">
+    <value>已安装文件</value>
+  </data>
+  <data name="InstalledOnly" xml:space="preserve">
+    <value>仅已安装</value>
+  </data>
+  <data name="InstallerDestinationFileOutputNotTotalDeviceThroughput" xml:space="preserve">
+    <value>安装程序目标文件输出速率，而非设备总吞吐量。</value>
+  </data>
+  <data name="Installing" xml:space="preserve">
+    <value>正在安装</value>
+  </data>
+  <data name="KB" xml:space="preserve">
+    <value>KB</value>
+  </data>
+  <data name="LastUpdated" xml:space="preserve">
+    <value>最后更新</value>
+  </data>
+  <data name="LessThanOneMinute" xml:space="preserve">
+    <value>&lt;1分钟</value>
+  </data>
+  <data name="Library" xml:space="preserve">
+    <value>游戏库</value>
+  </data>
+  <data name="ListView" xml:space="preserve">
+    <value>列表视图</value>
+  </data>
+  <data name="LoadingEllipsis" xml:space="preserve">
+    <value>正在加载…</value>
+  </data>
+  <data name="LoadingFourDots" xml:space="preserve">
+    <value>正在加载….</value>
+  </data>
+  <data name="LoadingStoreDetails" xml:space="preserve">
+    <value>正在加载商店详情</value>
+  </data>
+  <data name="LoadingThreeDots" xml:space="preserve">
+    <value>正在加载…</value>
+  </data>
+  <data name="LoginFailed" xml:space="preserve">
+    <value>登录失败</value>
+  </data>
+  <data name="LoginSuccess" xml:space="preserve">
+    <value>登录成功</value>
+  </data>
+  <data name="Logout" xml:space="preserve">
+    <value>退出登录</value>
+  </data>
+  <data name="MB" xml:space="preserve">
+    <value>MB</value>
+  </data>
+  <data name="Manage" xml:space="preserve">
+    <value>管理</value>
+  </data>
+  <data name="MessageSuggestionFormat" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="Minimum" xml:space="preserve">
+    <value>最低配置</value>
+  </data>
+  <data name="Move" xml:space="preserve">
+    <value>移动</value>
+  </data>
+  <data name="MoveGameInstallation" xml:space="preserve">
+    <value>移动游戏安装位置</value>
+  </data>
+  <data name="MoveInstallation" xml:space="preserve">
+    <value>移动安装</value>
+  </data>
+  <data name="Moved" xml:space="preserve">
+    <value>已移动</value>
+  </data>
+  <data name="Moving" xml:space="preserve">
+    <value>正在移动</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>名称</value>
+  </data>
+  <data name="NextScreenshots" xml:space="preserve">
+    <value>下一张截图</value>
+  </data>
+  <data name="NoDLCAvailable" xml:space="preserve">
+    <value>无可用 DLC。</value>
+  </data>
+  <data name="NoDownloadsInQueue" xml:space="preserve">
+    <value>队列中没有下载项</value>
+  </data>
+  <data name="NoDownloadsInQueueTitle" xml:space="preserve">
+    <value>队列中没有下载项目</value>
+  </data>
+  <data name="NoEligibleEpicGamesLauncherInstallationsFound" xml:space="preserve">
+    <value>未找到符合条件的 Epic Games Launcher 安装。</value>
+  </data>
+  <data name="NoGameFilesWereFoundInTheSelectedFolder" xml:space="preserve">
+    <value>在所选文件夹中未找到游戏文件。</value>
+  </data>
+  <data name="NoInstalledGames" xml:space="preserve">
+    <value>没有已安装的游戏</value>
+  </data>
+  <data name="NoInstalledGamesMessage" xml:space="preserve">
+    <value>没有已安装的游戏。</value>
+  </data>
+  <data name="NoMatchingDLC" xml:space="preserve">
+    <value>没有匹配的 DLC。</value>
+  </data>
+  <data name="NoTransferActivityRecorded" xml:space="preserve">
+    <value>无传输活动记录</value>
+  </data>
+  <data name="NotInstalled" xml:space="preserve">
+    <value>未安装</value>
+  </data>
+  <data name="OneFileFailedVerification" xml:space="preserve">
+    <value>有 1 个文件未通过验证。</value>
+  </data>
+  <data name="OpenGameProperties" xml:space="preserve">
+    <value>打开游戏属性</value>
+  </data>
+  <data name="OpenLogsDirectory" xml:space="preserve">
+    <value>打开日志目录</value>
+  </data>
+  <data name="OpenScreenshot" xml:space="preserve">
+    <value>打开截图</value>
+  </data>
+  <data name="Operation" xml:space="preserve">
+    <value>操作</value>
+  </data>
+  <data name="OperationCancelledFormat" xml:space="preserve">
+    <value>{0} 已取消</value>
+  </data>
+  <data name="OperationErrorFormat" xml:space="preserve">
+    <value>{0} 错误</value>
+  </data>
+  <data name="OperationFailedFormat" xml:space="preserve">
+    <value>{0} 失败</value>
+  </data>
+  <data name="OperationInProgress" xml:space="preserve">
+    <value>操作正在进行中</value>
+  </data>
+  <data name="OperationPaused" xml:space="preserve">
+    <value>操作已暂停</value>
+  </data>
+  <data name="OperationPausedFormat" xml:space="preserve">
+    <value>{0} 已暂停</value>
+  </data>
+  <data name="OperationQueuedFormat" xml:space="preserve">
+    <value>{0} 已排队</value>
+  </data>
+  <data name="Pause" xml:space="preserve">
+    <value>暂停</value>
+  </data>
+  <data name="PauseOperation" xml:space="preserve">
+    <value>暂停操作</value>
+  </data>
+  <data name="Play" xml:space="preserve">
+    <value>开始游戏</value>
+  </data>
+  <data name="PlayGameFormat" xml:space="preserve">
+    <value>运行 {0}</value>
+  </data>
+  <data name="PlaytimeHoursMinutesFormat" xml:space="preserve">
+    <value>{0}小时 {1}分钟</value>
+  </data>
+  <data name="PlaytimeMinutesFormat" xml:space="preserve">
+    <value>{0}分钟</value>
+  </data>
+  <data name="PleaseTryAgain" xml:space="preserve">
+    <value>请重试</value>
+  </data>
+  <data name="PleaseWait" xml:space="preserve">
+    <value>请稍候…</value>
+  </data>
+  <data name="PleaseWait2" xml:space="preserve">
+    <value>请稍候</value>
+  </data>
+  <data name="Preparing" xml:space="preserve">
+    <value>正在准备</value>
+  </data>
+  <data name="PreviousScreenshots" xml:space="preserve">
+    <value>上一张截图</value>
+  </data>
+  <data name="ProgressPercentFormat" xml:space="preserve">
+    <value>{0}%</value>
+  </data>
+  <data name="Publisher" xml:space="preserve">
+    <value>发行商</value>
+  </data>
+  <data name="Queue" xml:space="preserve">
+    <value>队列</value>
+  </data>
+  <data name="QueuePositionFormat" xml:space="preserve">
+    <value>{0} · 位置 {1}</value>
+  </data>
+  <data name="Queued" xml:space="preserve">
+    <value>排队中</value>
+  </data>
+  <data name="RateBytesFormat" xml:space="preserve">
+    <value>{0:0.##} B/s</value>
+  </data>
+  <data name="RateKiBFormat" xml:space="preserve">
+    <value>{0:0.##} KiB/s</value>
+  </data>
+  <data name="RateMiBFormat" xml:space="preserve">
+    <value>{0:0.##} MiB/s</value>
+  </data>
+  <data name="ReadyToPlay" xml:space="preserve">
+    <value>可立即运行</value>
+  </data>
+  <data name="Recommended" xml:space="preserve">
+    <value>推荐配置</value>
+  </data>
+  <data name="RefreshTheLibraryAndTryAgain" xml:space="preserve">
+    <value>请刷新游戏库后重试。</value>
+  </data>
+  <data name="ReleaseDate" xml:space="preserve">
+    <value>发行日期</value>
+  </data>
+  <data name="ReleaseDateFormat" xml:space="preserve">
+    <value>yyyy年M月d日</value>
+  </data>
+  <data name="RemoveTheRemainingCrimsonShortcutsManually" xml:space="preserve">
+    <value>请手动删除剩余的 Crimson 快捷方式。</value>
+  </data>
+  <data name="Removing" xml:space="preserve">
+    <value>正在删除</value>
+  </data>
+  <data name="ReopenPropertiesAndTryAgain" xml:space="preserve">
+    <value>请重新打开“属性”并重试。</value>
+  </data>
+  <data name="Repair" xml:space="preserve">
+    <value>修复</value>
+  </data>
+  <data name="RepairRequired" xml:space="preserve">
+    <value>需要修复</value>
+  </data>
+  <data name="Repaired" xml:space="preserve">
+    <value>已修复</value>
+  </data>
+  <data name="Repairing" xml:space="preserve">
+    <value>正在修复</value>
+  </data>
+  <data name="ReportProblem" xml:space="preserve">
+    <value>报告问题</value>
+  </data>
+  <data name="RestartCrimsonAndTryAgain" xml:space="preserve">
+    <value>请重启 Crimson 并重试。</value>
+  </data>
+  <data name="RestoreFreeSpaceAndFolderAccessThenRestartCrimsonAndReviewPendingOperations" xml:space="preserve">
+    <value>请恢复可用空间与文件夹访问权限，然后重启 Crimson 并查看待处理的操作。</value>
+  </data>
+  <data name="Resume" xml:space="preserve">
+    <value>继续</value>
+  </data>
+  <data name="ResumeOperation" xml:space="preserve">
+    <value>继续操作</value>
+  </data>
+  <data name="Retry" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="RetryLaterIfTheProblemContinuesReportIt" xml:space="preserve">
+    <value>请稍后重试。如果问题仍未解决，请报告。</value>
+  </data>
+  <data name="RetryTheOperationIfItFailsAgainReportTheProblem" xml:space="preserve">
+    <value>请重试该操作。如果再次失败，请报告问题。</value>
+  </data>
+  <data name="RetryTheRepairIfItFailsAgainReportTheProblem" xml:space="preserve">
+    <value>请重试修复。如果再次失败，请报告问题。</value>
+  </data>
+  <data name="Retrying" xml:space="preserve">
+    <value>正在重试…</value>
+  </data>
+  <data name="ScreenshotCouldNotBeLoaded" xml:space="preserve">
+    <value>无法加载截图。</value>
+  </data>
+  <data name="ScreenshotUnavailable" xml:space="preserve">
+    <value>截图不可用</value>
+  </data>
+  <data name="Screenshots" xml:space="preserve">
+    <value>截图</value>
+  </data>
+  <data name="SearchDLC" xml:space="preserve">
+    <value>搜索 DLC</value>
+  </data>
+  <data name="SearchStoreForQueryFormat" xml:space="preserve">
+    <value>在 Epic Games Store 中搜索“{0}”</value>
+  </data>
+  <data name="SearchYourLibrary" xml:space="preserve">
+    <value>搜索您的游戏库</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="ShortcutDescriptionFormat" xml:space="preserve">
+    <value>使用 Crimson 启动 {0}</value>
+  </data>
+  <data name="Shortcuts" xml:space="preserve">
+    <value>快捷方式</value>
+  </data>
+  <data name="ShowAdavancedSettings" xml:space="preserve">
+    <value>显示高级设置</value>
+  </data>
+  <data name="ShowGamesInstalledOrBeingManagedByCrimson" xml:space="preserve">
+    <value>显示由 Crimson 安装或管理的游戏</value>
+  </data>
+  <data name="Size" xml:space="preserve">
+    <value>大小</value>
+  </data>
+  <data name="SizeGiBFormat" xml:space="preserve">
+    <value>{0:F2} GiB</value>
+  </data>
+  <data name="SizeMiBFormat" xml:space="preserve">
+    <value>{0:F2} MiB</value>
+  </data>
+  <data name="SizeOfInstallation" xml:space="preserve">
+    <value>安装文件大小</value>
+  </data>
+  <data name="SizeWithUnitFormat" xml:space="preserve">
+    <value>{0:0.##} {1}</value>
+  </data>
+  <data name="Specification" xml:space="preserve">
+    <value>系统配置要求</value>
+  </data>
+  <data name="StartTheOperationAgainFromTheLibrary" xml:space="preserve">
+    <value>请在游戏库中重新发起该操作。</value>
+  </data>
+  <data name="Store" xml:space="preserve">
+    <value>商店</value>
+  </data>
+  <data name="TB" xml:space="preserve">
+    <value>TB</value>
+  </data>
+  <data name="MessageCloseAndRetryFormat" xml:space="preserve">
+    <value>{0} 请关闭并重试。</value>
+  </data>
+  <data name="VerificationFailedSentenceFormat" xml:space="preserve">
+    <value>{0} 个文件未通过验证。</value>
+  </data>
+  <data name="ProgressOfTotalFormat" xml:space="preserve">
+    <value>{0} / {1}</value>
+  </data>
+  <data name="TheDesktopShortcutCouldNotBeCreated" xml:space="preserve">
+    <value>无法创建桌面快捷方式。</value>
+  </data>
+  <data name="TheEpicGamesStoreCouldNotBeOpened" xml:space="preserve">
+    <value>无法打开 Epic Games Store</value>
+  </data>
+  <data name="TheEpicGamesStoreDidNotFinishLoadingTryAgain" xml:space="preserve">
+    <value>Epic Games Store 未能完成加载。请重试。</value>
+  </data>
+  <data name="TheEpicImportWindowCouldNotBeOpened" xml:space="preserve">
+    <value>无法打开 Epic 导入窗口。</value>
+  </data>
+  <data name="TheFolderPickerCouldNotBeOpened" xml:space="preserve">
+    <value>无法打开文件夹选择器。</value>
+  </data>
+  <data name="TheGameWasInstalledButARequestedShortcutCouldNotBeCreated" xml:space="preserve">
+    <value>游戏已安装，但无法创建请求的快捷方式。</value>
+  </data>
+  <data name="TheGameWasRemovedButItsShortcutsCouldNotBeRemoved" xml:space="preserve">
+    <value>游戏已被移除，但其快捷方式无法删除。</value>
+  </data>
+  <data name="TheInstallationDialogCouldNotBeOpened" xml:space="preserve">
+    <value>无法打开安装对话框。</value>
+  </data>
+  <data name="TheInstallationFolderCouldNotBeFound" xml:space="preserve">
+    <value>找不到安装文件夹。</value>
+  </data>
+  <data name="TheInstallationFolderCouldNotBeOpened" xml:space="preserve">
+    <value>无法打开安装文件夹。</value>
+  </data>
+  <data name="TheInstallationWasQueuedButCrimsonCouldNotRememberItsFolder" xml:space="preserve">
+    <value>安装已加入队列，但 Crimson 无法记录其文件夹。</value>
+  </data>
+  <data name="TheOperationStoppedUnexpectedly" xml:space="preserve">
+    <value>操作意外停止。</value>
+  </data>
+  <data name="TheOperationWasCancelledButTemporaryFilesCouldNotBeRemoved" xml:space="preserve">
+    <value>操作已取消，但无法清除临时文件。</value>
+  </data>
+  <data name="ThePendingOperationCouldNotBeRestored" xml:space="preserve">
+    <value>无法恢复待处理的操作。</value>
+  </data>
+  <data name="TheReportPageCouldNotBeOpenedErrorCodeReportOpenFailed" xml:space="preserve">
+    <value>无法打开报告页面。错误代码：report_open_failed。</value>
+  </data>
+  <data name="TheSelectedEpicInstallationsCouldNotBeQueued" xml:space="preserve">
+    <value>无法将所选的 Epic 安装项目加入队列。</value>
+  </data>
+  <data name="ThereIsNotEnoughFreeSpaceToCompleteThisOperation" xml:space="preserve">
+    <value>磁盘可用空间不足，无法完成此操作。</value>
+  </data>
+  <data name="TheseInstallationsAreNoLongerAvailableToImportCloseAndTryAgain" xml:space="preserve">
+    <value>这些安装项已不可再导入。请关闭并重试。</value>
+  </data>
+  <data name="ThisGameIsNoLongerAvailableInTheCurrentLibrary" xml:space="preserve">
+    <value>当前游戏库中不再包含此游戏。</value>
+  </data>
+  <data name="ThisOperationRequiresAnInstalledGame" xml:space="preserve">
+    <value>此操作需要先安装游戏。</value>
+  </data>
+  <data name="ThisRemovesTheManagedInstallationBackUpLocalFilesYouWantToKeep" xml:space="preserve">
+    <value>此操作将移除托管的安装内容。请备份您希望保留的本地文件。</value>
+  </data>
+  <data name="ThisWillLogYouOutFromTheCurrentAccountAndReturnToTheSignInScreen" xml:space="preserve">
+    <value>此操作将注销当前账户并返回登录界面。</value>
+  </data>
+  <data name="TitleDetailFormat" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="TotalPlayTime" xml:space="preserve">
+    <value>总游玩时间</value>
+  </data>
+  <data name="TryAgain" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="TryAgainOrRestartCrimson" xml:space="preserve">
+    <value>请重试或重启 Crimson。</value>
+  </data>
+  <data name="TryCreatingItAgainFromGameProperties" xml:space="preserve">
+    <value>请尝试从游戏“属性”中重新创建。</value>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>不可用</value>
+  </data>
+  <data name="Uninstall" xml:space="preserve">
+    <value>卸载</value>
+  </data>
+  <data name="UninstallGame" xml:space="preserve">
+    <value>卸载游戏</value>
+  </data>
+  <data name="UninstallThisGame" xml:space="preserve">
+    <value>确定要卸载此游戏吗？</value>
+  </data>
+  <data name="Uninstalled" xml:space="preserve">
+    <value>已卸载</value>
+  </data>
+  <data name="Uninstalling" xml:space="preserve">
+    <value>正在卸载</value>
+  </data>
+  <data name="Update" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="UpdateAvailable" xml:space="preserve">
+    <value>有可用更新</value>
+  </data>
+  <data name="Updated" xml:space="preserve">
+    <value>已更新</value>
+  </data>
+  <data name="Updating" xml:space="preserve">
+    <value>正在更新</value>
+  </data>
+  <data name="Verified" xml:space="preserve">
+    <value>已验证</value>
+  </data>
+  <data name="Verify" xml:space="preserve">
+    <value>验证</value>
+  </data>
+  <data name="VerifyAndRepairFiles" xml:space="preserve">
+    <value>验证并修复文件</value>
+  </data>
+  <data name="VerifyAndRepairGameFiles" xml:space="preserve">
+    <value>验证并修复游戏文件</value>
+  </data>
+  <data name="Verifying" xml:space="preserve">
+    <value>正在验证</value>
+  </data>
+  <data name="ViewAllStoreResults" xml:space="preserve">
+    <value>查看所有商店搜索结果</value>
+  </data>
+  <data name="ViewInStore" xml:space="preserve">
+    <value>在商店中查看</value>
+  </data>
+  <data name="WaitingToStart" xml:space="preserve">
+    <value>等待开始</value>
+  </data>
+  <data name="WindowsRequirements" xml:space="preserve">
+    <value>Windows 系统要求</value>
+  </data>
+  <data name="Working" xml:space="preserve">
+    <value>正在处理</value>
+  </data>
+  <data name="YourLibraryCouldNotBeRefreshedTryAgain" xml:space="preserve">
+    <value>无法刷新您的游戏库。请重试。</value>
+  </data>
+  <data name="ZeroBytes" xml:space="preserve">
+    <value>0 B</value>
+  </data>
+  <data name="ZeroMinutes" xml:space="preserve">
+    <value>0分钟</value>
+  </data>
+  <data name="ZeroTransferRate" xml:space="preserve">
+    <value>0 MiB/s</value>
+  </data>
+  <data name="Language" xml:space="preserve">
+    <value>语言</value>
+  </data>
+  <data name="LanguageRestartBusy" xml:space="preserve">
+    <value>请先完成或取消正在进行和排队中的操作，再重启 Crimson。语言选择已保存。</value>
+  </data>
+  <data name="LanguageRestartFailed" xml:space="preserve">
+    <value>Crimson 无法重启。语言选择已保存。请再次点击重启按钮，或从系统托盘退出 Crimson 后重新打开。</value>
+  </data>
+  <data name="LanguageRestartPrompt" xml:space="preserve">
+    <value>现在重启 Crimson 以应用语言更改吗？Crimson（包括系统托盘图标）将退出并重新打开。</value>
+  </data>
+  <data name="LanguageRestartRequired" xml:space="preserve">
+    <value>重启 Crimson 以应用语言更改。</value>
+  </data>
+  <data name="LanguageSaveFailed" xml:space="preserve">
+    <value>无法保存语言设置。请重试。</value>
+  </data>
+  <data name="Later" xml:space="preserve">
+    <value>稍后</value>
+  </data>
+  <data name="RestartCrimson" xml:space="preserve">
+    <value>重启 Crimson</value>
+  </data>
+  <data name="SystemLanguage" xml:space="preserve">
+    <value>系统语言</value>
+  </data>
+  <data name="AcrylicSaveFailed" xml:space="preserve">
+    <value>无法保存亚克力效果设置。已恢复先前的设置。</value>
+  </data>
+</root>

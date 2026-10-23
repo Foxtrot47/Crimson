@@ -93,6 +93,8 @@ namespace Crimson
                 services.AddHttpClient("EpicOAuth", ConfigureEpicClient)
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
                 services.AddHttpClient("EpicApi", ConfigureEpicClient)
+                    // Library Service request paths contain account IDs.
+                    .RemoveAllLoggers()
                     .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler)
                     .AddResilienceHandler(
                         "CustomPipeline",
@@ -135,6 +137,10 @@ namespace Crimson
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicApi"),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicStore")));
+                services.AddSingleton<DialogCoordinator>();
+                services.AddSingleton<EpicInstallDiscovery>(_ => new EpicInstallDiscovery(Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "Epic", "EpicGamesLauncher", "Data", "Manifests")));
                 services.AddSingleton<LibraryManager>();
                 services.AddSingleton<IGameShortcutManager>(provider => new GameShortcutManager(
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
@@ -149,6 +155,7 @@ namespace Crimson
                 services.AddTransient<DownloadsViewModel>();
                 services.AddTransient<LibraryViewModel>();
                 services.AddTransient<GameInfoViewModel>();
+                services.AddTransient<EpicImportViewModel>();
                 services.AddTransient<AppInstallDialogViewModel>();
             }).
             Build();
@@ -186,6 +193,7 @@ namespace Crimson
         /// <param name="args">Details about the launch request and process.</param>
         protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
+            AppLanguage.Apply(GetService<SettingsManager>().Language);
             m_window = new MainWindow();
             m_window.Closed += OnExit;
 
@@ -258,8 +266,10 @@ namespace Crimson
             if (authenticationStatus == AuthenticationStatus.LoggedIn)
             {
                 var libraryManager = GetService<LibraryManager>();
+                var installManager = GetService<InstallManager>();
                 var library = await libraryManager.GetLibraryData();
                 if (library.Any(game => game.AppName == appName) &&
+                    installManager.GetActiveOperationForGame(appName) is null &&
                     await libraryManager.LaunchApp(appName))
                     return;
             }

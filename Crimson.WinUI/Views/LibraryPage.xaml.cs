@@ -29,6 +29,12 @@ public sealed partial class LibraryPage : Page
         base.OnNavigatedFrom(e);
     }
 
+    private async void ImportButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (((App)Application.Current).GetWindow() is MainWindow window)
+            await window.ShowEpicImportAsync();
+    }
+
     private void GameButton_Click(object sender, RoutedEventArgs e)
     {
         var clickedButton = (Button)sender;

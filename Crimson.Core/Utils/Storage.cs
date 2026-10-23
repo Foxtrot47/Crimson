@@ -205,11 +205,11 @@ namespace Crimson.Utils
         }
 
         /// <summary>
-        /// Hydrate Game.LocalAppState from the LocalAppStateDictionary if not already set
+        /// Hydrate Game.LocalAppState from the authoritative LocalAppStateDictionary.
         /// </summary>
         private void HydrateLocalAppState(Game game)
         {
-            if (game.LocalAppState == null && _localAppStateDictionary.TryGetValue(game.AppName, out var localState))
+            if (_localAppStateDictionary.TryGetValue(game.AppName, out var localState))
                 game.LocalAppState = localState;
         }
 

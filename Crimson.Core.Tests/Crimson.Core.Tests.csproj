@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
+    <None Include="..\Crimson.Core\Resources\UiStrings*.resx" TargetPath="Resources\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

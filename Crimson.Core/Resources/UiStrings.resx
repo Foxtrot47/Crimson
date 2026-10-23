@@ -1,0 +1,1130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- Microsoft ResX Schema, Version 2.0 -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="About" xml:space="preserve">
+    <value>About</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="Accounts" xml:space="preserve">
+    <value>Accounts</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Text</comment>
+  </data>
+  <data name="AcrylicOpacity" xml:space="preserve">
+    <value>Acrylic opacity</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Header</comment>
+  </data>
+  <data name="AcrylicOpacityDescription" xml:space="preserve">
+    <value>How much of the window background stays solid over the blur</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Description</comment>
+  </data>
+  <data name="AdvancedSettings" xml:space="preserve">
+    <value>Advanced Settings</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Text</comment>
+  </data>
+  <data name="Appearance" xml:space="preserve">
+    <value>Appearance</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Text</comment>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>Apply</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Content</comment>
+  </data>
+  <data name="ApplyChanges" xml:space="preserve">
+    <value>Apply changes</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Content</comment>
+  </data>
+  <data name="ApplyDLCRemovals" xml:space="preserve">
+    <value>Apply DLC removals?</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="AvailableOf" xml:space="preserve">
+    <value>available of</value>
+    <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Text</comment>
+  </data>
+  <data name="B" xml:space="preserve">
+    <value>B</value>
+    <comment>Used by: Crimson.Core/ViewModels/AppInstallDialogueViewModel.cs</comment>
+  </data>
+  <data name="BaseGame" xml:space="preserve">
+    <value>Base Game</value>
+    <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Text</comment>
+  </data>
+  <data name="BrowseFiles" xml:space="preserve">
+    <value>Browse files</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="BrowseInstallationFiles" xml:space="preserve">
+    <value>Browse installation files</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="CalculatingRequiredSpace" xml:space="preserve">
+    <value>Calculating required space...</value>
+    <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Text</comment>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancel</value>
+    <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Content; Crimson.WinUI/Controls/EpicImportDialog.xaml @CloseButtonText; Crimson.WinUI/Controls/GameManageDialog.xaml @Content; Crimson.WinUI/Views/DownloadsPage.xaml @ToolTipService.ToolTip</comment>
+  </data>
+  <data name="CancelOperation" xml:space="preserve">
+    <value>Cancel operation</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="Cancelling" xml:space="preserve">
+    <value>Cancelling</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="CheckThatTheInstallationFolderIsAvailableAndTryAgain" xml:space="preserve">
+    <value>Check that the installation folder is available and try again.</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml.cs</comment>
+  </data>
+  <data name="CheckYourConnectionAndRetry" xml:space="preserve">
+    <value>Check your connection and retry.</value>
+    <comment>Used by: Crimson.Core/Core/OperationFailureClassifier.cs</comment>
+  </data>
+  <data name="CheckYourConnectionAndWebView2RuntimeThenTryAgain" xml:space="preserve">
+    <value>Check your connection and WebView2 Runtime, then try again.</value>
+    <comment>Used by: Crimson.WinUI/Views/StorePage.xaml.cs</comment>
+  </data>
+  <data name="CheckingAuthenticationStatus" xml:space="preserve">
+    <value>Checking authentication status</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="ChooseAnotherFolderOrAllowCrimsonToWriteToThisLocation" xml:space="preserve">
+    <value>Choose another folder or allow Crimson to write to this location.</value>
+    <comment>Used by: Crimson.Core/Core/OperationFailureClassifier.cs</comment>
+  </data>
+  <data name="ChooseTheFolderAgainNextTimeCheckAppDataPermissionsIfThisContinues" xml:space="preserve">
+    <value>Choose the folder again next time. Check app data permissions if this continues.</value>
+    <comment>Used by: Crimson.Core/ViewModels/AppInstallDialogueViewModel.cs</comment>
+  </data>
+  <data name="ChooseTheFolderContainingTheGameFilesThenImportAgain" xml:space="preserve">
+    <value>Choose the folder containing the game files, then import again.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Close</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @ToolTipService.ToolTip; Crimson.WinUI/Core/OperationErrorPresenter.cs</comment>
+  </data>
+  <data name="CloseApplicationsUsingTheInstallationFolderAndRetryCleanup" xml:space="preserve">
+    <value>Close applications using the installation folder and retry.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="CloseGameProperties" xml:space="preserve">
+    <value>Close game properties</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="CloseScreenshot" xml:space="preserve">
+    <value>Close screenshot</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="CloseTheImportWindowAndTryAgain" xml:space="preserve">
+    <value>Close the import window and try again.</value>
+    <comment>Used by: Crimson.Core/ViewModels/EpicImportViewModel.cs</comment>
+  </data>
+  <data name="Completed" xml:space="preserve">
+    <value>Completed</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="ConfirmUninstallGame" xml:space="preserve">
+    <value>Confirm uninstall game</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="ConnectionInterruptedRetrying" xml:space="preserve">
+    <value>Connection interrupted. Retrying…</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="ContentToInstall" xml:space="preserve">
+    <value>Content to Install</value>
+    <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Text</comment>
+  </data>
+  <data name="Copied" xml:space="preserve">
+    <value>Copied</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml.cs</comment>
+  </data>
+  <data name="CopyDiagnostics" xml:space="preserve">
+    <value>Copy diagnostics</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @Content</comment>
+  </data>
+  <data name="CoverArtworkUnavailable" xml:space="preserve">
+    <value>Cover artwork unavailable</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="CreateDesktopShortcut" xml:space="preserve">
+    <value>Create desktop shortcut</value>
+    <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Content; Crimson.WinUI/Controls/GameManageDialog.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="CreateShortcut" xml:space="preserve">
+    <value>Create shortcut</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="CreateStartMenuShortcut" xml:space="preserve">
+    <value>Create Start menu shortcut</value>
+    <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Content</comment>
+  </data>
+  <data name="CreateTheShortcutAgainFromGameProperties" xml:space="preserve">
+    <value>Create the shortcut again from game Properties.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="Crimson" xml:space="preserve">
+    <value>Crimson</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml @Text; Crimson.WinUI/Views/TrayIconView.xaml @ToolTipText</comment>
+  </data>
+  <data name="CrimsonCouldNotDownloadTheRequiredData" xml:space="preserve">
+    <value>Crimson could not download the required data.</value>
+    <comment>Used by: Crimson.Core/Core/OperationFailureClassifier.cs</comment>
+  </data>
+  <data name="CrimsonCouldNotReadTheInstallationData" xml:space="preserve">
+    <value>Crimson could not read the installation data.</value>
+    <comment>Used by: Crimson.Core/Core/OperationFailureClassifier.cs</comment>
+  </data>
+  <data name="CrimsonCouldNotSaveTheOperationSRecoveryState" xml:space="preserve">
+    <value>Crimson could not save the operation's recovery state.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="CrimsonCouldNotWriteToTheSelectedInstallationLocation" xml:space="preserve">
+    <value>Crimson could not write to the selected installation location.</value>
+    <comment>Used by: Crimson.Core/Core/OperationFailureClassifier.cs</comment>
+  </data>
+  <data name="DLC" xml:space="preserve">
+    <value>DLC</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Content; Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="DLCArtwork" xml:space="preserve">
+    <value>DLC artwork</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="DLCChangesCouldNotBeQueued" xml:space="preserve">
+    <value>DLC changes could not be queued.</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml.cs</comment>
+  </data>
+  <data name="DesktopShortcut" xml:space="preserve">
+    <value>Desktop shortcut</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="DetectingEpicGamesLauncherInstallations" xml:space="preserve">
+    <value>Detecting Epic Games Launcher installations…</value>
+    <comment>Used by: Crimson.Core/ViewModels/EpicImportViewModel.cs</comment>
+  </data>
+  <data name="DiskWriteRate" xml:space="preserve">
+    <value>Disk Write Rate</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @Text</comment>
+  </data>
+  <data name="DownloadAndInstallerDiskWriteRatesOverTheLast60Seconds" xml:space="preserve">
+    <value>Download and installer disk-write rates over the last 60 seconds</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="DownloadRate" xml:space="preserve">
+    <value>Download Rate</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @Text</comment>
+  </data>
+  <data name="DownloadSize" xml:space="preserve">
+    <value>download size</value>
+    <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Text</comment>
+  </data>
+  <data name="Downloads" xml:space="preserve">
+    <value>Downloads</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @Text</comment>
+  </data>
+  <data name="EnableAcrylic" xml:space="preserve">
+    <value>Enable Acrylic</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Header</comment>
+  </data>
+  <data name="EnableTheAcrylicEffectsAvailableOnWindows11" xml:space="preserve">
+    <value>Enable the Acrylic blur effects available on Windows 11</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Description</comment>
+  </data>
+  <data name="EpicGamesStore" xml:space="preserve">
+    <value>Epic Games Store</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs; Crimson.WinUI/Views/StorePopupWindow.cs</comment>
+  </data>
+  <data name="EpicInstallationsCouldNotBeDetected" xml:space="preserve">
+    <value>Epic installations could not be detected.</value>
+    <comment>Used by: Crimson.Core/ViewModels/EpicImportViewModel.cs</comment>
+  </data>
+  <data name="ErrorCodeFormat" xml:space="preserve">
+    <value>Error code: {0}</value>
+    <comment>Used by: Crimson.WinUI/Core/OperationErrorPresenter.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="Exit" xml:space="preserve">
+    <value>Exit</value>
+    <comment>Used by: Crimson.WinUI/Views/TrayIconView.xaml @Text</comment>
+  </data>
+  <data name="FilesSharedWithTheGameOrOtherInstalledContentWillBeKept" xml:space="preserve">
+    <value>Files shared with the game or other installed content will be kept.</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="FinishTheCurrentOperationBeforeChangingDLC" xml:space="preserve">
+    <value>Finish the current operation before changing DLC.</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameDlcViewModel.cs</comment>
+  </data>
+  <data name="Finishing" xml:space="preserve">
+    <value>Finishing</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="FreeSomeDiskSpaceThenRetry" xml:space="preserve">
+    <value>Free some disk space, then retry.</value>
+    <comment>Used by: Crimson.Core/Core/OperationFailureClassifier.cs</comment>
+  </data>
+  <data name="GB" xml:space="preserve">
+    <value>GB</value>
+    <comment>Used by: Crimson.Core/ViewModels/AppInstallDialogueViewModel.cs</comment>
+  </data>
+  <data name="GameArtwork" xml:space="preserve">
+    <value>Game artwork</value>
+    <comment>Used by: Crimson.WinUI/Controls/EpicImportDialog.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="GameBackgroundArtwork" xml:space="preserve">
+    <value>Game background artwork</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="GameCoverArtwork" xml:space="preserve">
+    <value>Game cover artwork</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="GameOperationFormat" xml:space="preserve">
+    <value>{0} - {1}</value>
+    <comment>Used by: Crimson.WinUI/Views/CurrentDownloadControl.xaml.cs; Crimson.WinUI/Views/MainWindow.xaml.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="GameScreenshot" xml:space="preserve">
+    <value>Game screenshot</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml.cs</comment>
+  </data>
+  <data name="GameStatus" xml:space="preserve">
+    <value>Game status</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="General" xml:space="preserve">
+    <value>General</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Content; Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="GridView" xml:space="preserve">
+    <value>Grid view</value>
+    <comment>Used by: Crimson.WinUI/Views/LibraryPage.xaml @AutomationProperties.Name; Crimson.WinUI/Views/LibraryPage.xaml @ToolTipService.ToolTip</comment>
+  </data>
+  <data name="History" xml:space="preserve">
+    <value>History</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @Text</comment>
+  </data>
+  <data name="Import" xml:space="preserve">
+    <value>Import</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="ImportFromEpic" xml:space="preserve">
+    <value>Import from Epic</value>
+    <comment>Used by: Crimson.WinUI/Controls/EpicImportDialog.xaml @Title; Crimson.WinUI/Views/LibraryPage.xaml @Text</comment>
+  </data>
+  <data name="ImportRepairFilesFormat" xml:space="preserve">
+    <value>Verified {0} files: {1} require repair</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="ImportSelected" xml:space="preserve">
+    <value>Import selected</value>
+    <comment>Used by: Crimson.WinUI/Controls/EpicImportDialog.xaml @PrimaryButtonText</comment>
+  </data>
+  <data name="ImportVerifiedFilesFormat" xml:space="preserve">
+    <value>Verified {0} files</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="Imported" xml:space="preserve">
+    <value>Imported</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="Importing" xml:space="preserve">
+    <value>Importing</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="InYourLibrary" xml:space="preserve">
+    <value>In your library</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="Install" xml:space="preserve">
+    <value>Install</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.Core/ViewModels/GameInfoViewModel.cs; Crimson.WinUI/Controls/AppInstallDialog.xaml @Content; Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="InstallGameFormat" xml:space="preserve">
+    <value>Install {0}</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameDlcViewModel.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="InstallLocation" xml:space="preserve">
+    <value>Install Location</value>
+    <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Text</comment>
+  </data>
+  <data name="InstallOrImportTheGameFirst" xml:space="preserve">
+    <value>Install or import the game first.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="InstallOrRepairTheGameBeforeChangingDLC" xml:space="preserve">
+    <value>Install or repair the game before changing DLC.</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameDlcViewModel.cs</comment>
+  </data>
+  <data name="InstallSize" xml:space="preserve">
+    <value>install size</value>
+    <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Text</comment>
+  </data>
+  <data name="InstallationOptions" xml:space="preserve">
+    <value>Installation Options</value>
+    <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Text</comment>
+  </data>
+  <data name="Installed" xml:space="preserve">
+    <value>Installed</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="InstalledBuild" xml:space="preserve">
+    <value>Installed build</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text; Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="InstalledFiles" xml:space="preserve">
+    <value>Installed Files</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Content; Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="InstalledOnly" xml:space="preserve">
+    <value>Installed only</value>
+    <comment>Used by: Crimson.WinUI/Views/LibraryPage.xaml @Content</comment>
+  </data>
+  <data name="InstallerDestinationFileOutputNotTotalDeviceThroughput" xml:space="preserve">
+    <value>Installer destination-file output, not total device throughput.</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @AutomationProperties.HelpText</comment>
+  </data>
+  <data name="Installing" xml:space="preserve">
+    <value>Installing</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="KB" xml:space="preserve">
+    <value>KB</value>
+    <comment>Used by: Crimson.Core/ViewModels/AppInstallDialogueViewModel.cs</comment>
+  </data>
+  <data name="LastUpdated" xml:space="preserve">
+    <value>Last updated</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="LessThanOneMinute" xml:space="preserve">
+    <value>&lt;1m</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="Library" xml:space="preserve">
+    <value>Library</value>
+    <comment>Used by: Crimson.WinUI/Views/TrayIconView.xaml @Text; Navigation</comment>
+  </data>
+  <data name="ListView" xml:space="preserve">
+    <value>List view</value>
+    <comment>Used by: Crimson.WinUI/Views/LibraryPage.xaml @AutomationProperties.Name; Crimson.WinUI/Views/LibraryPage.xaml @ToolTipService.ToolTip</comment>
+  </data>
+  <data name="LoadingEllipsis" xml:space="preserve">
+    <value>Loading…</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs; Crimson.WinUI/Controls/GameManageDialog.xaml @Text; Crimson.WinUI/Controls/GameManageDialog.xaml.cs</comment>
+  </data>
+  <data name="LoadingFourDots" xml:space="preserve">
+    <value>Loading....</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml @Text</comment>
+  </data>
+  <data name="LoadingStoreDetails" xml:space="preserve">
+    <value>Loading Store details</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="LoadingThreeDots" xml:space="preserve">
+    <value>Loading...</value>
+    <comment>Used by: Crimson.WinUI/Views/LibraryPage.xaml</comment>
+  </data>
+  <data name="LoginFailed" xml:space="preserve">
+    <value>Login failed</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="LoginSuccess" xml:space="preserve">
+    <value>Login Success</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="Logout" xml:space="preserve">
+    <value>Logout</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Header</comment>
+  </data>
+  <data name="MB" xml:space="preserve">
+    <value>MB</value>
+    <comment>Used by: Crimson.Core/ViewModels/AppInstallDialogueViewModel.cs</comment>
+  </data>
+  <data name="Manage" xml:space="preserve">
+    <value>Manage</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="MessageSuggestionFormat" xml:space="preserve">
+    <value>{0} {1}</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.Core/ViewModels/DownloadsViewModel.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="Minimum" xml:space="preserve">
+    <value>Minimum</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="Move" xml:space="preserve">
+    <value>Move</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="MoveGameInstallation" xml:space="preserve">
+    <value>Move game installation</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="MoveInstallation" xml:space="preserve">
+    <value>Move installation</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="Moved" xml:space="preserve">
+    <value>Moved</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="Moving" xml:space="preserve">
+    <value>Moving</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>Name</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="NextScreenshots" xml:space="preserve">
+    <value>Next screenshots</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="NoDLCAvailable" xml:space="preserve">
+    <value>No DLC available.</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameDlcViewModel.cs</comment>
+  </data>
+  <data name="NoDownloadsInQueue" xml:space="preserve">
+    <value>No downloads in queue</value>
+    <comment>Used by: Crimson.WinUI/Views/CurrentDownloadControl.xaml.cs; Crimson.WinUI/Views/MainWindow.xaml @ToolTipService.ToolTip</comment>
+  </data>
+  <data name="NoDownloadsInQueueTitle" xml:space="preserve">
+    <value>No Downloads in Queue</value>
+    <comment>Used by: Crimson.WinUI/Views/CurrentDownloadControl.xaml @Text</comment>
+  </data>
+  <data name="NoEligibleEpicGamesLauncherInstallationsFound" xml:space="preserve">
+    <value>No eligible Epic Games Launcher installations found.</value>
+    <comment>Used by: Crimson.Core/ViewModels/EpicImportViewModel.cs</comment>
+  </data>
+  <data name="NoGameFilesWereFoundInTheSelectedFolder" xml:space="preserve">
+    <value>No game files were found in the selected folder.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="NoInstalledGames" xml:space="preserve">
+    <value>No installed games</value>
+    <comment>Used by: Crimson.WinUI/Views/TrayIconView.xaml @Text; Crimson.WinUI/Views/TrayIconView.xaml.cs</comment>
+  </data>
+  <data name="NoInstalledGamesMessage" xml:space="preserve">
+    <value>No installed games.</value>
+    <comment>Used by: Crimson.WinUI/Views/LibraryPage.xaml @Text</comment>
+  </data>
+  <data name="NoMatchingDLC" xml:space="preserve">
+    <value>No matching DLC.</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameDlcViewModel.cs</comment>
+  </data>
+  <data name="NoTransferActivityRecorded" xml:space="preserve">
+    <value>No transfer activity recorded</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @Text</comment>
+  </data>
+  <data name="NotInstalled" xml:space="preserve">
+    <value>Not installed</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="OneFileFailedVerification" xml:space="preserve">
+    <value>One file failed verification.</value>
+    <comment>Used by: Crimson.Core/Models/OperationFailure.cs</comment>
+  </data>
+  <data name="OpenGameProperties" xml:space="preserve">
+    <value>Open game properties</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="OpenLogsDirectory" xml:space="preserve">
+    <value>Open Logs Directory</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Header</comment>
+  </data>
+  <data name="OpenScreenshot" xml:space="preserve">
+    <value>Open screenshot</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="Operation" xml:space="preserve">
+    <value>Operation</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="OperationCancelledFormat" xml:space="preserve">
+    <value>{0} cancelled</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="OperationErrorFormat" xml:space="preserve">
+    <value>{0} error</value>
+    <comment>Used by: Crimson.WinUI/Core/OperationErrorPresenter.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="OperationFailedFormat" xml:space="preserve">
+    <value>{0} failed</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="OperationInProgress" xml:space="preserve">
+    <value>Operation in progress</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="OperationPaused" xml:space="preserve">
+    <value>Operation paused</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="OperationPausedFormat" xml:space="preserve">
+    <value>{0} paused</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="OperationQueuedFormat" xml:space="preserve">
+    <value>{0} queued</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="Pause" xml:space="preserve">
+    <value>Pause</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @ToolTipService.ToolTip</comment>
+  </data>
+  <data name="PauseOperation" xml:space="preserve">
+    <value>Pause operation</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="Play" xml:space="preserve">
+    <value>Play</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="PlayGameFormat" xml:space="preserve">
+    <value>Play {0}</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="PlaytimeHoursMinutesFormat" xml:space="preserve">
+    <value>{0}h {1}m</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="PlaytimeMinutesFormat" xml:space="preserve">
+    <value>{0}m</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="PleaseTryAgain" xml:space="preserve">
+    <value>Please try again</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="PleaseWait" xml:space="preserve">
+    <value>Please wait...</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="PleaseWait2" xml:space="preserve">
+    <value>Please wait</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml @Text</comment>
+  </data>
+  <data name="Preparing" xml:space="preserve">
+    <value>Preparing</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="PreviousScreenshots" xml:space="preserve">
+    <value>Previous screenshots</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="ProgressPercentFormat" xml:space="preserve">
+    <value>{0}%</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="Publisher" xml:space="preserve">
+    <value>Publisher</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="Queue" xml:space="preserve">
+    <value>Queue</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @Text</comment>
+  </data>
+  <data name="QueuePositionFormat" xml:space="preserve">
+    <value>{0} · Position {1}</value>
+    <comment>Used by: Crimson.Core/ViewModels/DownloadsViewModel.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="Queued" xml:space="preserve">
+    <value>Queued</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="RateBytesFormat" xml:space="preserve">
+    <value>{0:0.##} B/s</value>
+    <comment>Used by: Crimson.Core/ViewModels/DownloadsViewModel.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="RateKiBFormat" xml:space="preserve">
+    <value>{0:0.##} KiB/s</value>
+    <comment>Used by: Crimson.Core/ViewModels/DownloadsViewModel.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="RateMiBFormat" xml:space="preserve">
+    <value>{0:0.##} MiB/s</value>
+    <comment>Used by: Crimson.Core/ViewModels/DownloadsViewModel.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="ReadyToPlay" xml:space="preserve">
+    <value>Ready to play</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="Recommended" xml:space="preserve">
+    <value>Recommended</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="RefreshTheLibraryAndTryAgain" xml:space="preserve">
+    <value>Refresh the library and try again.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="ReleaseDate" xml:space="preserve">
+    <value>Release date</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="ReleaseDateFormat" xml:space="preserve">
+    <value>d MMMM yyyy</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="RemoveTheRemainingCrimsonShortcutsManually" xml:space="preserve">
+    <value>Remove the remaining Crimson shortcuts manually.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="Removing" xml:space="preserve">
+    <value>Removing</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="ReopenPropertiesAndTryAgain" xml:space="preserve">
+    <value>Reopen Properties and try again.</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml.cs</comment>
+  </data>
+  <data name="Repair" xml:space="preserve">
+    <value>Repair</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="RepairRequired" xml:space="preserve">
+    <value>Repair required</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="Repaired" xml:space="preserve">
+    <value>Repaired</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="Repairing" xml:space="preserve">
+    <value>Repairing</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="ReportProblem" xml:space="preserve">
+    <value>Report problem</value>
+    <comment>Used by: Crimson.WinUI/Core/OperationErrorPresenter.cs; Crimson.WinUI/Views/DownloadsPage.xaml @Content</comment>
+  </data>
+  <data name="RestartCrimsonAndTryAgain" xml:space="preserve">
+    <value>Restart Crimson and try again.</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="RestoreFreeSpaceAndFolderAccessThenRestartCrimsonAndReviewPendingOperations" xml:space="preserve">
+    <value>Restore free space and folder access, then restart Crimson and review pending operations.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="Resume" xml:space="preserve">
+    <value>Resume</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @ToolTipService.ToolTip</comment>
+  </data>
+  <data name="ResumeOperation" xml:space="preserve">
+    <value>Resume operation</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="Retry" xml:space="preserve">
+    <value>Retry</value>
+    <comment>Used by: Crimson.WinUI/Views/DownloadsPage.xaml @Content</comment>
+  </data>
+  <data name="RetryLaterIfTheProblemContinuesReportIt" xml:space="preserve">
+    <value>Retry later. If the problem continues, report it.</value>
+    <comment>Used by: Crimson.Core/Core/OperationFailureClassifier.cs</comment>
+  </data>
+  <data name="RetryTheOperationIfItFailsAgainReportTheProblem" xml:space="preserve">
+    <value>Retry the operation. If it fails again, report the problem.</value>
+    <comment>Used by: Crimson.Core/Core/OperationFailureClassifier.cs</comment>
+  </data>
+  <data name="RetryTheRepairIfItFailsAgainReportTheProblem" xml:space="preserve">
+    <value>Retry the repair. If it fails again, report the problem.</value>
+    <comment>Used by: Crimson.Core/Models/OperationFailure.cs</comment>
+  </data>
+  <data name="Retrying" xml:space="preserve">
+    <value>Retrying…</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.Core/ViewModels/DownloadsViewModel.cs</comment>
+  </data>
+  <data name="ScreenshotCouldNotBeLoaded" xml:space="preserve">
+    <value>Screenshot could not be loaded.</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="ScreenshotUnavailable" xml:space="preserve">
+    <value>Screenshot unavailable</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="Screenshots" xml:space="preserve">
+    <value>Screenshots</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="SearchDLC" xml:space="preserve">
+    <value>Search DLC</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @AutomationProperties.Name; Crimson.WinUI/Controls/GameManageDialog.xaml @PlaceholderText</comment>
+  </data>
+  <data name="SearchStoreForQueryFormat" xml:space="preserve">
+    <value>Search Epic Games Store for “{0}”</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="SearchYourLibrary" xml:space="preserve">
+    <value>Search your library</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml @PlaceholderText</comment>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>Settings</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Text</comment>
+  </data>
+  <data name="ShortcutDescriptionFormat" xml:space="preserve">
+    <value>Launch {0} with Crimson</value>
+    <comment>Used by: Crimson.WinUI/Core/GameShortcutManager.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="Shortcuts" xml:space="preserve">
+    <value>Shortcuts</value>
+    <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Text</comment>
+  </data>
+  <data name="ShowAdavancedSettings" xml:space="preserve">
+    <value>Show advanced Settings</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Header</comment>
+  </data>
+  <data name="ShowGamesInstalledOrBeingManagedByCrimson" xml:space="preserve">
+    <value>Show games installed or being managed by Crimson</value>
+    <comment>Used by: Crimson.WinUI/Views/LibraryPage.xaml @ToolTipService.ToolTip</comment>
+  </data>
+  <data name="Size" xml:space="preserve">
+    <value>Size</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="SizeGiBFormat" xml:space="preserve">
+    <value>{0:F2} GiB</value>
+    <comment>Used by: Crimson.Core/Utils/StorageSizeFormatter.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="SizeMiBFormat" xml:space="preserve">
+    <value>{0:F2} MiB</value>
+    <comment>Used by: Crimson.Core/Utils/StorageSizeFormatter.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="SizeOfInstallation" xml:space="preserve">
+    <value>Size of installation</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="SizeWithUnitFormat" xml:space="preserve">
+    <value>{0:0.##} {1}</value>
+    <comment>Used by: Crimson.Core/ViewModels/AppInstallDialogueViewModel.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="Specification" xml:space="preserve">
+    <value>Specification</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="StartTheOperationAgainFromTheLibrary" xml:space="preserve">
+    <value>Start the operation again from the library.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="Store" xml:space="preserve">
+    <value>Store</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml @Content; Crimson.WinUI/Views/TrayIconView.xaml @Text</comment>
+  </data>
+  <data name="TB" xml:space="preserve">
+    <value>TB</value>
+    <comment>Used by: Crimson.Core/ViewModels/AppInstallDialogueViewModel.cs</comment>
+  </data>
+  <data name="MessageCloseAndRetryFormat" xml:space="preserve">
+    <value>{0} Close and try again.</value>
+    <comment>Used by: Crimson.Core/ViewModels/EpicImportViewModel.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="VerificationFailedSentenceFormat" xml:space="preserve">
+    <value>{0} files failed verification.</value>
+    <comment>Used by: Crimson.Core/Models/OperationFailure.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="ProgressOfTotalFormat" xml:space="preserve">
+    <value>{0} of {1}</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="TheDesktopShortcutCouldNotBeCreated" xml:space="preserve">
+    <value>The desktop shortcut could not be created.</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml.cs</comment>
+  </data>
+  <data name="TheEpicGamesStoreCouldNotBeOpened" xml:space="preserve">
+    <value>The Epic Games Store could not be opened</value>
+    <comment>Used by: Crimson.WinUI/Views/StorePage.xaml @Text</comment>
+  </data>
+  <data name="TheEpicGamesStoreDidNotFinishLoadingTryAgain" xml:space="preserve">
+    <value>The Epic Games Store did not finish loading. Try again.</value>
+    <comment>Used by: Crimson.WinUI/Views/StorePage.xaml.cs</comment>
+  </data>
+  <data name="TheEpicImportWindowCouldNotBeOpened" xml:space="preserve">
+    <value>The Epic import window could not be opened.</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="TheFolderPickerCouldNotBeOpened" xml:space="preserve">
+    <value>The folder picker could not be opened.</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="TheGameWasInstalledButARequestedShortcutCouldNotBeCreated" xml:space="preserve">
+    <value>The game was installed, but a requested shortcut could not be created.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="TheGameWasRemovedButItsShortcutsCouldNotBeRemoved" xml:space="preserve">
+    <value>The game was removed, but its shortcuts could not be removed.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="TheInstallationDialogCouldNotBeOpened" xml:space="preserve">
+    <value>The installation dialog could not be opened.</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="TheInstallationFolderCouldNotBeFound" xml:space="preserve">
+    <value>The installation folder could not be found.</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml.cs</comment>
+  </data>
+  <data name="TheInstallationFolderCouldNotBeOpened" xml:space="preserve">
+    <value>The installation folder could not be opened.</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml.cs</comment>
+  </data>
+  <data name="TheInstallationWasQueuedButCrimsonCouldNotRememberItsFolder" xml:space="preserve">
+    <value>The installation was queued, but Crimson could not remember its folder.</value>
+    <comment>Used by: Crimson.Core/ViewModels/AppInstallDialogueViewModel.cs</comment>
+  </data>
+  <data name="TheOperationStoppedUnexpectedly" xml:space="preserve">
+    <value>The operation stopped unexpectedly.</value>
+    <comment>Used by: Crimson.Core/Core/OperationFailureClassifier.cs</comment>
+  </data>
+  <data name="TheOperationWasCancelledButTemporaryFilesCouldNotBeRemoved" xml:space="preserve">
+    <value>The operation was cancelled, but temporary files could not be removed.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="ThePendingOperationCouldNotBeRestored" xml:space="preserve">
+    <value>The pending operation could not be restored.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="TheReportPageCouldNotBeOpenedErrorCodeReportOpenFailed" xml:space="preserve">
+    <value>The report page could not be opened. Error code: report_open_failed.</value>
+    <comment>Used by: Crimson.WinUI/Core/OperationErrorPresenter.cs</comment>
+  </data>
+  <data name="TheSelectedEpicInstallationsCouldNotBeQueued" xml:space="preserve">
+    <value>The selected Epic installations could not be queued.</value>
+    <comment>Used by: Crimson.Core/ViewModels/EpicImportViewModel.cs</comment>
+  </data>
+  <data name="ThereIsNotEnoughFreeSpaceToCompleteThisOperation" xml:space="preserve">
+    <value>There is not enough free space to complete this operation.</value>
+    <comment>Used by: Crimson.Core/Core/OperationFailureClassifier.cs</comment>
+  </data>
+  <data name="TheseInstallationsAreNoLongerAvailableToImportCloseAndTryAgain" xml:space="preserve">
+    <value>These installations are no longer available to import. Close and try again.</value>
+    <comment>Used by: Crimson.Core/ViewModels/EpicImportViewModel.cs</comment>
+  </data>
+  <data name="ThisGameIsNoLongerAvailableInTheCurrentLibrary" xml:space="preserve">
+    <value>This game is no longer available in the current library.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="ThisOperationRequiresAnInstalledGame" xml:space="preserve">
+    <value>This operation requires an installed game.</value>
+    <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="ThisRemovesTheManagedInstallationBackUpLocalFilesYouWantToKeep" xml:space="preserve">
+    <value>This removes the managed installation. Back up local files you want to keep.</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="ThisWillLogYouOutFromTheCurrentAccountAndReturnToTheSignInScreen" xml:space="preserve">
+    <value>This will log you out from the current account and return to the sign-in screen</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Description</comment>
+  </data>
+  <data name="TitleDetailFormat" xml:space="preserve">
+    <value>{0}: {1}</value>
+    <comment>Used by: Crimson.WinUI/Core/OperationErrorPresenter.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
+  <data name="TotalPlayTime" xml:space="preserve">
+    <value>Total play time</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="TryAgain" xml:space="preserve">
+    <value>Try again</value>
+    <comment>Used by: Crimson.WinUI/Views/StorePage.xaml @Content</comment>
+  </data>
+  <data name="TryAgainOrRestartCrimson" xml:space="preserve">
+    <value>Try again or restart Crimson.</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="TryCreatingItAgainFromGameProperties" xml:space="preserve">
+    <value>Try creating it again from game Properties.</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml.cs</comment>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>Unavailable</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs; Crimson.WinUI/Controls/GameManageDialog.xaml.cs</comment>
+  </data>
+  <data name="Uninstall" xml:space="preserve">
+    <value>Uninstall</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="UninstallGame" xml:space="preserve">
+    <value>Uninstall game</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @AutomationProperties.Name; Crimson.WinUI/Controls/GameManageDialog.xaml @Content</comment>
+  </data>
+  <data name="UninstallThisGame" xml:space="preserve">
+    <value>Uninstall this game?</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="Uninstalled" xml:space="preserve">
+    <value>Uninstalled</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="Uninstalling" xml:space="preserve">
+    <value>Uninstalling</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="Update" xml:space="preserve">
+    <value>Update</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="UpdateAvailable" xml:space="preserve">
+    <value>Update available</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="Updated" xml:space="preserve">
+    <value>Updated</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="Updating" xml:space="preserve">
+    <value>Updating</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="Verified" xml:space="preserve">
+    <value>Verified</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="Verify" xml:space="preserve">
+    <value>Verify</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="VerifyAndRepairFiles" xml:space="preserve">
+    <value>Verify and repair files</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Text</comment>
+  </data>
+  <data name="VerifyAndRepairGameFiles" xml:space="preserve">
+    <value>Verify and repair game files</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @AutomationProperties.Name</comment>
+  </data>
+  <data name="Verifying" xml:space="preserve">
+    <value>Verifying</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="ViewAllStoreResults" xml:space="preserve">
+    <value>View all Store results</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="ViewInStore" xml:space="preserve">
+    <value>View in Store</value>
+    <comment>Used by: Crimson.WinUI/Controls/GameManageDialog.xaml @Content; Crimson.WinUI/Views/GameInfoPage.xaml @AutomationProperties.Name; Crimson.WinUI/Views/GameInfoPage.xaml @ToolTipService.ToolTip</comment>
+  </data>
+  <data name="WaitingToStart" xml:space="preserve">
+    <value>Waiting to start</value>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="WindowsRequirements" xml:space="preserve">
+    <value>Windows requirements</value>
+    <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+  </data>
+  <data name="Working" xml:space="preserve">
+    <value>Working</value>
+    <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
+  </data>
+  <data name="YourLibraryCouldNotBeRefreshedTryAgain" xml:space="preserve">
+    <value>Your library could not be refreshed. Try again.</value>
+    <comment>Used by: Crimson.WinUI/Views/StorePage.xaml.cs</comment>
+  </data>
+  <data name="ZeroBytes" xml:space="preserve">
+    <value>0 B</value>
+    <comment>Used by: Crimson.Core/ViewModels/AppInstallDialogueViewModel.cs</comment>
+  </data>
+  <data name="ZeroMinutes" xml:space="preserve">
+    <value>0m</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs</comment>
+  </data>
+  <data name="ZeroTransferRate" xml:space="preserve">
+    <value>0 MiB/s</value>
+    <comment>Used by: Crimson.Core/ViewModels/DownloadsViewModel.cs</comment>
+  </data>
+  <data name="Language" xml:space="preserve">
+    <value>Language</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml; language picker label and accessibility name.</comment>
+  </data>
+  <data name="SystemLanguage" xml:space="preserve">
+    <value>System Language</value>
+    <comment>Used by: Crimson.Core/Core/AppLanguage.cs; default language option.</comment>
+  </data>
+  <data name="LanguageRestartRequired" xml:space="preserve">
+    <value>Restart Crimson to apply the language change.</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml; shown when the saved language differs from the startup setting.</comment>
+  </data>
+  <data name="LanguageSaveFailed" xml:space="preserve">
+    <value>The language setting could not be saved. Try again.</value>
+    <comment>Used by: Crimson.Core/ViewModels/SettingsViewModel.cs; inline language-setting save error.</comment>
+  </data>
+  <data name="RestartCrimson" xml:space="preserve">
+    <value>Restart Crimson</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml and .xaml.cs; restart button and confirmation title.</comment>
+  </data>
+  <data name="Later" xml:space="preserve">
+    <value>Later</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml.cs; dismiss the restart confirmation without restarting.</comment>
+  </data>
+  <data name="LanguageRestartPrompt" xml:space="preserve">
+    <value>Restart Crimson now to apply the language change? This will exit Crimson, including its tray icon, and open it again.</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml.cs; language restart confirmation.</comment>
+  </data>
+  <data name="LanguageRestartBusy" xml:space="preserve">
+    <value>Finish or cancel active and queued operations before restarting Crimson. Your language choice is saved.</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml.cs; restart blocked while operations are pending.</comment>
+  </data>
+  <data name="LanguageRestartFailed" xml:space="preserve">
+    <value>Crimson could not restart. Your language choice is saved. Try the restart button again, or exit Crimson from the tray menu and reopen it.</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml.cs; inline restart failure.</comment>
+  </data>
+  <data name="AcrylicSaveFailed" xml:space="preserve">
+    <value>The Acrylic setting could not be saved. The previous setting has been restored.</value>
+    <comment>Used by: Crimson.Core/ViewModels/SettingsViewModel.cs; inline Acrylic preference save error.</comment>
+  </data>
+</root>

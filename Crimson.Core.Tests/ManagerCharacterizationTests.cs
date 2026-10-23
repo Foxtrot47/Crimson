@@ -28,6 +28,11 @@ public sealed class ManagerCharacterizationTests
         Assert.Equal([matchingDlc], manager.GetDlcsForGame("base"));
         Assert.Empty(manager.GetDlcsForGame("matching-dlc"));
         Assert.Empty(manager.GetDlcsForGame("missing"));
+        Assert.Equal("base", manager.GetBaseGameAppName("matching-dlc"));
+        Assert.Equal("base", manager.GetBaseGameAppName("base"));
+        Assert.Equal("missing", manager.GetBaseGameAppName("missing"));
+        Assert.True(manager.IsOperationForGame("matching-dlc", "base"));
+        Assert.False(manager.IsOperationForGame("other-dlc", "base"));
     }
 
     [Fact]
@@ -112,6 +117,32 @@ public sealed class ManagerCharacterizationTests
     }
 
     [Fact]
+    public void InstallManager_PublishesQueuedAndCancelledSnapshots()
+    {
+        var manager = InstallManagerWith(Game("queued"));
+        SetCurrentInstall(manager, new InstallItem("active", ActionType.Install, "C:\\active"));
+        var updates = new List<OperationSnapshot>();
+        manager.OperationUpdated += updates.Add;
+
+        manager.AddToQueue(new InstallItem("queued", ActionType.Install, "C:\\queued"));
+        manager.CancelInstall("queued");
+
+        Assert.Collection(
+            updates,
+            queued =>
+            {
+                Assert.Equal(ActionStatus.Pending, queued.Status);
+                Assert.Equal(OperationPhase.Queued, queued.Phase);
+                Assert.True(queued.IsActive);
+            },
+            cancelled =>
+            {
+                Assert.Equal(ActionStatus.Cancelled, cancelled.Status);
+                Assert.False(cancelled.IsActive);
+            });
+    }
+
+    [Fact]
     public async Task InstallManager_StopProcessingLeavesTeardownToProcessor()
     {
         var manager = InstallManagerWith();
@@ -161,6 +192,48 @@ public sealed class ManagerCharacterizationTests
         Assert.Null(failure);
         var ioQueue = GetPrivateField<BlockingCollection<IoTask>>(manager, "_ioQueue");
         Assert.Equal(taskCount, ioQueue.Count);
+    }
+
+    [Fact]
+    public void InstallManager_RetriesSanitizedCopyOfFailedOperation()
+    {
+        var manager = InstallManagerWith(Game("failed", InstallState.Installed));
+        SetCurrentInstall(manager, new InstallItem("active", ActionType.Install, "C:\\active"));
+        var history = GetPrivateField<List<InstallItem>>(manager, "_installHistory");
+        history.Add(new InstallItem("failed", ActionType.Repair, "C:\\failed")
+        {
+            Status = ActionStatus.Failed,
+            StatusMessage = "sensitive raw detail",
+            Failure = OperationFailureClassifier.Classify(new IOException())
+        });
+
+        var retried = manager.RetryFailedOperation("failed");
+        var queued = manager.GameGameInQueue("failed");
+
+        Assert.True(retried);
+        Assert.NotNull(queued);
+        Assert.Equal(ActionType.Repair, queued.Action);
+        Assert.Null(queued.Failure);
+        Assert.Null(queued.StatusMessage);
+    }
+
+    [Fact]
+    public void InstallManager_MapsActiveDlcOperationToBaseGame()
+    {
+        var baseGame = Game("base", InstallState.Installed, metadataId: "catalog-base");
+        var dlc = Game("dlc", mainGameId: "catalog-base");
+        var manager = InstallManagerWith(baseGame, dlc);
+        SetCurrentInstall(manager, new InstallItem("dlc", ActionType.Install, "C:\\base")
+        {
+            Status = ActionStatus.Processing,
+            Phase = OperationPhase.Transferring
+        });
+
+        var operation = manager.GetActiveOperationForGame("base");
+
+        Assert.NotNull(operation);
+        Assert.Equal("dlc", operation.AppName);
+        Assert.Null(manager.GetActiveOperationForGame("unrelated"));
     }
 
     [Fact]
@@ -279,6 +352,13 @@ public sealed class ManagerCharacterizationTests
     {
         public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId) =>
             throw new NotSupportedException();
+
+        public Task<long?> FetchGamePlaytimeSeconds(string appName, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<StoreProductDetails?> FetchStoreProductDetails(
+            string nameSpace,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live") =>
             throw new NotSupportedException();

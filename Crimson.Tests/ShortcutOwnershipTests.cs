@@ -67,6 +67,21 @@ public sealed class ShortcutOwnershipTests : IDisposable
         Assert.False(File.Exists(path));
     }
 
+    [Fact]
+    public void RemoveReportsOwnedShortcutDeletionFailureWithoutDeletingTheFile()
+    {
+        var manager = CreateManager();
+        var game = CreateGame("owned");
+        var path = GetDesktopPath(game);
+        GameShortcutManager.CreateShellLink(path, game, string.Empty, packaged: true);
+        using var held = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        var error = Assert.Throws<AggregateException>(() => manager.Remove(game));
+
+        Assert.Contains(error.InnerExceptions, exception => exception is IOException);
+        Assert.True(File.Exists(path));
+    }
+
     private GameShortcutManager CreateManager()
     {
         var desktop = Path.Combine(_root, "desktop");

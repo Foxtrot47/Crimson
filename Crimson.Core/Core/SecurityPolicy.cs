@@ -15,7 +15,8 @@ public static class EpicEndpointPolicy
         "account-public-service-prod03.ol.epicgames.com",
         "catalog-public-service-prod06.ol.epicgames.com",
         "ecommerceintegration-public-service-ecomprod02.ol.epicgames.com",
-        "launcher-public-service-prod06.ol.epicgames.com"
+        "launcher-public-service-prod06.ol.epicgames.com",
+        "library-service.live.use1a.on.epicgames.com"
     };
 
     private static readonly HashSet<string> LoginHosts = new(StringComparer.OrdinalIgnoreCase)
@@ -45,6 +46,9 @@ public static class EpicEndpointPolicy
 
     public static Uri RequireContentUri(string value) => Require(value, IsAllowedContentUri, "Epic content");
 
+    public static bool TryGetContentUri(string? value, out Uri uri) =>
+        TryGetAllowedUri(value, IsAllowedContentUri, out uri);
+
     public static Uri RequireStoreUri(string value) => Require(value, IsAllowedStoreUri, "Epic Store");
 
     public static bool IsAllowedLoginOrigin(string? value) =>
@@ -65,9 +69,15 @@ public static class EpicEndpointPolicy
         return uri;
     }
 
-    private static bool TryGetHttpsUri(string? value, out Uri uri)
+    private static bool TryGetHttpsUri(string? value, out Uri uri) =>
+        TryGetAllowedUri(value, IsHttps, out uri);
+
+    private static bool TryGetAllowedUri(
+        string? value,
+        Func<Uri, bool> predicate,
+        out Uri uri)
     {
-        if (Uri.TryCreate(value, UriKind.Absolute, out var parsed) && IsHttps(parsed))
+        if (Uri.TryCreate(value, UriKind.Absolute, out var parsed) && predicate(parsed))
         {
             uri = parsed;
             return true;

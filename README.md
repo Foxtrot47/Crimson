@@ -25,6 +25,12 @@
 - Launch games with fresh Epic credentials and ownership tokens when required.
 - Optionally create per-game Start menu and desktop shortcuts.
 
+## Screenshots
+
+| Library | Game page | Downloads |
+| --- | --- | --- |
+| ![Library](docs/assets/library.png) | ![Game page](docs/assets/game.png) | ![Downloads](docs/assets/downloads.png) |
+
 ## Platform status
 
 The current Crimson frontend supports **64-bit Windows 10 version 1809 or later** and requires the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/microsoft-edge/webview2/#download-section) for Epic sign-in and Store access. The runtime is already present on most current Windows installations.

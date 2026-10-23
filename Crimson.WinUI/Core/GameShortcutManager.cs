@@ -1,3 +1,4 @@
+using Crimson.Resources;
 using System;
 using System.IO;
 using System.Linq;
@@ -66,11 +67,13 @@ public sealed class GameShortcutManager : IGameShortcutManager
 
     public void Remove(Game game)
     {
-        RemoveOwnedShortcut(GetShortcutPath(game, GameShortcutLocation.StartMenu), game.AppName);
-        RemoveOwnedShortcut(GetShortcutPath(game, GameShortcutLocation.Desktop), game.AppName);
-        TryDeleteFile(
-            Path.Combine(_iconDirectory, "games", GameShortcutNaming.GetIconFileName(game.AppName)),
-            game.AppName);
+        var errors = new[]
+        {
+            RemoveOwnedShortcut(GetShortcutPath(game, GameShortcutLocation.StartMenu), game.AppName),
+            RemoveOwnedShortcut(GetShortcutPath(game, GameShortcutLocation.Desktop), game.AppName),
+            TryDeleteFile(Path.Combine(_iconDirectory, "games", GameShortcutNaming.GetIconFileName(game.AppName)))
+        }.OfType<Exception>().ToArray();
+        if (errors.Length > 0) throw new AggregateException("Shortcut cleanup failed.", errors);
     }
 
     private string GetShortcutPath(Game game, GameShortcutLocation location)
@@ -81,11 +84,8 @@ public sealed class GameShortcutManager : IGameShortcutManager
         return Path.Combine(directory, GameShortcutNaming.GetShortcutFileName(game.AppTitle));
     }
 
-    private void RemoveOwnedShortcut(string path, string appName)
-    {
-        if (IsOwnedShortcut(path, appName))
-            TryDeleteFile(path, appName);
-    }
+    private Exception? RemoveOwnedShortcut(string path, string appName) =>
+        IsOwnedShortcut(path, appName) ? TryDeleteFile(path) : null;
 
     private static void RequireAvailableShortcutPath(string path, string appName)
     {
@@ -137,15 +137,21 @@ public sealed class GameShortcutManager : IGameShortcutManager
         }
     }
 
-    private void TryDeleteFile(string path, string appName)
+    private Exception? TryDeleteFile(string path)
     {
         try
         {
             File.Delete(path);
+            return null;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return null;
         }
         catch (Exception ex)
         {
-            _log.Warning(ex, "Failed to remove shortcut artifact {Path} for {AppName}", path, appName);
+            _log.Warning("Failed to remove shortcut artifact: {ErrorType}", ex.GetType().Name);
+            return ex;
         }
     }
 
@@ -306,7 +312,7 @@ public sealed class GameShortcutManager : IGameShortcutManager
             link.SetArguments(GameLaunchRequest.CreateCommandLineArgument(game.AppName));
 
 
-            link.SetDescription($"Launch {game.AppTitle} with Crimson");
+            link.SetDescription(UiStrings.Format(UiStrings.ShortcutDescriptionFormat, game.AppTitle));
             if (!string.IsNullOrEmpty(iconPath))
                 link.SetIconLocation(iconPath, 0);
             ((IPersistFile)link).Save(path, true);

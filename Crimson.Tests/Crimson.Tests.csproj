@@ -27,10 +27,19 @@
     <ProjectReference Include="..\Crimson.Core\Crimson.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\Crimson.WinUI\Package.appxmanifest" TargetPath="Presentation\Package.appxmanifest" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Crimson.WinUI\Views\*.xaml;..\Crimson.WinUI\Controls\*.xaml"
+          TargetPath="Presentation\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Platform implementations remain linked until they have portable substitutes. -->
   <ItemGroup>
     <Compile Include="..\Crimson.WinUI\Core\GameShortcutManager.cs" Link="Production\Core\GameShortcutManager.cs" />
     <Compile Include="..\Crimson.WinUI\Core\GameShortcutNaming.cs" Link="Production\Core\GameShortcutNaming.cs" />
+    <Compile Include="..\Crimson.WinUI\Core\OperationDiagnosticActions.cs" Link="Production\Core\OperationDiagnosticActions.cs" />
+    <Compile Include="..\Crimson.WinUI\Core\TrayMenuPresenter.cs" Link="Production\Core\TrayMenuPresenter.cs" />
+    <Compile Include="..\Crimson.WinUI\Core\WindowSizeConstraints.cs" Link="Production\Core\WindowSizeConstraints.cs" />
     <Compile Include="..\Crimson.WinUI\Utils\Encryption.cs" Link="Production\Utils\Encryption.cs" />
   </ItemGroup>
 

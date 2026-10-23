@@ -10,6 +10,7 @@ internal static class StoreWebIntegration
         (() => {
             const installerPath = '/launcher/api/installer/download/';
             const observedRoots = new WeakSet();
+            const handledLauncherChecks = new WeakSet();
             const css = `
                 .main-cta:has(epic-wf-cta-button[href*="${installerPath}"]),
                 epic-wf-cta-button[href*="${installerPath}"],
@@ -24,7 +25,25 @@ internal static class StoreWebIntegration
                 }
             `;
 
+            function continueLauncherCheck(root) {
+                const modal = Array.from(root.querySelectorAll('.ReactModal__Overlay, [role="dialog"]'))
+                    .find(element => element.textContent.includes('Is Epic Games Launcher installed?'));
+                if (!modal) return false;
+
+                const installedButton = Array.from(modal.querySelectorAll('button, a, [role="button"]'))
+                    .find(button => button.textContent.replace(/\s+/g, ' ').trim() === "Yes, it's installed");
+                if (!installedButton || installedButton.matches(':disabled, [aria-disabled="true"]')) return true;
+                // Never submit an optional consent choice on the user's behalf.
+                if (modal.querySelector('input[type="checkbox"]:checked, [role="checkbox"][aria-checked="true"]')) return true;
+                if (handledLauncherChecks.has(installedButton)) return true;
+
+                handledLauncherChecks.add(installedButton);
+                installedButton.click();
+                return true;
+            }
+
             function closeLauncherModal(root) {
+                if (continueLauncherCheck(root)) return;
                 root
                     .querySelector(`.ReactModal__Overlay:has(a[href*="${installerPath}"]) button[aria-label="Close modal"]`)
                     ?.click();
@@ -48,7 +67,9 @@ internal static class StoreWebIntegration
 
                 new MutationObserver(() => closeLauncherModal(root)).observe(root, {
                     childList: true,
-                    subtree: true
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['disabled', 'aria-disabled']
                 });
                 closeLauncherModal(root);
             }

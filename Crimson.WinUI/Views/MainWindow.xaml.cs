@@ -1,23 +1,28 @@
-﻿using System;
+using Crimson.Resources;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Repository;
+using H.NotifyIcon;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Navigation;
 using Serilog;
-using WinRT;
 
 namespace Crimson.Views;
 
@@ -41,11 +46,15 @@ public sealed partial class MainWindow : Window
     private const string GameNavTagPrefix = "game:";
 
     public bool IsLoggedIn;
+    private Crimson.Controls.EpicImportDialog? _epicImportDialog;
     private ILogger _log = App.GetService<ILogger>();
+    private readonly SettingsManager _settingsManager;
     private readonly AuthManager _authManager;
     private readonly InstallManager _installManager;
     private readonly LibraryManager _libraryManager;
     private readonly IStoreRepository _storeRepository;
+    private readonly OperationErrorPresenter _operationErrors;
+    private readonly WindowSizeConstraints _windowSizeConstraints;
 
     private List<Game> _libraryCache = new();
     private CancellationTokenSource? _storeSearchCancellation;
@@ -55,9 +64,13 @@ public sealed partial class MainWindow : Window
     private string? _installedMenuActiveAppName;
 
     private readonly Dictionary<string, GameNavEntry> _gameNavEntries = new(StringComparer.Ordinal);
-    private InstallItem? _activeInstall;
+    private OperationSnapshot? _activeInstall;
     private string? _decoratedAppName;
     private DownloadSummary? _lastDownloadSummary;
+    private CompositionEllipseGeometry? _downloadRingGeometry;
+    private ShapeVisual? _downloadRingVisual;
+    private CompositionColorBrush? _downloadRingBrush;
+    private bool _downloadRingSpinning;
 
     private sealed class GameNavEntry
     {
@@ -67,7 +80,6 @@ public sealed partial class MainWindow : Window
         public required StackPanel StatusPanel { get; init; }
         public required FontIcon ActionIcon { get; init; }
         public required TextBlock ProgressText { get; init; }
-        public required InfoBadge Badge { get; init; }
         public required LinearGradientBrush? ProgressBrush { get; init; }
         public required bool CanLaunch { get; init; }
     }
@@ -85,20 +97,19 @@ public sealed partial class MainWindow : Window
         public Visibility SkeletonVisibility { get; init; } = Visibility.Collapsed;
     }
 
-    WindowsSystemDispatcherQueueHelper _mWsdqHelper;
-    MicaController _mBackdropController;
-    SystemBackdropConfiguration _mConfigurationSource;
+    private bool _windowClosed;
 
     public MainWindow()
     {
         InitializeComponent();
         SetWindowIcon();
 
-        // Disable setting mica as default
-        // We will config later when we do configuration manager
-        TrySetSystemBackdrop();
+        _settingsManager = App.GetService<SettingsManager>();
+        _settingsManager.AcrylicChanged += AcrylicPreferenceChanged;
+        ApplyBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        _windowSizeConstraints = new WindowSizeConstraints(WinRT.Interop.WindowNative.GetWindowHandle(this), _log);
         GlobalSearchBox.Loaded += (_, _) => UpdateTitleBarInteractiveRegion();
         GlobalSearchBox.SizeChanged += (_, _) => UpdateTitleBarInteractiveRegion();
 
@@ -107,17 +118,19 @@ public sealed partial class MainWindow : Window
         _libraryManager = App.GetService<LibraryManager>();
         _storeRepository = App.GetService<IStoreRepository>();
         _log = App.GetService<ILogger>();
+        _operationErrors = new OperationErrorPresenter(ContentFrame, _installManager, _libraryManager,
+            App.GetService<DialogCoordinator>(), _log);
+        Closed += Window_Closed;
 
         _libraryManager.LibraryUpdated += LibraryUpdatedHandler;
         _libraryManager.GameStatusUpdated += GameStatusUpdatedHandler;
         CurrentDownload.SummaryChanged += OnDownloadSummaryChanged;
-        _installManager.InstallationStatusChanged += InstallationStatusChangedHandler;
-        _installManager.InstallProgressUpdate += InstallProgressUpdateHandler;
-        NavControl.PaneOpened += (_, _) => UpdateBadgeVisibility();
-        NavControl.PaneClosed += (_, _) => UpdateBadgeVisibility();
-        NavControl.DisplayModeChanged += (_, _) => UpdateBadgeVisibility();
+        _installManager.OperationUpdated += OperationUpdatedHandler;
+        DownloadsNavItem.Resources["NavigationViewItemOnLeftIconBoxHeight"] = 32d;
+        DownloadIcon.Loaded += (_, _) => InitializeDownloadRing();
+        DownloadIcon.ActualThemeChanged += (_, _) => UpdateDownloadRing();
         CurrentDownload.PublishCurrentSummary();
-        _activeInstall = IsActionRunning(_installManager.CurrentInstall) ? _installManager.CurrentInstall : null;
+        _activeInstall = _installManager.CurrentOperation is { IsActive: true } operation ? operation : null;
         RebuildInstalledMenu();
 
         IsLoggedIn = false;
@@ -261,7 +274,7 @@ public sealed partial class MainWindow : Window
             suggestions.AddRange(storeResults.Select(result => new SearchSuggestion
             {
                 DisplayText = result.Title,
-                Subtitle = "Epic Games Store",
+                Subtitle = UiStrings.EpicGamesStore,
                 StoreProductSlug = result.ProductSlug,
                 Thumbnail = CreateSearchThumbnail(result.ImageUrl)
             }));
@@ -289,7 +302,7 @@ public sealed partial class MainWindow : Window
             .Select(game => new SearchSuggestion
             {
                 DisplayText = string.IsNullOrWhiteSpace(game.AppTitle) ? game.AppName : game.AppTitle,
-                Subtitle = "In your library",
+                Subtitle = UiStrings.InYourLibrary,
                 AppName = game.AppName,
                 Thumbnail = CreateSearchThumbnail(game)
             })
@@ -329,14 +342,53 @@ public sealed partial class MainWindow : Window
 
     private static SearchSuggestion CreateStoreSearchSuggestion(string query) => new()
     {
-        DisplayText = $"Search Epic Games Store for “{query}”",
-        Subtitle = "View all Store results",
+        DisplayText = UiStrings.Format(UiStrings.SearchStoreForQueryFormat, query),
+        Subtitle = UiStrings.ViewAllStoreResults,
         StoreQuery = query,
         IconGlyph = "\uE719"
     };
 
-    private void NavigateToStore(Uri uri)
+    internal void OpenLibraryFromTray()
     {
+        if (!ShowForTrayNavigation()) return;
+        _currentGameAppName = null;
+        NavControl.SelectedItem = NavControl.MenuItems[0];
+        NavControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
+    }
+
+    internal void OpenStoreFromTray()
+    {
+        if (!ShowForTrayNavigation()) return;
+        _currentGameAppName = null;
+        NavControl.SelectedItem = StoreNavItem;
+        NavControl_Navigate(typeof(StorePage), new EntranceNavigationTransitionInfo());
+    }
+
+    private bool ShowForTrayNavigation()
+    {
+        var presenter = AppWindow.Presenter as OverlappedPresenter;
+        if (!Visible)
+        {
+            var wasMaximized = presenter?.State == OverlappedPresenterState.Maximized;
+            this.Show();
+            if (wasMaximized) presenter!.Maximize();
+        }
+        if (presenter?.State == OverlappedPresenterState.Minimized) presenter.Restore();
+        Activate();
+        return _authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn;
+    }
+
+    internal void LaunchFromTray(string appName)
+    {
+        if (_authManager.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
+        var game = _libraryManager.GetGameInfo(appName);
+        if (game is not null) LaunchGame(appName, game.AppTitle);
+    }
+
+    internal void NavigateToStore(Uri uri)
+    {
+        if (!EpicEndpointPolicy.IsAllowedStoreUri(uri))
+            throw new InvalidOperationException("Unapproved Store URI.");
         NavControl.SelectedItem = StoreNavItem;
         if (ContentFrame.Content is StorePage storePage)
         {
@@ -346,6 +398,49 @@ public sealed partial class MainWindow : Window
 
         _currentGameAppName = null;
         ContentFrame.Navigate(typeof(StorePage), uri, new EntranceNavigationTransitionInfo());
+    }
+
+    private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
+    {
+        if (e.Content is LibraryPage)
+        {
+            ContentScroller.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
+            ContentScroller.VerticalScrollMode = ScrollMode.Disabled;
+            ContentScroller.VerticalContentAlignment = VerticalAlignment.Stretch;
+            ContentScroller.ChangeView(null, 0, null, true);
+            return;
+        }
+        ContentScroller.ClearValue(ScrollViewer.VerticalScrollBarVisibilityProperty);
+        ContentScroller.ClearValue(ScrollViewer.VerticalScrollModeProperty);
+        ContentScroller.ClearValue(ScrollViewer.VerticalContentAlignmentProperty);
+    }
+
+    internal async Task ShowEpicImportAsync()
+    {
+        if (_authManager.AuthenticationStatus != AuthenticationStatus.LoggedIn || _epicImportDialog is not null) return;
+        Crimson.Controls.EpicImportDialog? dialog = null;
+        try
+        {
+            if (ContentFrame.Content is LibraryPage libraryPage) libraryPage.ViewModel.ActionErrorMessage = string.Empty;
+            dialog = new Crimson.Controls.EpicImportDialog { XamlRoot = Content.XamlRoot };
+            _epicImportDialog = dialog;
+            await dialog.ShowPickerAsync();
+        }
+        catch (Exception error)
+        {
+            _log.Error("Epic import dialog failed: {ErrorType}", error.GetType().Name);
+            if (ContentFrame.Content is LibraryPage libraryPage)
+                libraryPage.ViewModel.ActionErrorMessage = UiStrings.Format(UiStrings.MessageSuggestionFormat,
+                    UiStrings.TheEpicImportWindowCouldNotBeOpened, UiStrings.TryAgainOrRestartCrimson);
+            _installManager.ReportPreparationFailure(string.Empty, ActionType.Import, new OperationFailure(
+                OperationFailureKind.Unknown, "epic_import_dialog_failed", UiStrings.TheEpicImportWindowCouldNotBeOpened,
+                UiStrings.TryAgainOrRestartCrimson, false));
+        }
+        finally
+        {
+            dialog?.ClosePicker();
+            _epicImportDialog = null;
+        }
     }
 
     private void ClearGlobalSearch()
@@ -427,12 +522,19 @@ public sealed partial class MainWindow : Window
         });
     }
 
+    private void RefreshTrayMenu()
+    {
+        var isLoggedIn = _authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn;
+        var games = isLoggedIn ? _libraryManager.GetSidebarGames(_libraryCache, null) : [];
+        TrayIconView.UpdateInstalledGames(games, isLoggedIn,
+            appName => _installManager.GetActiveOperationForGame(appName) is not null);
+    }
+
     private void RebuildInstalledMenu(bool force = false)
     {
-        var activeAppName = _activeInstall?.AppName;
-        var installed = _libraryCache
-            .Where(game => game.Metadata is not null && !game.IsDlc())
-            .Where(game => IsPaneListed(game, activeAppName))
+        RefreshTrayMenu();
+        var activeAppName = GetDisplayedGameAppName(_activeInstall);
+        var installed = _libraryManager.GetSidebarGames(_libraryCache, activeAppName)
             .OrderBy(game => game.AppTitle, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
@@ -458,13 +560,6 @@ public sealed partial class MainWindow : Window
 
         ApplyInstallVisual(_activeInstall);
     }
-
-    private static bool IsPaneListed(Game game, string? activeAppName) =>
-        string.Equals(game.AppName, activeAppName, StringComparison.Ordinal) ||
-        game.LocalAppState?.InstallStatus is InstallState.Installed or InstallState.NeedUpdate
-            or InstallState.Installing or InstallState.InstallationPaused
-            or InstallState.Updating or InstallState.UpdatingPaused
-            or InstallState.Repairing;
 
     private NavigationViewItem CreateInstalledGameItem(Game game)
     {
@@ -509,7 +604,7 @@ public sealed partial class MainWindow : Window
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderThickness = new Thickness(0)
         };
-        ToolTipService.SetToolTip(playButton, $"Play {title}");
+        ToolTipService.SetToolTip(playButton, UiStrings.Format(UiStrings.PlayGameFormat, title));
         playButton.Click += (_, _) => LaunchGame(appName, title);
         playButton.Tapped += (_, e) => e.Handled = true;
         Grid.SetColumn(playButton, 2);
@@ -522,15 +617,13 @@ public sealed partial class MainWindow : Window
         layout.Children.Add(statusPanel);
         layout.Children.Add(playButton);
 
-        var badge = new InfoBadge { Visibility = Visibility.Collapsed };
         var progressBrush = isActive ? CreateProgressBrush() : null;
 
         var item = new NavigationViewItem
         {
             Content = layout,
             Tag = GameNavTagPrefix + appName,
-            Icon = CreateGameIcon(game),
-            InfoBadge = badge
+            Icon = CreateGameIcon(game)
         };
         item.Resources["NavigationViewItemOnLeftIconBoxHeight"] = (double)GameIconBoxHeight;
         if (progressBrush is not null)
@@ -550,36 +643,28 @@ public sealed partial class MainWindow : Window
             StatusPanel = statusPanel,
             ActionIcon = actionIcon,
             ProgressText = progressText,
-            Badge = badge,
             ProgressBrush = progressBrush,
             CanLaunch = canLaunch
         };
         return item;
     }
 
-    private void InstallationStatusChangedHandler(InstallItem? installItem)
+    private void OperationUpdatedHandler(OperationSnapshot operation)
     {
         DispatcherQueue.TryEnqueue(() =>
         {
-            _activeInstall = IsActionRunning(installItem) ? installItem : null;
+            var current = _installManager.CurrentOperation;
+            _activeInstall = current is { IsActive: true }
+                ? current
+                : operation.IsActive ? operation : null;
             RebuildInstalledMenu();
             ApplyInstallVisual(_activeInstall);
         });
     }
 
-    private void InstallProgressUpdateHandler(InstallItem? installItem)
+    private void ApplyInstallVisual(OperationSnapshot? operation)
     {
-        if (installItem is null) return;
-        DispatcherQueue.TryEnqueue(() => ApplyInstallVisual(installItem));
-    }
-
-    private static bool IsActionRunning(InstallItem? installItem) =>
-        installItem?.Status is ActionStatus.Pending or ActionStatus.OnGoing or ActionStatus.Processing
-            or ActionStatus.Paused or ActionStatus.Cancelling;
-
-    private void ApplyInstallVisual(InstallItem? installItem)
-    {
-        var activeAppName = IsActionRunning(installItem) ? installItem!.AppName : null;
+        var activeAppName = GetDisplayedGameAppName(operation);
 
         if (!string.Equals(_decoratedAppName, activeAppName, StringComparison.Ordinal))
         {
@@ -592,32 +677,56 @@ public sealed partial class MainWindow : Window
         if (activeAppName is null || !_gameNavEntries.TryGetValue(activeAppName, out var target))
             return;
 
-        var percent = Math.Clamp(installItem!.ProgressPercentage, 0, 100);
-        var label = CurrentDownloadControl.GetActionLabel(installItem.Action);
+        var presentation = OperationPresenter.Present(operation!);
+        var percent = presentation.ProgressPercentage;
 
         target.PlayButton.Visibility = Visibility.Collapsed;
         target.StatusPanel.Visibility = Visibility.Visible;
-        target.ActionIcon.Glyph = GetActionGlyph(installItem.Action, installItem.Status);
-        target.ProgressText.Text = $"{percent}%";
+        target.ActionIcon.Glyph = GetActionGlyph(operation!.Action, operation.Status);
+        target.ProgressText.Text = GetCompactStatus(operation, presentation);
 
-        target.Badge.Value = percent;
-        UpdateBadgeVisibility();
-
-        SetProgressFill(target.ProgressBrush, percent);
+        SetProgressFill(target.ProgressBrush, presentation.IsIndeterminate ? 0 : percent);
         ToolTipService.SetToolTip(target.Item,
-            installItem.Status == ActionStatus.Paused
-                ? $"{target.Title} - {label} paused at {percent}%"
-                : $"{target.Title} - {label} {percent}%");
+            UiStrings.Format(UiStrings.GameOperationFormat, target.Title, presentation.Headline.ToLowerInvariant()));
     }
+
+    private string? GetDisplayedGameAppName(OperationSnapshot? operation) =>
+        operation is { IsActive: true }
+            ? _libraryManager.GetBaseGameAppName(operation.AppName)
+            : null;
 
     private static void ResetEntry(GameNavEntry entry)
     {
         entry.StatusPanel.Visibility = Visibility.Collapsed;
         entry.PlayButton.Visibility = entry.CanLaunch ? Visibility.Visible : Visibility.Collapsed;
-        entry.Badge.Visibility = Visibility.Collapsed;
         SetProgressFill(entry.ProgressBrush, 0);
         ToolTipService.SetToolTip(entry.Item, entry.Title);
     }
+
+    private static string GetCompactStatus(
+        OperationSnapshot operation,
+        OperationPresentation presentation)
+    {
+        if (OperationPresenter.IsRetryingTransfer(operation)) return UiStrings.Retrying;
+        if (!presentation.IsIndeterminate)
+            return UiStrings.Format(UiStrings.ProgressPercentFormat, presentation.ProgressPercentage);
+
+        return operation.Status == ActionStatus.Cancelling
+            ? UiStrings.Cancelling
+            : GetPhaseStatus(operation.Phase);
+    }
+
+    private static string GetPhaseStatus(OperationPhase phase) => phase switch
+    {
+        OperationPhase.Queued => UiStrings.Queued,
+        OperationPhase.Preparing => UiStrings.Preparing,
+        OperationPhase.Verifying => UiStrings.Verifying,
+        OperationPhase.Uninstalling => UiStrings.Removing,
+        OperationPhase.Importing => UiStrings.Importing,
+        OperationPhase.Moving => UiStrings.Moving,
+        OperationPhase.Finalizing => UiStrings.Finishing,
+        _ => UiStrings.Working
+    };
 
     private static string GetActionGlyph(ActionType action, ActionStatus status) => status switch
     {
@@ -688,6 +797,12 @@ public sealed partial class MainWindow : Window
 
     private void LaunchGame(string appName, string title)
     {
+        if (_installManager.GetActiveOperationForGame(appName) is not null)
+        {
+            _log.Information("MainWindow: Launch blocked while an operation is active for {AppName}", appName);
+            return;
+        }
+
         _log.Information("MainWindow: Launching {Title} ({AppName}) from the navigation pane", title, appName);
         _ = Task.Run(() => _libraryManager.LaunchApp(appName));
     }
@@ -696,20 +811,69 @@ public sealed partial class MainWindow : Window
     {
         _lastDownloadSummary = summary;
         ToolTipService.SetToolTip(DownloadsNavItem, summary.ToolTip);
-        DownloadInfoBadge.Value = summary.ProgressPercentage;
-        UpdateBadgeVisibility();
+        DownloadIcon.Glyph = summary.HasActiveDownload
+            ? GetActionGlyph(summary.Action, summary.Status)
+            : "\uE896";
+        UpdateDownloadRing();
     }
 
-    private void UpdateBadgeVisibility()
+    private void InitializeDownloadRing()
     {
-        var collapsed = !NavControl.IsPaneOpen;
+        if (_downloadRingVisual is not null) return;
 
-        DownloadInfoBadge.Visibility = collapsed && _lastDownloadSummary is { HasActiveDownload: true }
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        // The navigation icon slot only accepts IconElement, not a Grid with a ProgressRing.
+        var compositor = ElementCompositionPreview.GetElementVisual(DownloadIcon).Compositor;
+        _downloadRingGeometry = compositor.CreateEllipseGeometry();
+        _downloadRingGeometry.Center = new Vector2(16);
+        _downloadRingGeometry.Radius = new Vector2(14);
+        _downloadRingBrush = compositor.CreateColorBrush();
+        var ring = compositor.CreateSpriteShape(_downloadRingGeometry);
+        ring.StrokeBrush = _downloadRingBrush;
+        ring.StrokeThickness = 2;
+        _downloadRingVisual = compositor.CreateShapeVisual();
+        _downloadRingVisual.Size = new Vector2(32);
+        _downloadRingVisual.CenterPoint = new Vector3(16, 16, 0);
+        _downloadRingVisual.RotationAngleInDegrees = -90;
+        var trackGeometry = compositor.CreateEllipseGeometry();
+        trackGeometry.Center = _downloadRingGeometry.Center;
+        trackGeometry.Radius = _downloadRingGeometry.Radius;
+        var track = compositor.CreateSpriteShape(trackGeometry);
+        track.StrokeThickness = 2;
+        track.StrokeBrush = compositor.CreateColorBrush(Windows.UI.Color.FromArgb(64, 128, 128, 128));
+        _downloadRingVisual.Shapes.Add(track);
+        _downloadRingVisual.Shapes.Add(ring);
+        ElementCompositionPreview.SetElementChildVisual(DownloadIcon, _downloadRingVisual);
+        UpdateDownloadRing();
+    }
 
-        if (_decoratedAppName is not null && _gameNavEntries.TryGetValue(_decoratedAppName, out var entry))
-            entry.Badge.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
+    private void UpdateDownloadRing()
+    {
+        if (_downloadRingVisual is null || _downloadRingGeometry is null || _downloadRingBrush is null) return;
+
+        var summary = _lastDownloadSummary ?? new DownloadSummary();
+        _downloadRingVisual.IsVisible = summary.HasActiveDownload;
+        _downloadRingBrush.Color = ((SolidColorBrush)DownloadIcon.Foreground).Color;
+        _downloadRingGeometry.TrimEnd = summary.IsIndeterminate
+            ? 0.25f
+            : Math.Clamp(summary.ProgressPercentage / 100f, 0, 1);
+
+        var spin = summary.HasActiveDownload && summary.IsIndeterminate && summary.Status != ActionStatus.Paused;
+        if (spin == _downloadRingSpinning) return;
+        _downloadRingSpinning = spin;
+        if (spin)
+        {
+            var rotation = _downloadRingVisual.Compositor.CreateScalarKeyFrameAnimation();
+            rotation.InsertKeyFrame(0, -90);
+            rotation.InsertKeyFrame(1, 270, _downloadRingVisual.Compositor.CreateLinearEasingFunction());
+            rotation.Duration = TimeSpan.FromSeconds(1.5);
+            rotation.IterationBehavior = AnimationIterationBehavior.Forever;
+            _downloadRingVisual.StartAnimation(nameof(Visual.RotationAngleInDegrees), rotation);
+        }
+        else
+        {
+            _downloadRingVisual.StopAnimation(nameof(Visual.RotationAngleInDegrees));
+            _downloadRingVisual.RotationAngleInDegrees = -90;
+        }
     }
 
     private void NavControl_Navigate(
@@ -727,6 +891,7 @@ public sealed partial class MainWindow : Window
     private void UpdateUIBasedOnAuthenticationStatus(AuthenticationStatus authStatus)
     {
         Log.Information("Auth status: {AuthStatus}", authStatus);
+        RefreshTrayMenu();
 
         switch (authStatus)
         {
@@ -734,8 +899,8 @@ public sealed partial class MainWindow : Window
                 NavControl.Visibility = Visibility.Collapsed;
                 LoginPage.Visibility = Visibility.Collapsed;
                 LoginModal.Visibility = Visibility.Visible;
-                LoginModalTitle.Text = "Checking authentication status";
-                LoginModalDescription.Text = "Please wait...";
+                LoginModalTitle.Text = UiStrings.CheckingAuthenticationStatus;
+                LoginModalDescription.Text = UiStrings.PleaseWait;
                 break;
 
             case AuthenticationStatus.LoggedOut:
@@ -749,7 +914,7 @@ public sealed partial class MainWindow : Window
 
             case AuthenticationStatus.LoggedIn:
                 Log.Information("Logged in");
-                LoginModalTitle.Text = "Login Success";
+                LoginModalTitle.Text = UiStrings.LoginSuccess;
 
                 LoginPage.CloseWebView();
 
@@ -777,8 +942,8 @@ public sealed partial class MainWindow : Window
                 break;
 
             case AuthenticationStatus.LoginFailed:
-                LoginModalTitle.Text = "Login failed";
-                LoginModalDescription.Text = "Please try again";
+                LoginModalTitle.Text = UiStrings.LoginFailed;
+                LoginModalDescription.Text = UiStrings.PleaseTryAgain;
                 LoginModal.Visibility = Visibility.Visible;
                 NavControl.Visibility = Visibility.Collapsed;
                 LoginPage.Visibility = Visibility.Visible;
@@ -788,109 +953,42 @@ public sealed partial class MainWindow : Window
 
     private void AuthStatusChangedHandler(object sender, AuthStatusChangedEventArgs e)
     {
-        DispatcherQueue.TryEnqueue(() => UpdateUIBasedOnAuthenticationStatus(e.NewStatus));
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (e.NewStatus == AuthenticationStatus.LoggedOut) _epicImportDialog?.ClosePicker();
+            UpdateUIBasedOnAuthenticationStatus(e.NewStatus);
+        });
     }
-    private bool TrySetSystemBackdrop()
+    private void AcrylicPreferenceChanged(object? sender, EventArgs args) =>
+        DispatcherQueue.TryEnqueue(ApplyBackdrop);
+
+    private void ApplyBackdrop()
     {
-        if (!MicaController.IsSupported())
-            return false; // Mica is not supported on this system
-        _mWsdqHelper = new WindowsSystemDispatcherQueueHelper();
-        _mWsdqHelper.EnsureWindowsSystemDispatcherQueueController();
-
-        // Create the policy object.
-        _mConfigurationSource = new SystemBackdropConfiguration();
-        this.Activated += Window_Activated;
-        this.Closed += Window_Closed;
-        ((FrameworkElement)this.Content).ActualThemeChanged += Window_ThemeChanged;
-
-        // Initial configuration state.
-        _mConfigurationSource.IsInputActive = true;
-        SetConfigurationSourceTheme();
-
-        _mBackdropController = new MicaController();
-
-        // Enable the system backdrop.
-        // Note: Be sure to have "using WinRT;" to support the Window.As<...>() call.
-        _mBackdropController.AddSystemBackdropTarget(this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>());
-        _mBackdropController.SetSystemBackdropConfiguration(_mConfigurationSource);
-        return true; // succeeded
-
-    }
-
-    private void Window_Activated(object sender, WindowActivatedEventArgs args)
-    {
-        _mConfigurationSource.IsInputActive = args.WindowActivationState != WindowActivationState.Deactivated;
+        if (_windowClosed) return;
+        var acrylic = _settingsManager.AcrylicEnabled && DesktopAcrylicController.IsSupported();
+        SystemBackdrop = acrylic ? new DesktopAcrylicBackdrop() : null;
+        SolidBackdrop.Opacity = acrylic ? _settingsManager.AcrylicOpacity / 100 : 1;
     }
 
     private void Window_Closed(object sender, WindowEventArgs args)
     {
-        // Make sure any Mica/Acrylic controller is disposed
-        // so it doesn't try to use this closed window.
-        if (_mBackdropController != null)
-        {
-            _mBackdropController.Dispose();
-            _mBackdropController = null;
-        }
-        this.Activated -= Window_Activated;
-        _mConfigurationSource = null;
+        if (App.HandleClosedEvents) return;
+        _windowClosed = true;
+        _settingsManager.AcrylicChanged -= AcrylicPreferenceChanged;
+        SystemBackdrop = null;
+        _epicImportDialog?.ClosePicker();
+        _windowSizeConstraints.Dispose();
 
+        _operationErrors.Dispose();
         _libraryManager.LibraryUpdated -= LibraryUpdatedHandler;
         _libraryManager.GameStatusUpdated -= GameStatusUpdatedHandler;
         CancelStoreSearch();
         CurrentDownload.SummaryChanged -= OnDownloadSummaryChanged;
-        _installManager.InstallationStatusChanged -= InstallationStatusChangedHandler;
-        _installManager.InstallProgressUpdate -= InstallProgressUpdateHandler;
+        CurrentDownload.Dispose();
+        _installManager.OperationUpdated -= OperationUpdatedHandler;
+        _installManager.Dispose();
     }
 
-    private void Window_ThemeChanged(FrameworkElement sender, object args)
-    {
-        if (_mConfigurationSource != null)
-        {
-            SetConfigurationSourceTheme();
-        }
-    }
-
-    private void SetConfigurationSourceTheme()
-    {
-        switch (((FrameworkElement)this.Content).ActualTheme)
-        {
-            case ElementTheme.Dark: _mConfigurationSource.Theme = SystemBackdropTheme.Dark; break;
-            case ElementTheme.Light: _mConfigurationSource.Theme = SystemBackdropTheme.Light; break;
-            case ElementTheme.Default: _mConfigurationSource.Theme = SystemBackdropTheme.Default; break;
-        }
-    }
-}
-
-internal class WindowsSystemDispatcherQueueHelper
-{
-    [StructLayout(LayoutKind.Sequential)]
-    private struct DispatcherQueueOptions
-    {
-        internal int dwSize;
-        internal int threadType;
-        internal int apartmentType;
-    }
-
-    [DllImport("CoreMessaging.dll")]
-    private static extern int CreateDispatcherQueueController([In] DispatcherQueueOptions options, [In, Out, MarshalAs(UnmanagedType.IUnknown)] ref object dispatcherQueueController);
-
-    private object _mDispatcherQueueController = null;
-    public void EnsureWindowsSystemDispatcherQueueController()
-    {
-        if (Windows.System.DispatcherQueue.GetForCurrentThread() != null)
-        {
-            // one already exists, so we'll just use it.
-            return;
-        }
-
-        if (_mDispatcherQueueController != null) return;
-        DispatcherQueueOptions options;
-        options.dwSize = Marshal.SizeOf(typeof(DispatcherQueueOptions));
-        options.threadType = 2;    // DQTYPE_THREAD_CURRENT
-        options.apartmentType = 2; // DQTAT_COM_STA
-
-        CreateDispatcherQueueController(options, ref _mDispatcherQueueController);
-    }
 }
 
 

@@ -2,6 +2,7 @@
     x:Class="Crimson.Views.LibraryPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:strings="using:Crimson.Resources"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -9,9 +10,15 @@
     xmlns:viewModels="using:Crimson.ViewModels"
     mc:Ignorable="d">
 
-    <Grid x:Name="GamesGrid" HorizontalAlignment="Center">
+    <Grid x:Name="GamesGrid" HorizontalAlignment="Stretch">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
         <Grid.Resources>
             <UniformGridLayout x:Name="UniformGridLayout" />
+            <StackLayout x:Key="ListStackLayout" Orientation="Vertical" Spacing="4" />
             <DataTemplate x:Key="GameCardTemplate" x:DataType="viewModels:LibraryItem">
                 <Button
                     Padding="16,16,16,16"
@@ -27,21 +34,169 @@
                             VerticalAlignment="Center"
                             Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}"
                             Stretch="UniformToFill" />
-                        <TextBlock
-                            MaxWidth="200"
-                            HorizontalAlignment="Left"
-                            VerticalAlignment="Bottom"
-                            FontSize="18"
-                            Foreground="White"
-                            Text="{x:Bind Title}"
-                            TextTrimming="CharacterEllipsis" />
+                        <StackPanel MaxWidth="226" Spacing="8">
+                            <TextBlock
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Bottom"
+                                FontSize="18"
+                                Foreground="White"
+                                Text="{x:Bind Title}"
+                                TextTrimming="CharacterEllipsis" />
+                            <StackPanel
+                                Spacing="6"
+                                Visibility="{x:Bind HasActiveOperation, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{x:Bind OperationStatus, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <ProgressBar
+                                    IsIndeterminate="{x:Bind IsOperationIndeterminate, Mode=OneWay}"
+                                    Value="{x:Bind OperationProgress, Mode=OneWay}" />
+                            </StackPanel>
+                        </StackPanel>
                     </StackPanel>
+                </Button>
+            </DataTemplate>
+            <DataTemplate x:Key="GameListTemplate" x:DataType="viewModels:LibraryItem">
+                <Button
+                    Padding="12"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    AutomationProperties.Name="{x:Bind Title}"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="GameButton_Click"
+                    DataContext="{x:Bind}">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="42" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            Height="56"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            CornerRadius="3">
+                            <Grid>
+                                <FontIcon FontSize="20" Glyph="&#xE7FC;" Opacity="0.5" />
+                                <Image Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}" Stretch="UniformToFill" />
+                            </Grid>
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                            <TextBlock FontSize="16" Text="{x:Bind Title}" TextTrimming="CharacterEllipsis" />
+                            <StackPanel
+                                MinWidth="160"
+                                MaxWidth="240"
+                                HorizontalAlignment="Left"
+                                Spacing="4"
+                                Visibility="{x:Bind HasActiveOperation, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{x:Bind OperationStatus, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <ProgressBar
+                                    IsIndeterminate="{x:Bind IsOperationIndeterminate, Mode=OneWay}"
+                                    Value="{x:Bind OperationProgress, Mode=OneWay}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
                 </Button>
             </DataTemplate>
         </Grid.Resources>
 
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="LibraryViewStates">
+                <VisualState x:Name="GridView">
+                    <VisualState.StateTriggers>
+                        <StateTrigger IsActive="{x:Bind ViewModel.IsGridView, Mode=OneWay}" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="ItemsRepeater.Layout" Value="{StaticResource UniformGridLayout}" />
+                        <Setter Target="ItemsRepeater.ItemTemplate" Value="{StaticResource GameCardTemplate}" />
+                        <Setter Target="ItemsRepeater.HorizontalAlignment" Value="Center" />
+                        <Setter Target="ItemsRepeater.Margin" Value="0,0,0,20" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="ListView">
+                    <VisualState.StateTriggers>
+                        <StateTrigger IsActive="{x:Bind ViewModel.IsListView, Mode=OneWay}" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="ItemsRepeater.Layout" Value="{StaticResource ListStackLayout}" />
+                        <Setter Target="ItemsRepeater.ItemTemplate" Value="{StaticResource GameListTemplate}" />
+                        <Setter Target="ItemsRepeater.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="ItemsRepeater.Margin" Value="16,0,16,20" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <Grid x:Name="LibraryActions" Margin="16,20,16,20" HorizontalAlignment="Right" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <CheckBox
+                Content="{x:Bind strings:UiStrings.InstalledOnly}"
+                IsChecked="{x:Bind ViewModel.InstalledOnly, Mode=TwoWay}"
+                ToolTipService.ToolTip="{x:Bind strings:UiStrings.ShowGamesInstalledOrBeingManagedByCrimson}" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal" Spacing="4">
+                <RadioButton
+                    x:Name="GridViewButton"
+                    Width="36"
+                    Height="36"
+                    MinWidth="0"
+                    MinHeight="0"
+                    Padding="0"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    GroupName="LibraryViewMode"
+                    IsChecked="{x:Bind ViewModel.IsGridView, Mode=OneWay}"
+                    Style="{StaticResource DefaultToggleButtonStyle}"
+                    ToolTipService.ToolTip="{x:Bind strings:UiStrings.GridView}"
+                    AutomationProperties.Name="{x:Bind strings:UiStrings.GridView}">
+                    <FontIcon FontSize="14" Glyph="&#xE8A9;" />
+                </RadioButton>
+                <RadioButton
+                    x:Name="ListViewButton"
+                    Width="36"
+                    Height="36"
+                    MinWidth="0"
+                    MinHeight="0"
+                    Padding="0"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    GroupName="LibraryViewMode"
+                    IsChecked="{x:Bind ViewModel.IsListView, Mode=TwoWay}"
+                    Style="{StaticResource DefaultToggleButtonStyle}"
+                    ToolTipService.ToolTip="{x:Bind strings:UiStrings.ListView}"
+                    AutomationProperties.Name="{x:Bind strings:UiStrings.ListView}">
+                    <FontIcon FontSize="14" Glyph="&#xEA37;" />
+                </RadioButton>
+            </StackPanel>
+            <Button x:Name="EpicImportButton" Grid.Column="2" Height="36" VerticalAlignment="Center" Click="ImportButton_Click">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon FontSize="16" Glyph="&#xE8B5;" />
+                    <TextBlock Text="{x:Bind strings:UiStrings.ImportFromEpic}" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <TextBlock
+            Grid.Row="1"
+            Margin="16,0,16,12"
+            VerticalAlignment="Top"
+            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+            Text="{x:Bind ViewModel.ActionErrorMessage, Mode=OneWay}"
+            TextWrapping="Wrap"
+            Visibility="{x:Bind ViewModel.HasActionError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
         <StackPanel
             x:Name="LoadingSection"
+            Grid.Row="2"
+            HorizontalAlignment="Center"
             VerticalAlignment="Center"
             Visibility="{x:Bind ViewModel.ShowLoadingScreen, Converter={StaticResource BoolToVisibilityConverter}, Mode=TwoWay}">
             <ProgressRing
@@ -51,15 +206,31 @@
                 VerticalAlignment="Center"
                 Foreground="White"
                 IsActive="True" />
-            <TextBlock>Loading...</TextBlock>
+            <TextBlock Text="{x:Bind strings:UiStrings.LoadingThreeDots}" />
         </StackPanel>
 
-        <ItemsRepeater
-            x:Name="ItemsRepeater"
-            Margin="0,20,0,20"
-            ItemTemplate="{StaticResource GameCardTemplate}"
-            ItemsSource="{x:Bind ViewModel.GamesList, Mode=TwoWay}"
-            Layout="{StaticResource UniformGridLayout}" />
+        <TextBlock
+            Grid.Row="2"
+            Margin="16,40"
+            HorizontalAlignment="Center"
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            Text="{x:Bind strings:UiStrings.NoInstalledGamesMessage}"
+            Visibility="{x:Bind ViewModel.HasNoInstalledGames, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+        <ScrollViewer
+            x:Name="LibraryScroller"
+            Grid.Row="2"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto"
+            ZoomMode="Disabled">
+            <ItemsRepeater
+                x:Name="ItemsRepeater"
+                Margin="0,0,0,20"
+                HorizontalAlignment="Center"
+                ItemTemplate="{StaticResource GameCardTemplate}"
+                ItemsSource="{x:Bind ViewModel.GamesList, Mode=TwoWay}"
+                Layout="{StaticResource UniformGridLayout}" />
+        </ScrollViewer>
     </Grid>
 
     <Page.Resources>

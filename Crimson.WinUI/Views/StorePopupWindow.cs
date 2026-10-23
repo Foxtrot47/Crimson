@@ -1,3 +1,4 @@
+using Crimson.Resources;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -26,7 +27,7 @@ internal sealed class StorePopupWindow : Window
         _environment = environment;
         _log = log;
         _handleLauncherRequest = handleLauncherRequest;
-        Title = "Epic Games Store";
+        Title = UiStrings.EpicGamesStore;
 
         _webView = new WebView2();
         Content = _webView;

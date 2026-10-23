@@ -1,6 +1,9 @@
-﻿using System;
+using Crimson.Resources;
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -23,15 +26,33 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     private readonly LibraryManager _libraryManager;
     private readonly Storage _storage;
     private readonly ILogger<GameInfoViewModel> _log;
+    private CancellationTokenSource? _storeDetailsCancellation;
+    private int _noticeGeneration;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActionError))]
+    private string _actionErrorMessage = string.Empty;
+
+    public bool HasActionError => !string.IsNullOrWhiteSpace(ActionErrorMessage);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StorePageUri), nameof(CanViewStore))]
     private Game? _game;
+
+    public Uri? StorePageUri => EpicStoreLinks.ForGame(Game);
+    public bool CanViewStore => StorePageUri is not null;
 
     [ObservableProperty]
     private bool _isInstalled;
 
     [ObservableProperty]
+    private bool _isManageEnabled;
+
+    [ObservableProperty]
     private bool _isImportVisible;
+
+    [ObservableProperty]
+    private bool _isImportEnabled;
 
     [ObservableProperty]
     private string _primaryActionButtonText;
@@ -52,7 +73,67 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     private double _progressValue;
 
     [ObservableProperty]
-    private string? _titleImageUrl;
+    private string? _coverImageUrl;
+
+    [ObservableProperty]
+    private bool _hasCoverImage;
+
+    [ObservableProperty]
+    private string? _heroImageUrl;
+
+    [ObservableProperty]
+    private bool _hasHeroImage;
+
+    [ObservableProperty]
+    private IReadOnlyList<StoreProductImage> _screenshots = [];
+
+    [ObservableProperty]
+    private bool _hasScreenshots;
+
+    [ObservableProperty]
+    private string _developerName = string.Empty;
+
+    [ObservableProperty]
+    private string _publisherName = string.Empty;
+
+    [ObservableProperty]
+    private string _gameDescription = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasGameDescription;
+
+    [ObservableProperty]
+    private bool _isDetailsLoading;
+
+    [ObservableProperty]
+    private bool _isStoreDetailsUnavailable;
+
+    [ObservableProperty]
+    private string _tagsText = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasTags;
+
+    [ObservableProperty]
+    private string _releaseDateText = UiStrings.Unavailable;
+
+    [ObservableProperty]
+    private string _lastUpdatedText = UiStrings.Unavailable;
+
+    [ObservableProperty]
+    private string _totalPlayTimeText = UiStrings.Unavailable;
+
+    [ObservableProperty]
+    private IReadOnlyList<StoreSystemRequirement> _windowsRequirements = [];
+
+    [ObservableProperty]
+    private bool _hasWindowsRequirements;
+
+    [ObservableProperty]
+    private string _gameStatusText = string.Empty;
+
+    [ObservableProperty]
+    private string _installedVersion = UiStrings.Unavailable;
 
     // Event for showing install dialog
     public event Func<Task> ShowInstallDialogRequested;
@@ -79,35 +160,61 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     {
         if (parameter is not string appName) return;
 
-        Game = _libraryManager.GetGameInfo((string)appName);
-        var gameImage = Game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBox");
-        TitleImageUrl = gameImage?.Url;
+        UnregisterEventHandlers();
+        CancelStoreDetailsRequest();
+        Game = _libraryManager.GetGameInfo(appName);
+        if (Game is null) return;
 
+        ActionErrorMessage = string.Empty;
+        ApplyCatalogMetadata(Game);
+        _installer.OperationError += HandleActionNotice;
+        _libraryManager.GameStatusUpdated += CheckGameStatus;
+        _installer.OperationUpdated += HandleOperationUpdated;
         CheckGameStatus(Game);
 
-        // Unregister event handlers on start
-        UnregisterEventHandlers();
+        _storeDetailsCancellation = new CancellationTokenSource();
+        await Task.WhenAll(
+            LoadStoreDetails(appName, Game.Metadata.Namespace, _storeDetailsCancellation.Token),
+            LoadPlaytime(appName, _storeDetailsCancellation.Token));
+    }
 
-        _libraryManager.GameStatusUpdated += CheckGameStatus;
-        _installer.InstallationStatusChanged += HandleInstallationStatusChanged;
-        _installer.InstallProgressUpdate += HandleInstallationStatusChanged;
-
+    private void HandleActionNotice(OperationSnapshot operation)
+    {
+        if (operation.ShowErrorDialog || operation.Failure is not { } failure) return;
+        var game = Game;
+        if (game is null || !_libraryManager.IsOperationForGame(operation.AppName, game.AppName)) return;
+        var generation = _noticeGeneration;
+        _uiDispatcher.TryEnqueue(() =>
+        {
+            if (generation != _noticeGeneration || !ReferenceEquals(Game, game)) return;
+            ActionErrorMessage = UiStrings.Format(UiStrings.MessageSuggestionFormat, failure.Message, failure.SuggestedAction);
+        });
     }
 
     private void UnregisterEventHandlers()
     {
+        _noticeGeneration++;
+        _installer.OperationError -= HandleActionNotice;
         _libraryManager.GameStatusUpdated -= CheckGameStatus;
-        _installer.InstallationStatusChanged -= HandleInstallationStatusChanged;
-        _installer.InstallProgressUpdate -= HandleInstallationStatusChanged;
+        _installer.OperationUpdated -= HandleOperationUpdated;
+    }
+
+    private void CancelStoreDetailsRequest()
+    {
+        _storeDetailsCancellation?.Cancel();
+        _storeDetailsCancellation?.Dispose();
+        _storeDetailsCancellation = null;
     }
 
     [RelayCommand]
     private async Task PrimaryActionAsync()
     {
+        var requestedAction = GetPrimaryOperationAction();
         try
         {
+            if (!CanRunPrimaryAction()) return;
+            ActionErrorMessage = string.Empty;
             _log.LogInformation("GameInfoPage: Primary Action Button Clicked for {Game}", Game.AppTitle);
-            if (Game == null) return;
 
             if (Game.LocalAppState?.InstallStatus == InstallState.Installed)
             {
@@ -134,97 +241,294 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
             {
                 await ShowInstallDialogRequested.Invoke();
             }
+            else
+            {
+                _installer.ReportPreparationFailure(Game.AppName, ActionType.Install, new OperationFailure(
+                    OperationFailureKind.Unknown, "install_dialog_unavailable", UiStrings.TheInstallationDialogCouldNotBeOpened,
+                    UiStrings.RestartCrimsonAndTryAgain, false));
+            }
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "PrimaryActionAsync: Exception");
-            IsProgressRingVisible = false;
-            IsPrimaryActionEnabled = true;
+            _log.LogError("PrimaryActionAsync failed: {ErrorType}", ex.GetType().Name);
+            ReportPrimaryActionFailure(requestedAction, ex);
+            RefreshActionState();
         }
     }
 
-    /// <summary>
-    /// Handing Installation State Change.
-    /// <br/>
-    /// This function is never run on UI Thread.
-    /// <br/>
-    /// So always make sure to use Dispatcher Queue to update UI thread
-    /// </summary>
-    /// <param name="installItem"></param>
-    private void HandleInstallationStatusChanged(InstallItem installItem)
+    private void ReportPrimaryActionFailure(ActionType action, Exception exception) =>
+        _installer.ReportPreparationFailure(Game?.AppName ?? string.Empty, action, exception);
+
+    private ActionType GetPrimaryOperationAction() => PrimaryAction switch
+    {
+        GamePrimaryAction.Update => ActionType.Update,
+        GamePrimaryAction.Repair => ActionType.Repair,
+        _ => ActionType.Install
+    };
+
+    private void RefreshActionState()
+    {
+        if (Game is null) return;
+        ApplyGameStatus(Game.LocalAppState?.InstallStatus);
+        ApplyOperation(FindOperation(Game.AppName));
+    }
+
+    private void HandleOperationUpdated(OperationSnapshot operation)
     {
         try
         {
-            if (installItem == null || installItem.AppName != Game.AppName) return;
+            if (Game is null || !_libraryManager.IsOperationForGame(operation.AppName, Game.AppName))
+                return;
+            var appName = Game.AppName;
             _uiDispatcher.TryEnqueue(() =>
             {
-                _log.LogInformation("GameInfoPage: Installation Status Changed for {Game}", installItem.AppName);
-                switch (installItem.Status)
-                {
-                    case ActionStatus.Processing:
-                        IsProgressRingIndeterminate = false;
-                        ProgressValue = Convert.ToDouble(installItem.ProgressPercentage);
-                        IsProgressRingVisible = true;
-                        IsPrimaryActionEnabled = false;
-                        PrimaryActionButtonText = $"{installItem.ProgressPercentage}%";
-                        break;
-                    case ActionStatus.Pending:
-                        PrimaryActionButtonText = "Pending...";
-                        IsProgressRingVisible = true;
-                        IsProgressRingIndeterminate = true;
-                        break;
-
-                    case ActionStatus.Cancelling:
-                        PrimaryActionButtonText = "Cancelling...";
-                        IsProgressRingVisible = true;
-                        IsProgressRingIndeterminate = true;
-                        break;
-                }
+                if (Game?.AppName != appName) return;
+                ApplyOperation(FindOperation(appName));
             });
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "HandleInstallationStatusChanged failed");
+            _log.LogError(ex, "HandleOperationUpdated failed");
         }
+    }
+
+    private OperationSnapshot? FindOperation(string appName) =>
+        _installer.GetActiveOperationForGame(appName);
+
+    private void ApplyOperation(OperationSnapshot? operation)
+    {
+        if (operation is null)
+        {
+            if (Game is not null)
+                ApplyGameStatus(Game.LocalAppState?.InstallStatus);
+            return;
+        }
+
+        var presentation = OperationPresenter.Present(operation);
+        IsProgressRingVisible = presentation.IsActive;
+        IsProgressRingIndeterminate = presentation.IsIndeterminate;
+        ProgressValue = presentation.ProgressPercentage;
+        IsPrimaryActionEnabled = !presentation.IsActive;
+        IsManageEnabled = IsInstalled && !presentation.IsActive;
+        IsImportEnabled = IsImportVisible && !presentation.IsActive;
+
+        if (presentation.IsActive)
+        {
+            PrimaryAction = GamePrimaryAction.None;
+            PrimaryActionButtonText = presentation.Headline;
+            GameStatusText = presentation.Headline;
+        }
+        else if (Game is not null)
+            ApplyGameStatus(Game.LocalAppState?.InstallStatus);
     }
 
     private void CheckGameStatus(Game updatedGame)
     {
-        if (updatedGame == null || updatedGame.AppName != Game.AppName) return;
+        if (updatedGame == null || Game is null || updatedGame.AppName != Game.AppName) return;
         _log.LogInformation("GameInfoPage: Game Status Changed for {Game}", updatedGame.AppTitle);
-        Game = updatedGame;
+        _uiDispatcher.TryEnqueue(() =>
+        {
+            if (Game?.AppName != updatedGame.AppName) return;
+            Game = updatedGame;
+            ApplyLocalGameDetails(updatedGame);
+            ApplyGameStatus(updatedGame.LocalAppState?.InstallStatus);
+            ApplyOperation(FindOperation(updatedGame.AppName));
+        });
+    }
+
+    private async Task LoadStoreDetails(
+        string appName,
+        string nameSpace,
+        CancellationToken cancellationToken)
+    {
+        IsDetailsLoading = true;
+        StoreProductDetails? details = null;
+        try
+        {
+            details = await _libraryManager.GetStoreProductDetails(nameSpace, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception)
+        {
+            _log.LogWarning("Game Info Store details are unavailable");
+        }
 
         _uiDispatcher.TryEnqueue(() =>
         {
-            IsProgressRingVisible = false;
-            IsPrimaryActionEnabled = true;
-            PrimaryAction = GetPrimaryAction(Game.LocalAppState?.InstallStatus);
-            if (PrimaryAction is GamePrimaryAction.Install)
-            {
-                PrimaryActionButtonText = "Install";
-                IsInstalled = false;
-                IsImportVisible = true;
-                return;
-            }
-
-            IsImportVisible = false;
-            switch (PrimaryAction)
-            {
-                case GamePrimaryAction.Play:
-                    PrimaryActionButtonText = "Play";
-                    IsInstalled = true;
-                    break;
-                case GamePrimaryAction.Update:
-                    PrimaryActionButtonText = "Update";
-                    IsInstalled = true;
-                    break;
-                case GamePrimaryAction.Repair:
-                    PrimaryActionButtonText = "Repair";
-                    IsInstalled = true;
-                    break;
-            }
+            if (cancellationToken.IsCancellationRequested || Game?.AppName != appName) return;
+            ApplyStoreDetails(details);
+            IsDetailsLoading = false;
         });
     }
+
+    private async Task LoadPlaytime(string appName, CancellationToken cancellationToken)
+    {
+        long? seconds = null;
+        try
+        {
+            seconds = await _libraryManager.GetGamePlaytimeSeconds(appName, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception)
+        {
+            _log.LogWarning("Game Info playtime is unavailable");
+        }
+
+        _uiDispatcher.TryEnqueue(() =>
+        {
+            if (cancellationToken.IsCancellationRequested || Game?.AppName != appName) return;
+            TotalPlayTimeText = FormatPlaytime(seconds);
+        });
+    }
+
+    internal static string FormatPlaytime(long? seconds)
+    {
+        if (seconds is null or < 0) return UiStrings.Unavailable;
+        if (seconds == 0) return UiStrings.ZeroMinutes;
+        if (seconds < 60) return UiStrings.LessThanOneMinute;
+        var minutes = seconds.Value / 60;
+        return minutes < 60 ? UiStrings.Format(UiStrings.PlaytimeMinutesFormat, minutes) : UiStrings.Format(UiStrings.PlaytimeHoursMinutesFormat, minutes / 60, minutes % 60);
+    }
+
+    private void ApplyCatalogMetadata(Game game)
+    {
+        CoverImageUrl = FindImage(game.Metadata.KeyImages, "DieselGameBoxTall", "OfferImageTall", "DieselGameBox");
+        HasCoverImage = !string.IsNullOrWhiteSpace(CoverImageUrl);
+        HeroImageUrl = FindImage(game.Metadata.KeyImages, "DieselGameBox", "OfferImageWide");
+        HasHeroImage = !string.IsNullOrWhiteSpace(HeroImageUrl);
+        Screenshots = [];
+        HasScreenshots = false;
+        DeveloperName = FirstNonEmpty(game.Metadata.Developer, UiStrings.LoadingEllipsis);
+        PublisherName = UiStrings.LoadingEllipsis;
+        TagsText = string.Empty;
+        HasTags = false;
+        ReleaseDateText = UiStrings.LoadingEllipsis;
+        TotalPlayTimeText = UiStrings.LoadingEllipsis;
+        WindowsRequirements = [];
+        HasWindowsRequirements = false;
+        IsStoreDetailsUnavailable = false;
+        ApplyDescription(game.Metadata.Description, game.AppTitle);
+        ApplyLocalGameDetails(game);
+    }
+
+    private void ApplyStoreDetails(StoreProductDetails? details)
+    {
+        IsStoreDetailsUnavailable = details is null;
+        DeveloperName = GetDetailText(FirstNonEmpty(details?.DeveloperName, Game?.Metadata.Developer));
+        PublisherName = GetDetailText(details?.PublisherName);
+        ReleaseDateText = details?.ReleaseDate?.ToString(UiStrings.ReleaseDateFormat) ?? UiStrings.Unavailable;
+        if (details is null) return;
+
+        HeroImageUrl = FirstNonEmpty(
+            HeroImageUrl,
+            FindImage(details.Images, "featuredMedia", "OfferImageWide"));
+        HasHeroImage = !string.IsNullOrWhiteSpace(HeroImageUrl);
+        Screenshots = GetScreenshots(details.Images);
+        HasScreenshots = Screenshots.Count > 0;
+        var tags = details.Tags.Take(8).ToList();
+        TagsText = string.Join("  •  ", tags.Select(tag => tag.Name));
+        HasTags = tags.Count > 0;
+        WindowsRequirements = details.WindowsRequirements;
+        HasWindowsRequirements = WindowsRequirements.Count > 0;
+        ApplyDescription(
+            StoreDescriptionFormatter.ToPlainText(details.LongDescription),
+            Game?.AppTitle,
+            details.ShortDescription);
+    }
+
+    private void ApplyDescription(string? preferred, string? title, string? fallback = null)
+    {
+        var description = FirstNonEmpty(preferred, fallback);
+        if (string.Equals(description, title, StringComparison.OrdinalIgnoreCase))
+            description = string.Empty;
+
+        GameDescription = description;
+        HasGameDescription = !string.IsNullOrWhiteSpace(description);
+    }
+
+    private void ApplyLocalGameDetails(Game game)
+    {
+        InstalledVersion = GetDetailText(game.LocalAppState?.Version);
+        LastUpdatedText = game.LocalAppState?.LastUpdatedAt?.ToLocalTime().ToString("g") ?? UiStrings.Unavailable;
+    }
+
+    internal static string GetDetailText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? UiStrings.Unavailable : value;
+
+    private static string? FindImage(IEnumerable<KeyImage>? images, params string[] preferredTypes) =>
+        FindImage(
+            images?.Select(image => new StoreProductImage
+            {
+                Type = image.Type,
+                Url = image.Url,
+                IsVideo = false
+            }) ?? [],
+            preferredTypes);
+
+    private static string? FindImage(
+        IEnumerable<StoreProductImage> images,
+        params string[] preferredTypes)
+    {
+        foreach (var preferredType in preferredTypes)
+        {
+            var url = images.FirstOrDefault(image =>
+                !image.IsVideo &&
+                string.Equals(image.Type, preferredType, StringComparison.OrdinalIgnoreCase) &&
+                EpicEndpointPolicy.TryGetContentUri(image.Url, out _))?.Url;
+            if (!string.IsNullOrWhiteSpace(url)) return url;
+        }
+
+        return null;
+    }
+
+    internal static IReadOnlyList<StoreProductImage> GetScreenshots(
+        IEnumerable<StoreProductImage> images) => images
+        .Where(image =>
+            !image.IsVideo &&
+            string.Equals(image.Type, "featuredMedia", StringComparison.OrdinalIgnoreCase) &&
+            EpicEndpointPolicy.TryGetContentUri(image.Url, out _))
+        .DistinctBy(image => image.Url, StringComparer.OrdinalIgnoreCase)
+        .Take(8)
+        .ToList();
+
+    private static string FirstNonEmpty(string? preferred, string? fallback) =>
+        !string.IsNullOrWhiteSpace(preferred) ? preferred : fallback ?? string.Empty;
+
+    private void ApplyGameStatus(InstallState? installState)
+    {
+        IsProgressRingVisible = false;
+        PrimaryAction = GetPrimaryAction(installState);
+        IsPrimaryActionEnabled = PrimaryAction != GamePrimaryAction.None;
+        PrimaryActionButtonText = PrimaryAction switch
+        {
+            GamePrimaryAction.Install => UiStrings.Install,
+            GamePrimaryAction.Play => UiStrings.Play,
+            GamePrimaryAction.Update => UiStrings.Update,
+            GamePrimaryAction.Repair => UiStrings.Repair,
+            _ => string.Empty
+        };
+        IsInstalled = PrimaryAction is not GamePrimaryAction.Install and not GamePrimaryAction.None;
+        IsManageEnabled = IsInstalled;
+        IsImportVisible = PrimaryAction == GamePrimaryAction.Install;
+        IsImportEnabled = IsImportVisible;
+        GameStatusText = GetGameStatusLabel(installState);
+    }
+
+    internal static string GetGameStatusLabel(InstallState? installState) => installState switch
+    {
+        InstallState.Installed => UiStrings.ReadyToPlay,
+        InstallState.NeedUpdate => UiStrings.UpdateAvailable,
+        InstallState.Broken => UiStrings.RepairRequired,
+        InstallState.Installing or InstallState.Updating or InstallState.Repairing => UiStrings.OperationInProgress,
+        InstallState.InstallationPaused or InstallState.UpdatingPaused => UiStrings.OperationPaused,
+        _ => UiStrings.NotInstalled
+    };
 
     internal static GamePrimaryAction GetPrimaryAction(InstallState? installState) => installState switch
     {
@@ -238,13 +542,25 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     public void OnNavigatedFrom()
     {
         UnregisterEventHandlers();
-
+        CancelStoreDetailsRequest();
     }
+
+    private bool CanRunPrimaryAction() => Game is not null &&
+        GetPrimaryAction(Game.LocalAppState?.InstallStatus) != GamePrimaryAction.None &&
+        FindOperation(Game.AppName) is null;
+
+    private bool CanImport(Game? game) => game is not null &&
+        GetPrimaryAction(game.LocalAppState?.InstallStatus) == GamePrimaryAction.Install &&
+        FindOperation(game.AppName) is null;
+
+    private bool CanManage(Game? game) => game is not null &&
+        game.LocalAppState?.InstallStatus is InstallState.Installed or InstallState.NeedUpdate or InstallState.Broken &&
+        FindOperation(game.AppName) is null;
 
     [RelayCommand]
     private void Uninstall()
     {
-        if (Game?.LocalAppState == null || Game.LocalAppState.InstallStatus == InstallState.NotInstalled) return;
+        if (!CanManage(Game)) return;
 
         _storage.LocalAppStateDictionary.TryGetValue(Game.AppName, out var installedGame);
 
@@ -261,7 +577,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     [RelayCommand]
     private void VerifyRepair()
     {
-        if (Game?.LocalAppState == null || Game.LocalAppState.InstallStatus == InstallState.NotInstalled) return;
+        if (!CanManage(Game)) return;
 
         _storage.LocalAppStateDictionary.TryGetValue(Game.AppName, out var installedGame);
 
@@ -278,51 +594,79 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     [RelayCommand]
     private async Task ImportGameAsync()
     {
-        if (Game == null) return;
+        var game = Game;
+        if (!CanImport(game)) return;
+        ActionErrorMessage = string.Empty;
 
         if (FolderPickerRequested == null)
         {
-            _log.LogWarning("ImportGame: No folder picker handler registered");
+            ReportFolderPickerUnavailable(game.AppName, ActionType.Import);
             return;
         }
 
-        var folderPath = await FolderPickerRequested.Invoke();
-        if (string.IsNullOrEmpty(folderPath)) return;
+        var folderPath = await PickOperationFolderAsync(game.AppName, ActionType.Import);
+        if (string.IsNullOrEmpty(folderPath) || !ReferenceEquals(Game, game) || !CanImport(game)) return;
 
-        _log.LogInformation("GameInfoPage: Importing {Game} from {Path}", Game.AppTitle, folderPath);
-        _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Import, folderPath));
+        _installer.AddToQueue(new InstallItem(game.AppName, ActionType.Import, folderPath));
     }
 
     [RelayCommand]
     private async Task MoveGameAsync()
     {
-        if (Game?.LocalAppState == null || Game.LocalAppState.InstallStatus == InstallState.NotInstalled) return;
+        var game = Game;
+        if (!CanManage(game)) return;
+        ActionErrorMessage = string.Empty;
 
         if (FolderPickerRequested == null)
         {
-            _log.LogWarning("MoveGame: No folder picker handler registered");
+            ReportFolderPickerUnavailable(game.AppName, ActionType.Move);
             return;
         }
 
-        var folderPath = await FolderPickerRequested.Invoke();
-        if (string.IsNullOrEmpty(folderPath)) return;
+        var folderPath = await PickOperationFolderAsync(game.AppName, ActionType.Move);
+        if (string.IsNullOrEmpty(folderPath) || !ReferenceEquals(Game, game) || !CanManage(game)) return;
 
-        var currentPath = Game.LocalAppState.InstallPath;
-        var destPath = Path.Combine(folderPath, Game.AppName);
-
-        _log.LogInformation("GameInfoPage: Moving {Game} from {Src} to {Dest}", Game.AppTitle, currentPath, destPath);
-        var item = new InstallItem(Game.AppName, ActionType.Move, currentPath)
+        try
         {
-            MoveLocation = destPath
-        };
-        _installer.AddToQueue(item);
+            var currentPath = game.LocalAppState.InstallPath;
+            var destPath = Path.Combine(folderPath, game.AppName);
+            _installer.AddToQueue(new InstallItem(game.AppName, ActionType.Move, currentPath)
+            {
+                MoveLocation = destPath
+            });
+        }
+        catch (Exception exception)
+        {
+            _installer.ReportPreparationFailure(game.AppName, ActionType.Move, exception);
+        }
+    }
+
+    private void ReportFolderPickerUnavailable(string appName, ActionType action) =>
+        _installer.ReportPreparationFailure(appName, action, new OperationFailure(
+            OperationFailureKind.Unknown, "folder_picker_unavailable", UiStrings.TheFolderPickerCouldNotBeOpened,
+            UiStrings.RestartCrimsonAndTryAgain, false));
+
+    private async Task<string?> PickOperationFolderAsync(string appName, ActionType action)
+    {
+        try
+        {
+            return await FolderPickerRequested!.Invoke();
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception exception)
+        {
+            _installer.ReportPreparationFailure(appName, action, exception);
+            return null;
+        }
     }
 
     public void Cleanup()
     {
-        _libraryManager.GameStatusUpdated -= CheckGameStatus;
-        _installer.InstallationStatusChanged -= HandleInstallationStatusChanged;
-        _installer.InstallProgressUpdate -= HandleInstallationStatusChanged;
+        UnregisterEventHandlers();
+        CancelStoreDetailsRequest();
     }
 }
 

@@ -4,5 +4,9 @@ class Settings
 {
     public bool MicaEnabled { get; set; }
 
+    public double? AcrylicOpacity { get; set; }
+
+    public string? Language { get; set; }
+
     public string DefaultInstallLocation { get; set; }
 }

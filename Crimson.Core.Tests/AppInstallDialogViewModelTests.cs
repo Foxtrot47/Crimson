@@ -121,6 +121,36 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task InstallDialogInitializationFailureStaysInlineAndKeepsTheDialogOpen()
+    {
+        var repository = new ControlledManifestRepository();
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var game = CreateGame("game", "Game", "box");
+        storage.SaveMetaData(game);
+        var library = CreateLibrary(storage, repository);
+        var installer = new InstallManager(_logger, library, repository, storage,
+            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var errors = new List<OperationSnapshot>();
+        installer.OperationError += errors.Add;
+        var viewModel = new AppInstallDialogViewModel(_logger, installer, library, storage, new ImmediateUiDispatcher());
+        var closed = false;
+        viewModel.RequestClose += () => closed = true;
+        repository.Fail("game", new HttpRequestException("synthetic-private-url"));
+
+        await viewModel.InitializeAsync(game);
+
+        Assert.False(closed);
+        Assert.True(viewModel.HasError);
+        Assert.False(viewModel.CanInstall);
+        Assert.Contains("Crimson could not download", viewModel.ErrorMessage);
+        var error = Assert.Single(errors);
+        Assert.False(error.ShowErrorDialog);
+        Assert.Equal(OperationPhase.Preparing, error.Phase);
+        Assert.Equal("network_unavailable", error.Failure?.Code);
+        Assert.DoesNotContain("synthetic-private-url", OperationDiagnostics.Create(error));
+    }
+
+    [Fact]
     public async Task FailedMoveCannotCompleteNextUninstallBeforeItsManifestReturns()
     {
         var repository = new ControlledManifestRepository();
@@ -165,6 +195,251 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         Assert.False(File.Exists(file));
         Assert.Equal(InstallState.NotInstalled, uninstall.LocalAppState!.InstallStatus);
     }
+
+    [Fact]
+    public async Task InstallLocationUsesConfiguredParent()
+    {
+        var (viewModel, _, settings, _) = await CreateLocationFixture();
+
+        Assert.Equal(Path.Combine(settings.DefaultInstallLocation, "New Game"), viewModel.InstallLocation);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GeneratedInstallFoldersSanitizeTitlesWithoutChangingTheDisplayTitle(bool chooseParent)
+    {
+        const string title = "Honkai: Star Rail";
+        var (viewModel, _, settings, _) = await CreateLocationFixture(title);
+        var parent = settings.DefaultInstallLocation;
+        if (chooseParent)
+        {
+            parent = Path.Combine(_root, "picked-library");
+            viewModel.FolderPickerRequested += () => Task.FromResult(parent);
+            await viewModel.SelectLocationCommand.ExecuteAsync(null);
+        }
+
+        Assert.Equal(title, viewModel.GameTitle);
+        Assert.Equal(Path.Combine(parent, "Honkai_ Star Rail"), viewModel.InstallLocation);
+        Directory.CreateDirectory(viewModel.InstallLocation);
+        Assert.True(Directory.Exists(viewModel.InstallLocation));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConfirmedInstallRemembersOnlyParentAcrossRestart(bool trailingSeparator)
+    {
+        var (viewModel, storage, settings, installer) = await CreateLocationFixture();
+        var parent = Path.Combine(_root, "chosen-library");
+        viewModel.InstallLocation = Path.Combine(parent, "New Game") + (trailingSeparator ? Path.DirectorySeparatorChar.ToString() : string.Empty);
+        var dlc = CreateGame("dlc", "DLC", "box");
+        storage.SaveMetaData(dlc);
+        viewModel.AvailableDlcs.Add(new DlcOption { AppName = "dlc", Title = "DLC", IsSelected = true });
+
+        await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
+
+        Assert.Equal(parent, settings.DefaultInstallLocation);
+        var reloaded = CreateSettings(storage);
+        Assert.Equal(parent, reloaded.DefaultInstallLocation);
+        Assert.Equal(viewModel.InstallLocation, installer.GameGameInQueue("new").Location);
+        Assert.Equal(viewModel.InstallLocation, installer.GameGameInQueue("dlc").Location);
+    }
+
+    [Fact]
+    public async Task ConfirmedInstallCanRememberFilesystemRoot()
+    {
+        var (viewModel, storage, _, _) = await CreateLocationFixture();
+        var parent = Path.GetPathRoot(_root)!;
+        viewModel.InstallLocation = Path.Combine(parent, "New Game");
+
+        await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
+
+        Assert.Equal(parent, CreateSettings(storage).DefaultInstallLocation);
+    }
+
+    [Fact]
+    public async Task ClosingOrCancellingPickerDoesNotRememberEditedLocation()
+    {
+        var (viewModel, storage, settings, _) = await CreateLocationFixture();
+        var original = settings.DefaultInstallLocation;
+        viewModel.FolderPickerRequested += () => Task.FromResult<string>(null!);
+        await viewModel.SelectLocationCommand.ExecuteAsync(null);
+        viewModel.InstallLocation = Path.Combine(_root, "not-confirmed", "New Game");
+        viewModel.CloseDialogCommand.Execute(null);
+
+        Assert.Equal(original, settings.DefaultInstallLocation);
+        Assert.Equal(original, CreateSettings(storage).DefaultInstallLocation);
+    }
+
+    [Fact]
+    public async Task RejectedInstallDoesNotChangeRememberedParent()
+    {
+        var (viewModel, storage, settings, installer) = await CreateLocationFixture();
+        var original = settings.DefaultInstallLocation;
+        installer.AddToQueue(new InstallItem("new", ActionType.Install, viewModel.InstallLocation));
+        viewModel.InstallLocation = Path.Combine(_root, "rejected", "New Game");
+
+        await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
+
+        Assert.Equal(original, settings.DefaultInstallLocation);
+        Assert.Equal(original, CreateSettings(storage).DefaultInstallLocation);
+    }
+
+    [Fact]
+    public async Task SettingsFailureDoesNotUndoQueuedInstall()
+    {
+        var (viewModel, _, _, installer) = await CreateLocationFixture();
+        var settingsFile = Path.Combine(_root, "settings.json");
+        File.Delete(settingsFile);
+        Directory.CreateDirectory(settingsFile);
+        var errors = new List<OperationSnapshot>();
+        installer.OperationError += errors.Add;
+        viewModel.InstallLocation = Path.Combine(_root, "chosen", "New Game");
+
+        await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
+
+        Assert.NotNull(installer.GameGameInQueue("new"));
+        var error = Assert.Single(errors);
+        Assert.Equal("install_folder_save_failed", error.Failure?.Code);
+        Assert.False(error.ShowErrorDialog);
+        Assert.Equal("install_folder_save_failed", installer.GameGameInQueue("new")?.Notice?.Code);
+    }
+
+    [Fact]
+    public async Task ClosingCallbackCannotChangeConfirmedInstallSnapshot()
+    {
+        var (viewModel, _, settings, installer) = await CreateLocationFixture();
+        var parent = Path.Combine(_root, "chosen");
+        viewModel.InstallLocation = Path.Combine(parent, "New Game");
+        viewModel.RequestClose += () => viewModel.InstallLocation = Path.Combine(_root, "obsolete", "Other Game");
+
+        await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
+
+        Assert.Equal(Path.Combine(parent, "New Game"), installer.GameGameInQueue("new").Location);
+        Assert.Equal(parent, settings.DefaultInstallLocation);
+    }
+
+    private async Task<(AppInstallDialogViewModel ViewModel, Storage Storage, SettingsManager Settings, InstallManager Installer)> CreateLocationFixture(string title = "New Game")
+    {
+        var repository = new ControlledManifestRepository();
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var settings = CreateSettings(storage);
+        settings.DefaultInstallLocation = Path.Combine(_root, "configured-library");
+        await settings.SaveSettings();
+        var game = CreateGame("new", title, "box");
+        storage.SaveMetaData(game);
+        repository.Complete("new", CreateJsonManifest(100, 10));
+        var library = CreateLibrary(storage, repository);
+        var installer = new InstallManager(_logger, library, repository, storage,
+            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        // Keep the test's confirmed installs queued without starting workers or touching game files.
+        typeof(InstallManager).GetProperty(nameof(InstallManager.CurrentInstall))!.SetValue(installer,
+            new InstallItem("paused-test", ActionType.Install, _root) { Status = ActionStatus.Paused });
+        var viewModel = new AppInstallDialogViewModel(_logger, installer, library, storage, new ImmediateUiDispatcher(), settings);
+        await viewModel.InitializeAsync(game);
+        return (viewModel, storage, settings, installer);
+    }
+
+    [Fact]
+    public async Task ConcurrentSettingsSavesPreserveLatestInMemoryFolder()
+    {
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var settings = CreateSettings(storage);
+        var saves = Enumerable.Range(0, 16).Select(index => Task.Run(async () =>
+        {
+            settings.DefaultInstallLocation = Path.Combine(_root, $"library-{index}");
+            await settings.SaveSettings();
+        }));
+
+        await Task.WhenAll(saves);
+
+        Assert.Equal(settings.DefaultInstallLocation, CreateSettings(storage).DefaultInstallLocation);
+    }
+
+    [Fact]
+    public async Task SelectedDlcsContributeToTotalsAndTheBaseGameSizeIsPopulated()
+    {
+        var (model, _, _) = await CreateDlcSizeFixture();
+        Assert.Equal("10 B", model.BaseGameSize);
+        Assert.Equal("600 B", model.TotalDownloadSize);
+        Assert.Equal("60 B", model.TotalInstallSize);
+        Assert.True(model.CanInstall);
+
+        model.AvailableDlcs.Single(option => option.AppName == "dlc2").IsSelected = false;
+        Assert.Equal("300 B", model.TotalDownloadSize);
+        Assert.Equal("30 B", model.TotalInstallSize);
+        model.AvailableDlcs.Single(option => option.AppName == "dlc1").IsSelected = false;
+        Assert.Equal("100 B", model.TotalDownloadSize);
+        Assert.Equal("10 B", model.TotalInstallSize);
+        Assert.Equal("10 B", model.BaseGameSize);
+    }
+
+    [Fact]
+    public async Task SelectedDlcSizeImmediatelyUpdatesTheFreeSpaceGate()
+    {
+        var (model, _, _) = await CreateDlcSizeFixture();
+        var generation = typeof(AppInstallDialogViewModel).GetField("_initialization",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(model)!;
+        generation.GetType().GetField("AvailableFreeSpace")!.SetValue(generation, 25L);
+        foreach (var option in model.AvailableDlcs) option.IsSelected = false;
+        Assert.True(model.CanInstall);
+
+        model.AvailableDlcs.Single(option => option.AppName == "dlc1").IsSelected = true;
+        Assert.Equal("30 B", model.TotalInstallSize);
+        Assert.False(model.CanInstall);
+        model.AvailableDlcs.Single(option => option.AppName == "dlc1").IsSelected = false;
+        Assert.True(model.CanInstall);
+    }
+
+    [Fact]
+    public async Task MissingSelectedDlcSizesKeepInstallationDisabled()
+    {
+        var repository = new ControlledManifestRepository();
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var game = CreateGame("game", "Game", "box");
+        var dlc = CreateGame("dlc", "DLC", "box");
+        dlc.Metadata.MainGameItem = new MainGameItem { Id = game.Metadata.Id };
+        storage.SaveMetaData(game);
+        storage.SaveMetaData(dlc);
+        var library = CreateLibrary(storage, repository);
+        using var installer = new InstallManager(_logger, library, repository, storage, null!, null!, new AllowInstallPermissionChecker());
+        var model = new AppInstallDialogViewModel(_logger, installer, library, storage, new ImmediateUiDispatcher());
+        repository.Complete("game", CreateJsonManifest(100, 10));
+        repository.Fail("dlc", new HttpRequestException("Synthetic unavailable DLC size"));
+
+        await model.InitializeAsync(game);
+
+        Assert.True(model.HasError);
+        Assert.False(model.CanInstall);
+        Assert.False(model.IsLoadingContent);
+    }
+
+    private async Task<(AppInstallDialogViewModel Model, ControlledManifestRepository Repository, Storage Storage)> CreateDlcSizeFixture()
+    {
+        var repository = new ControlledManifestRepository();
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var game = CreateGame("game", "Game", "box");
+        storage.SaveMetaData(game);
+        foreach (var appName in new[] { "dlc1", "dlc2" })
+        {
+            var dlc = CreateGame(appName, appName, "box");
+            dlc.Metadata.MainGameItem = new MainGameItem { Id = game.Metadata.Id };
+            storage.SaveMetaData(dlc);
+        }
+        var library = CreateLibrary(storage, repository);
+        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, new AllowInstallPermissionChecker());
+        var model = new AppInstallDialogViewModel(_logger, installer, library, storage, new ImmediateUiDispatcher());
+        repository.Complete("game", CreateJsonManifest(100, 10));
+        repository.Complete("dlc1", CreateJsonManifest(200, 20));
+        repository.Complete("dlc2", CreateJsonManifest(300, 30));
+        await model.InitializeAsync(game);
+        return (model, repository, storage);
+    }
+
+    private SettingsManager CreateSettings(Storage storage) => new(
+        storage, Microsoft.Extensions.Logging.Abstractions.NullLogger<SettingsManager>.Instance,
+        Path.Combine(_root, "games"), Path.Combine(_root, "logs"));
 
     public void Dispose()
     {
@@ -294,6 +569,8 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         public void Complete(string appName, byte[] manifest) =>
             GetSource(appName).SetResult(manifest);
 
+        public void Fail(string appName, Exception exception) => GetSource(appName).SetException(exception);
+
         public Task<GetManifestUrlData> GetManifestUrls(
             string nameSpace,
             string catalogItem,
@@ -335,6 +612,13 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
 
         public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId) =>
             throw new NotSupportedException();
+
+        public Task<long?> FetchGamePlaytimeSeconds(string appName, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<StoreProductDetails?> FetchStoreProductDetails(
+            string nameSpace,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live") =>
             throw new NotSupportedException();
