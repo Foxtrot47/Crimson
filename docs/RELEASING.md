@@ -2,33 +2,25 @@
 
 ## Install a GitHub release
 
-A tagged release contains these files:
+A release contains these files:
 
 - `Crimson-X.Y.Z-win-x64.zip`: portable application with a self-contained .NET runtime
-- `Crimson-X.Y.Z-win-x64.msix`: signed sideload package
-- `Crimson-X.Y.Z.cer`: public certificate for the sideload package
-- `SHA256SUMS.txt`: SHA-256 checksums for the downloadable files
 - `Crimson-X.Y.Z-partner-center.msixupload`: unsigned Microsoft Store submission; not intended for direct installation
+- `SHA256SUMS.txt`: SHA-256 checksums for the downloadable files
+
+CI publishes unsigned assets only. Signing stays on a workstation that holds the code-signing key, so a release can be produced without any signing secret.
 
 ### Portable ZIP
 
 Download and extract `Crimson-X.Y.Z-win-x64.zip`, then run `Crimson.exe`. The portable build does not require certificate installation.
 
-Both installation formats require the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/microsoft-edge/webview2/#download-section) for Epic sign-in and Store access. It is already present on most current Windows installations but is not bundled in the portable ZIP.
+The portable build requires the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/microsoft-edge/webview2/#download-section) for Epic sign-in and Store access. It is already present on most current Windows installations but is not bundled in the portable ZIP.
 
-### Sideloaded MSIX
+### Microsoft Store package
 
-The GitHub MSIX uses a persistent self-signed certificate. Windows must trust the matching public certificate before it will install the package.
+`Crimson-X.Y.Z-partner-center.msixupload` is the unsigned submission container for Partner Center, so Windows cannot install it directly. Install Crimson from the Microsoft Store, or sideload a locally signed MSIX built with the steps below.
 
-1. Download the `.msix` and `.cer` files for the same release.
-2. Open the `.cer` file and select **Install Certificate**.
-3. Select **Current User**.
-4. Choose **Place all certificates in the following store** and select **Trusted People**.
-5. Complete the certificate import, then open the `.msix` file.
-
-Only install certificates obtained from the official Crimson repository. Remove the certificate from the current user's **Trusted People** store if you no longer want to trust future packages signed with it.
-
-The sideload and Microsoft Store packages share the same package identity, so they cannot be installed side by side. They also share Windows-managed package data. The portable build instead uses `%LOCALAPPDATA%\Crimson` directly.
+The Store package and a sideloaded MSIX share the same package identity, so they cannot be installed side by side. They also share Windows-managed package data. The portable build instead uses `%LOCALAPPDATA%\Crimson` directly.
 
 ### Verify downloads
 
@@ -36,7 +28,7 @@ Compare a downloaded file against its entry in `SHA256SUMS.txt`:
 
 ```powershell
 Get-FileHash .\Crimson-X.Y.Z-win-x64.zip -Algorithm SHA256
-Get-FileHash .\Crimson-X.Y.Z-win-x64.msix -Algorithm SHA256
+Get-FileHash .\Crimson-X.Y.Z-partner-center.msixupload -Algorithm SHA256
 ```
 
 ## License and corresponding source
@@ -69,18 +61,13 @@ Use the existing code-signing certificate in the current user's Personal certifi
   -OutputDirectory './dist/1.0.0' -SkipCertificateTrust
 ```
 
-`-SkipCertificateTrust` leaves certificate trust stores unchanged. Signature verification must succeed using the workstation's existing trust configuration. Without that switch, the pipeline temporarily trusts the public certificate and removes only trust added by that build afterward. The exported `.cer` contains the same public certificate, never the private key. CI can continue importing the existing encrypted PFX from its protected secrets.
+`-SkipCertificateTrust` leaves certificate trust stores unchanged. Signature verification must succeed using the workstation's existing trust configuration. Without that switch, the pipeline temporarily trusts the public certificate and removes only trust added by that build afterward. The exported `.cer` contains the same public certificate, never the private key.
 
 ## Publish a release
 
-Pushing a canonical `vX.Y.Z` tag whose commit is on `origin/main` runs the release workflow. The workflow maps the tag to MSIX version `X.Y.Z.0`, runs both test suites, builds every release format, validates the package identity and signatures, and publishes the five files listed above.
+Bump the version in `Directory.Build.props` and `Package.appxmanifest` on `main`, then dispatch the release workflow from `main`. It rejects a version whose `vX.Y.Z` tag or GitHub Release already exists, maps the version to MSIX version `X.Y.Z.0`, runs both test suites, builds the assets, verifies package identity, creates the tag, and publishes the release.
 
-The protected `release` GitHub environment must define:
-
-- `MSIX_PFX_BASE64`: base64-encoded persistent code-signing PFX
-- `MSIX_PFX_PASSWORD`: the PFX password
-
-The certificate subject must be exactly `CN=B3628FD3-BCE4-4EF1-ADE8-7B0F73A4FC3F` and it must contain the Code Signing EKU. Reuse the same certificate for every GitHub release so existing installations retain a stable trust chain. Keep an encrypted recovery copy outside GitHub; secret values cannot be retrieved from GitHub after upload.
+No signing secret is required. The workflow calls `./scripts/build-release.ps1 -Unsigned`, which skips the certificate import, signature verification, and `.cer` export.
 
 Protect the `release` environment with required reviewers. Protect release tags and do not allow tags to be moved or reused.
 
@@ -88,6 +75,8 @@ Protect the `release` environment with required reviewers. Protect release tags 
 
 Routine releases must reuse the existing signing certificate and private key. Do not generate a replacement certificate or rotate the key while preparing a release: doing so changes the trust chain for existing installations.
 
-Local builds use the current user's existing Personal-store certificate by thumbprint. CI reuses the existing protected `MSIX_PFX_BASE64` and `MSIX_PFX_PASSWORD` secrets. If those secrets need recovery, restore them from the existing encrypted recovery PFX on a trusted workstation. Never print secret values or commit signing material to the repository. Any key rotation requires separate approval and an installation-trust migration plan.
+Local signing uses the current user's existing Personal-store certificate by thumbprint. `build-release.ps1` accepts either that thumbprint or the `MSIX_PFX_BASE64` and `MSIX_PFX_PASSWORD` secrets for a workstation that has no imported key.
 
-The workflow imports the existing PFX only for the signing job, timestamps and verifies the public MSIX, exports the matching public CER, and removes only certificates imported by that build in an unconditional cleanup block. Partner Center receives an unsigned `.msixupload` for Microsoft to sign.
+A signing build imports the PFX only for that run, timestamps and verifies the public MSIX, exports the matching public CER, and removes only certificates imported by that build in an unconditional cleanup block. Partner Center receives an unsigned `.msixupload` for Microsoft to sign.
+
+The certificate subject must be exactly `CN=B3628FD3-BCE4-4EF1-ADE8-7B0F73A4FC3F` and it must contain the Code Signing EKU. Reuse the same certificate for every signed MSIX so existing installations retain a stable trust chain, and keep an encrypted recovery copy outside GitHub. Never print secret values or commit signing material to the repository.

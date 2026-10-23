@@ -41,7 +41,7 @@ Crimson is under active development. Back up anything important and expect behav
 
 ## Install Crimson
 
-When a tagged build is available, it is published on the [GitHub Releases](https://github.com/Foxtrot47/Crimson/releases) page in two user-installable formats.
+When a build is published, it appears on the [GitHub Releases](https://github.com/Foxtrot47/Crimson/releases) page.
 
 ### Portable ZIP
 
@@ -51,15 +51,11 @@ When a tagged build is available, it is published on the [GitHub Releases](https
 
 The portable ZIP includes the required .NET runtime and does not require certificate installation. WebView2 remains a separate prerequisite.
 
-### MSIX
+### Microsoft Store package
 
-The GitHub MSIX is signed with Crimson's persistent self-signed certificate:
+Release builds also attach `Crimson-X.Y.Z-partner-center.msixupload`. It is the unsigned package submitted to Partner Center, so it cannot be installed directly; install Crimson from the Microsoft Store or use the portable ZIP.
 
-1. Download the matching `.msix` and `.cer` files.
-2. Import the certificate into the current user's **Trusted People** certificate store.
-3. Open the `.msix` to install Crimson.
-
-See [Installing and releasing Crimson](docs/RELEASING.md) for detailed installation steps, package differences, and checksum verification.
+See [Installing and releasing Crimson](docs/RELEASING.md) for package differences and checksum verification.
 
 ## Using Crimson
 
