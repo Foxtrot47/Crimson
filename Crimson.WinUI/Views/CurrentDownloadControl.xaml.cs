@@ -13,6 +13,8 @@ public sealed class DownloadSummary
     public bool HasActiveDownload { get; init; }
     public bool IsIndeterminate { get; init; }
     public int ProgressPercentage { get; init; }
+    public ActionType Action { get; init; }
+    public ActionStatus Status { get; init; }
     public string ToolTip { get; init; } = UiStrings.NoDownloadsInQueue;
 }
 
@@ -98,6 +100,8 @@ public sealed partial class CurrentDownloadControl : UserControl, IDisposable
             HasActiveDownload = presentation.IsActive,
             IsIndeterminate = presentation.IsIndeterminate,
             ProgressPercentage = presentation.ProgressPercentage,
+            Action = operation.Action,
+            Status = operation.Status,
             ToolTip = UiStrings.Format(UiStrings.GameOperationFormat, title, presentation.Headline.ToLowerInvariant())
         });
     }

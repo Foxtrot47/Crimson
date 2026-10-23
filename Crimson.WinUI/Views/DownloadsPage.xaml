@@ -174,11 +174,21 @@
                                 <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind StatusText}" TextWrapping="Wrap" />
                                 <StackPanel Spacing="8" Visibility="{x:Bind HasFailure, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <TextBlock Foreground="{ThemeResource SystemFillColorCriticalBrush}" Text="{x:Bind FailureText}" TextWrapping="Wrap" />
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Button Click="RetryOperation_Click" Content="{x:Bind strings:UiStrings.Retry}" IsEnabled="{x:Bind CanRetry}" />
-                                        <Button Click="ReportProblem_Click" Content="{x:Bind strings:UiStrings.ReportProblem}" />
-                                    </StackPanel>
-                                    <Button HorizontalAlignment="Left" Click="CopyDiagnostics_Click" Content="{x:Bind strings:UiStrings.CopyDiagnostics}" />
+                                    <RichTextBlock IsTextSelectionEnabled="False">
+                                        <Paragraph>
+                                            <InlineUIContainer>
+                                                <Button Margin="0,0,4,8" Click="RetryOperation_Click" Content="{x:Bind strings:UiStrings.Retry}" IsEnabled="{x:Bind CanRetry}" />
+                                            </InlineUIContainer>
+                                            <Run Text=" " />
+                                            <InlineUIContainer>
+                                                <Button Margin="0,0,4,8" Click="ReportProblem_Click" Content="{x:Bind strings:UiStrings.ReportProblem}" />
+                                            </InlineUIContainer>
+                                            <Run Text=" " />
+                                            <InlineUIContainer>
+                                                <Button Margin="0,0,0,8" Click="CopyDiagnostics_Click" Content="{x:Bind strings:UiStrings.CopyDiagnostics}" />
+                                            </InlineUIContainer>
+                                        </Paragraph>
+                                    </RichTextBlock>
                                 </StackPanel>
                             </StackPanel>
                         </Grid>

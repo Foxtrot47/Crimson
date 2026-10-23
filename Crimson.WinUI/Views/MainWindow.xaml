@@ -167,20 +167,19 @@
                 </ScrollViewer>
 
                 <NavigationView.FooterMenuItems>
-                    <!--
-                        NavigationViewItem hides its Content in the ClosedCompact state, so without
-                        an Icon this item rendered blank once the pane collapsed.
-                    -->
                     <NavigationViewItem
                         x:Name="DownloadsNavItem"
+                        Height="56"
                         Tag="Crimson.Views.DownloadsPage"
                         ToolTipService.ToolTip="{x:Bind strings:UiStrings.NoDownloadsInQueue}">
                         <NavigationViewItem.Icon>
-                            <FontIcon Glyph="&#xE896;" />
+                            <FontIcon
+                                x:Name="DownloadIcon"
+                                Width="32"
+                                Height="32"
+                                FontSize="16"
+                                Glyph="&#xE896;" />
                         </NavigationViewItem.Icon>
-                        <NavigationViewItem.InfoBadge>
-                            <InfoBadge x:Name="DownloadInfoBadge" Visibility="Collapsed" />
-                        </NavigationViewItem.InfoBadge>
                         <crimson:CurrentDownloadControl x:Name="CurrentDownload" />
                     </NavigationViewItem>
                 </NavigationView.FooterMenuItems>

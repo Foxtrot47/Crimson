@@ -3,18 +3,21 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Repository;
 using H.NotifyIcon;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -64,6 +67,10 @@ public sealed partial class MainWindow : Window
     private OperationSnapshot? _activeInstall;
     private string? _decoratedAppName;
     private DownloadSummary? _lastDownloadSummary;
+    private CompositionEllipseGeometry? _downloadRingGeometry;
+    private ShapeVisual? _downloadRingVisual;
+    private CompositionColorBrush? _downloadRingBrush;
+    private bool _downloadRingSpinning;
 
     private sealed class GameNavEntry
     {
@@ -73,7 +80,6 @@ public sealed partial class MainWindow : Window
         public required StackPanel StatusPanel { get; init; }
         public required FontIcon ActionIcon { get; init; }
         public required TextBlock ProgressText { get; init; }
-        public required InfoBadge Badge { get; init; }
         public required LinearGradientBrush? ProgressBrush { get; init; }
         public required bool CanLaunch { get; init; }
     }
@@ -120,9 +126,12 @@ public sealed partial class MainWindow : Window
         _libraryManager.GameStatusUpdated += GameStatusUpdatedHandler;
         CurrentDownload.SummaryChanged += OnDownloadSummaryChanged;
         _installManager.OperationUpdated += OperationUpdatedHandler;
-        NavControl.PaneOpened += (_, _) => UpdateBadgeVisibility();
-        NavControl.PaneClosed += (_, _) => UpdateBadgeVisibility();
-        NavControl.DisplayModeChanged += (_, _) => UpdateBadgeVisibility();
+        DownloadsNavItem.Resources["NavigationViewItemOnLeftIconBoxHeight"] = 32d;
+        NavControl.PaneOpened += (_, _) => UpdateDownloadItemHeight();
+        NavControl.PaneClosed += (_, _) => UpdateDownloadItemHeight();
+        NavControl.DisplayModeChanged += (_, _) => UpdateDownloadItemHeight();
+        DownloadIcon.Loaded += (_, _) => InitializeDownloadRing();
+        DownloadIcon.ActualThemeChanged += (_, _) => UpdateDownloadRing();
         CurrentDownload.PublishCurrentSummary();
         _activeInstall = _installManager.CurrentOperation is { IsActive: true } operation ? operation : null;
         RebuildInstalledMenu();
@@ -611,15 +620,13 @@ public sealed partial class MainWindow : Window
         layout.Children.Add(statusPanel);
         layout.Children.Add(playButton);
 
-        var badge = new InfoBadge { Visibility = Visibility.Collapsed };
         var progressBrush = isActive ? CreateProgressBrush() : null;
 
         var item = new NavigationViewItem
         {
             Content = layout,
             Tag = GameNavTagPrefix + appName,
-            Icon = CreateGameIcon(game),
-            InfoBadge = badge
+            Icon = CreateGameIcon(game)
         };
         item.Resources["NavigationViewItemOnLeftIconBoxHeight"] = (double)GameIconBoxHeight;
         if (progressBrush is not null)
@@ -639,7 +646,6 @@ public sealed partial class MainWindow : Window
             StatusPanel = statusPanel,
             ActionIcon = actionIcon,
             ProgressText = progressText,
-            Badge = badge,
             ProgressBrush = progressBrush,
             CanLaunch = canLaunch
         };
@@ -682,9 +688,6 @@ public sealed partial class MainWindow : Window
         target.ActionIcon.Glyph = GetActionGlyph(operation!.Action, operation.Status);
         target.ProgressText.Text = GetCompactStatus(operation, presentation);
 
-        target.Badge.Value = percent;
-        UpdateBadgeVisibility();
-
         SetProgressFill(target.ProgressBrush, presentation.IsIndeterminate ? 0 : percent);
         ToolTipService.SetToolTip(target.Item,
             UiStrings.Format(UiStrings.GameOperationFormat, target.Title, presentation.Headline.ToLowerInvariant()));
@@ -699,7 +702,6 @@ public sealed partial class MainWindow : Window
     {
         entry.StatusPanel.Visibility = Visibility.Collapsed;
         entry.PlayButton.Visibility = entry.CanLaunch ? Visibility.Visible : Visibility.Collapsed;
-        entry.Badge.Visibility = Visibility.Collapsed;
         SetProgressFill(entry.ProgressBrush, 0);
         ToolTipService.SetToolTip(entry.Item, entry.Title);
     }
@@ -811,21 +813,78 @@ public sealed partial class MainWindow : Window
     private void OnDownloadSummaryChanged(DownloadSummary summary)
     {
         _lastDownloadSummary = summary;
+        UpdateDownloadItemHeight();
         ToolTipService.SetToolTip(DownloadsNavItem, summary.ToolTip);
-        DownloadInfoBadge.Value = summary.IsIndeterminate ? -1 : summary.ProgressPercentage;
-        UpdateBadgeVisibility();
+        DownloadIcon.Glyph = summary.HasActiveDownload
+            ? GetActionGlyph(summary.Action, summary.Status)
+            : "\uE896";
+        UpdateDownloadRing();
     }
 
-    private void UpdateBadgeVisibility()
+    private void UpdateDownloadItemHeight()
     {
-        var collapsed = !NavControl.IsPaneOpen;
+        DownloadsNavItem.Height = NavControl.IsPaneOpen && _lastDownloadSummary is { HasActiveDownload: true }
+            ? double.NaN
+            : (double)NavControl.Resources["NavigationViewItemOnLeftMinHeight"];
+    }
 
-        DownloadInfoBadge.Visibility = collapsed && _lastDownloadSummary is { HasActiveDownload: true }
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+    private void InitializeDownloadRing()
+    {
+        if (_downloadRingVisual is not null) return;
 
-        if (_decoratedAppName is not null && _gameNavEntries.TryGetValue(_decoratedAppName, out var entry))
-            entry.Badge.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
+        // The navigation icon slot only accepts IconElement, not a Grid with a ProgressRing.
+        var compositor = ElementCompositionPreview.GetElementVisual(DownloadIcon).Compositor;
+        _downloadRingGeometry = compositor.CreateEllipseGeometry();
+        _downloadRingGeometry.Center = new Vector2(16);
+        _downloadRingGeometry.Radius = new Vector2(14);
+        _downloadRingBrush = compositor.CreateColorBrush();
+        var ring = compositor.CreateSpriteShape(_downloadRingGeometry);
+        ring.StrokeBrush = _downloadRingBrush;
+        ring.StrokeThickness = 2;
+        _downloadRingVisual = compositor.CreateShapeVisual();
+        _downloadRingVisual.Size = new Vector2(32);
+        _downloadRingVisual.CenterPoint = new Vector3(16, 16, 0);
+        _downloadRingVisual.RotationAngleInDegrees = -90;
+        var trackGeometry = compositor.CreateEllipseGeometry();
+        trackGeometry.Center = _downloadRingGeometry.Center;
+        trackGeometry.Radius = _downloadRingGeometry.Radius;
+        var track = compositor.CreateSpriteShape(trackGeometry);
+        track.StrokeThickness = 2;
+        track.StrokeBrush = compositor.CreateColorBrush(Windows.UI.Color.FromArgb(64, 128, 128, 128));
+        _downloadRingVisual.Shapes.Add(track);
+        _downloadRingVisual.Shapes.Add(ring);
+        ElementCompositionPreview.SetElementChildVisual(DownloadIcon, _downloadRingVisual);
+        UpdateDownloadRing();
+    }
+
+    private void UpdateDownloadRing()
+    {
+        if (_downloadRingVisual is null || _downloadRingGeometry is null || _downloadRingBrush is null) return;
+
+        var summary = _lastDownloadSummary ?? new DownloadSummary();
+        _downloadRingVisual.IsVisible = summary.HasActiveDownload;
+        _downloadRingBrush.Color = ((SolidColorBrush)DownloadIcon.Foreground).Color;
+        _downloadRingGeometry.TrimEnd = summary.IsIndeterminate
+            ? 0.25f
+            : Math.Clamp(summary.ProgressPercentage / 100f, 0, 1);
+
+        var spin = summary.HasActiveDownload && summary.IsIndeterminate && summary.Status != ActionStatus.Paused;
+        if (spin == _downloadRingSpinning) return;
+        _downloadRingSpinning = spin;
+        if (spin)
+        {
+            var rotation = _downloadRingVisual.Compositor.CreateScalarKeyFrameAnimation();
+            rotation.InsertKeyFrame(0, -90);
+            rotation.InsertKeyFrame(1, 270, _downloadRingVisual.Compositor.CreateLinearEasingFunction());
+            rotation.Duration = TimeSpan.FromSeconds(1.5);
+            rotation.IterationBehavior = AnimationIterationBehavior.Forever;
+            _downloadRingVisual.StartAnimation(nameof(Visual.RotationAngleInDegrees), rotation);
+        }
+        else
+        {
+            _downloadRingVisual.StopAnimation(nameof(Visual.RotationAngleInDegrees));
+            _downloadRingVisual.RotationAngleInDegrees = -90;
+        }
     }
 
     private void NavControl_Navigate(
