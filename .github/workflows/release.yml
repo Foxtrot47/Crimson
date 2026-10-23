@@ -42,7 +42,7 @@ jobs:
             throw "Directory.Build.props must contain a stable SemVer version; found '$version'."
           }
 
-          $tag = "v$version"
+          $tag = $version
           if (git tag --list $tag) {
             throw "Git tag $tag already exists. Increment the version before releasing again."
           }

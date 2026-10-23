@@ -37,7 +37,7 @@ Get-FileHash .\Crimson-X.Y.Z-win-x64.msix -Algorithm SHA256
 
 Binary distributions include the repository's `LICENSE.txt`. Release validation checks that the portable output and both MSIX variants contain an identical copy.
 
-Publish the source matching each distributed binary, including build scripts and required dependency information. For release `X.Y.Z`, link to `https://github.com/Foxtrot47/Crimson/tree/vX.Y.Z` next to the binary downloads and in the Microsoft Store listing. Verify that the tag is public and identifies the source actually used to build that package. Do not publish packages built from uncommitted changes under an unrelated source tag.
+Publish the source matching each distributed binary, including build scripts and required dependency information. For release `X.Y.Z`, link to `https://github.com/Foxtrot47/Crimson/tree/X.Y.Z` next to the binary downloads and in the Microsoft Store listing. Verify that the tag is public and identifies the source actually used to build that package. Do not publish packages built from uncommitted changes under an unrelated source tag.
 
 ## Store display name
 
@@ -49,7 +49,7 @@ This does not change the package identity `Foxtrot47.CrimsonLauncher`, publisher
 
 The first stable release is `1.0.0`, with MSIX version `1.0.0.0`. `Directory.Build.props` defines the product, assembly, file, and default package versions. Keep `Package.appxmanifest` synchronized with the product version and leave the fourth MSIX component at zero.
 
-For future releases, bump the version in source before creating the matching `vX.Y.Z` tag. The release build rejects a version that does not match `Directory.Build.props`.
+For future releases, bump the version in source before creating the matching `X.Y.Z` tag. The release build rejects a version that does not match `Directory.Build.props`.
 
 ## Build locally with an existing signing key
 
@@ -67,7 +67,7 @@ Use the existing code-signing certificate in the current user's Personal certifi
 
 ## Publish a release
 
-Bump the version in `Directory.Build.props` and `Package.appxmanifest` on `main`, then dispatch the release workflow from `main`. It rejects a version whose `vX.Y.Z` tag or GitHub Release already exists, maps the version to MSIX version `X.Y.Z.0`, runs both test suites, builds the assets, verifies package identity, creates the tag, and publishes the release.
+Bump the version in `Directory.Build.props` and `Package.appxmanifest` on `main`, then dispatch the release workflow from `main`. It rejects a version whose `X.Y.Z` tag or GitHub Release already exists, maps the version to MSIX version `X.Y.Z.0`, runs both test suites, builds the assets, verifies package identity, creates the tag, and publishes the release.
 
 Release notes come only from the matching `## [X.Y.Z]` entry in `CHANGELOG.md`, like RaceDock. Missing or empty entries stop the release. GitHub-generated contributor mentions and commit-history dumps are not used.
 

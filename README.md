@@ -115,4 +115,4 @@ See [Installing and releasing Crimson](docs/RELEASING.md) for the tagged release
 
 ## License
 
-Crimson is free software licensed under the [GNU General Public License v3.0 or later](LICENSE.txt). A copy of the license is included with binary distributions. Source for each tagged release is available from its matching `vX.Y.Z` tag in this repository.
+Crimson is free software licensed under the [GNU General Public License v3.0 or later](LICENSE.txt). A copy of the license is included with binary distributions. Source for each tagged release is available from its matching `X.Y.Z` tag in this repository.
