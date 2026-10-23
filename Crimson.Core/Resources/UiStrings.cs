@@ -18,6 +18,8 @@ public static class UiStrings
 
     public static string About => Get(nameof(About));
     public static string Accounts => Get(nameof(Accounts));
+    public static string AcrylicOpacity => Get(nameof(AcrylicOpacity));
+    public static string AcrylicOpacityDescription => Get(nameof(AcrylicOpacityDescription));
     public static string AcrylicSaveFailed => Get(nameof(AcrylicSaveFailed));
     public static string AdvancedSettings => Get(nameof(AdvancedSettings));
     public static string Appearance => Get(nameof(Appearance));

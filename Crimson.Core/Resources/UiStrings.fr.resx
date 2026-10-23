@@ -64,6 +64,12 @@
   <data name="Accounts" xml:space="preserve">
     <value>Comptes</value>
   </data>
+  <data name="AcrylicOpacity" xml:space="preserve">
+    <value>Opacité de l'acrylique</value>
+  </data>
+  <data name="AcrylicOpacityDescription" xml:space="preserve">
+    <value>Dans quelle mesure l'arrière-plan de la fenêtre reste opaque par-dessus le flou</value>
+  </data>
   <data name="AdvancedSettings" xml:space="preserve">
     <value>Paramètres avancés</value>
   </data>

@@ -10,6 +10,8 @@ namespace Crimson.Core;
 
 public class SettingsManager
 {
+    private const double DefaultAcrylicOpacity = 60;
+
     private readonly Storage _storage;
     private readonly ILogger<SettingsManager> _logger;
     private readonly string _defaultInstallLocation;
@@ -48,6 +50,20 @@ public class SettingsManager
             AcrylicChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    public double AcrylicOpacity
+    {
+        get => Settings.AcrylicOpacity ?? DefaultAcrylicOpacity;
+        set
+        {
+            var opacity = Math.Clamp(value, 0, 100);
+            if (OpacityEquals(Settings.AcrylicOpacity ?? DefaultAcrylicOpacity, opacity)) return;
+            Settings.AcrylicOpacity = opacity;
+            AcrylicChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private static bool OpacityEquals(double first, double second) => Math.Abs(first - second) < 0.01;
 
     public bool MicEnabled { get => AcrylicEnabled; set => AcrylicEnabled = value; }
 

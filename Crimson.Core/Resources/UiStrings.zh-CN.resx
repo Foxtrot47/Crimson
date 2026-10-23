@@ -64,6 +64,12 @@
   <data name="Accounts" xml:space="preserve">
     <value>账户</value>
   </data>
+  <data name="AcrylicOpacity" xml:space="preserve">
+    <value>亚克力不透明度</value>
+  </data>
+  <data name="AcrylicOpacityDescription" xml:space="preserve">
+    <value>模糊效果之上窗口背景保持不透明的程度</value>
+  </data>
   <data name="AdvancedSettings" xml:space="preserve">
     <value>高级设置</value>
   </data>

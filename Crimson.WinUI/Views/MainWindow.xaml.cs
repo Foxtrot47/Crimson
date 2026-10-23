@@ -976,10 +976,9 @@ public sealed partial class MainWindow : Window
     private void ApplyBackdrop()
     {
         if (_windowClosed) return;
-        SystemBackdrop = _settingsManager.AcrylicEnabled && DesktopAcrylicController.IsSupported()
-            ? new DesktopAcrylicBackdrop()
-            : null;
-        SolidBackdrop.Visibility = SystemBackdrop is null ? Visibility.Visible : Visibility.Collapsed;
+        var acrylic = _settingsManager.AcrylicEnabled && DesktopAcrylicController.IsSupported();
+        SystemBackdrop = acrylic ? new DesktopAcrylicBackdrop() : null;
+        SolidBackdrop.Opacity = acrylic ? _settingsManager.AcrylicOpacity / 100 : 1;
     }
 
     private void Window_Closed(object sender, WindowEventArgs args)

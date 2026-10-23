@@ -64,6 +64,12 @@
   <data name="Accounts" xml:space="preserve">
     <value>Account</value>
   </data>
+  <data name="AcrylicOpacity" xml:space="preserve">
+    <value>Opacità acrilico</value>
+  </data>
+  <data name="AcrylicOpacityDescription" xml:space="preserve">
+    <value>Quanto resta pieno lo sfondo della finestra sopra la sfocatura</value>
+  </data>
   <data name="AdvancedSettings" xml:space="preserve">
     <value>Impostazioni avanzate</value>
   </data>

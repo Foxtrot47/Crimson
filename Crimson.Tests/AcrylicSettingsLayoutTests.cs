@@ -21,6 +21,19 @@ public sealed class AcrylicSettingsLayoutTests
     }
 
     [Fact]
+    public void AppearanceSliderAdjustsAcrylicOpacityWhileEnabled()
+    {
+        var settings = PresentationXaml.Load("SettingsPage.xaml");
+        var card = Assert.Single(settings.Descendants(), element =>
+            element.Name.LocalName == "SettingsCard" && (string?)element.Attribute("Header") == "Acrylic opacity");
+        var slider = Assert.Single(card.Elements(), element => element.Name.LocalName == "Slider");
+        Assert.Equal("{x:Bind ViewModel.AcrylicOpacity, Mode=TwoWay}", (string?)slider.Attribute("Value"));
+        Assert.Equal("{x:Bind ViewModel.CanAdjustAcrylicOpacity, Mode=OneWay}", (string?)slider.Attribute("IsEnabled"));
+        Assert.Equal("0", (string?)slider.Attribute("Minimum"));
+        Assert.Equal("100", (string?)slider.Attribute("Maximum"));
+    }
+
+    [Fact]
     public void SolidFallbackCoversTheWindowWithoutInterceptingInput()
     {
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";

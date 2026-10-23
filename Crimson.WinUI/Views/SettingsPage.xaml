@@ -60,6 +60,17 @@
                         IsEnabled="{x:Bind ViewModel.CanChangeAcrylic, Mode=OneWay}"
                         IsOn="{x:Bind ViewModel.AcrylicEnabled, Mode=TwoWay}" />
                 </toolkit:SettingsCard>
+                <toolkit:SettingsCard Description="{x:Bind strings:UiStrings.AcrylicOpacityDescription}" Header="{x:Bind strings:UiStrings.AcrylicOpacity}">
+                    <Slider
+                        x:Name="AcrylicOpacitySlider"
+                        Width="240"
+                        AutomationProperties.Name="{x:Bind strings:UiStrings.AcrylicOpacity}"
+                        IsEnabled="{x:Bind ViewModel.CanAdjustAcrylicOpacity, Mode=OneWay}"
+                        Maximum="100"
+                        Minimum="0"
+                        StepFrequency="5"
+                        Value="{x:Bind ViewModel.AcrylicOpacity, Mode=TwoWay}" />
+                </toolkit:SettingsCard>
                 <TextBlock
                     Margin="12,6,12,6"
                     Foreground="{ThemeResource SystemFillColorCriticalBrush}"

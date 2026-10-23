@@ -26,12 +26,14 @@ namespace Crimson.ViewModels
                 AcrylicErrorMessage = string.Empty;
                 _settingsManager.AcrylicEnabled = value;
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(CanAdjustAcrylicOpacity));
                 _ = SaveAcrylicAsync(previous);
             }
         }
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(CanChangeAcrylic))]
+        [NotifyPropertyChangedFor(nameof(CanAdjustAcrylicOpacity))]
         private bool _isSavingAcrylic;
 
         public bool CanChangeAcrylic => !IsSavingAcrylic;
@@ -52,6 +54,7 @@ namespace Crimson.ViewModels
             {
                 _settingsManager.AcrylicEnabled = previous;
                 OnPropertyChanged(nameof(AcrylicEnabled));
+                OnPropertyChanged(nameof(CanAdjustAcrylicOpacity));
                 AcrylicErrorMessage = UiStrings.AcrylicSaveFailed;
             }
             finally
@@ -70,6 +73,21 @@ namespace Crimson.ViewModels
                 _ = SaveSettingsAsync();
             }
         }
+
+        public double AcrylicOpacity
+        {
+            get => _settingsManager.AcrylicOpacity;
+            set
+            {
+                if (_settingsManager.AcrylicOpacity == value) return;
+                _settingsManager.AcrylicOpacity = value;
+                AcrylicErrorMessage = string.Empty;
+                OnPropertyChanged();
+                _ = SaveSettingsAsync();
+            }
+        }
+
+        public bool CanAdjustAcrylicOpacity => AcrylicEnabled && !IsSavingAcrylic;
 
         public string LogsDirectory => _settingsManager.LogsDirectory;
 

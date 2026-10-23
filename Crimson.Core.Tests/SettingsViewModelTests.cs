@@ -99,6 +99,49 @@ public sealed class SettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task AcrylicOpacityDefaultsWhenUnsetAndSurvivesRepeatedSaves()
+    {
+        var (model, settings, storage) = CreateLanguageFixture();
+        var states = new List<double>();
+        settings.AcrylicChanged += (_, _) => states.Add(settings.AcrylicOpacity);
+
+        Assert.Equal(60, model.AcrylicOpacity);
+
+        model.AcrylicOpacity = 25;
+        model.AcrylicOpacity = 25;
+        Assert.Equal(new[] { 25d }, states);
+        await WaitForAcrylicSave(model);
+
+        Assert.Equal(25, new SettingsManager(storage, NullLogger<SettingsManager>.Instance, "games", "logs").AcrylicOpacity);
+    }
+
+    [Theory]
+    [InlineData(-20, 0)]
+    [InlineData(140, 100)]
+    public void AcrylicOpacityIsClampedToTheSliderRange(double requested, double expected)
+    {
+        var (model, settings, _) = CreateLanguageFixture();
+
+        model.AcrylicOpacity = requested;
+
+        Assert.Equal(expected, model.AcrylicOpacity);
+        Assert.Equal(expected, settings.AcrylicOpacity);
+    }
+
+    [Fact]
+    public void AcrylicOpacityIsOnlyAdjustableWhileAcrylicIsEnabled()
+    {
+        var (model, _, _) = CreateLanguageFixture();
+
+        Assert.False(model.AcrylicEnabled);
+        Assert.False(model.CanAdjustAcrylicOpacity);
+
+        model.AcrylicEnabled = true;
+
+        Assert.True(model.CanAdjustAcrylicOpacity);
+    }
+
+    [Fact]
     public async Task AcrylicToggleNotifiesTheWindowImmediatelyAndPersistsBothStates()
     {
         var (model, settings, storage) = CreateLanguageFixture();

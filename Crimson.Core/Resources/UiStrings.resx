@@ -67,6 +67,14 @@
     <value>Accounts</value>
     <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Text</comment>
   </data>
+  <data name="AcrylicOpacity" xml:space="preserve">
+    <value>Acrylic opacity</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Header</comment>
+  </data>
+  <data name="AcrylicOpacityDescription" xml:space="preserve">
+    <value>How much of the window background stays solid over the blur</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Description</comment>
+  </data>
   <data name="AdvancedSettings" xml:space="preserve">
     <value>Advanced Settings</value>
     <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Text</comment>

@@ -64,6 +64,12 @@
   <data name="Accounts" xml:space="preserve">
     <value>Cuentas</value>
   </data>
+  <data name="AcrylicOpacity" xml:space="preserve">
+    <value>Opacidad del acrílico</value>
+  </data>
+  <data name="AcrylicOpacityDescription" xml:space="preserve">
+    <value>Cuánto permanece sólido el fondo de la ventana sobre el desenfoque</value>
+  </data>
   <data name="AdvancedSettings" xml:space="preserve">
     <value>Configuración avanzada</value>
   </data>
