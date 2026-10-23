@@ -13,7 +13,9 @@ param(
 
   [string]$OutputDirectory,
 
-  [switch]$SkipCertificateTrust
+  [switch]$SkipCertificateTrust,
+
+  [switch]$Unsigned
 )
 
 $ErrorActionPreference = 'Stop'
@@ -70,7 +72,7 @@ function Clear-ProjectOutput {
 }
 
 function Assert-ReleaseInputs {
-  if (-not $CertificateThumbprint -and
+  if (-not $Unsigned -and -not $CertificateThumbprint -and
       ([string]::IsNullOrWhiteSpace($env:MSIX_PFX_BASE64) -or
        [string]::IsNullOrWhiteSpace($env:MSIX_PFX_PASSWORD))) {
     throw 'MSIX_PFX_BASE64 and MSIX_PFX_PASSWORD must be configured in the release environment.'
@@ -382,13 +384,9 @@ function Confirm-StoreAsset {
 }
 
 function Write-ReleaseChecksums {
-  $payloads = @(
-    Get-Item (Join-Path $dist "Crimson-$Version-win-x64.zip")
-    Get-Item (Join-Path $dist "Crimson-$Version-win-x64.msix")
-    Get-Item (Join-Path $dist "Crimson-$Version.cer")
-    Get-Item (Join-Path $dist "Crimson-$Version-partner-center.msixupload")
-  )
+  param([Parameter(Mandatory)][string[]]$FileNames)
 
+  $payloads = foreach ($name in $FileNames) { Get-Item (Join-Path $dist $name) }
   $checksums = foreach ($asset in $payloads) {
     $hash = (Get-FileHash $asset.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  $($asset.Name)"
@@ -396,8 +394,8 @@ function Write-ReleaseChecksums {
   $checksums | Set-Content (Join-Path $dist 'SHA256SUMS.txt') -Encoding ascii
 
   $releaseFiles = @(Get-ChildItem $dist -File)
-  if ($releaseFiles.Count -ne 5) {
-    throw "Expected five release files, found $($releaseFiles.Count)."
+  if ($releaseFiles.Count -ne $FileNames.Count + 1) {
+    throw "Expected $($FileNames.Count + 1) release files, found $($releaseFiles.Count)."
   }
   Write-Host "Prepared and verified $($releaseFiles.Count) release files for $Version."
 }
@@ -423,13 +421,28 @@ try {
   Set-PackageVersion
   Invoke-ReleaseTests
   Publish-PortableAsset
-  $signingCertificate = Get-ReleaseSigningCertificate
-  $cerPath = Export-PublicCertificate $signingCertificate
-  $signedPath = Build-SignedAsset
-  Confirm-SignedAsset $signedPath $cerPath
-  $storePath = Build-StoreAsset
-  Confirm-StoreAsset $storePath
-  Write-ReleaseChecksums
+  if ($Unsigned) {
+    $storePath = Build-StoreAsset
+    Confirm-StoreAsset $storePath
+    Write-ReleaseChecksums @(
+      "Crimson-$Version-win-x64.zip",
+      "Crimson-$Version-partner-center.msixupload"
+    )
+  }
+  else {
+    $signingCertificate = Get-ReleaseSigningCertificate
+    $cerPath = Export-PublicCertificate $signingCertificate
+    $signedPath = Build-SignedAsset
+    Confirm-SignedAsset $signedPath $cerPath
+    $storePath = Build-StoreAsset
+    Confirm-StoreAsset $storePath
+    Write-ReleaseChecksums @(
+      "Crimson-$Version-win-x64.zip",
+      "Crimson-$Version-win-x64.msix",
+      "Crimson-$Version.cer",
+      "Crimson-$Version-partner-center.msixupload"
+    )
+  }
 }
 finally {
   Restore-ReleaseEnvironment
