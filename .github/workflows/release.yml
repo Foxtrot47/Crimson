@@ -54,6 +54,19 @@ jobs:
             throw "GitHub Release $tag already exists. Increment the version before releasing again."
           }
 
+          # The release notes are the changelog entry for this version.
+          $changelog = Get-Content CHANGELOG.md -Raw
+          $entry = [regex]::Match($changelog, "(?ms)^## \[$([regex]::Escape($version))\][^\r\n]*\r?\n(.*?)(?=^## \[|\z)")
+          if (-not $entry.Success) {
+            throw "CHANGELOG.md has no '## [$version]' entry. Add the release notes before releasing."
+          }
+          $notes = $entry.Groups[1].Value.Trim()
+          if ([string]::IsNullOrWhiteSpace($notes)) {
+            throw "The CHANGELOG.md entry for $version is empty."
+          }
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Set-Content artifacts/release-notes.md $notes -Encoding utf8
+
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "msix_version=$version.0" >> $env:GITHUB_OUTPUT
@@ -71,7 +84,7 @@ jobs:
           name: Crimson-${{ steps.version.outputs.tag }}-win-x64
           path: |
             dist/*.zip
-            dist/*.msixupload
+            dist/*.msix
             dist/SHA256SUMS.txt
           if-no-files-found: error
           compression-level: 0
@@ -83,14 +96,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $notes = @"
-          The portable ZIP can be run without installing anything.
-
-          The Microsoft Store package is unsigned and is normally submitted to Partner Center by Crimson itself; a `.msixupload` cannot be installed directly.
-
-          License: GPL-3.0-or-later. Each application package includes LICENSE.txt.
-          Source for this release: https://github.com/Foxtrot47/Crimson/tree/${{ steps.version.outputs.tag }}
-          "@
-          $assets = (Get-ChildItem dist -File).FullName
-          gh release create '${{ steps.version.outputs.tag }}' @assets --target '${{ github.sha }}' --generate-notes --title "Crimson $env:VERSION" --notes $notes
+          $assets = @(
+            "dist/Crimson-${env:VERSION}-win-x64.zip"
+            "dist/Crimson-${env:VERSION}-win-x64.msix"
+            'dist/SHA256SUMS.txt'
+          )
+          foreach ($asset in $assets) {
+            if (-not (Test-Path $asset -PathType Leaf)) { throw "Missing release asset: $asset" }
+          }
+          gh release create '${{ steps.version.outputs.tag }}' @assets --target '${{ github.sha }}' --title "Crimson $env:VERSION" --notes-file 'artifacts/release-notes.md'
           if ($LASTEXITCODE -ne 0) { throw 'Failed to create the release.' }

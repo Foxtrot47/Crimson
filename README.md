@@ -51,9 +51,9 @@ When a build is published, it appears on the [GitHub Releases](https://github.co
 
 The portable ZIP includes the required .NET runtime and does not require certificate installation. WebView2 remains a separate prerequisite.
 
-### Microsoft Store package
+### Unsigned MSIX
 
-Release builds also attach `Crimson-X.Y.Z-partner-center.msixupload`. It is the unsigned package submitted to Partner Center, so it cannot be installed directly; install Crimson from the Microsoft Store or use the portable ZIP.
+Release builds also attach `Crimson-X.Y.Z-win-x64.msix`. This is a raw unsigned package, not a Partner Center upload. Standard Windows installation requires a trusted signature; use the portable ZIP unless you intend to sign the MSIX yourself.
 
 See [Installing and releasing Crimson](docs/RELEASING.md) for package differences and checksum verification.
 

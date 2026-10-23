@@ -357,7 +357,8 @@ function Build-StoreAsset {
   if ($storePackages.Count -ne 1) {
     throw "Expected one Store .msixupload, found $($storePackages.Count)."
   }
-  $storePath = Join-Path $dist "Crimson-$Version-partner-center.msixupload"
+  $destination = if ($Unsigned) { $staging } else { $dist }
+  $storePath = Join-Path $destination "Crimson-$Version-partner-center.msixupload"
   Copy-Item $storePackages[0].FullName $storePath
   return $storePath
 }
@@ -381,6 +382,7 @@ function Confirm-StoreAsset {
   if (Test-Path (Join-Path $storePackageContents 'AppxSignature.p7x')) {
     throw 'Partner Center package unexpectedly contains a local signature.'
   }
+  return $innerPackages[0].FullName
 }
 
 function Write-ReleaseChecksums {
@@ -423,10 +425,11 @@ try {
   Publish-PortableAsset
   if ($Unsigned) {
     $storePath = Build-StoreAsset
-    Confirm-StoreAsset $storePath
+    $unsignedPackage = Confirm-StoreAsset $storePath
+    Copy-Item $unsignedPackage (Join-Path $dist "Crimson-$Version-win-x64.msix")
     Write-ReleaseChecksums @(
       "Crimson-$Version-win-x64.zip",
-      "Crimson-$Version-partner-center.msixupload"
+      "Crimson-$Version-win-x64.msix"
     )
   }
   else {
@@ -435,7 +438,7 @@ try {
     $signedPath = Build-SignedAsset
     Confirm-SignedAsset $signedPath $cerPath
     $storePath = Build-StoreAsset
-    Confirm-StoreAsset $storePath
+    $null = Confirm-StoreAsset $storePath
     Write-ReleaseChecksums @(
       "Crimson-$Version-win-x64.zip",
       "Crimson-$Version-win-x64.msix",

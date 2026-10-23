@@ -5,7 +5,7 @@
 A release contains these files:
 
 - `Crimson-X.Y.Z-win-x64.zip`: portable application with a self-contained .NET runtime
-- `Crimson-X.Y.Z-partner-center.msixupload`: unsigned Microsoft Store submission; not intended for direct installation
+- `Crimson-X.Y.Z-win-x64.msix`: raw unsigned MSIX package
 - `SHA256SUMS.txt`: SHA-256 checksums for the downloadable files
 
 CI publishes unsigned assets only. Signing stays on a workstation that holds the code-signing key, so a release can be produced without any signing secret.
@@ -16,9 +16,11 @@ Download and extract `Crimson-X.Y.Z-win-x64.zip`, then run `Crimson.exe`. The po
 
 The portable build requires the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/microsoft-edge/webview2/#download-section) for Epic sign-in and Store access. It is already present on most current Windows installations but is not bundled in the portable ZIP.
 
-### Microsoft Store package
+### Unsigned MSIX
 
-`Crimson-X.Y.Z-partner-center.msixupload` is the unsigned submission container for Partner Center, so Windows cannot install it directly. Install Crimson from the Microsoft Store, or sideload a locally signed MSIX built with the steps below.
+`Crimson-X.Y.Z-win-x64.msix` is a raw unsigned package, not a Partner Center submission container. Standard Windows installation requires a trusted signature. Use the portable ZIP unless you intend to sign the MSIX yourself, or build a locally signed MSIX with the steps below.
+
+The unsigned build validates the raw MSIX extracted from its Store upload container, but keeps the `.msixupload` in staging. Partner Center upload containers are not attached to public CI releases.
 
 The Store package and a sideloaded MSIX share the same package identity, so they cannot be installed side by side. They also share Windows-managed package data. The portable build instead uses `%LOCALAPPDATA%\Crimson` directly.
 
@@ -28,7 +30,7 @@ Compare a downloaded file against its entry in `SHA256SUMS.txt`:
 
 ```powershell
 Get-FileHash .\Crimson-X.Y.Z-win-x64.zip -Algorithm SHA256
-Get-FileHash .\Crimson-X.Y.Z-partner-center.msixupload -Algorithm SHA256
+Get-FileHash .\Crimson-X.Y.Z-win-x64.msix -Algorithm SHA256
 ```
 
 ## License and corresponding source
@@ -66,6 +68,8 @@ Use the existing code-signing certificate in the current user's Personal certifi
 ## Publish a release
 
 Bump the version in `Directory.Build.props` and `Package.appxmanifest` on `main`, then dispatch the release workflow from `main`. It rejects a version whose `vX.Y.Z` tag or GitHub Release already exists, maps the version to MSIX version `X.Y.Z.0`, runs both test suites, builds the assets, verifies package identity, creates the tag, and publishes the release.
+
+Release notes come only from the matching `## [X.Y.Z]` entry in `CHANGELOG.md`, like RaceDock. Missing or empty entries stop the release. GitHub-generated contributor mentions and commit-history dumps are not used.
 
 No signing secret is required. The workflow calls `./scripts/build-release.ps1 -Unsigned`, which skips the certificate import, signature verification, and `.cer` export.
 
