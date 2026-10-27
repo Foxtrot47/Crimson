@@ -443,12 +443,51 @@ public sealed class CachingTests : IDisposable
     [Theory]
     [InlineData("text/html", false)]
     [InlineData("image/png", true)]
+    [InlineData("image/png", false)]
     public async Task InvalidArtworkResponsesDoNotPoisonCache(string type, bool empty)
     {
-        var handler = new ImageHandler { ContentType = type, Empty = empty };
+        var handler = new ImageHandler { ContentType = type, Empty = empty, InvalidPayload = !empty && type == "image/png" };
         using var http = new HttpClient(handler);
         Assert.Null(await CreateArtworkCache(http).GetImageUriAsync(ImageUrl));
         Assert.Empty(Directory.GetFiles(Path.Combine(_root, "artwork")));
+    }
+
+    [Fact]
+    public async Task StalledArtworkBodyTimesOutAndReleasesDownloadSlot()
+    {
+        var handler = new ImageHandler { StalledBody = true };
+        using var http = new HttpClient(handler);
+        var cache = new ArtworkCache(http, _logger, Path.Combine(_root, "artwork"), TimeSpan.FromMilliseconds(100));
+
+        var paths = await Task.WhenAll(Enumerable.Range(0, 5)
+            .Select(index => cache.GetImageUriAsync($"https://cdn1.epicgames.com/test/{index}.png")));
+
+        Assert.All(paths, Assert.Null);
+        var requestsBeforeRetry = handler.Requests;
+        handler.StalledBody = false;
+        Assert.NotNull(await cache.GetImageUriAsync("https://cdn1.epicgames.com/test/retry.png"));
+        Assert.Equal(requestsBeforeRetry + 1, handler.Requests);
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, "artwork"), "*.tmp"));
+    }
+
+    [Fact]
+    public async Task InvalidArtworkRefreshPreservesExistingCachedImage()
+    {
+        var handler = new ImageHandler();
+        using var http = new HttpClient(handler);
+        var cache = CreateArtworkCache(http);
+        var uri = await cache.GetImageUriAsync(ImageUrl);
+        var path = new Uri(uri!).LocalPath;
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-31));
+        handler.InvalidPayload = true;
+
+        Assert.Equal(uri, await cache.GetImageUriAsync(ImageUrl));
+        Assert.Equal(ImageHandler.Png, File.ReadAllBytes(path));
+
+        handler.InvalidPayload = false;
+        Assert.Equal(uri, await cache.GetImageUriAsync(ImageUrl));
+        Assert.Equal(ImageHandler.Png, File.ReadAllBytes(path));
+        Assert.Equal(3, handler.Requests);
     }
 
     [Fact]
@@ -551,15 +590,47 @@ public sealed class CachingTests : IDisposable
         public HttpStatusCode Status = HttpStatusCode.OK;
         public string ContentType = "image/png";
         public bool Empty;
+        public bool InvalidPayload;
+        public bool StalledBody;
         public Func<Task>? BeforeResponse;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref Requests);
             if (BeforeResponse is not null) await BeforeResponse();
-            var response = new HttpResponseMessage(Status) { Content = new ByteArrayContent(Empty ? [] : Png) };
+            HttpContent content = StalledBody
+                ? new StalledContent()
+                : new ByteArrayContent(Empty ? [] : InvalidPayload ? [0x01] : Png);
+            var response = new HttpResponseMessage(Status) { Content = content };
             response.Content.Headers.ContentType = new MediaTypeHeaderValue(ContentType);
             return response;
         }
+    }
+
+    private sealed class StalledContent : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => Task.Delay(Timeout.InfiniteTimeSpan);
+        protected override bool TryComputeLength(out long length) { length = 0; return false; }
+        protected override Task<Stream> CreateContentReadStreamAsync() => Task.FromResult<Stream>(new StalledStream());
+        protected override Task<Stream> CreateContentReadStreamAsync(CancellationToken cancellationToken) => Task.FromResult<Stream>(new StalledStream());
+    }
+
+    private sealed class StalledStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return 0;
+        }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush() => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private sealed class ControlledArtworkCache : IArtworkCache

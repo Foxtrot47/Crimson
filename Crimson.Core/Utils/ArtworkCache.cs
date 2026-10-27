@@ -24,18 +24,26 @@ public sealed class ArtworkCache : IArtworkCache
     private const long MaximumImageBytes = 20 * 1024 * 1024;
     private const long MaximumCacheBytes = 256 * 1024 * 1024;
     private static readonly TimeSpan Lifetime = TimeSpan.FromDays(30);
+    private static readonly TimeSpan DownloadTimeout = TimeSpan.FromSeconds(30);
     private readonly HttpClient _http;
     private readonly ILogger _log;
     private readonly string _directory;
     private readonly object _diskLock = new();
     private readonly SemaphoreSlim _downloadGate = new(4, 4);
     private readonly ConcurrentDictionary<string, Lazy<Task<string?>>> _requests = new(StringComparer.Ordinal);
+    private readonly TimeSpan _downloadTimeout;
 
     public ArtworkCache(HttpClient http, ILogger log, string directory)
+        : this(http, log, directory, DownloadTimeout)
+    {
+    }
+
+    internal ArtworkCache(HttpClient http, ILogger log, string directory, TimeSpan downloadTimeout)
     {
         _http = http;
         _log = log;
         _directory = Path.GetFullPath(directory);
+        _downloadTimeout = downloadTimeout > TimeSpan.Zero ? downloadTimeout : throw new ArgumentOutOfRangeException(nameof(downloadTimeout));
     }
 
     public async Task<string?> GetImageUriAsync(string? url)
@@ -62,34 +70,37 @@ public sealed class ArtworkCache : IArtworkCache
         var entered = false;
         try
         {
-            if (File.Exists(path) && new FileInfo(path).Length > 0 &&
+            if (File.Exists(path) && IsUsableCachedImage(path) &&
                 DateTime.UtcNow - File.GetLastWriteTimeUtc(path) < Lifetime)
                 return new Uri(path).AbsoluteUri;
 
             Directory.CreateDirectory(_directory);
-            await _downloadGate.WaitAsync().ConfigureAwait(false);
+            using var timeout = new CancellationTokenSource(_downloadTimeout);
+            await _downloadGate.WaitAsync(timeout.Token).ConfigureAwait(false);
             entered = true;
-            using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+            using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentLength > MaximumImageBytes ||
                 response.Content.Headers.ContentType?.MediaType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) != true)
                 throw new InvalidDataException("The artwork response is not a supported image.");
 
-            await using (var input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+            await using (var input = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false))
             await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
             {
                 var buffer = new byte[81920];
                 long size = 0;
                 int count;
-                while ((count = await input.ReadAsync(buffer).ConfigureAwait(false)) > 0)
+                while ((count = await input.ReadAsync(buffer.AsMemory(), timeout.Token).ConfigureAwait(false)) > 0)
                 {
                     size += count;
                     if (size > MaximumImageBytes)
                         throw new InvalidDataException("Artwork exceeds the cache size limit.");
-                    await output.WriteAsync(buffer.AsMemory(0, count)).ConfigureAwait(false);
+                    await output.WriteAsync(buffer.AsMemory(0, count), timeout.Token).ConfigureAwait(false);
                 }
                 if (size == 0) throw new InvalidDataException("Artwork was empty.");
             }
+            if (!HasSupportedImageSignature(temporary))
+                throw new InvalidDataException("Artwork does not have a supported image signature.");
 
             lock (_diskLock)
             {
@@ -102,7 +113,7 @@ public sealed class ArtworkCache : IArtworkCache
         {
             _log.Warning(ex, "Failed to cache artwork");
             // A failed refresh must not discard previously downloaded artwork.
-            return File.Exists(path) && new FileInfo(path).Length > 0 ? new Uri(path).AbsoluteUri : null;
+            return File.Exists(path) && IsUsableCachedImage(path) ? new Uri(path).AbsoluteUri : null;
         }
         finally
         {
@@ -111,6 +122,24 @@ public sealed class ArtworkCache : IArtworkCache
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
         }
+    }
+
+    private static bool IsUsableCachedImage(string path)
+    {
+        try { return new FileInfo(path).Length > 0 && HasSupportedImageSignature(path); }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private static bool HasSupportedImageSignature(string path)
+    {
+        Span<byte> header = stackalloc byte[12];
+        using var file = File.OpenRead(path);
+        var read = file.Read(header);
+        return (read >= 8 && header[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A })) ||
+            (read >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF) ||
+            (read >= 6 && (header[..6].SequenceEqual("GIF87a"u8) || header[..6].SequenceEqual("GIF89a"u8))) ||
+            (read >= 12 && header[..4].SequenceEqual("RIFF"u8) && header[8..12].SequenceEqual("WEBP"u8));
     }
 
     private void TrimCache(string retainedPath)
