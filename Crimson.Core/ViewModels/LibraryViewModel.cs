@@ -97,7 +97,8 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         _installManager.OperationUpdated += _operationUpdatedHandler;
         _log.Information("LibraryPage: Loading Page");
         var games = await _libraryManager.GetLibraryData();
-        UpdateLibrary(games, generation);
+        if (games.Any() || !_libraryManager.IsAuthenticationCheckInProgress)
+            UpdateLibrary(games, generation);
         _log.Information("LibraryPage: Loading finished");
     }
 
@@ -183,7 +184,8 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         IReadOnlyDictionary<string, OperationSnapshot> operations,
         int generation)
     {
-        if (generation != Volatile.Read(ref _navigationGeneration)) return;
+        if (generation != Volatile.Read(ref _navigationGeneration) ||
+            _accountGeneration != _libraryManager.AccountGeneration) return;
 
         var existing = GamesList.ToDictionary(item => item.Name, StringComparer.Ordinal);
         var items = games

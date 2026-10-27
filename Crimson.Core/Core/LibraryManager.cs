@@ -28,6 +28,7 @@ public class LibraryManager
     public event Action<IEnumerable<Game>> LibraryUpdated;
     public event Action<Game> GameStatusUpdated;
     public event Action<IReadOnlyList<Game>>? GamesAdded;
+    public event Action<string, StoreProductDetails>? StoreProductDetailsUpdated;
 
     private DateTimeOffset _lastUpdateDateTime = DateTimeOffset.MinValue;
     private int _cacheRevision;
@@ -36,14 +37,13 @@ public class LibraryManager
     private readonly ConcurrentDictionary<string, StoreProductCacheEntry> _storeProductCache = new();
     private readonly Dictionary<string, long> _storeProductFetchSequences = new();
     private readonly object _storeProductCacheLock = new();
-    private int _storeProductCacheGeneration;
     private int _ownedAccountGeneration = -1;
-    private readonly SemaphoreSlim _playtimeGate = new(1, 1);
-    private readonly Dictionary<string, (long Seconds, DateTimeOffset ExpiresAt)> _playtimeCache = new();
-    private int _playtimeGeneration;
     private readonly object _operationLock = new();
     private readonly Dictionary<string, Guid> _activeOperationApps = new(StringComparer.Ordinal);
     private readonly HashSet<string> _pendingAddedAppNames = new(StringComparer.Ordinal);
+    private volatile bool _authenticationCheckInProgress;
+
+    public bool IsAuthenticationCheckInProgress => _authenticationCheckInProgress;
 
     public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager)
     {
@@ -56,6 +56,7 @@ public class LibraryManager
 
     private void OnAuthStatusChanged(object sender, AuthStatusChangedEventArgs e)
     {
+        _authenticationCheckInProgress = e.NewStatus == AuthenticationStatus.Checking;
         if (e.NewStatus != AuthenticationStatus.LoggedOut)
             return;
 
@@ -65,8 +66,6 @@ public class LibraryManager
             _pendingAddedAppNames.Clear();
             _ownedAccountGeneration = -1;
             _lastUpdateDateTime = DateTimeOffset.MinValue;
-            InvalidateStoreProductCache();
-            InvalidatePlaytimeCache();
         }
         LibraryUpdated?.Invoke([]);
     }
@@ -78,82 +77,70 @@ public class LibraryManager
             _cacheRevision++;
             _lastUpdateDateTime = DateTimeOffset.MinValue;
             _storage.InvalidateLibraryCache();
-            InvalidateStoreProductCache();
-            InvalidatePlaytimeCache();
         }
-    }
-
-    private void InvalidatePlaytimeCache()
-    {
-        _playtimeGeneration++;
-        _playtimeCache.Clear();
     }
 
     public async Task<long?> GetGamePlaytimeSeconds(string appName, CancellationToken cancellationToken = default)
     {
-        int generation;
         int accountGeneration;
         lock (_storage.AccountDataLock)
         {
             if (_ownedAccountGeneration != _storage.AccountGeneration || !_ownedAppNames.Contains(appName))
                 return null;
-            generation = _playtimeGeneration;
             accountGeneration = _storage.AccountGeneration;
         }
 
-        await _playtimeGate.WaitAsync(cancellationToken);
-        try
-        {
-            lock (_storage.AccountDataLock)
-            {
-                if (generation != _playtimeGeneration || accountGeneration != _storage.AccountGeneration)
-                    return null;
-                if (_playtimeCache.TryGetValue(appName, out var cached) && cached.ExpiresAt > DateTimeOffset.UtcNow)
-                    return cached.Seconds;
-            }
+        var seconds = await _storeRepository.FetchGamePlaytimeSeconds(appName, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!seconds.HasValue) return null;
 
-            var seconds = await _storeRepository.FetchGamePlaytimeSeconds(appName, cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            lock (_storage.AccountDataLock)
-            {
-                if (generation != _playtimeGeneration || accountGeneration != _storage.AccountGeneration)
-                    return null;
-                if (seconds.HasValue)
-                    _playtimeCache[appName] = (seconds.Value, DateTimeOffset.UtcNow.AddMinutes(5));
-                return seconds;
-            }
-        }
-        finally
+        lock (_storage.AccountDataLock)
         {
-            _playtimeGate.Release();
+            if (accountGeneration != _storage.AccountGeneration || !_ownedAppNames.Contains(appName))
+                return null;
         }
-    }
 
-    private void InvalidateStoreProductCache()
-    {
-        lock (_storeProductCacheLock)
-        {
-            _storeProductCacheGeneration++;
-            _storeProductFetchSequences.Clear();
-            _storeProductCache.Clear();
-        }
+        return seconds;
     }
 
     public async Task<StoreProductDetails?> GetStoreProductDetails(
         string nameSpace,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(nameSpace))
-            return null;
+        if (string.IsNullOrWhiteSpace(nameSpace)) return null;
 
-        int generation;
+        var cached = GetCachedStoreProductDetails(nameSpace);
+        if (cached is not null && cached.ExpiresAt > DateTimeOffset.UtcNow)
+            return cached.Details;
+        if (cached is not null)
+        {
+            _ = RefreshStoreProductDetailsInBackgroundAsync(nameSpace, cancellationToken);
+            return cached.Details;
+        }
+
+        return await FetchStoreProductDetailsAsync(nameSpace, cancellationToken);
+    }
+
+    private StoreProductCacheEntry? GetCachedStoreProductDetails(string nameSpace)
+    {
+        lock (_storeProductCacheLock)
+        {
+            if (_storeProductCache.TryGetValue(nameSpace, out var cached)) return cached;
+            var persisted = _storage.ReadStoreProductDetailsCache(nameSpace);
+            if (persisted is not { } entry) return null;
+            cached = new StoreProductCacheEntry(entry.Details, entry.SavedAt.AddHours(24));
+            _storeProductCache[nameSpace] = cached;
+            return cached;
+        }
+    }
+
+    private async Task<StoreProductDetails?> FetchStoreProductDetailsAsync(
+        string nameSpace,
+        CancellationToken cancellationToken)
+    {
         long fetchSequence;
         lock (_storeProductCacheLock)
         {
-            if (_storeProductCache.TryGetValue(nameSpace, out var cached) &&
-                cached.ExpiresAt > DateTimeOffset.UtcNow)
-                return cached.Details;
-            generation = _storeProductCacheGeneration;
             _storeProductFetchSequences.TryGetValue(nameSpace, out fetchSequence);
             _storeProductFetchSequences[nameSpace] = ++fetchSequence;
         }
@@ -162,17 +149,38 @@ public class LibraryManager
         cancellationToken.ThrowIfCancellationRequested();
         if (details is null) return null;
 
+        var savedAt = DateTimeOffset.UtcNow;
+        var accepted = false;
         lock (_storeProductCacheLock)
         {
-            if (generation == _storeProductCacheGeneration &&
-                _storeProductFetchSequences.GetValueOrDefault(nameSpace) == fetchSequence)
+            if (_storeProductFetchSequences.GetValueOrDefault(nameSpace) == fetchSequence)
             {
-                _storeProductCache[nameSpace] = new StoreProductCacheEntry(
-                    details,
-                    DateTimeOffset.UtcNow.AddHours(24));
+                _storeProductCache[nameSpace] = new StoreProductCacheEntry(details, savedAt.AddHours(24));
+                accepted = true;
             }
         }
+
+        if (accepted)
+        {
+            _storage.SaveStoreProductDetailsCache(nameSpace, details, savedAt);
+            StoreProductDetailsUpdated?.Invoke(nameSpace, details);
+        }
         return details;
+    }
+
+    private async Task RefreshStoreProductDetailsInBackgroundAsync(
+        string nameSpace,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await FetchStoreProductDetailsAsync(nameSpace, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Failed to refresh cached Store product details");
+        }
     }
 
     /// <summary>
@@ -193,6 +201,8 @@ public class LibraryManager
                 revision = _cacheRevision;
                 if (_ownedAccountGeneration != generation)
                     RestoreCachedLibrary(generation);
+                if (_authenticationCheckInProgress)
+                    return GetOwnedGames();
                 if (!forceUpdate && _ownedAccountGeneration == generation &&
                     DateTimeOffset.UtcNow - _lastUpdateDateTime <= TimeSpan.FromMinutes(20))
                     return GetOwnedGames();

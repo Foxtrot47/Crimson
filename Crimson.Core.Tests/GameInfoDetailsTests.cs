@@ -49,7 +49,7 @@ public sealed class GameInfoDetailsTests
         Assert.Equal("Loading…", viewModel.ReleaseDateText);
         Assert.Equal("Unavailable", viewModel.InstalledVersion);
         Assert.Equal("Unavailable", viewModel.LastUpdatedText);
-        Assert.Equal("Loading…", viewModel.TotalPlayTimeText);
+        Assert.Equal(string.Empty, viewModel.TotalPlayTimeText);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public sealed class GameInfoDetailsTests
 
         Assert.Equal("Unavailable", viewModel.LastUpdatedText);
         Assert.Equal("new-build", viewModel.InstalledVersion);
-        Assert.Equal("Loading…", viewModel.TotalPlayTimeText);
+        Assert.Equal(string.Empty, viewModel.TotalPlayTimeText);
     }
 
     [Theory]

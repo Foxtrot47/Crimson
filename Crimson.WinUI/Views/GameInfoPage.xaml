@@ -272,7 +272,11 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Spacing="4">
                                             <TextBlock Foreground="#BFFFFFFF" Text="{x:Bind strings:UiStrings.TotalPlayTime}" TextWrapping="Wrap" />
-                                            <TextBlock Foreground="White" Text="{x:Bind ViewModel.TotalPlayTimeText, Mode=OneWay}" />
+                                            <Grid Height="20">
+                                                <TextBlock
+                                                    Foreground="White"
+                                                    Text="{x:Bind ViewModel.TotalPlayTimeText, Mode=OneWay}" />
+                                            </Grid>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Spacing="4">
                                             <TextBlock Foreground="#BFFFFFFF" Text="{x:Bind strings:UiStrings.LastUpdated}" TextWrapping="Wrap" />

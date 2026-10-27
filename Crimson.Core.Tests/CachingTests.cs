@@ -44,6 +44,58 @@ public sealed class CachingTests : IDisposable
     }
 
     [Fact]
+    public async Task FreshCacheAllowsRepeatedAssetsForTheSameAppName()
+    {
+        var storage = CreateStorage();
+        await storage.SaveUserData(new UserData { AccountId = "account" });
+        storage.SaveMetaData(Game("game"));
+        storage.SaveLibraryCache([Asset("game"), Asset("game")], DateTimeOffset.UtcNow);
+        var repository = new Repository { FailAssets = true };
+        var library = CreateLibrary(CreateStorage(), repository);
+
+        Assert.Equal("game", Assert.Single(await library.GetLibraryData()).AppName);
+        Assert.Equal(0, repository.AssetRequests);
+    }
+
+    [Fact]
+    public async Task CachedLibraryShowsWhileAuthenticationVerificationRuns()
+    {
+        var storage = CreateStorage();
+        await storage.SaveUserData(new UserData
+        {
+            AccountId = "account",
+            AccessToken = "access",
+            RefreshToken = "refresh",
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1).ToString("O"),
+            RefreshExpiresAt = DateTimeOffset.UtcNow.AddDays(1).ToString("O")
+        });
+        storage.SaveMetaData(Game("game"));
+        storage.SaveLibraryCache([Asset("game")], DateTimeOffset.UtcNow.AddHours(-1));
+
+        var authHandler = new BlockingAuthHandler();
+        using var authHttp = new HttpClient(authHandler);
+        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), authHttp);
+        var repository = new Repository();
+        var library = new LibraryManager(_logger, repository, storage, auth);
+        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, null!);
+        var viewModel = new LibraryViewModel(_logger, installer, library, new ImmediateDispatcher());
+
+        var authCheck = auth.CheckAuthStatus();
+        await authHandler.RequestEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await viewModel.OnNavigatedTo(null!);
+
+        Assert.False(viewModel.ShowLoadingScreen);
+        Assert.Equal("game", Assert.Single(viewModel.GamesList).Name);
+        Assert.Equal(0, repository.AssetRequests);
+
+        authHandler.ReleaseRequest.SetResult();
+        Assert.Equal(AuthenticationStatus.LoggedIn, await authCheck);
+        Assert.Single(await library.GetLibraryData());
+        Assert.Equal(1, repository.AssetRequests);
+        viewModel.OnNavigatedFrom();
+    }
+
+    [Fact]
     public async Task ExpiredLibraryFallsBackToDiskOnNetworkFailureAndRetries()
     {
         var storage = CreateStorage();
@@ -336,11 +388,67 @@ public sealed class CachingTests : IDisposable
     }
 
     [Fact]
+    public async Task CachedGamesArePublishedBeforeOwnershipRevalidationCompletes()
+    {
+        var storage = CreateStorage();
+        await storage.SaveUserData(new UserData { AccountId = "account" });
+        await CreateLibrary(storage, new Repository()).GetLibraryData();
+
+        var reloadedStorage = CreateStorage();
+        var enteredRefresh = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRefresh = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var repository = new Repository { BeforeAssets = async () => { enteredRefresh.SetResult(); await releaseRefresh.Task; } };
+        var library = CreateLibrary(reloadedStorage, repository);
+        library.InvalidateCache();
+        var installer = new InstallManager(_logger, library, repository, reloadedStorage, null!, null!, null!);
+        var viewModel = new LibraryViewModel(_logger, installer, library, new ImmediateDispatcher());
+
+        var navigation = viewModel.OnNavigatedTo(null!);
+        await enteredRefresh.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(navigation.IsCompleted);
+        Assert.False(viewModel.ShowLoadingScreen);
+        Assert.Equal("game", Assert.Single(viewModel.GamesList).Name);
+
+        releaseRefresh.SetResult();
+        await navigation;
+        viewModel.OnNavigatedFrom();
+    }
+
+    [Fact]
+    public async Task ExistingAssetsFileSeedsLibraryBeforeFirstVersionedCacheRefresh()
+    {
+        var storage = CreateStorage();
+        await storage.SaveUserData(new UserData { AccountId = "account" });
+        storage.SaveGameAssetsData([Asset("game")]);
+        storage.SaveMetaData(Game("game"));
+
+        var enteredRefresh = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRefresh = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var repository = new Repository { BeforeAssets = async () => { enteredRefresh.SetResult(); await releaseRefresh.Task; } };
+        var restoredStorage = CreateStorage();
+        var library = CreateLibrary(restoredStorage, repository);
+        var installer = new InstallManager(_logger, library, repository, restoredStorage, null!, null!, null!);
+        var viewModel = new LibraryViewModel(_logger, installer, library, new ImmediateDispatcher());
+
+        var navigation = viewModel.OnNavigatedTo(null!);
+        await enteredRefresh.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(navigation.IsCompleted);
+        Assert.False(viewModel.ShowLoadingScreen);
+        Assert.Equal("game", Assert.Single(viewModel.GamesList).Name);
+
+        releaseRefresh.SetResult();
+        await navigation;
+        viewModel.OnNavigatedFrom();
+    }
+
+    [Fact]
     public async Task NavigationKeepsUnchangedCardsAndDoesNotRefetchLibrary()
     {
         var repository = new Repository();
-        var library = CreateLibrary(CreateStorage(), repository);
-        var vm = new LibraryViewModel(_logger, library, new ImmediateDispatcher());
+        var storage = CreateStorage();
+        var library = CreateLibrary(storage, repository);
+        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, null!);
+        var vm = new LibraryViewModel(_logger, installer, library, new ImmediateDispatcher());
         await vm.OnNavigatedTo(null!);
         var list = vm.GamesList;
         var card = Assert.Single(list);
@@ -360,7 +468,10 @@ public sealed class CachingTests : IDisposable
     {
         var storage = CreateStorage();
         var dispatcher = new QueuedDispatcher();
-        var vm = new LibraryViewModel(_logger, CreateLibrary(storage, new Repository()), dispatcher);
+        var repository = new Repository();
+        var library = CreateLibrary(storage, repository);
+        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, null!);
+        var vm = new LibraryViewModel(_logger, installer, library, dispatcher);
         await vm.OnNavigatedTo(null!);
         await storage.ClearUserData();
         dispatcher.Flush();
@@ -535,13 +646,24 @@ public sealed class CachingTests : IDisposable
             installer, library, storage, new ImmediateDispatcher(), artwork);
         var first = vm.OnNavigatedTo("first");
         var second = vm.OnNavigatedTo("second");
-        artwork.Complete("second");
+        const string firstImage = "https://cdn1.epicgames.com/first.png";
+        const string secondImage = "https://cdn1.epicgames.com/second.png";
+        artwork.Complete(secondImage);
         await second;
-        artwork.Complete("first");
+        await WaitForAsync(() => vm.CoverImageUrl == secondImage);
+        artwork.Complete(firstImage);
         await first;
+        await Task.Delay(50);
         Assert.Equal("second", vm.Game?.AppName);
-        Assert.Equal("second", vm.TitleImageUrl);
+        Assert.Equal(secondImage, vm.CoverImageUrl);
         vm.OnNavigatedFrom();
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        for (var attempt = 0; attempt < 100 && !condition(); attempt++)
+            await Task.Delay(10);
+        Assert.True(condition());
     }
 
     private ArtworkCache CreateArtworkCache(HttpClient http) => new(http, _logger, Path.Combine(_root, "artwork"));
@@ -550,7 +672,7 @@ public sealed class CachingTests : IDisposable
     private static Game Game(string name) => new()
     {
         AppName = name, AppTitle = name, AssetInfos = new AssetInfos { Windows = Asset(name) },
-        Metadata = new Metadata { Id = name, Title = name, KeyImages = [new KeyImage { Type = "DieselGameBox", Url = name }] }
+        Metadata = new Metadata { Id = name, Title = name, KeyImages = [new KeyImage { Type = "DieselGameBox", Url = $"https://cdn1.epicgames.com/{name}.png" }] }
     };
 
     private sealed class Repository : IStoreRepository
@@ -561,10 +683,12 @@ public sealed class CachingTests : IDisposable
         public HashSet<string> DlcApps = [];
         public int AssetRequests, MetadataRequests;
         public Func<Task>? BeforeMetadata;
-        public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live")
+        public Func<Task>? BeforeAssets;
+        public async Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live")
         {
             AssetRequests++;
-            return FailAssets ? Task.FromException<IEnumerable<Asset>>(new HttpRequestException("offline")) : Task.FromResult<IEnumerable<Asset>>(Assets.ToList());
+            if (BeforeAssets is not null) await BeforeAssets();
+            return FailAssets ? throw new HttpRequestException("offline") : Assets.ToList();
         }
         public async Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId)
         {
@@ -575,12 +699,29 @@ public sealed class CachingTests : IDisposable
             if (DlcApps.Contains(catalogItemId)) metadata.MainGameItem = new MainGameItem { Id = "base" };
             return metadata;
         }
+        public Task<StoreProductDetails?> FetchStoreProductDetails(string nameSpace, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<long?> FetchGamePlaytimeSeconds(string appName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<StoreSearchResult>> SearchStore(string query, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<byte[]> GetGameManifest(GetManifestUrlData data, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task DownloadFileAsync(string url, string destinationPath) => throw new NotSupportedException();
         public Task<string> GetGameToken() => throw new NotSupportedException();
         public Task<byte[]?> GetOwnershipToken(string nameSpace, string catalogItemId) => throw new NotSupportedException();
         public Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live", CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class BlockingAuthHandler : HttpMessageHandler
+    {
+        public TaskCompletionSource RequestEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseRequest { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestEntered.SetResult();
+            await ReleaseRequest.Task.WaitAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
     }
 
     private sealed class ImageHandler : HttpMessageHandler
@@ -638,8 +779,11 @@ public sealed class CachingTests : IDisposable
         private readonly Dictionary<string, TaskCompletionSource<string?>> _requests = new();
         public Task<string?> GetImageUriAsync(string? url)
         {
-            var source = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _requests.Add(url!, source);
+            if (!_requests.TryGetValue(url!, out var source))
+            {
+                source = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _requests.Add(url!, source);
+            }
             return source.Task;
         }
         public void Complete(string url) => _requests[url].SetResult(url);

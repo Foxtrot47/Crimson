@@ -15,8 +15,13 @@ refreshes reuse unchanged game metadata and only fetch missing or changed entrie
 An empty ownership response clears the displayed library.
 
 Library cards retain their objects when their content is unchanged, and the
-Library page participates in the Frame's bounded navigation cache. Artwork for
-library cards and game details shares a disk cache under `artwork`. Keys hash the
+Library page participates in the Frame's bounded navigation cache. GameInfo Store
+product details are public catalog data: they persist for 24 hours in
+`store-details.json` and are shared across accounts. Playtime is account-scoped and
+is fetched on each game details visit; it is never cached. Expired product details
+display immediately while a background refresh runs. Logout and account changes
+leave the global Store details and artwork caches intact. Artwork for library cards
+and game details shares a disk cache under `artwork`. Keys hash the
 complete source URL, so a changed URL gets a separate entry. Downloads are
 coalesced per URL, limited to four at a time, limited to 20 MiB per image, and
 published through temporary files. Entries expire after 30 days; successful writes

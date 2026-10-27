@@ -17,6 +17,7 @@ namespace Crimson.Utils
         private readonly string UserDataFile;
         private readonly string GameAssetsFile;
         private readonly string LibraryCacheFile;
+        private readonly string StoreDetailsCacheFile;
         private readonly string MetaDataDirectory;
         private readonly string SettingsDataFile;
         private readonly string InstallationStateFile;
@@ -53,6 +54,7 @@ namespace Crimson.Utils
             UserDataFile = ResolveAppDataPath("user.json");
             GameAssetsFile = ResolveAppDataPath("assets.json");
             LibraryCacheFile = ResolveAppDataPath("library-cache.json");
+            StoreDetailsCacheFile = ResolveAppDataPath("store-details.json");
             MetaDataDirectory = ResolveAppDataPath("metadata");
             SettingsDataFile = ResolveAppDataPath("settings.json");
             InstallationStateFile = ResolveAppDataPath("install_state.json");
@@ -68,6 +70,9 @@ namespace Crimson.Utils
             {
                 Directory.CreateDirectory(MetaDataDirectory);
                 Directory.CreateDirectory(ManifestPath);
+                // Pre-split installs stored account-bound playtime alongside public Store details.
+                var legacyGameInfoCache = ResolveAppDataPath("game-info-cache.json");
+                if (File.Exists(legacyGameInfoCache)) File.Delete(legacyGameInfoCache);
                 _gameMetaDataDictionary = LoadMetadata();
                 _localAppStateDictionary = LoadLocalAppStates();
             }
@@ -168,17 +173,22 @@ namespace Crimson.Utils
             {
                 try
                 {
-                    if (!File.Exists(LibraryCacheFile)) return null;
-                    var snapshot = JsonSerializer.Deserialize<LibraryCacheSnapshot>(File.ReadAllText(LibraryCacheFile));
                     var account = GetUserData().GetAwaiter().GetResult()?.AccountId;
-                    return snapshot is not null && !string.IsNullOrEmpty(account) &&
-                        snapshot.AccountId == account && snapshot.Assets is not null &&
-                        snapshot.Assets.All(asset => asset is not null &&
-                            !string.IsNullOrWhiteSpace(asset.AppName) &&
-                            !string.IsNullOrWhiteSpace(asset.Namespace) &&
-                            !string.IsNullOrWhiteSpace(asset.CatalogItemId) && asset.BuildVersion is not null) &&
-                        snapshot.Assets.Select(asset => asset.AppName).Distinct(StringComparer.Ordinal).Count() == snapshot.Assets.Count &&
-                        snapshot.UpdatedAt <= DateTimeOffset.UtcNow
+                    if (string.IsNullOrEmpty(account)) return null;
+
+                    if (!File.Exists(LibraryCacheFile))
+                    {
+                        // Existing installs have assets.json and metadata, but predate the account-bound cache file.
+                        if (!File.Exists(GameAssetsFile)) return null;
+                        var legacyAssets = JsonSerializer.Deserialize<List<Asset>>(File.ReadAllText(GameAssetsFile));
+                        return IsValidLibraryAssets(legacyAssets)
+                            ? new LibraryCacheSnapshot(account, DateTimeOffset.MinValue, legacyAssets!)
+                            : null;
+                    }
+
+                    var snapshot = JsonSerializer.Deserialize<LibraryCacheSnapshot>(File.ReadAllText(LibraryCacheFile));
+                    return snapshot is not null && snapshot.AccountId == account &&
+                        IsValidLibraryAssets(snapshot.Assets) && snapshot.UpdatedAt <= DateTimeOffset.UtcNow
                         ? snapshot : null;
                 }
                 catch (Exception ex)
@@ -188,6 +198,12 @@ namespace Crimson.Utils
                 }
             }
         }
+
+        private static bool IsValidLibraryAssets(List<Asset>? assets) => assets is not null &&
+            assets.All(asset => asset is not null &&
+                !string.IsNullOrWhiteSpace(asset.AppName) &&
+                !string.IsNullOrWhiteSpace(asset.Namespace) &&
+                !string.IsNullOrWhiteSpace(asset.CatalogItemId) && asset.BuildVersion is not null);
 
         internal void InvalidateLibraryCache()
         {
@@ -217,6 +233,74 @@ namespace Crimson.Utils
                     if (File.Exists(temporary)) File.Delete(temporary);
                 }
             }
+        }
+
+        internal (StoreProductDetails Details, DateTimeOffset SavedAt)? ReadStoreProductDetailsCache(string nameSpace)
+        {
+            lock (AccountDataLock)
+            {
+                var cache = ReadStoreDetailsCache();
+                return cache.StoreDetails.TryGetValue(nameSpace, out var entry) &&
+                    entry?.Details is not null && entry.SavedAt <= DateTimeOffset.UtcNow
+                    ? (entry.Details, entry.SavedAt)
+                    : null;
+            }
+        }
+
+        internal void SaveStoreProductDetailsCache(string nameSpace, StoreProductDetails details, DateTimeOffset savedAt)
+        {
+            lock (AccountDataLock)
+            {
+                var cache = ReadStoreDetailsCache();
+                cache.StoreDetails[nameSpace] = new StoreProductDetailsCacheRecord(details, savedAt);
+                TrimCache(cache.StoreDetails, 256, entry => entry.SavedAt);
+                SaveStoreDetailsCache(cache);
+            }
+        }
+
+        private StoreDetailsCacheSnapshot ReadStoreDetailsCache()
+        {
+            try
+            {
+                if (!File.Exists(StoreDetailsCacheFile))
+                    return new StoreDetailsCacheSnapshot();
+
+                var cache = JsonSerializer.Deserialize<StoreDetailsCacheSnapshot>(File.ReadAllText(StoreDetailsCacheFile));
+                if (cache is null) return new StoreDetailsCacheSnapshot();
+                cache.StoreDetails ??= new Dictionary<string, StoreProductDetailsCacheRecord>(StringComparer.Ordinal);
+                return cache;
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to read Store details cache");
+                return new StoreDetailsCacheSnapshot();
+            }
+        }
+
+        private void SaveStoreDetailsCache(StoreDetailsCacheSnapshot cache)
+        {
+            var temporary = StoreDetailsCacheFile + ".tmp";
+            try
+            {
+                File.WriteAllText(temporary, JsonSerializer.Serialize(cache));
+                File.Move(temporary, StoreDetailsCacheFile, overwrite: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to save Store details cache");
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
+        }
+
+        private static void TrimCache<T>(Dictionary<string, T> entries, int limit, Func<T, DateTimeOffset> getSavedAt)
+        {
+            foreach (var key in entries.OrderBy(pair => getSavedAt(pair.Value))
+                         .Take(Math.Max(0, entries.Count - limit))
+                         .Select(pair => pair.Key).ToList())
+                entries.Remove(key);
         }
 
         public async Task<IEnumerable<Asset>> GetGameAssetsData()
@@ -431,4 +515,11 @@ namespace Crimson.Utils
     }
 
     internal sealed record LibraryCacheSnapshot(string AccountId, DateTimeOffset UpdatedAt, List<Asset> Assets);
+
+    internal sealed class StoreDetailsCacheSnapshot
+    {
+        public Dictionary<string, StoreProductDetailsCacheRecord> StoreDetails { get; set; } = new(StringComparer.Ordinal);
+    }
+
+    internal sealed record StoreProductDetailsCacheRecord(StoreProductDetails Details, DateTimeOffset SavedAt);
 }
