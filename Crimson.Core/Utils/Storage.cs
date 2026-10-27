@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Crimson.Core;
@@ -172,6 +173,11 @@ namespace Crimson.Utils
                     var account = GetUserData().GetAwaiter().GetResult()?.AccountId;
                     return snapshot is not null && !string.IsNullOrEmpty(account) &&
                         snapshot.AccountId == account && snapshot.Assets is not null &&
+                        snapshot.Assets.All(asset => asset is not null &&
+                            !string.IsNullOrWhiteSpace(asset.AppName) &&
+                            !string.IsNullOrWhiteSpace(asset.Namespace) &&
+                            !string.IsNullOrWhiteSpace(asset.CatalogItemId) && asset.BuildVersion is not null) &&
+                        snapshot.Assets.Select(asset => asset.AppName).Distinct(StringComparer.Ordinal).Count() == snapshot.Assets.Count &&
                         snapshot.UpdatedAt <= DateTimeOffset.UtcNow
                         ? snapshot : null;
                 }
