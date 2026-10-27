@@ -206,6 +206,8 @@ public sealed class CachingTests : IDisposable
     [Theory]
     [InlineData("https://store.epicgames.com/en-US/", false)]
     [InlineData("https://store.epicgames.com/en-US/p/game?checkout=true", false)]
+    [InlineData("https://store.epicgames.com/en-US/p/checkout", false)]
+    [InlineData("https://store.epicgames.com/en-US/p/purchase", false)]
     [InlineData("https://store.epicgames.com/en-US/purchase", true)]
     [InlineData("https://payment-website-pci.ol.epicgames.com/", true)]
     [InlineData("https://store.epicgames.com/checkout/order", true)]
