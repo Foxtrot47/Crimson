@@ -17,6 +17,8 @@ namespace Crimson.Utils
         private readonly string UserDataFile;
         private readonly string GameAssetsFile;
         private readonly string LibraryCacheFile;
+        // Marks library-cache.json as expired without rewriting it.
+        private readonly string LibraryCacheStaleFile;
         private readonly string StoreDetailsCacheFile;
         private readonly string MetaDataDirectory;
         private readonly string SettingsDataFile;
@@ -36,6 +38,7 @@ namespace Crimson.Utils
         public Dictionary<string, LocalAppState> LocalAppStateDictionary => _localAppStateDictionary;
 
         public string DefaultInstallPath => DefaultInstallDirectory;
+        public string AppDataDirectory => AppDataPath;
 
         public Storage(
             ILogger logger,
@@ -54,6 +57,7 @@ namespace Crimson.Utils
             UserDataFile = ResolveAppDataPath("user.json");
             GameAssetsFile = ResolveAppDataPath("assets.json");
             LibraryCacheFile = ResolveAppDataPath("library-cache.json");
+            LibraryCacheStaleFile = ResolveAppDataPath("library-cache.stale");
             StoreDetailsCacheFile = ResolveAppDataPath("store-details.json");
             MetaDataDirectory = ResolveAppDataPath("metadata");
             SettingsDataFile = ResolveAppDataPath("settings.json");
@@ -161,6 +165,7 @@ namespace Crimson.Utils
             File.Delete(UserDataFile);
             File.Delete(GameAssetsFile);
             File.Delete(LibraryCacheFile);
+            File.Delete(LibraryCacheStaleFile);
             if (Directory.Exists(MetaDataDirectory))
                 Directory.Delete(MetaDataDirectory, true);
             Directory.CreateDirectory(MetaDataDirectory);
@@ -187,6 +192,8 @@ namespace Crimson.Utils
                     }
 
                     var snapshot = JsonSerializer.Deserialize<LibraryCacheSnapshot>(File.ReadAllText(LibraryCacheFile));
+                    if (snapshot is not null && File.Exists(LibraryCacheStaleFile))
+                        snapshot = snapshot with { UpdatedAt = DateTimeOffset.MinValue };
                     return snapshot is not null && snapshot.AccountId == account &&
                         IsValidLibraryAssets(snapshot.Assets) && snapshot.UpdatedAt <= DateTimeOffset.UtcNow
                         ? snapshot : null;
@@ -207,8 +214,17 @@ namespace Crimson.Utils
 
         internal void InvalidateLibraryCache()
         {
-            var snapshot = ReadLibraryCache();
-            if (snapshot is not null) SaveLibraryCache(snapshot.Assets, DateTimeOffset.MinValue);
+            lock (AccountDataLock)
+            {
+                try
+                {
+                    File.WriteAllBytes(LibraryCacheStaleFile, []);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Failed to mark library cache as stale");
+                }
+            }
         }
 
         internal void SaveLibraryCache(List<Asset> assets, DateTimeOffset updatedAt)
@@ -223,6 +239,8 @@ namespace Crimson.Utils
                     var snapshot = new LibraryCacheSnapshot(account, updatedAt, assets);
                     File.WriteAllText(temporary, JsonSerializer.Serialize(snapshot));
                     File.Move(temporary, LibraryCacheFile, overwrite: true);
+                    // The new snapshot carries its own timestamp, so an older stale marker no longer applies.
+                    File.Delete(LibraryCacheStaleFile);
                 }
                 catch (Exception ex)
                 {
@@ -301,6 +319,51 @@ namespace Crimson.Utils
                          .Take(Math.Max(0, entries.Count - limit))
                          .Select(pair => pair.Key).ToList())
                 entries.Remove(key);
+        }
+
+        internal void ClearStoreDetailsCache()
+        {
+            lock (AccountDataLock)
+            {
+                try
+                {
+                    File.Delete(StoreDetailsCacheFile);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Failed to clear Store details cache");
+                    throw;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Sizes of app data caches; installed games and user settings are excluded. Sizes are
+        /// approximate, so no lock is held while walking the manifest and metadata folders.
+        /// </summary>
+        public CacheUsage GetCacheUsage() => new(
+            GetDirectorySize(ManifestPath),
+            GetDirectorySize(MetaDataDirectory),
+            GetFileSize(StoreDetailsCacheFile),
+            GetFileSize(LibraryCacheFile) + GetFileSize(GameAssetsFile));
+
+        private static long GetFileSize(string path)
+        {
+            try { return File.Exists(path) ? new FileInfo(path).Length : 0; }
+            catch (IOException) { return 0; }
+            catch (UnauthorizedAccessException) { return 0; }
+        }
+
+        private static long GetDirectorySize(string path)
+        {
+            try
+            {
+                return Directory.Exists(path)
+                    ? new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories).Sum(file => file.Length)
+                    : 0;
+            }
+            catch (IOException) { return 0; }
+            catch (UnauthorizedAccessException) { return 0; }
         }
 
         public async Task<IEnumerable<Asset>> GetGameAssetsData()
@@ -515,6 +578,8 @@ namespace Crimson.Utils
     }
 
     internal sealed record LibraryCacheSnapshot(string AccountId, DateTimeOffset UpdatedAt, List<Asset> Assets);
+
+    public sealed record CacheUsage(long ManifestBytes, long MetadataBytes, long StoreDetailsBytes, long LibraryBytes);
 
     internal sealed class StoreDetailsCacheSnapshot
     {

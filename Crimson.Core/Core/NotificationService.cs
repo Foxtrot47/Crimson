@@ -13,7 +13,12 @@ public enum NotificationSeverity
 
 public sealed record AppNotification(string Title, string Message, NotificationSeverity Severity = NotificationSeverity.Information);
 
-/// <summary>A single transient message, shared by the shell and any feature that needs feedback.</summary>
+/// <summary>
+/// A single transient message, shared by the shell and any feature that needs feedback.
+/// A newer message replaces the current one; there is no history. Messages dismiss after
+/// <see cref="DefaultDuration"/> unless the host pauses them while hovered or focused.
+/// Call <see cref="Show"/> from the UI thread.
+/// </summary>
 public sealed class NotificationService : IDisposable
 {
     public static readonly TimeSpan DefaultDuration = TimeSpan.FromSeconds(6);

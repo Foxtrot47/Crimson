@@ -140,6 +140,25 @@ public sealed class CachingTests : IDisposable
     }
 
     [Fact]
+    public async Task InvalidationMarksSnapshotStaleWithoutRewritingIt()
+    {
+        var storage = CreateStorage();
+        await storage.SaveUserData(new UserData { AccountId = "account" });
+        var repository = new Repository();
+        await CreateLibrary(storage, repository).GetLibraryData();
+        var cacheFile = Path.Combine(_root, "library-cache.json");
+        var written = File.ReadAllText(cacheFile);
+
+        CreateLibrary(storage, repository).InvalidateCache();
+        Assert.Equal(written, File.ReadAllText(cacheFile));
+        Assert.Equal(DateTimeOffset.MinValue, storage.ReadLibraryCache()!.UpdatedAt);
+
+        Assert.Single(await CreateLibrary(storage, repository).GetLibraryData());
+        Assert.Equal(2, repository.AssetRequests);
+        Assert.NotEqual(DateTimeOffset.MinValue, storage.ReadLibraryCache()!.UpdatedAt);
+    }
+
+    [Fact]
     public async Task SnapshotBelongsToAccountAndLogoutDeletesIt()
     {
         var storage = CreateStorage();
@@ -203,9 +222,32 @@ public sealed class CachingTests : IDisposable
         Assert.Equal(2, repository.MetadataRequests);
         repository.Assets.Clear();
         library.InvalidateCache();
+        Assert.Equal(2, (await library.GetLibraryData()).Count());
         Assert.Empty(await library.GetLibraryData());
         Assert.Empty(await library.GetLibraryData());
-        Assert.Equal(3, repository.AssetRequests);
+        Assert.Equal(4, repository.AssetRequests);
+    }
+
+    [Fact]
+    public async Task SingleEmptyOwnershipResponseKeepsLibraryAndCache()
+    {
+        var storage = CreateStorage();
+        await storage.SaveUserData(new UserData { AccountId = "account" });
+        var repository = new Repository();
+        var library = CreateLibrary(storage, repository);
+        var owned = (await library.GetLibraryData()).Select(game => game.AppName).ToList();
+        var additions = new List<Game>();
+        library.GamesAdded += games => additions.AddRange(games);
+
+        var assets = repository.Assets.ToList();
+        repository.Assets.Clear();
+        library.InvalidateCache();
+        Assert.Equal(owned, (await library.GetLibraryData()).Select(game => game.AppName));
+        Assert.Equal(owned.Count, storage.ReadLibraryCache()!.Assets.Count);
+
+        repository.Assets.AddRange(assets);
+        Assert.Equal(owned, (await library.GetLibraryData()).Select(game => game.AppName));
+        Assert.Empty(additions);
     }
 
     [Fact]
@@ -518,6 +560,89 @@ public sealed class CachingTests : IDisposable
     }
 
     [Fact]
+    public async Task TransientArtworkFailureIsRetriedWithBackoffWithinOneRequest()
+    {
+        var handler = new ImageHandler { FailuresBeforeSuccess = 2, Status = HttpStatusCode.ServiceUnavailable };
+        using var http = new HttpClient(handler);
+        var cache = CreateArtworkCache(http);
+        Assert.NotNull(await cache.GetImageUriAsync(ImageUrl));
+        Assert.Equal(3, handler.Requests);
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, "artwork"), "*.tmp"));
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task ClientErrorsAreNotRetried(HttpStatusCode status)
+    {
+        var handler = new ImageHandler { Status = status };
+        using var http = new HttpClient(handler);
+        Assert.Null(await CreateArtworkCache(http).GetImageUriAsync(ImageUrl));
+        Assert.Equal(1, handler.Requests);
+    }
+
+    [Fact]
+    public async Task FailedArtworkIsNotRequestedAgainUntilCooldownEnds()
+    {
+        var handler = new ImageHandler { Status = HttpStatusCode.ServiceUnavailable };
+        using var http = new HttpClient(handler);
+        var clock = new SteppingTimeProvider();
+        var cache = CreateArtworkCache(http, clock);
+        Assert.Null(await cache.GetImageUriAsync(ImageUrl));
+        Assert.Equal(3, handler.Requests);
+
+        handler.Status = HttpStatusCode.OK;
+        Assert.Null(await cache.GetImageUriAsync(ImageUrl));
+        Assert.Equal(3, handler.Requests);
+
+        clock.Advance(TimeSpan.FromMinutes(5));
+        Assert.NotNull(await cache.GetImageUriAsync(ImageUrl));
+        Assert.Equal(4, handler.Requests);
+    }
+
+    [Fact]
+    public async Task ClearingArtworkResetsFailureCooldown()
+    {
+        var handler = new ImageHandler { Status = HttpStatusCode.NotFound };
+        using var http = new HttpClient(handler);
+        var cache = CreateArtworkCache(http);
+        Assert.Null(await cache.GetImageUriAsync(ImageUrl));
+        handler.Status = HttpStatusCode.OK;
+        Assert.True(cache.Clear());
+        Assert.NotNull(await cache.GetImageUriAsync(ImageUrl));
+        Assert.Equal(2, handler.Requests);
+    }
+
+    [Fact]
+    public async Task LibraryRetriesMissingArtworkOnLibraryUpdateButNotOnOperationProgress()
+    {
+        var storage = CreateStorage();
+        var repository = new Repository();
+        var library = CreateLibrary(storage, repository);
+        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, null!);
+        var artwork = new CountingArtworkCache();
+        var vm = new LibraryViewModel(_logger, installer, library, new ImmediateDispatcher(), artwork);
+        await vm.OnNavigatedTo(null!);
+        Assert.True(artwork.Requests > 0);
+        Assert.Null(Assert.Single(vm.GamesList).ImageUrl);
+        var requestsAfterLoad = artwork.Requests;
+
+        var refreshOperationStatus = typeof(LibraryViewModel).GetMethod("RefreshOperationStatus",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var generation = (int)typeof(LibraryViewModel).GetField("_navigationGeneration",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(vm)!;
+        refreshOperationStatus.Invoke(vm, [generation, false]);
+        Assert.Equal(requestsAfterLoad, artwork.Requests);
+
+        artwork.Result = "file:///artwork.png";
+        library.InvalidateCache();
+        await library.GetLibraryData();
+        await WaitForAsync(() => artwork.Requests > requestsAfterLoad);
+        Assert.Equal("file:///artwork.png", Assert.Single(vm.GamesList).ImageUrl);
+        vm.OnNavigatedFrom();
+    }
+
+    [Fact]
     public async Task LockedExpiredArtworkDoesNotFailANewDownload()
     {
         var handler = new ImageHandler();
@@ -543,11 +668,13 @@ public sealed class CachingTests : IDisposable
     {
         var handler = new ImageHandler { Status = HttpStatusCode.ServiceUnavailable };
         using var http = new HttpClient(handler);
-        var cache = CreateArtworkCache(http);
+        var clock = new SteppingTimeProvider();
+        var cache = CreateArtworkCache(http, clock);
         Assert.Null(await cache.GetImageUriAsync(ImageUrl));
         handler.Status = HttpStatusCode.OK;
+        clock.Advance(TimeSpan.FromMinutes(5));
         Assert.NotNull(await cache.GetImageUriAsync(ImageUrl));
-        Assert.Equal(2, handler.Requests);
+        Assert.Equal(4, handler.Requests);
         Assert.Empty(Directory.GetFiles(Path.Combine(_root, "artwork"), "*.tmp"));
     }
 
@@ -568,7 +695,7 @@ public sealed class CachingTests : IDisposable
     {
         var handler = new ImageHandler { StalledBody = true };
         using var http = new HttpClient(handler);
-        var cache = new ArtworkCache(http, _logger, Path.Combine(_root, "artwork"), TimeSpan.FromMilliseconds(100));
+        var cache = new ArtworkCache(http, _logger, Path.Combine(_root, "artwork"), TimeSpan.FromMilliseconds(100), TimeSpan.Zero);
 
         var paths = await Task.WhenAll(Enumerable.Range(0, 5)
             .Select(index => cache.GetImageUriAsync($"https://cdn1.epicgames.com/test/{index}.png")));
@@ -586,7 +713,8 @@ public sealed class CachingTests : IDisposable
     {
         var handler = new ImageHandler();
         using var http = new HttpClient(handler);
-        var cache = CreateArtworkCache(http);
+        var clock = new SteppingTimeProvider();
+        var cache = CreateArtworkCache(http, clock);
         var uri = await cache.GetImageUriAsync(ImageUrl);
         var path = new Uri(uri!).LocalPath;
         File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-31));
@@ -596,6 +724,7 @@ public sealed class CachingTests : IDisposable
         Assert.Equal(ImageHandler.Png, File.ReadAllBytes(path));
 
         handler.InvalidPayload = false;
+        clock.Advance(TimeSpan.FromMinutes(5));
         Assert.Equal(uri, await cache.GetImageUriAsync(ImageUrl));
         Assert.Equal(ImageHandler.Png, File.ReadAllBytes(path));
         Assert.Equal(3, handler.Requests);
@@ -606,16 +735,18 @@ public sealed class CachingTests : IDisposable
     {
         var handler = new ImageHandler();
         using var http = new HttpClient(handler);
-        var cache = CreateArtworkCache(http);
+        var clock = new SteppingTimeProvider();
+        var cache = CreateArtworkCache(http, clock);
         var uri = await cache.GetImageUriAsync(ImageUrl);
         var path = new Uri(uri!).LocalPath;
         File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-31));
         handler.Status = HttpStatusCode.ServiceUnavailable;
         Assert.Equal(uri, await cache.GetImageUriAsync(ImageUrl));
         handler.Status = HttpStatusCode.OK;
+        clock.Advance(TimeSpan.FromMinutes(5));
         Assert.Equal(uri, await cache.GetImageUriAsync(ImageUrl));
         Assert.True(File.GetLastWriteTimeUtc(path) > DateTime.UtcNow.AddMinutes(-1));
-        Assert.Equal(3, handler.Requests);
+        Assert.Equal(5, handler.Requests);
     }
 
     [Fact]
@@ -666,7 +797,8 @@ public sealed class CachingTests : IDisposable
         Assert.True(condition());
     }
 
-    private ArtworkCache CreateArtworkCache(HttpClient http) => new(http, _logger, Path.Combine(_root, "artwork"));
+    private ArtworkCache CreateArtworkCache(HttpClient http, TimeProvider? clock = null) =>
+        new(http, _logger, Path.Combine(_root, "artwork"), TimeSpan.FromSeconds(30), TimeSpan.Zero, clock);
     private const string ImageUrl = "https://cdn1.epicgames.com/test/image.png";
     private static Asset Asset(string name) => new() { AppName = name, CatalogItemId = name, Namespace = "synthetic", BuildVersion = "1" };
     private static Game Game(string name) => new()
@@ -733,15 +865,17 @@ public sealed class CachingTests : IDisposable
         public bool Empty;
         public bool InvalidPayload;
         public bool StalledBody;
+        public int FailuresBeforeSuccess = -1;
         public Func<Task>? BeforeResponse;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Interlocked.Increment(ref Requests);
+            var count = Interlocked.Increment(ref Requests);
             if (BeforeResponse is not null) await BeforeResponse();
             HttpContent content = StalledBody
                 ? new StalledContent()
                 : new ByteArrayContent(Empty ? [] : InvalidPayload ? [0x01] : Png);
-            var response = new HttpResponseMessage(Status) { Content = content };
+            var status = FailuresBeforeSuccess >= 0 && count > FailuresBeforeSuccess ? HttpStatusCode.OK : Status;
+            var response = new HttpResponseMessage(status) { Content = content };
             response.Content.Headers.ContentType = new MediaTypeHeaderValue(ContentType);
             return response;
         }
@@ -787,6 +921,30 @@ public sealed class CachingTests : IDisposable
             return source.Task;
         }
         public void Complete(string url) => _requests[url].SetResult(url);
+        public int Generation => 0;
+        public long GetSizeBytes() => 0;
+        public bool Clear() => true;
+    }
+
+    private sealed class CountingArtworkCache : IArtworkCache
+    {
+        public int Requests;
+        public string? Result;
+        public Task<string?> GetImageUriAsync(string? url)
+        {
+            Interlocked.Increment(ref Requests);
+            return Task.FromResult(Result);
+        }
+        public int Generation => 0;
+        public long GetSizeBytes() => 0;
+        public bool Clear() => true;
+    }
+
+    private sealed class SteppingTimeProvider : TimeProvider
+    {
+        private DateTimeOffset _now = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => _now;
+        public void Advance(TimeSpan by) => _now += by;
     }
 
     private sealed class QueuedDispatcher : IUiDispatcher

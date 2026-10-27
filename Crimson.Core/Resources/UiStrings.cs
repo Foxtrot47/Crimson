@@ -31,6 +31,12 @@ public static class UiStrings
     public static string BaseGame => Get(nameof(BaseGame));
     public static string BrowseFiles => Get(nameof(BrowseFiles));
     public static string BrowseInstallationFiles => Get(nameof(BrowseInstallationFiles));
+    public static string CacheArtwork => Get(nameof(CacheArtwork));
+    public static string CacheClearIncomplete => Get(nameof(CacheClearIncomplete));
+    public static string CacheManifests => Get(nameof(CacheManifests));
+    public static string CacheMetadata => Get(nameof(CacheMetadata));
+    public static string CacheStoreDetails => Get(nameof(CacheStoreDetails));
+    public static string CacheUsage => Get(nameof(CacheUsage));
     public static string CalculatingRequiredSpace => Get(nameof(CalculatingRequiredSpace));
     public static string Cancel => Get(nameof(Cancel));
     public static string Cancelling => Get(nameof(Cancelling));
@@ -42,6 +48,7 @@ public static class UiStrings
     public static string ChooseAnotherFolderOrAllowCrimsonToWriteToThisLocation => Get(nameof(ChooseAnotherFolderOrAllowCrimsonToWriteToThisLocation));
     public static string ChooseTheFolderAgainNextTimeCheckAppDataPermissionsIfThisContinues => Get(nameof(ChooseTheFolderAgainNextTimeCheckAppDataPermissionsIfThisContinues));
     public static string ChooseTheFolderContainingTheGameFilesThenImportAgain => Get(nameof(ChooseTheFolderContainingTheGameFilesThenImportAgain));
+    public static string ClearCache => Get(nameof(ClearCache));
     public static string Close => Get(nameof(Close));
     public static string CloseApplicationsUsingTheInstallationFolderAndRetryCleanup => Get(nameof(CloseApplicationsUsingTheInstallationFolderAndRetryCleanup));
     public static string CloseGameProperties => Get(nameof(CloseGameProperties));
@@ -156,6 +163,7 @@ public static class UiStrings
     public static string NotInstalled => Get(nameof(NotInstalled));
     public static string NoTransferActivityRecorded => Get(nameof(NoTransferActivityRecorded));
     public static string OneFileFailedVerification => Get(nameof(OneFileFailedVerification));
+    public static string OpenCacheFolder => Get(nameof(OpenCacheFolder));
     public static string OpenGameProperties => Get(nameof(OpenGameProperties));
     public static string OpenLogsDirectory => Get(nameof(OpenLogsDirectory));
     public static string OpenScreenshot => Get(nameof(OpenScreenshot));
@@ -228,6 +236,7 @@ public static class UiStrings
     public static string SizeWithUnitFormat => Get(nameof(SizeWithUnitFormat));
     public static string Specification => Get(nameof(Specification));
     public static string StartTheOperationAgainFromTheLibrary => Get(nameof(StartTheOperationAgainFromTheLibrary));
+    public static string StorageSection => Get(nameof(StorageSection));
     public static string Store => Get(nameof(Store));
     public static string SystemLanguage => Get(nameof(SystemLanguage));
     public static string TB => Get(nameof(TB));

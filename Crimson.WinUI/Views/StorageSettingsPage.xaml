@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Crimson.Views.StorageSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:strings="using:Crimson.Resources"
+    xmlns:converters="using:CommunityToolkit.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:Crimson.Views"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:ui="using:CommunityToolkit.WinUI"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </Page.Resources>
+
+    <Grid>
+        <Grid.Resources>
+            <ResourceDictionary>
+                <!-- Cache usage series colours, stepped separately for each theme. -->
+                <ResourceDictionary.ThemeDictionaries>
+                    <ResourceDictionary x:Key="Light">
+                        <SolidColorBrush x:Key="CacheArtworkBrush" Color="#2A78D6" />
+                        <SolidColorBrush x:Key="CacheManifestsBrush" Color="#EB6834" />
+                        <SolidColorBrush x:Key="CacheMetadataBrush" Color="#1BAF7A" />
+                        <SolidColorBrush x:Key="CacheStoreDetailsBrush" Color="#EDA100" />
+                        <SolidColorBrush x:Key="CacheLibraryBrush" Color="#E87BA4" />
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="Dark">
+                        <SolidColorBrush x:Key="CacheArtworkBrush" Color="#3987E5" />
+                        <SolidColorBrush x:Key="CacheManifestsBrush" Color="#D95926" />
+                        <SolidColorBrush x:Key="CacheMetadataBrush" Color="#199E70" />
+                        <SolidColorBrush x:Key="CacheStoreDetailsBrush" Color="#C98500" />
+                        <SolidColorBrush x:Key="CacheLibraryBrush" Color="#D55181" />
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="HighContrast">
+                        <SolidColorBrush x:Key="CacheArtworkBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                        <SolidColorBrush x:Key="CacheManifestsBrush" Color="{ThemeResource SystemColorButtonTextColor}" />
+                        <SolidColorBrush x:Key="CacheMetadataBrush" Color="{ThemeResource SystemColorHotlightColor}" />
+                        <SolidColorBrush x:Key="CacheStoreDetailsBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+                        <SolidColorBrush x:Key="CacheLibraryBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    </ResourceDictionary>
+                </ResourceDictionary.ThemeDictionaries>
+            </ResourceDictionary>
+        </Grid.Resources>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Windows Settings style breadcrumb: muted parent link, centred chevron, current page. -->
+        <StackPanel Margin="36,24,36,0" Orientation="Horizontal">
+            <HyperlinkButton
+                Padding="0"
+                VerticalAlignment="Center"
+                Click="ParentClicked">
+                <HyperlinkButton.Resources>
+                    <StaticResource x:Key="HyperlinkButtonForeground" ResourceKey="TextFillColorSecondaryBrush" />
+                    <StaticResource x:Key="HyperlinkButtonForegroundPointerOver" ResourceKey="TextFillColorPrimaryBrush" />
+                    <StaticResource x:Key="HyperlinkButtonForegroundPressed" ResourceKey="TextFillColorTertiaryBrush" />
+                    <StaticResource x:Key="HyperlinkButtonBackgroundPointerOver" ResourceKey="SubtleFillColorTransparentBrush" />
+                    <StaticResource x:Key="HyperlinkButtonBackgroundPressed" ResourceKey="SubtleFillColorTransparentBrush" />
+                </HyperlinkButton.Resources>
+                <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.Settings}" />
+            </HyperlinkButton>
+            <FontIcon
+                Margin="14,4,14,0"
+                VerticalAlignment="Center"
+                FontSize="14"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Glyph="&#xE76C;" />
+            <TextBlock
+                VerticalAlignment="Center"
+                Style="{StaticResource TitleTextBlockStyle}"
+                Text="{x:Bind strings:UiStrings.StorageSection}" />
+        </StackPanel>
+
+        <ScrollViewer
+            Grid.Row="1"
+            Padding="36,0,36,24"
+            IsTabStop="False"
+            VerticalScrollBarVisibility="Auto"
+            VerticalScrollMode="Auto">
+            <StackPanel Margin="0,24,0,0" Spacing="3">
+                <StackPanel.ChildrenTransitions>
+                    <EntranceThemeTransition FromVerticalOffset="50" />
+                </StackPanel.ChildrenTransitions>
+
+                <!-- Total and stacked usage bar. -->
+                <Border
+                    Padding="16"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource OverlayCornerRadius}">
+                    <StackPanel Spacing="12">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Style="{StaticResource BodyStrongTextBlockStyle}"
+                                Text="{x:Bind strings:UiStrings.CacheUsage}" />
+                            <ProgressRing
+                                Grid.Column="1"
+                                Width="16"
+                                Height="16"
+                                IsActive="{x:Bind ViewModel.IsCacheBusy, Mode=OneWay}" />
+                            <TextBlock
+                                Grid.Column="2"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource SubtitleTextBlockStyle}"
+                                Text="{x:Bind ViewModel.CacheTotalText, Mode=OneWay}" />
+                        </Grid>
+                        <!-- Segments are added in code-behind, sized by each category's share of the total. -->
+                        <Grid
+                            x:Name="CacheUsageBar"
+                            Height="12"
+                            AutomationProperties.Name="{x:Bind strings:UiStrings.CacheUsage}"
+                            Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                            CornerRadius="4" />
+                        <TextBlock
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                            Text="{x:Bind ViewModel.CacheErrorMessage, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind ViewModel.HasCacheError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </StackPanel>
+                </Border>
+
+                <local:CacheCategoryCard
+                    x:Name="ArtworkCacheCard"
+                    Category="{x:Bind ViewModel.ArtworkCache}"
+                    ClearCommand="{x:Bind ViewModel.ClearCacheCommand}"
+                    Swatch="{ThemeResource CacheArtworkBrush}" />
+                <local:CacheCategoryCard x:Name="ManifestCacheCard" Category="{x:Bind ViewModel.ManifestCache}" Swatch="{ThemeResource CacheManifestsBrush}" />
+                <local:CacheCategoryCard x:Name="MetadataCacheCard" Category="{x:Bind ViewModel.MetadataCache}" Swatch="{ThemeResource CacheMetadataBrush}" />
+                <local:CacheCategoryCard
+                    x:Name="StoreDetailsCacheCard"
+                    Category="{x:Bind ViewModel.StoreDetailsCache}"
+                    ClearCommand="{x:Bind ViewModel.ClearCacheCommand}"
+                    Swatch="{ThemeResource CacheStoreDetailsBrush}" />
+                <local:CacheCategoryCard x:Name="LibraryCacheCard" Category="{x:Bind ViewModel.LibraryCache}" Swatch="{ThemeResource CacheLibraryBrush}" />
+
+                <toolkit:SettingsCard
+                    Margin="0,24,0,0"
+                    ActionIcon="{ui:FontIcon Glyph=&#xE8A7;}"
+                    Command="{x:Bind ViewModel.OpenCacheDirectoryCommand}"
+                    Header="{x:Bind strings:UiStrings.OpenCacheFolder}"
+                    IsClickEnabled="True" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

@@ -8,6 +8,15 @@ public sealed partial class LibraryItem : ObservableObject
     public string Title { get; init; } = string.Empty;
     public string? SourceImageUrl { get; init; }
 
+    // The artwork cache generation ImageUrl was resolved against; clearing the cache invalidates it.
+    internal int ArtworkGeneration { get; init; }
+
+    // Set while artwork is loading so overlapping refreshes do not request it twice.
+    internal bool ArtworkLoading { get; set; }
+
+    // Set once a load has been attempted; only library updates retry a failed one.
+    internal bool ArtworkAttempted { get; set; }
+
     [ObservableProperty]
     private string? _imageUrl;
 

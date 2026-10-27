@@ -112,6 +112,14 @@
 
                 <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="{x:Bind strings:UiStrings.AdvancedSettings}" />
 
+                <toolkit:SettingsCard
+                    x:Name="StorageSettingsCard"
+                    ActionIcon="{ui:FontIcon Glyph=&#xE76C;}"
+                    Click="StorageSettingsClicked"
+                    Header="{x:Bind strings:UiStrings.StorageSection}"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xEDA2;}"
+                    IsClickEnabled="True" />
+
                 <toolkit:SettingsExpander
                     x:Name="AdvancedSettingsCard"
                     Header="{x:Bind strings:UiStrings.ShowAdavancedSettings}"

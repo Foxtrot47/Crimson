@@ -115,20 +115,24 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
 
     private async Task LoadArtworkAsync(LibraryItem item, int generation)
     {
+        string? uri = null;
         try
         {
-            var uri = await _artworkCache!.GetImageUriAsync(item.SourceImageUrl);
-            _uiDispatcher.TryEnqueue(() =>
-            {
-                if (generation == Volatile.Read(ref _navigationGeneration) &&
-                    _accountGeneration == _libraryManager.AccountGeneration)
-                    item.ImageUrl = uri;
-            });
+            uri = await _artworkCache!.GetImageUriAsync(item.SourceImageUrl);
         }
         catch (Exception ex)
         {
             _log.Warning(ex, "Failed to load library artwork");
         }
+        _uiDispatcher.TryEnqueue(() =>
+        {
+            // A missing image is requested again on the next library update; the artwork
+            // cache's failure cooldown bounds how often that reaches the network.
+            item.ArtworkLoading = false;
+            if (generation == Volatile.Read(ref _navigationGeneration) &&
+                _accountGeneration == _libraryManager.AccountGeneration)
+                item.ImageUrl = uri;
+        });
     }
 
     private void UpdateLibrary(IEnumerable<Game> games, int generation)
@@ -140,7 +144,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
 
             _librarySnapshot = games.ToList();
             _accountGeneration = _libraryManager.AccountGeneration;
-            RefreshOperationStatus(generation);
+            RefreshOperationStatus(generation, retryArtwork: true);
             _log.Information("UpdateLibrary: Updated Library Page");
         }
         catch (Exception ex)
@@ -149,7 +153,8 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         }
     }
 
-    private void RefreshOperationStatus(int generation)
+    // Only library updates retry missing artwork; operation progress fires too often.
+    private void RefreshOperationStatus(int generation, bool retryArtwork = false)
     {
         try
         {
@@ -157,7 +162,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
 
             var games = _librarySnapshot;
             var operations = GetActiveOperations();
-            _uiDispatcher.TryEnqueue(() => ApplyLibrary(games, operations, generation));
+            _uiDispatcher.TryEnqueue(() => ApplyLibrary(games, operations, generation, retryArtwork));
         }
         catch (Exception ex)
         {
@@ -182,7 +187,8 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     private void ApplyLibrary(
         IReadOnlyList<Game> games,
         IReadOnlyDictionary<string, OperationSnapshot> operations,
-        int generation)
+        int generation,
+        bool retryArtwork)
     {
         if (generation != Volatile.Read(ref _navigationGeneration) ||
             _accountGeneration != _libraryManager.AccountGeneration) return;
@@ -191,7 +197,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         var items = games
             .Where(game => !game.IsDlc() && MatchesInstalledFilter(game))
             .Select(game => CreateOrUpdateLibraryItem(game, operations.GetValueOrDefault(game.AppName),
-                existing.GetValueOrDefault(game.AppName), generation))
+                existing.GetValueOrDefault(game.AppName), generation, retryArtwork))
             .OrderBy(item => item.Title)
             .ToList();
         if (!GamesList.SequenceEqual(items)) GamesList = items;
@@ -206,24 +212,33 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         return current is not null && LibraryManager.IsSidebarListed(current, null);
     }
 
-    private LibraryItem CreateOrUpdateLibraryItem(Game game, OperationSnapshot? operation, LibraryItem? item, int generation)
+    private LibraryItem CreateOrUpdateLibraryItem(
+        Game game, OperationSnapshot? operation, LibraryItem? item, int generation, bool retryArtwork)
     {
         var imageUrl = game.Metadata?.KeyImages?
             .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
             ?? game.Metadata?.KeyImages?.FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
-        if (item is null || item.Title != game.AppTitle || item.SourceImageUrl != imageUrl)
+        var artworkGeneration = _artworkCache?.Generation ?? 0;
+        if (item is null || item.Title != game.AppTitle || item.SourceImageUrl != imageUrl ||
+            item.ArtworkGeneration != artworkGeneration)
         {
             item = new LibraryItem
             {
                 Name = game.AppName,
                 Title = game.AppTitle,
                 SourceImageUrl = imageUrl,
+                ArtworkGeneration = artworkGeneration,
                 ImageUrl = _artworkCache is null ? imageUrl : null
             };
         }
 
-        if (_artworkCache is not null && item.ImageUrl is null && imageUrl is not null)
+        if (_artworkCache is not null && item.ImageUrl is null && imageUrl is not null &&
+            !item.ArtworkLoading && (!item.ArtworkAttempted || retryArtwork))
+        {
+            item.ArtworkLoading = true;
+            item.ArtworkAttempted = true;
             _ = LoadArtworkAsync(item, generation);
+        }
         UpdateItemOperation(item, operation);
         return item;
     }

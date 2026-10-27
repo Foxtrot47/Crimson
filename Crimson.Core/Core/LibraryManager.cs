@@ -16,6 +16,13 @@ using Serilog;
 
 namespace Crimson.Core;
 
+/// <summary>
+/// Owns the account's library and its caches. Ownership is persisted per account in
+/// <c>library-cache.json</c> and reused for 20 minutes; an expired snapshot is still
+/// shown when a refresh fails. Store product details are public, shared across
+/// accounts, and kept for 24 hours in <c>store-details.json</c>. Playtime is never
+/// cached. Logout clears ownership and metadata but keeps installation records.
+/// </summary>
 public class LibraryManager
 {
     private readonly ILogger _log;
@@ -27,6 +34,11 @@ public class LibraryManager
 
     public event Action<IEnumerable<Game>> LibraryUpdated;
     public event Action<Game> GameStatusUpdated;
+
+    /// <summary>
+    /// Raised once per newly owned base game, after its metadata is available. The first
+    /// load for an account, including a restored snapshot, is the baseline and is silent.
+    /// </summary>
     public event Action<IReadOnlyList<Game>>? GamesAdded;
     public event Action<string, StoreProductDetails>? StoreProductDetailsUpdated;
 
@@ -38,6 +50,7 @@ public class LibraryManager
     private readonly Dictionary<string, long> _storeProductFetchSequences = new();
     private readonly object _storeProductCacheLock = new();
     private int _ownedAccountGeneration = -1;
+    private bool _emptyOwnershipHeld;
     private readonly object _operationLock = new();
     private readonly Dictionary<string, Guid> _activeOperationApps = new(StringComparer.Ordinal);
     private readonly HashSet<string> _pendingAddedAppNames = new(StringComparer.Ordinal);
@@ -65,6 +78,7 @@ public class LibraryManager
             _ownedAppNames = new HashSet<string>();
             _pendingAddedAppNames.Clear();
             _ownedAccountGeneration = -1;
+            _emptyOwnershipHeld = false;
             _lastUpdateDateTime = DateTimeOffset.MinValue;
         }
         LibraryUpdated?.Invoke([]);
@@ -103,6 +117,15 @@ public class LibraryManager
         return seconds;
     }
 
+    public void ClearStoreProductDetailsCache()
+    {
+        lock (_storeProductCacheLock)
+        {
+            _storeProductCache.Clear();
+            _storage.ClearStoreDetailsCache();
+        }
+    }
+
     public async Task<StoreProductDetails?> GetStoreProductDetails(
         string nameSpace,
         CancellationToken cancellationToken = default)
@@ -110,15 +133,13 @@ public class LibraryManager
         if (string.IsNullOrWhiteSpace(nameSpace)) return null;
 
         var cached = GetCachedStoreProductDetails(nameSpace);
-        if (cached is not null && cached.ExpiresAt > DateTimeOffset.UtcNow)
-            return cached.Details;
-        if (cached is not null)
-        {
-            _ = RefreshStoreProductDetailsInBackgroundAsync(nameSpace, cancellationToken);
-            return cached.Details;
-        }
+        if (cached is null)
+            return await FetchStoreProductDetailsAsync(nameSpace, cancellationToken);
 
-        return await FetchStoreProductDetailsAsync(nameSpace, cancellationToken);
+        // The refresh outlives the caller, so leaving the page must not cancel it.
+        if (cached.ExpiresAt <= DateTimeOffset.UtcNow)
+            _ = RefreshStoreProductDetailsInBackgroundAsync(nameSpace);
+        return cached.Details;
     }
 
     private StoreProductCacheEntry? GetCachedStoreProductDetails(string nameSpace)
@@ -168,15 +189,12 @@ public class LibraryManager
         return details;
     }
 
-    private async Task RefreshStoreProductDetailsInBackgroundAsync(
-        string nameSpace,
-        CancellationToken cancellationToken)
+    private async Task RefreshStoreProductDetailsInBackgroundAsync(string nameSpace)
     {
         try
         {
-            await FetchStoreProductDetailsAsync(nameSpace, cancellationToken);
+            await FetchStoreProductDetailsAsync(nameSpace, CancellationToken.None);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception ex)
         {
             _log.Warning(ex, "Failed to refresh cached Store product details");
@@ -571,6 +589,11 @@ public class LibraryManager
             {
                 if (generation != _storage.AccountGeneration)
                     return;
+                if (ShouldHoldEmptyOwnership(generation, gameAssets))
+                {
+                    _log.Warning("UpdateLibraryData: Ignoring an empty ownership response until it is confirmed");
+                    return;
+                }
                 fetchList = GetMetadataFetchList(gameAssets, forceMetadataUpdate);
             }
 
@@ -581,6 +604,19 @@ public class LibraryManager
         {
             _log.Error(ex, "UpdateLibraryData failed");
         }
+    }
+
+    // An empty response after a non-empty library may be a degraded Epic reply. Keep the
+    // current library and cache until a second consecutive empty response confirms it.
+    private bool ShouldHoldEmptyOwnership(int generation, List<Asset> assets)
+    {
+        if (assets.Count > 0 || _ownedAccountGeneration != generation || _ownedAppNames.Count == 0)
+        {
+            _emptyOwnershipHeld = false;
+            return false;
+        }
+        _emptyOwnershipHeld = !_emptyOwnershipHeld;
+        return _emptyOwnershipHeld;
     }
 
     private void PublishLibrary(int generation, int revision, List<Asset> assets, IReadOnlyList<Game> fetchedGames)

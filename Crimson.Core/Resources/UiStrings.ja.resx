@@ -859,4 +859,31 @@
   <data name="AcrylicSaveFailed" xml:space="preserve">
     <value>Acrylic 設定を保存できませんでした。以前の設定に戻しました。</value>
   </data>
+  <data name="CacheArtwork" xml:space="preserve">
+    <value>アートワーク</value>
+  </data>
+  <data name="CacheClearIncomplete" xml:space="preserve">
+    <value>一部のキャッシュ ファイルを削除できませんでした。表示中のページを閉じてから再試行してください。</value>
+  </data>
+  <data name="CacheManifests" xml:space="preserve">
+    <value>マニフェスト</value>
+  </data>
+  <data name="CacheMetadata" xml:space="preserve">
+    <value>ゲームのメタデータ</value>
+  </data>
+  <data name="CacheStoreDetails" xml:space="preserve">
+    <value>ストアの詳細</value>
+  </data>
+  <data name="CacheUsage" xml:space="preserve">
+    <value>キャッシュ使用量</value>
+  </data>
+  <data name="ClearCache" xml:space="preserve">
+    <value>クリア</value>
+  </data>
+  <data name="OpenCacheFolder" xml:space="preserve">
+    <value>フォルダーを開く</value>
+  </data>
+  <data name="StorageSection" xml:space="preserve">
+    <value>ストレージ</value>
+  </data>
 </root>
