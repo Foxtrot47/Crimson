@@ -27,6 +27,7 @@ public class LibraryManager
 
     public event Action<IEnumerable<Game>> LibraryUpdated;
     public event Action<Game> GameStatusUpdated;
+    public event Action<IReadOnlyList<Game>>? GamesAdded;
 
     private DateTimeOffset _lastUpdateDateTime = DateTimeOffset.MinValue;
     private int _cacheRevision;
@@ -42,6 +43,7 @@ public class LibraryManager
     private int _playtimeGeneration;
     private readonly object _operationLock = new();
     private readonly Dictionary<string, Guid> _activeOperationApps = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _pendingAddedAppNames = new(StringComparer.Ordinal);
 
     public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager)
     {
@@ -60,6 +62,7 @@ public class LibraryManager
         lock (_storage.AccountDataLock)
         {
             _ownedAppNames = new HashSet<string>();
+            _pendingAddedAppNames.Clear();
             _ownedAccountGeneration = -1;
             _lastUpdateDateTime = DateTimeOffset.MinValue;
             InvalidateStoreProductCache();
@@ -584,7 +587,19 @@ public class LibraryManager
             CheckForGameUpdates(assets);
 
             var ownedGames = SelectOwnedGames(assets, _storage.GameMetaDataDictionary);
-            _ownedAppNames = ownedGames.Select(game => game.AppName).ToHashSet(StringComparer.Ordinal);
+            var ownedAppNames = assets.Select(asset => asset.AppName).ToHashSet(StringComparer.Ordinal);
+            if (_ownedAccountGeneration == generation)
+                _pendingAddedAppNames.UnionWith(ownedAppNames.Except(_ownedAppNames));
+            else
+                _pendingAddedAppNames.Clear(); // First load is a baseline, not a list of new purchases.
+            _pendingAddedAppNames.IntersectWith(ownedAppNames);
+            var addedGames = ownedGames
+                .Where(game => _pendingAddedAppNames.Contains(game.AppName) && !game.IsDlc())
+                .OrderBy(game => game.AppTitle, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            // Keep additions with unavailable metadata pending until they can be displayed.
+            _pendingAddedAppNames.ExceptWith(ownedGames.Select(game => game.AppName));
+            _ownedAppNames = ownedAppNames;
             _ownedAccountGeneration = generation;
             var complete = GetMetadataFetchList(assets, false).Count == 0;
             _lastUpdateDateTime = complete && revision == _cacheRevision
@@ -592,6 +607,8 @@ public class LibraryManager
             _storage.SaveLibraryCache(assets, _lastUpdateDateTime);
             _log.Information("UpdateLibraryAsync: Library updated");
             LibraryUpdated?.Invoke(ownedGames);
+            if (generation == _storage.AccountGeneration && addedGames.Count > 0)
+                GamesAdded?.Invoke(addedGames);
         }
     }
 

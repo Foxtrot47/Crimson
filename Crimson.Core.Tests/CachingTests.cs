@@ -157,6 +157,155 @@ public sealed class CachingTests : IDisposable
     }
 
     [Fact]
+    public async Task NewGameIsReportedOnceAfterLibraryUpdateButInitialLoadIsSilent()
+    {
+        var repository = new Repository();
+        var library = CreateLibrary(CreateStorage(), repository);
+        var additions = new List<IReadOnlyList<Game>>();
+        var ordering = new List<string>();
+        library.LibraryUpdated += _ => ordering.Add("library");
+        library.GamesAdded += games => { additions.Add(games); ordering.Add("notification"); };
+        await library.GetLibraryData();
+        Assert.Empty(additions);
+
+        ordering.Clear();
+        repository.Assets.Add(Asset("new"));
+        library.InvalidateCache();
+        await library.GetLibraryData();
+        Assert.Equal("new", Assert.Single(Assert.Single(additions)).AppName);
+        Assert.Equal(["library", "notification"], ordering);
+        library.InvalidateCache();
+        await library.GetLibraryData();
+        Assert.Single(additions);
+    }
+
+    [Fact]
+    public async Task CachedStartupOnlyReportsGamesAddedSinceSnapshot()
+    {
+        var storage = CreateStorage();
+        await storage.SaveUserData(new UserData { AccountId = "account" });
+        await CreateLibrary(storage, new Repository()).GetLibraryData();
+        var repository = new Repository { Assets = [Asset("game"), Asset("new")] };
+        var library = CreateLibrary(CreateStorage(), repository);
+        var additions = new List<Game>();
+        library.GamesAdded += games => additions.AddRange(games);
+        library.InvalidateCache();
+        await library.GetLibraryData();
+        Assert.Equal("new", Assert.Single(additions).AppName);
+    }
+
+    [Fact]
+    public async Task BatchAdditionsExcludeDlcAndMetadataOnlyRefreshes()
+    {
+        var repository = new Repository();
+        var library = CreateLibrary(CreateStorage(), repository);
+        var additions = new List<IReadOnlyList<Game>>();
+        library.GamesAdded += additions.Add;
+        await library.GetLibraryData();
+        repository.Assets.AddRange([Asset("second"), Asset("third"), Asset("dlc")]);
+        repository.DlcApps.Add("dlc");
+        library.InvalidateCache();
+        await library.GetLibraryData();
+        Assert.Equal(["second", "third"], Assert.Single(additions).Select(game => game.AppName));
+        await library.GetLibraryData(forceUpdate: true);
+        Assert.Single(additions);
+    }
+
+    [Fact]
+    public async Task DelayedMetadataNotifiesOnlyWhenNewGameCanBeDisplayed()
+    {
+        var repository = new Repository();
+        var library = CreateLibrary(CreateStorage(), repository);
+        var additions = new List<Game>();
+        library.GamesAdded += games => additions.AddRange(games);
+        await library.GetLibraryData();
+        repository.Assets.Add(Asset("new"));
+        repository.MissingMetadataApps.Add("new");
+        library.InvalidateCache();
+        Assert.Single(await library.GetLibraryData());
+        Assert.Empty(additions);
+        repository.MissingMetadataApps.Clear();
+        Assert.Equal(2, (await library.GetLibraryData()).Count());
+        Assert.Equal("new", Assert.Single(additions).AppName);
+        library.InvalidateCache();
+        await library.GetLibraryData();
+        Assert.Single(additions);
+    }
+
+    [Fact]
+    public async Task InitialMetadataRetryAndAccountSwitchAreSilent()
+    {
+        var storage = CreateStorage();
+        await storage.SaveUserData(new UserData { AccountId = "first" });
+        var repository = new Repository { FailMetadata = true };
+        var library = CreateLibrary(storage, repository);
+        var additions = new List<Game>();
+        library.GamesAdded += games => additions.AddRange(games);
+        await library.GetLibraryData();
+        repository.FailMetadata = false;
+        await library.GetLibraryData();
+        Assert.Empty(additions);
+        await storage.SaveUserData(new UserData { AccountId = "second" });
+        repository.Assets = [Asset("other")];
+        await library.GetLibraryData();
+        Assert.Empty(additions);
+    }
+
+    [Fact]
+    public async Task PendingAdditionCannotCrossAccounts()
+    {
+        var storage = CreateStorage();
+        await storage.SaveUserData(new UserData { AccountId = "first" });
+        var repository = new Repository();
+        var library = CreateLibrary(storage, repository);
+        var additions = new List<Game>();
+        library.GamesAdded += games => additions.AddRange(games);
+        await library.GetLibraryData();
+        repository.Assets.Add(Asset("new"));
+        repository.MissingMetadataApps.Add("new");
+        library.InvalidateCache();
+        await library.GetLibraryData();
+        await storage.SaveUserData(new UserData { AccountId = "second" });
+        repository.MissingMetadataApps.Clear();
+        await library.GetLibraryData();
+        Assert.Empty(additions);
+    }
+
+    [Fact]
+    public async Task AccountChangeInsideLibraryHandlerSuppressesObsoleteAddition()
+    {
+        var storage = CreateStorage();
+        var repository = new Repository();
+        var library = CreateLibrary(storage, repository);
+        await library.GetLibraryData();
+        var additions = new List<Game>();
+        library.GamesAdded += games => additions.AddRange(games);
+        library.LibraryUpdated += _ => storage.ClearUserData().GetAwaiter().GetResult();
+        repository.Assets.Add(Asset("new"));
+        library.InvalidateCache();
+        await library.GetLibraryData();
+        Assert.Empty(additions);
+    }
+
+    [Fact]
+    public async Task NewGameAfterEmptyBaselineIsReportedButFailedRefreshIsSilent()
+    {
+        var repository = new Repository { Assets = [] };
+        var library = CreateLibrary(CreateStorage(), repository);
+        var additions = new List<Game>();
+        library.GamesAdded += games => additions.AddRange(games);
+        await library.GetLibraryData();
+        repository.Assets.Add(Asset("new"));
+        repository.FailAssets = true;
+        library.InvalidateCache();
+        await library.GetLibraryData();
+        Assert.Empty(additions);
+        repository.FailAssets = false;
+        await library.GetLibraryData();
+        Assert.Equal("new", Assert.Single(additions).AppName);
+    }
+
+    [Fact]
     public async Task InvalidationBeforeDiskHydrationIsNotLost()
     {
         var storage = CreateStorage();
@@ -369,6 +518,8 @@ public sealed class CachingTests : IDisposable
     {
         public List<Asset> Assets = [Asset("game")];
         public bool FailAssets, FailMetadata;
+        public HashSet<string> MissingMetadataApps = [];
+        public HashSet<string> DlcApps = [];
         public int AssetRequests, MetadataRequests;
         public Func<Task>? BeforeMetadata;
         public Task<IEnumerable<Asset>> FetchGameAssets(string platform = "Windows", string label = "Live")
@@ -380,7 +531,10 @@ public sealed class CachingTests : IDisposable
         {
             Interlocked.Increment(ref MetadataRequests);
             if (BeforeMetadata is not null) await BeforeMetadata();
-            return FailMetadata ? null! : Game(catalogItemId).Metadata;
+            if (FailMetadata || MissingMetadataApps.Contains(catalogItemId)) return null!;
+            var metadata = Game(catalogItemId).Metadata;
+            if (DlcApps.Contains(catalogItemId)) metadata.MainGameItem = new MainGameItem { Id = "base" };
+            return metadata;
         }
         public Task<IReadOnlyList<StoreSearchResult>> SearchStore(string query, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<byte[]> GetGameManifest(GetManifestUrlData data, CancellationToken cancellationToken = default) => throw new NotSupportedException();

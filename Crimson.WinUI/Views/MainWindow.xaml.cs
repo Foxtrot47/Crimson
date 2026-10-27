@@ -55,6 +55,7 @@ public sealed partial class MainWindow : Window
     private readonly IStoreRepository _storeRepository;
     private readonly OperationErrorPresenter _operationErrors;
     private readonly WindowSizeConstraints _windowSizeConstraints;
+    private readonly NotificationService _notifications;
 
     private List<Game> _libraryCache = new();
     private CancellationTokenSource? _storeSearchCancellation;
@@ -118,12 +119,15 @@ public sealed partial class MainWindow : Window
         _installManager = App.GetService<InstallManager>();
         _libraryManager = App.GetService<LibraryManager>();
         _storeRepository = App.GetService<IStoreRepository>();
+        _notifications = App.GetService<NotificationService>();
+        Notifications.Bind(_notifications);
         _log = App.GetService<ILogger>();
         _operationErrors = new OperationErrorPresenter(ContentFrame, _installManager, _libraryManager,
             App.GetService<DialogCoordinator>(), _log);
         Closed += Window_Closed;
 
         _libraryManager.LibraryUpdated += LibraryUpdatedHandler;
+        _libraryManager.GamesAdded += GamesAddedHandler;
         _libraryManager.GameStatusUpdated += GameStatusUpdatedHandler;
         CurrentDownload.SummaryChanged += OnDownloadSummaryChanged;
         _installManager.OperationUpdated += OperationUpdatedHandler;
@@ -504,6 +508,19 @@ public sealed partial class MainWindow : Window
             RebuildInstalledMenu();
             if (!string.IsNullOrWhiteSpace(GlobalSearchBox.Text))
                 BeginSearch(GlobalSearchBox.Text);
+        });
+    }
+
+    private void GamesAddedHandler(IReadOnlyList<Game> games)
+    {
+        var accountGeneration = _libraryManager.AccountGeneration;
+        var notification = LibraryNotification.ForAddedGames(games);
+        if (notification is null) return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (accountGeneration == _libraryManager.AccountGeneration &&
+                _authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn)
+                _notifications.Show(notification);
         });
     }
 
@@ -905,6 +922,7 @@ public sealed partial class MainWindow : Window
                 break;
 
             case AuthenticationStatus.LoggedOut:
+                _notifications.Dismiss();
                 ContentFrame.CacheSize = 0;
                 ContentFrame.CacheSize = 3;
                 _libraryCache.Clear();
@@ -984,6 +1002,8 @@ public sealed partial class MainWindow : Window
 
         _operationErrors.Dispose();
         _libraryManager.LibraryUpdated -= LibraryUpdatedHandler;
+        _libraryManager.GamesAdded -= GamesAddedHandler;
+        _notifications.Dismiss();
         _libraryManager.GameStatusUpdated -= GameStatusUpdatedHandler;
         CancelStoreSearch();
         CurrentDownload.SummaryChanged -= OnDownloadSummaryChanged;
