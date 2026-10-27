@@ -99,6 +99,7 @@ public sealed partial class MainWindow : Window
     }
 
     private bool _windowClosed;
+    private Type? _pendingNavigationPageType;
 
     public MainWindow()
     {
@@ -125,6 +126,7 @@ public sealed partial class MainWindow : Window
         _operationErrors = new OperationErrorPresenter(ContentFrame, _installManager, _libraryManager,
             App.GetService<DialogCoordinator>(), _log);
         Closed += Window_Closed;
+        ContentFrame.NavigationFailed += ContentFrame_NavigationFailed;
 
         _libraryManager.LibraryUpdated += LibraryUpdatedHandler;
         _libraryManager.GamesAdded += GamesAddedHandler;
@@ -407,6 +409,8 @@ public sealed partial class MainWindow : Window
 
     private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
     {
+        if (Equals(_pendingNavigationPageType, e.SourcePageType))
+            _pendingNavigationPageType = null;
         if (e.Content is LibraryPage)
         {
             ContentScroller.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
@@ -898,13 +902,21 @@ public sealed partial class MainWindow : Window
         Type navPageType,
         NavigationTransitionInfo transitionInfo)
     {
-        // Get the page type before navigation so you can prevent duplicate
-        // entries in the backstack.
-        var preNavPageType = ContentFrame.CurrentSourcePageType;
+        var currentPageType = ContentFrame.CurrentSourcePageType;
+        if (navPageType is null || Equals(currentPageType, navPageType) ||
+            Equals(_pendingNavigationPageType, navPageType))
+            return;
 
-        // Only navigate if the selected page isn't currently loaded.
-        if (navPageType is not null && !Equals(preNavPageType, navPageType))
-            ContentFrame.Navigate(navPageType, null, transitionInfo);
+        _pendingNavigationPageType = navPageType;
+        if (!ContentFrame.Navigate(navPageType, null, transitionInfo) &&
+            Equals(_pendingNavigationPageType, navPageType))
+            _pendingNavigationPageType = null;
+    }
+
+    private void ContentFrame_NavigationFailed(object sender, NavigationFailedEventArgs e)
+    {
+        if (Equals(_pendingNavigationPageType, e.SourcePageType))
+            _pendingNavigationPageType = null;
     }
     private void UpdateUIBasedOnAuthenticationStatus(AuthenticationStatus authStatus)
     {
@@ -914,11 +926,13 @@ public sealed partial class MainWindow : Window
         switch (authStatus)
         {
             case AuthenticationStatus.Checking:
-                NavControl.Visibility = Visibility.Collapsed;
+                StoreNavItem.IsEnabled = false;
+                GlobalSearchBox.IsEnabled = false;
+                NavControl.Visibility = Visibility.Visible;
                 LoginPage.Visibility = Visibility.Collapsed;
-                LoginModal.Visibility = Visibility.Visible;
-                LoginModalTitle.Text = UiStrings.CheckingAuthenticationStatus;
-                LoginModalDescription.Text = UiStrings.PleaseWait;
+                LoginModal.Visibility = Visibility.Collapsed;
+                NavControl.SelectedItem = NavControl.MenuItems[0];
+                NavControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
                 break;
 
             case AuthenticationStatus.LoggedOut:
@@ -928,7 +942,10 @@ public sealed partial class MainWindow : Window
                 _libraryCache.Clear();
                 RebuildInstalledMenu(force: true);
                 ClearGlobalSearch();
+                StoreNavItem.IsEnabled = false;
+                GlobalSearchBox.IsEnabled = false;
                 NavControl.Visibility = Visibility.Collapsed;
+                LoginModal.Visibility = Visibility.Collapsed;
                 LoginPage.Visibility = Visibility.Visible;
                 LoginPage.InitWebView();
                 break;
@@ -941,6 +958,8 @@ public sealed partial class MainWindow : Window
 
                 NavControl.Visibility = Visibility.Visible;
                 NavControl.IsEnabled = true;
+                StoreNavItem.IsEnabled = true;
+                GlobalSearchBox.IsEnabled = true;
                 LoginPage.Visibility = Visibility.Collapsed;
                 LoginModal.Visibility = Visibility.Collapsed;
                 NavControl.SelectedItem = NavControl.MenuItems[0];
@@ -948,27 +967,29 @@ public sealed partial class MainWindow : Window
                 Log.Information("Opening Library Page");
 
                 _installManager.LoadPendingInstalls();
+                _ = RefreshLibraryAsync();
 
-                Task.Run(async () =>
-                {
-                    try
-                    {
-                        await _libraryManager.GetLibraryData();
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.Error(ex, "MainWindow: could not load the installed games list");
-                    }
-                });
                 break;
 
             case AuthenticationStatus.LoginFailed:
                 LoginModalTitle.Text = UiStrings.LoginFailed;
                 LoginModalDescription.Text = UiStrings.PleaseTryAgain;
-                LoginModal.Visibility = Visibility.Visible;
                 NavControl.Visibility = Visibility.Collapsed;
+                LoginModal.Visibility = Visibility.Visible;
                 LoginPage.Visibility = Visibility.Visible;
                 break;
+        }
+    }
+
+    private async Task RefreshLibraryAsync()
+    {
+        try
+        {
+            await _libraryManager.GetLibraryData();
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "MainWindow: could not load the installed games list");
         }
     }
 

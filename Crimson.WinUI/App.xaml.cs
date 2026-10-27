@@ -209,7 +209,7 @@ namespace Crimson
             else
             {
                 ShowMainWindow();
-                await EnsureAuthenticationAsync();
+                await Task.Run(EnsureAuthenticationAsync);
             }
 
             while (_pendingActivations.TryDequeue(out var pending))
