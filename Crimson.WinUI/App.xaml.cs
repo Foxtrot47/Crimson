@@ -141,6 +141,10 @@ namespace Crimson
                 services.AddSingleton<EpicInstallDiscovery>(_ => new EpicInstallDiscovery(Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
                     "Epic", "EpicGamesLauncher", "Data", "Manifests")));
+                services.AddSingleton<IArtworkCache>(provider => new ArtworkCache(
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
+                    provider.GetRequiredService<ILogger>(),
+                    Path.Combine(GetAppDataPath(), "artwork")));
                 services.AddSingleton<LibraryManager>();
                 services.AddSingleton<IGameShortcutManager>(provider => new GameShortcutManager(
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),

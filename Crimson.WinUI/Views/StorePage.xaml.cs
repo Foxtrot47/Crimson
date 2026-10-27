@@ -22,7 +22,7 @@ public sealed partial class StorePage : Page
     private Uri _targetUri = StoreUri;
     private CoreWebView2Environment? _environment;
     private WebView2? _storeWebView;
-    private bool _ownershipRefreshed;
+    private readonly StoreLibraryRefreshPolicy _refreshPolicy = new();
 
     public StorePage()
     {
@@ -58,7 +58,7 @@ public sealed partial class StorePage : Page
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
-        if (!_ownershipRefreshed)
+        if (_refreshPolicy.OwnershipMayHaveChanged)
             _libraryManager.InvalidateCache();
         StorePopupWindow.CloseAll();
         CloseWebView();
@@ -97,6 +97,7 @@ public sealed partial class StorePage : Page
 
             await StoreWebIntegration.ApplyAsync(webView.CoreWebView2);
             webView.NavigationStarting += StoreNavigationStarting;
+            webView.CoreWebView2.FrameNavigationStarting += StoreFrameNavigationStarting;
             webView.NavigationCompleted += StoreNavigationCompleted;
             webView.CoreWebView2.DownloadStarting += StoreDownloadStarting;
             webView.CoreWebView2.NewWindowRequested += StoreNewWindowRequested;
@@ -114,6 +115,7 @@ public sealed partial class StorePage : Page
 
     private async void StoreNavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
     {
+        _refreshPolicy.ObserveNavigation(e.Uri);
         if (IsLauncherRequest(e.Uri))
         {
             _cancelledLauncherNavigation = true;
@@ -125,6 +127,9 @@ public sealed partial class StorePage : Page
         LoadingRing.IsActive = true;
         ErrorPanel.Visibility = Visibility.Collapsed;
     }
+
+    private void StoreFrameNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e) =>
+        _refreshPolicy.ObserveNavigation(e.Uri);
 
     private void StoreNavigationCompleted(object sender, CoreWebView2NavigationCompletedEventArgs e)
     {
@@ -163,7 +168,7 @@ public sealed partial class StorePage : Page
                 return;
 
             var popup = await StorePopupWindow.CreateAsync(
-                _environment, _log, HandleLauncherRequestAsync);
+                _environment, _log, HandleLauncherRequestAsync, _refreshPolicy.ObserveNavigation);
             e.NewWindow = popup.CoreWebView2;
         }
         catch (Exception ex)
@@ -190,9 +195,10 @@ public sealed partial class StorePage : Page
         LoadingRing.IsActive = true;
         try
         {
+            var revision = _refreshPolicy.Revision;
             _libraryManager.InvalidateCache();
             var games = await _libraryManager.GetLibraryData();
-            _ownershipRefreshed = true;
+            _refreshPolicy.MarkOwnershipRefreshed(revision);
             var game = games.FirstOrDefault(candidate =>
                 (catalogItemId is not null &&
                  string.Equals(candidate.AssetInfos?.Windows?.CatalogItemId, catalogItemId, StringComparison.OrdinalIgnoreCase) &&
@@ -288,6 +294,7 @@ public sealed partial class StorePage : Page
 
         if (webView.CoreWebView2 is not null)
         {
+            webView.CoreWebView2.FrameNavigationStarting -= StoreFrameNavigationStarting;
             webView.CoreWebView2.DownloadStarting -= StoreDownloadStarting;
             webView.CoreWebView2.NewWindowRequested -= StoreNewWindowRequested;
         }

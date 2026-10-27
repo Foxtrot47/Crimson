@@ -6,7 +6,10 @@ public sealed partial class LibraryItem : ObservableObject
 {
     public string Name { get; init; } = string.Empty;
     public string Title { get; init; } = string.Empty;
-    public string? ImageUrl { get; init; }
+    public string? SourceImageUrl { get; init; }
+
+    [ObservableProperty]
+    private string? _imageUrl;
 
     [ObservableProperty]
     private string _operationStatus = string.Empty;

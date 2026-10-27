@@ -1,4 +1,7 @@
 ﻿using System;
+using System.IO;
+using System.Threading.Tasks;
+using Serilog;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml;
 using CommunityToolkit.WinUI.Converters;
@@ -34,10 +37,34 @@ public class ImageUrlConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
-        return value is string imageUrl &&
-            EpicEndpointPolicy.TryGetContentUri(imageUrl, out var uri)
-                ? new BitmapImage(uri)
-                : null!;
+        if (value is not string imageUrl || !Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri))
+            return null!;
+
+        if (!uri.IsFile)
+            return EpicEndpointPolicy.IsAllowedContentUri(uri) ? new BitmapImage(uri) : null!;
+
+        var image = new BitmapImage();
+        _ = LoadCachedImageAsync(image, uri.LocalPath);
+        return image;
+    }
+
+    private static async Task LoadCachedImageAsync(BitmapImage image, string path)
+    {
+        try
+        {
+            using var file = File.OpenRead(path);
+            using var stream = file.AsRandomAccessStream();
+            await image.SetSourceAsync(stream);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Failed to decode cached artwork from {Path}; removing it so the cache can retry", path);
+            try { File.Delete(path); }
+            catch (Exception deleteException) when (deleteException is IOException or UnauthorizedAccessException)
+            {
+                Log.Warning(deleteException, "Failed to remove invalid cached artwork");
+            }
+        }
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
