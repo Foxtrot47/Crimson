@@ -18,7 +18,7 @@ public sealed class LibraryFilterTests : IDisposable
         uninstalled.Metadata.MainGameItem = null!;
         uninstalled.AppTitle = "Another game";
         typeof(LibraryManager).GetField("_lastUpdateDateTime", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .SetValue(_fixture.Library, DateTime.Now);
+            .SetValue(_fixture.Library, DateTimeOffset.Now);
     }
 
     [Fact]
