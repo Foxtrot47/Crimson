@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml;
 using CommunityToolkit.WinUI.Converters;
 using Crimson.Core;
 using Crimson.ViewModels;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 
@@ -44,11 +45,20 @@ public class ImageUrlConverter : IValueConverter
             return EpicEndpointPolicy.IsAllowedContentUri(uri) ? new BitmapImage(uri) : null!;
 
         var image = new BitmapImage();
-        _ = LoadCachedImageAsync(image, uri.LocalPath);
+        _ = CachedImageLoader.LoadFileAsync(image, uri.LocalPath);
         return image;
     }
 
-    private static async Task LoadCachedImageAsync(BitmapImage image, string path)
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>Loads artwork cache files into bitmaps; WinUI cannot read packaged app data paths by URI.</summary>
+public static class CachedImageLoader
+{
+    public static async Task LoadFileAsync(BitmapImage image, string path)
     {
         try
         {
@@ -67,9 +77,12 @@ public class ImageUrlConverter : IValueConverter
         }
     }
 
-    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    /// <summary>Resolves <paramref name="url"/> through the artwork cache and loads the result on the UI thread.</summary>
+    public static async Task LoadAsync(BitmapImage image, string? url, IArtworkCache cache, DispatcherQueue dispatcher)
     {
-        throw new NotImplementedException();
+        var uri = await cache.GetImageUriAsync(url).ConfigureAwait(false);
+        if (uri is null || !Uri.TryCreate(uri, UriKind.Absolute, out var local) || !local.IsFile) return;
+        dispatcher.TryEnqueue(() => _ = LoadFileAsync(image, local.LocalPath));
     }
 }
 

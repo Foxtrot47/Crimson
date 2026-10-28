@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Repository;
+using Crimson.Utils;
 using H.NotifyIcon;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
@@ -56,6 +57,7 @@ public sealed partial class MainWindow : Window
     private readonly OperationErrorPresenter _operationErrors;
     private readonly WindowSizeConstraints _windowSizeConstraints;
     private readonly NotificationService _notifications;
+    private readonly IArtworkCache _artworkCache;
 
     private List<Game> _libraryCache = new();
     private CancellationTokenSource? _storeSearchCancellation;
@@ -121,6 +123,7 @@ public sealed partial class MainWindow : Window
         _libraryManager = App.GetService<LibraryManager>();
         _storeRepository = App.GetService<IStoreRepository>();
         _notifications = App.GetService<NotificationService>();
+        _artworkCache = App.GetService<IArtworkCache>();
         Notifications.Bind(_notifications);
         _log = App.GetService<ILogger>();
         _operationErrors = new OperationErrorPresenter(ContentFrame, _installManager, _libraryManager,
@@ -797,7 +800,7 @@ public sealed partial class MainWindow : Window
         brush.GradientStops[2].Offset = offset;
     }
 
-    private static IconElement? CreateGameIcon(Game game)
+    private IconElement? CreateGameIcon(Game game)
     {
         var keyImages = game.Metadata?.KeyImages;
         if (keyImages is null) return null;
@@ -812,7 +815,8 @@ public sealed partial class MainWindow : Window
             DecodePixelType = DecodePixelType.Logical,
             DecodePixelHeight = GameIconBoxHeight * 2
         };
-        bitmap.UriSource = new Uri(url);
+        // Same image as the Library card, so it is usually already on disk and works offline.
+        _ = CachedImageLoader.LoadAsync(bitmap, url, _artworkCache, DispatcherQueue);
 
         return new ImageIcon { Source = bitmap, Width = GameIconBoxHeight, Height = GameIconBoxHeight };
     }
