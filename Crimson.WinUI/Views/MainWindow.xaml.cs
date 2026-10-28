@@ -319,19 +319,24 @@ public sealed partial class MainWindow : Window
             .ToList();
     }
 
-    private static ImageSource? CreateSearchThumbnail(Game game)
+    private ImageSource? CreateSearchThumbnail(Game game)
     {
         var url = game.Metadata?.KeyImages?
             .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
                   ?? game.Metadata?.KeyImages?
                       .FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
-        return CreateSearchThumbnail(url);
+        if (string.IsNullOrEmpty(url)) return null;
+
+        // Owned games reuse cached Library artwork instead of downloading on every keystroke.
+        var bitmap = new BitmapImage { DecodePixelType = DecodePixelType.Logical, DecodePixelHeight = 84 };
+        _ = CachedImageLoader.LoadAsync(bitmap, url, _artworkCache, DispatcherQueue);
+        return bitmap;
     }
 
+    // Store results are transient, so they load directly from the allowed Epic content hosts.
     private static ImageSource? CreateSearchThumbnail(string? url)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-            !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !EpicEndpointPolicy.IsAllowedContentUri(uri))
             return null;
 
         return new BitmapImage
