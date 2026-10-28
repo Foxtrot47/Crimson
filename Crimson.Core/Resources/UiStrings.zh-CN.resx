@@ -859,4 +859,31 @@
   <data name="AcrylicSaveFailed" xml:space="preserve">
     <value>无法保存亚克力效果设置。已恢复先前的设置。</value>
   </data>
+  <data name="CacheArtwork" xml:space="preserve">
+    <value>图片</value>
+  </data>
+  <data name="CacheClearIncomplete" xml:space="preserve">
+    <value>部分缓存文件无法删除。请关闭显示这些文件的页面后重试。</value>
+  </data>
+  <data name="CacheManifests" xml:space="preserve">
+    <value>清单</value>
+  </data>
+  <data name="CacheMetadata" xml:space="preserve">
+    <value>游戏元数据</value>
+  </data>
+  <data name="CacheStoreDetails" xml:space="preserve">
+    <value>商店详情</value>
+  </data>
+  <data name="CacheUsage" xml:space="preserve">
+    <value>缓存使用情况</value>
+  </data>
+  <data name="ClearCache" xml:space="preserve">
+    <value>清除</value>
+  </data>
+  <data name="OpenCacheFolder" xml:space="preserve">
+    <value>打开文件夹</value>
+  </data>
+  <data name="StorageSection" xml:space="preserve">
+    <value>存储</value>
+  </data>
 </root>

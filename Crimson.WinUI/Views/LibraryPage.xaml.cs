@@ -15,6 +15,7 @@ public sealed partial class LibraryPage : Page
     public LibraryPage()
     {
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Enabled;
         DataContext = App.GetService<LibraryViewModel>();
     }
 

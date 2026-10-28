@@ -17,7 +17,7 @@ public sealed class EpicImportTests : IDisposable
         _fixture.BaseGame.LocalAppState.Version = null!;
         _fixture.Storage.SaveUserData(new UserData { AccountId = "synthetic-import-owner" }).GetAwaiter().GetResult();
         typeof(LibraryManager).GetField("_lastUpdateDateTime", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .SetValue(_fixture.Library, DateTime.Now);
+            .SetValue(_fixture.Library, DateTimeOffset.Now);
     }
 
     [Fact]

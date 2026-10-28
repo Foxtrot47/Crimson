@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Repository;
+using Crimson.Utils;
 using H.NotifyIcon;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
@@ -55,6 +56,8 @@ public sealed partial class MainWindow : Window
     private readonly IStoreRepository _storeRepository;
     private readonly OperationErrorPresenter _operationErrors;
     private readonly WindowSizeConstraints _windowSizeConstraints;
+    private readonly NotificationService _notifications;
+    private readonly IArtworkCache _artworkCache;
 
     private List<Game> _libraryCache = new();
     private CancellationTokenSource? _storeSearchCancellation;
@@ -98,10 +101,12 @@ public sealed partial class MainWindow : Window
     }
 
     private bool _windowClosed;
+    private Type? _pendingNavigationPageType;
 
     public MainWindow()
     {
         InitializeComponent();
+        ContentFrame.CacheSize = 3;
         SetWindowIcon();
 
         _settingsManager = App.GetService<SettingsManager>();
@@ -117,12 +122,17 @@ public sealed partial class MainWindow : Window
         _installManager = App.GetService<InstallManager>();
         _libraryManager = App.GetService<LibraryManager>();
         _storeRepository = App.GetService<IStoreRepository>();
+        _notifications = App.GetService<NotificationService>();
+        _artworkCache = App.GetService<IArtworkCache>();
+        Notifications.Bind(_notifications);
         _log = App.GetService<ILogger>();
         _operationErrors = new OperationErrorPresenter(ContentFrame, _installManager, _libraryManager,
             App.GetService<DialogCoordinator>(), _log);
         Closed += Window_Closed;
+        ContentFrame.NavigationFailed += ContentFrame_NavigationFailed;
 
         _libraryManager.LibraryUpdated += LibraryUpdatedHandler;
+        _libraryManager.GamesAdded += GamesAddedHandler;
         _libraryManager.GameStatusUpdated += GameStatusUpdatedHandler;
         CurrentDownload.SummaryChanged += OnDownloadSummaryChanged;
         _installManager.OperationUpdated += OperationUpdatedHandler;
@@ -309,19 +319,24 @@ public sealed partial class MainWindow : Window
             .ToList();
     }
 
-    private static ImageSource? CreateSearchThumbnail(Game game)
+    private ImageSource? CreateSearchThumbnail(Game game)
     {
         var url = game.Metadata?.KeyImages?
             .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
                   ?? game.Metadata?.KeyImages?
                       .FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
-        return CreateSearchThumbnail(url);
+        if (string.IsNullOrEmpty(url)) return null;
+
+        // Owned games reuse cached Library artwork instead of downloading on every keystroke.
+        var bitmap = new BitmapImage { DecodePixelType = DecodePixelType.Logical, DecodePixelHeight = 84 };
+        _ = CachedImageLoader.LoadAsync(bitmap, url, _artworkCache, DispatcherQueue);
+        return bitmap;
     }
 
+    // Store results are transient, so they load directly from the allowed Epic content hosts.
     private static ImageSource? CreateSearchThumbnail(string? url)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-            !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !EpicEndpointPolicy.IsAllowedContentUri(uri))
             return null;
 
         return new BitmapImage
@@ -402,6 +417,8 @@ public sealed partial class MainWindow : Window
 
     private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
     {
+        if (Equals(_pendingNavigationPageType, e.SourcePageType))
+            _pendingNavigationPageType = null;
         if (e.Content is LibraryPage)
         {
             ContentScroller.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
@@ -503,6 +520,19 @@ public sealed partial class MainWindow : Window
             RebuildInstalledMenu();
             if (!string.IsNullOrWhiteSpace(GlobalSearchBox.Text))
                 BeginSearch(GlobalSearchBox.Text);
+        });
+    }
+
+    private void GamesAddedHandler(IReadOnlyList<Game> games)
+    {
+        var accountGeneration = _libraryManager.AccountGeneration;
+        var notification = LibraryNotification.ForAddedGames(games);
+        if (notification is null) return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (accountGeneration == _libraryManager.AccountGeneration &&
+                _authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn)
+                _notifications.Show(notification);
         });
     }
 
@@ -775,7 +805,7 @@ public sealed partial class MainWindow : Window
         brush.GradientStops[2].Offset = offset;
     }
 
-    private static IconElement? CreateGameIcon(Game game)
+    private IconElement? CreateGameIcon(Game game)
     {
         var keyImages = game.Metadata?.KeyImages;
         if (keyImages is null) return null;
@@ -790,7 +820,8 @@ public sealed partial class MainWindow : Window
             DecodePixelType = DecodePixelType.Logical,
             DecodePixelHeight = GameIconBoxHeight * 2
         };
-        bitmap.UriSource = new Uri(url);
+        // Same image as the Library card, so it is usually already on disk and works offline.
+        _ = CachedImageLoader.LoadAsync(bitmap, url, _artworkCache, DispatcherQueue);
 
         return new ImageIcon { Source = bitmap, Width = GameIconBoxHeight, Height = GameIconBoxHeight };
     }
@@ -880,13 +911,21 @@ public sealed partial class MainWindow : Window
         Type navPageType,
         NavigationTransitionInfo transitionInfo)
     {
-        // Get the page type before navigation so you can prevent duplicate
-        // entries in the backstack.
-        var preNavPageType = ContentFrame.CurrentSourcePageType;
+        var currentPageType = ContentFrame.CurrentSourcePageType;
+        if (navPageType is null || Equals(currentPageType, navPageType) ||
+            Equals(_pendingNavigationPageType, navPageType))
+            return;
 
-        // Only navigate if the selected page isn't currently loaded.
-        if (navPageType is not null && !Equals(preNavPageType, navPageType))
-            ContentFrame.Navigate(navPageType, null, transitionInfo);
+        _pendingNavigationPageType = navPageType;
+        if (!ContentFrame.Navigate(navPageType, null, transitionInfo) &&
+            Equals(_pendingNavigationPageType, navPageType))
+            _pendingNavigationPageType = null;
+    }
+
+    private void ContentFrame_NavigationFailed(object sender, NavigationFailedEventArgs e)
+    {
+        if (Equals(_pendingNavigationPageType, e.SourcePageType))
+            _pendingNavigationPageType = null;
     }
     private void UpdateUIBasedOnAuthenticationStatus(AuthenticationStatus authStatus)
     {
@@ -896,18 +935,26 @@ public sealed partial class MainWindow : Window
         switch (authStatus)
         {
             case AuthenticationStatus.Checking:
-                NavControl.Visibility = Visibility.Collapsed;
+                StoreNavItem.IsEnabled = false;
+                GlobalSearchBox.IsEnabled = false;
+                NavControl.Visibility = Visibility.Visible;
                 LoginPage.Visibility = Visibility.Collapsed;
-                LoginModal.Visibility = Visibility.Visible;
-                LoginModalTitle.Text = UiStrings.CheckingAuthenticationStatus;
-                LoginModalDescription.Text = UiStrings.PleaseWait;
+                LoginModal.Visibility = Visibility.Collapsed;
+                NavControl.SelectedItem = NavControl.MenuItems[0];
+                NavControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
                 break;
 
             case AuthenticationStatus.LoggedOut:
+                _notifications.Dismiss();
+                ContentFrame.CacheSize = 0;
+                ContentFrame.CacheSize = 3;
                 _libraryCache.Clear();
                 RebuildInstalledMenu(force: true);
                 ClearGlobalSearch();
+                StoreNavItem.IsEnabled = false;
+                GlobalSearchBox.IsEnabled = false;
                 NavControl.Visibility = Visibility.Collapsed;
+                LoginModal.Visibility = Visibility.Collapsed;
                 LoginPage.Visibility = Visibility.Visible;
                 LoginPage.InitWebView();
                 break;
@@ -920,6 +967,8 @@ public sealed partial class MainWindow : Window
 
                 NavControl.Visibility = Visibility.Visible;
                 NavControl.IsEnabled = true;
+                StoreNavItem.IsEnabled = true;
+                GlobalSearchBox.IsEnabled = true;
                 LoginPage.Visibility = Visibility.Collapsed;
                 LoginModal.Visibility = Visibility.Collapsed;
                 NavControl.SelectedItem = NavControl.MenuItems[0];
@@ -927,27 +976,29 @@ public sealed partial class MainWindow : Window
                 Log.Information("Opening Library Page");
 
                 _installManager.LoadPendingInstalls();
+                _ = RefreshLibraryAsync();
 
-                Task.Run(async () =>
-                {
-                    try
-                    {
-                        await _libraryManager.GetLibraryData();
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.Error(ex, "MainWindow: could not load the installed games list");
-                    }
-                });
                 break;
 
             case AuthenticationStatus.LoginFailed:
                 LoginModalTitle.Text = UiStrings.LoginFailed;
                 LoginModalDescription.Text = UiStrings.PleaseTryAgain;
-                LoginModal.Visibility = Visibility.Visible;
                 NavControl.Visibility = Visibility.Collapsed;
+                LoginModal.Visibility = Visibility.Visible;
                 LoginPage.Visibility = Visibility.Visible;
                 break;
+        }
+    }
+
+    private async Task RefreshLibraryAsync()
+    {
+        try
+        {
+            await _libraryManager.GetLibraryData();
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "MainWindow: could not load the installed games list");
         }
     }
 
@@ -981,6 +1032,8 @@ public sealed partial class MainWindow : Window
 
         _operationErrors.Dispose();
         _libraryManager.LibraryUpdated -= LibraryUpdatedHandler;
+        _libraryManager.GamesAdded -= GamesAddedHandler;
+        _notifications.Dismiss();
         _libraryManager.GameStatusUpdated -= GameStatusUpdatedHandler;
         CancelStoreSearch();
         CurrentDownload.SummaryChanged -= OnDownloadSummaryChanged;

@@ -79,7 +79,45 @@ public sealed class LibrarySessionTests : IDisposable
     }
 
     [Fact]
-    public async Task StoreProductDetailsAreCachedUntilInvalidated()
+    public async Task StoreDetailsPersistAcrossStorageRestartAndAccountChanges()
+    {
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        await storage.SaveUserData(new UserData { AccountId = "first" });
+        var details = new StoreProductDetails { ProductName = "Cached product" };
+        storage.SaveStoreProductDetailsCache("namespace", details, DateTimeOffset.UtcNow);
+
+        var reloaded = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        Assert.Equal("Cached product", reloaded.ReadStoreProductDetailsCache("namespace")?.Details.ProductName);
+
+        await reloaded.SaveUserData(new UserData { AccountId = "second" });
+        Assert.Equal("Cached product", reloaded.ReadStoreProductDetailsCache("namespace")?.Details.ProductName);
+
+        await reloaded.ClearUserData();
+        Assert.Equal("Cached product", reloaded.ReadStoreProductDetailsCache("namespace")?.Details.ProductName);
+    }
+
+    [Fact]
+    public async Task ExpiredStoreDetailsReturnFromDiskWhileRefreshing()
+    {
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        await storage.SaveUserData(new UserData { AccountId = "account" });
+        storage.SaveStoreProductDetailsCache("example-namespace",
+            new StoreProductDetails { ProductName = "Stale product" }, DateTimeOffset.UtcNow.AddDays(-2));
+        var repository = new ControlledRepository();
+        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new LibraryManager(_logger, repository, storage, auth);
+        var updated = new TaskCompletionSource<StoreProductDetails>(TaskCreationOptions.RunContinuationsAsynchronously);
+        library.StoreProductDetailsUpdated += (_, details) => updated.TrySetResult(details);
+
+        var displayed = await library.GetStoreProductDetails("example-namespace");
+
+        Assert.Equal("Stale product", displayed?.ProductName);
+        Assert.Equal("Product 1", (await updated.Task.WaitAsync(TimeSpan.FromSeconds(5))).ProductName);
+        Assert.Equal(1, repository.ProductRequests);
+    }
+
+    [Fact]
+    public async Task StoreProductDetailsSurviveOwnershipInvalidation()
     {
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         var repository = new ControlledRepository();
@@ -89,31 +127,11 @@ public sealed class LibrarySessionTests : IDisposable
         var first = await library.GetStoreProductDetails("example-namespace");
         var second = await library.GetStoreProductDetails("example-namespace");
         library.InvalidateCache();
-        var refreshed = await library.GetStoreProductDetails("example-namespace");
+        var afterInvalidation = await library.GetStoreProductDetails("example-namespace");
 
         Assert.Same(first, second);
-        Assert.NotSame(first, refreshed);
-        Assert.Equal(2, repository.ProductRequests);
-    }
-
-    [Fact]
-    public async Task InFlightStoreDetailsDoNotRepopulateInvalidatedCache()
-    {
-        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
-        var repository = new ControlledRepository { DelayNextProductRequest = true };
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
-        var library = new LibraryManager(_logger, repository, storage, auth);
-
-        var staleRequest = library.GetStoreProductDetails("example-namespace");
-        await repository.ProductRequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        library.InvalidateCache();
-        repository.DelayedProduct.SetResult(new StoreProductDetails { ProductName = "Stale" });
-        await staleRequest.WaitAsync(TimeSpan.FromSeconds(5));
-
-        var refreshed = await library.GetStoreProductDetails("example-namespace");
-
-        Assert.Equal("Product 2", refreshed?.ProductName);
-        Assert.Equal(2, repository.ProductRequests);
+        Assert.Same(first, afterInvalidation);
+        Assert.Equal(1, repository.ProductRequests);
     }
 
     [Fact]
@@ -152,29 +170,15 @@ public sealed class LibrarySessionTests : IDisposable
         Assert.Equal(2, repository.ProductRequests);
     }
 
-    [Theory]
-    [InlineData(6540L, 1)]
-    [InlineData(0L, 1)]
-    [InlineData(null, 2)]
-    public async Task PlaytimeCachesOnlySuccessfulResults(long? seconds, int expectedRequests)
-    {
-        var (library, repository, _) = await PlaytimeLibrary();
-        repository.PlaytimeSeconds = seconds;
-
-        Assert.Equal(seconds, await library.GetGamePlaytimeSeconds("second"));
-        Assert.Equal(seconds, await library.GetGamePlaytimeSeconds("second"));
-        Assert.Equal(expectedRequests, repository.PlaytimeRequests);
-    }
-
     [Fact]
-    public async Task PlaytimeInvalidationRefreshesCachedResult()
+    public async Task PlaytimeIsFetchedOnEveryRequest()
     {
         var (library, repository, _) = await PlaytimeLibrary();
+
         Assert.Equal(6540L, await library.GetGamePlaytimeSeconds("second"));
         repository.PlaytimeSeconds = 7200;
-        library.InvalidateCache();
-
         Assert.Equal(7200L, await library.GetGamePlaytimeSeconds("second"));
+
         Assert.Equal(2, repository.PlaytimeRequests);
     }
 
@@ -199,35 +203,7 @@ public sealed class LibrarySessionTests : IDisposable
     }
 
     [Fact]
-    public async Task InvalidationDiscardsInflightPlaytime()
-    {
-        var (library, repository, _) = await PlaytimeLibrary();
-        repository.DelayPlaytime = true;
-        var pending = library.GetGamePlaytimeSeconds("second");
-        library.InvalidateCache();
-        repository.DelayedPlaytime.SetResult(99999);
-        Assert.Null(await pending.WaitAsync(TimeSpan.FromSeconds(5)));
-
-        repository.DelayPlaytime = false;
-        repository.PlaytimeSeconds = 42;
-        Assert.Equal(42L, await library.GetGamePlaytimeSeconds("second"));
-    }
-
-    [Fact]
-    public async Task ConcurrentPlaytimeRequestsShareTheCachedResult()
-    {
-        var (library, repository, _) = await PlaytimeLibrary();
-        repository.DelayPlaytime = true;
-        var first = library.GetGamePlaytimeSeconds("second");
-        var second = library.GetGamePlaytimeSeconds("second");
-        repository.DelayedPlaytime.SetResult(6540);
-
-        Assert.Equal(new long?[] { 6540, 6540 }, await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.Equal(1, repository.PlaytimeRequests);
-    }
-
-    [Fact]
-    public async Task CancelledPlaytimeReleasesGateForRetry()
+    public async Task CancelledPlaytimeAllowsRetry()
     {
         var (library, repository, _) = await PlaytimeLibrary();
         repository.DelayPlaytime = true;
@@ -250,7 +226,7 @@ public sealed class LibrarySessionTests : IDisposable
     }
 
     [Fact]
-    public async Task GameInfoDisplaysPlaytimeAndIgnoresQueuedUpdatesFromPreviousNavigation()
+    public async Task GameInfoRefetchesPlaytimeForEveryNavigation()
     {
         var (library, repository, _) = await PlaytimeLibrary();
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
@@ -260,10 +236,10 @@ public sealed class LibrarySessionTests : IDisposable
 
         await viewModel.OnNavigatedTo("second");
         viewModel.OnNavigatedFrom();
-        library.InvalidateCache();
         repository.PlaytimeSeconds = 7200;
-        await viewModel.OnNavigatedTo("second");
-        Assert.Equal("Loading…", viewModel.TotalPlayTimeText);
+        var navigation = viewModel.OnNavigatedTo("second");
+        Assert.Equal(string.Empty, viewModel.TotalPlayTimeText);
+        await navigation;
         dispatcher.Flush();
 
         Assert.Equal("2h 0m", viewModel.TotalPlayTimeText);
@@ -273,7 +249,7 @@ public sealed class LibrarySessionTests : IDisposable
     [Theory]
     [InlineData(6540L, "1h 49m")]
     [InlineData(null, "Unavailable")]
-    public async Task GameInfoShowsLoadingUntilPlaytimeRequestFinishes(long? seconds, string expected)
+    public async Task GameInfoShowsEmptyUntilPlaytimeRequestFinishes(long? seconds, string expected)
     {
         var (library, repository, _) = await PlaytimeLibrary();
         repository.DelayPlaytime = true;
@@ -281,7 +257,7 @@ public sealed class LibrarySessionTests : IDisposable
         var viewModel = PlaytimeViewModel(library, repository, dispatcher);
         var pending = viewModel.OnNavigatedTo("second");
         dispatcher.Flush();
-        Assert.Equal("Loading…", viewModel.TotalPlayTimeText);
+        Assert.Equal(string.Empty, viewModel.TotalPlayTimeText);
 
         repository.DelayedPlaytime.SetResult(seconds);
         await pending.WaitAsync(TimeSpan.FromSeconds(5));
@@ -300,7 +276,7 @@ public sealed class LibrarySessionTests : IDisposable
         var viewModel = PlaytimeViewModel(library, repository, dispatcher);
         var pending = viewModel.OnNavigatedTo("second");
         dispatcher.Flush();
-        Assert.Equal("Loading…", viewModel.TotalPlayTimeText);
+        Assert.Equal(string.Empty, viewModel.TotalPlayTimeText);
         Assert.Equal("Loading…", viewModel.PublisherName);
         Assert.Equal("Loading…", viewModel.ReleaseDateText);
         Assert.True(viewModel.IsDetailsLoading);

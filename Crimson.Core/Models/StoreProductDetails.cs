@@ -5,6 +5,10 @@ using System.Text.Json;
 
 namespace Crimson.Models;
 
+/// <summary>
+/// Public Store metadata. It is cached globally across accounts, so do not add
+/// account-derived values (personalized pricing, entitlement or ownership state) here.
+/// </summary>
 public sealed class StoreProductDetails
 {
     public string? ProductName { get; init; }

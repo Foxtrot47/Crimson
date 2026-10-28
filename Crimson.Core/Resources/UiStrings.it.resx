@@ -859,4 +859,31 @@
   <data name="AcrylicSaveFailed" xml:space="preserve">
     <value>Impossibile salvare l’impostazione Acrylic. È stata ripristinata l’impostazione precedente.</value>
   </data>
+  <data name="CacheArtwork" xml:space="preserve">
+    <value>Immagini</value>
+  </data>
+  <data name="CacheClearIncomplete" xml:space="preserve">
+    <value>Impossibile rimuovere alcuni file nella cache. Chiudi le pagine che li mostrano e riprova.</value>
+  </data>
+  <data name="CacheManifests" xml:space="preserve">
+    <value>Manifest</value>
+  </data>
+  <data name="CacheMetadata" xml:space="preserve">
+    <value>Metadati dei giochi</value>
+  </data>
+  <data name="CacheStoreDetails" xml:space="preserve">
+    <value>Dettagli dello store</value>
+  </data>
+  <data name="CacheUsage" xml:space="preserve">
+    <value>Utilizzo della cache</value>
+  </data>
+  <data name="ClearCache" xml:space="preserve">
+    <value>Cancella</value>
+  </data>
+  <data name="OpenCacheFolder" xml:space="preserve">
+    <value>Apri cartella</value>
+  </data>
+  <data name="StorageSection" xml:space="preserve">
+    <value>Archiviazione</value>
+  </data>
 </root>

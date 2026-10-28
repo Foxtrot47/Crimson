@@ -22,11 +22,15 @@ namespace Crimson.ViewModels;
 public partial class GameInfoViewModel : ObservableObject, INavigationAware
 {
     private readonly IUiDispatcher _uiDispatcher;
+    private readonly IArtworkCache? _artworkCache;
+    private int _navigationGeneration;
     private readonly InstallManager _installer;
     private readonly LibraryManager _libraryManager;
     private readonly Storage _storage;
     private readonly ILogger<GameInfoViewModel> _log;
     private CancellationTokenSource? _storeDetailsCancellation;
+    private Action<string, StoreProductDetails>? _storeDetailsUpdatedHandler;
+    private int _storeDetailsUpdateVersion;
     private int _noticeGeneration;
 
     [ObservableProperty]
@@ -146,9 +150,11 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
             InstallManager installer,
             LibraryManager libraryManager,
             Storage storage,
-            IUiDispatcher uiDispatcher)
+            IUiDispatcher uiDispatcher,
+            IArtworkCache? artworkCache = null)
     {
         _uiDispatcher = uiDispatcher;
+        _artworkCache = artworkCache;
         _log = logger;
         _installer = installer;
         _libraryManager = libraryManager;
@@ -158,15 +164,31 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
     public async Task OnNavigatedTo(object parameter)
     {
+        OnNavigatedFrom();
         if (parameter is not string appName) return;
 
-        UnregisterEventHandlers();
-        CancelStoreDetailsRequest();
+        var generation = Volatile.Read(ref _navigationGeneration);
+        var accountGeneration = _libraryManager.AccountGeneration;
         Game = _libraryManager.GetGameInfo(appName);
         if (Game is null) return;
 
+        var gameNamespace = Game.Metadata.Namespace;
         ActionErrorMessage = string.Empty;
         ApplyCatalogMetadata(Game);
+        _ = CacheGameArtworkAsync(Game, generation, accountGeneration);
+        _storeDetailsUpdatedHandler = (nameSpace, details) =>
+        {
+            if (!string.Equals(nameSpace, gameNamespace, StringComparison.Ordinal)) return;
+            Interlocked.Increment(ref _storeDetailsUpdateVersion);
+            _uiDispatcher.TryEnqueue(() =>
+            {
+                if (generation != Volatile.Read(ref _navigationGeneration) ||
+                    accountGeneration != _libraryManager.AccountGeneration || Game?.AppName != appName) return;
+                ApplyStoreDetails(details);
+                IsDetailsLoading = false;
+            });
+        };
+        _libraryManager.StoreProductDetailsUpdated += _storeDetailsUpdatedHandler;
         _installer.OperationError += HandleActionNotice;
         _libraryManager.GameStatusUpdated += CheckGameStatus;
         _installer.OperationUpdated += HandleOperationUpdated;
@@ -174,8 +196,33 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
         _storeDetailsCancellation = new CancellationTokenSource();
         await Task.WhenAll(
-            LoadStoreDetails(appName, Game.Metadata.Namespace, _storeDetailsCancellation.Token),
+            LoadStoreDetails(appName, gameNamespace, _storeDetailsCancellation.Token),
             LoadPlaytime(appName, _storeDetailsCancellation.Token));
+    }
+
+    private async Task CacheGameArtworkAsync(Game game, int generation, int accountGeneration)
+    {
+        if (_artworkCache is null) return;
+        var coverUrl = CoverImageUrl;
+        var heroUrl = HeroImageUrl;
+
+        try
+        {
+            var images = await Task.WhenAll(
+                _artworkCache.GetImageUriAsync(coverUrl),
+                _artworkCache.GetImageUriAsync(heroUrl));
+            _uiDispatcher.TryEnqueue(() =>
+            {
+                if (generation != Volatile.Read(ref _navigationGeneration) ||
+                    accountGeneration != _libraryManager.AccountGeneration || !ReferenceEquals(Game, game)) return;
+                CoverImageUrl = images[0];
+                HeroImageUrl = images[1];
+            });
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to load game artwork");
+        }
     }
 
     private void HandleActionNotice(OperationSnapshot operation)
@@ -197,6 +244,9 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _installer.OperationError -= HandleActionNotice;
         _libraryManager.GameStatusUpdated -= CheckGameStatus;
         _installer.OperationUpdated -= HandleOperationUpdated;
+        if (_storeDetailsUpdatedHandler is not null)
+            _libraryManager.StoreProductDetailsUpdated -= _storeDetailsUpdatedHandler;
+        _storeDetailsUpdatedHandler = null;
     }
 
     private void CancelStoreDetailsRequest()
@@ -341,6 +391,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         string nameSpace,
         CancellationToken cancellationToken)
     {
+        var updateVersion = Volatile.Read(ref _storeDetailsUpdateVersion);
         IsDetailsLoading = true;
         StoreProductDetails? details = null;
         try
@@ -359,7 +410,8 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _uiDispatcher.TryEnqueue(() =>
         {
             if (cancellationToken.IsCancellationRequested || Game?.AppName != appName) return;
-            ApplyStoreDetails(details);
+            if (updateVersion == Volatile.Read(ref _storeDetailsUpdateVersion))
+                ApplyStoreDetails(details);
             IsDetailsLoading = false;
         });
     }
@@ -409,7 +461,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         TagsText = string.Empty;
         HasTags = false;
         ReleaseDateText = UiStrings.LoadingEllipsis;
-        TotalPlayTimeText = UiStrings.LoadingEllipsis;
+        TotalPlayTimeText = string.Empty;
         WindowsRequirements = [];
         HasWindowsRequirements = false;
         IsStoreDetailsUnavailable = false;
@@ -541,6 +593,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
     public void OnNavigatedFrom()
     {
+        Interlocked.Increment(ref _navigationGeneration);
         UnregisterEventHandlers();
         CancelStoreDetailsRequest();
     }

@@ -252,6 +252,45 @@ public sealed class SettingsViewModelTests : IDisposable
         Assert.False(model.HasAcrylicError);
     }
 
+    [Fact]
+    public async Task CacheUsageReportsCategoriesAndClearsOnlyRemovableCaches()
+    {
+        var storage = new Storage(_logger, _appDataPath, Path.Combine(_appDataPath, "games"));
+        var settings = new SettingsManager(storage, NullLogger<SettingsManager>.Instance,
+            Path.Combine(_appDataPath, "games"), Path.Combine(_appDataPath, "logs"));
+        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), new HttpClient());
+        var artworkDirectory = Path.Combine(_appDataPath, "artwork");
+        Directory.CreateDirectory(artworkDirectory);
+        File.WriteAllBytes(Path.Combine(artworkDirectory, "a.image"), new byte[300]);
+        File.WriteAllBytes(Path.Combine(_appDataPath, "manifests", "game_1.manifest"), new byte[200]);
+        File.WriteAllBytes(Path.Combine(_appDataPath, "store-details.json"), new byte[100]);
+        var artwork = new ArtworkCache(new HttpClient(), _logger, artworkDirectory);
+        var library = new LibraryManager(_logger, null!, storage, auth);
+        var folderLauncher = new RecordingFolderLauncher();
+        var model = new SettingsViewModel(settings, auth, folderLauncher, storage, artwork, library);
+
+        await model.LoadCacheUsageCommand.ExecuteAsync(null);
+
+        Assert.Equal(300, model.ArtworkCache.Bytes);
+        Assert.Equal(200, model.ManifestCache.Bytes);
+        Assert.Equal(100, model.StoreDetailsCache.Bytes);
+        Assert.False(string.IsNullOrEmpty(model.CacheTotalText));
+
+        await model.ClearCacheCommand.ExecuteAsync(model.ManifestCache);
+        Assert.Equal(200, model.ManifestCache.Bytes);
+
+        var generation = artwork.Generation;
+        await model.ClearCacheCommand.ExecuteAsync(model.ArtworkCache);
+        await model.ClearCacheCommand.ExecuteAsync(model.StoreDetailsCache);
+        Assert.Equal(0, model.ArtworkCache.Bytes);
+        Assert.Equal(0, model.StoreDetailsCache.Bytes);
+        Assert.Equal(generation + 1, artwork.Generation);
+        Assert.False(model.HasCacheError);
+
+        model.OpenCacheDirectoryCommand.Execute(null);
+        Assert.Equal(Path.GetFullPath(_appDataPath), folderLauncher.OpenedPath);
+    }
+
     private static async Task WaitForAcrylicSave(SettingsViewModel model)
     {
         var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

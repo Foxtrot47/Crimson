@@ -159,7 +159,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
                 if (!IsCurrentInitialization(generation))
                     return;
 
-                BaseGameSize = FormatSize(sizes[gameInfo.AppName].WriteBytes);
+                BaseGameSize = SizeFormatter.Format(sizes[gameInfo.AppName].WriteBytes);
                 UpdateContentTotals(generation);
             });
 
@@ -226,8 +226,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
             write += size.WriteBytes;
         }
         generation.InstallSize = write;
-        TotalDownloadSize = FormatSize(download);
-        TotalInstallSize = FormatSize(write);
+        TotalDownloadSize = SizeFormatter.Format(download);
+        TotalInstallSize = SizeFormatter.Format(write);
         CanInstall = generation.AvailableFreeSpace is { } free && free > write;
     }
 
@@ -304,8 +304,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
         generation.AvailableFreeSpace = driveInfo.AvailableFreeSpace;
         var usedSpace = driveInfo.TotalSize - driveInfo.AvailableFreeSpace;
         DriveSpaceUsagePercent = ((double)usedSpace / driveInfo.TotalSize) * 100;
-        DriveSpaceAvailable = FormatSize(driveInfo.AvailableFreeSpace);
-        DriveTotalSpace = FormatSize(driveInfo.TotalSize);
+        DriveSpaceAvailable = SizeFormatter.Format(driveInfo.AvailableFreeSpace);
+        DriveTotalSpace = SizeFormatter.Format(driveInfo.TotalSize);
         UpdateContentTotals(generation);
         IsLoadingContent = false;
     }
@@ -392,21 +392,6 @@ public partial class AppInstallDialogViewModel : ObservableObject
                 UiStrings.TheInstallationWasQueuedButCrimsonCouldNotRememberItsFolder,
                 UiStrings.ChooseTheFolderAgainNextTimeCheckAppDataPermissionsIfThisContinues, false));
         }
-    }
-
-    private string FormatSize(double bytes)
-    {
-        string[] sizes = [UiStrings.B, UiStrings.KB, UiStrings.MB, UiStrings.GB, UiStrings.TB];
-        var order = 0;
-        var size = bytes;
-
-        while (size >= 1024 && order < sizes.Length - 1)
-        {
-            order++;
-            size /= 1024;
-        }
-
-        return UiStrings.Format(UiStrings.SizeWithUnitFormat, size, sizes[order]);
     }
 }
 

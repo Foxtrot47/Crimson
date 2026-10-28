@@ -1127,4 +1127,40 @@
     <value>The Acrylic setting could not be saved. The previous setting has been restored.</value>
     <comment>Used by: Crimson.Core/ViewModels/SettingsViewModel.cs; inline Acrylic preference save error.</comment>
   </data>
+  <data name="CacheArtwork" xml:space="preserve">
+    <value>Artwork</value>
+    <comment>Used by: Crimson.Core/ViewModels/SettingsViewModel.cs; cache usage category.</comment>
+  </data>
+  <data name="CacheClearIncomplete" xml:space="preserve">
+    <value>Some cached files could not be removed. Try again after closing pages that show them.</value>
+    <comment>Used by: Crimson.Core/ViewModels/SettingsViewModel.cs; inline cache clear error.</comment>
+  </data>
+  <data name="CacheManifests" xml:space="preserve">
+    <value>Manifests</value>
+    <comment>Used by: Crimson.Core/ViewModels/SettingsViewModel.cs; cache usage category.</comment>
+  </data>
+  <data name="CacheMetadata" xml:space="preserve">
+    <value>Game metadata</value>
+    <comment>Used by: Crimson.Core/ViewModels/SettingsViewModel.cs; cache usage category.</comment>
+  </data>
+  <data name="CacheStoreDetails" xml:space="preserve">
+    <value>Store details</value>
+    <comment>Used by: Crimson.Core/ViewModels/SettingsViewModel.cs; cache usage category.</comment>
+  </data>
+  <data name="CacheUsage" xml:space="preserve">
+    <value>Cache usage</value>
+    <comment>Used by: Crimson.WinUI/Views/StorageSettingsPage.xaml @Text; @AutomationProperties.Name</comment>
+  </data>
+  <data name="ClearCache" xml:space="preserve">
+    <value>Clear</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Content</comment>
+  </data>
+  <data name="OpenCacheFolder" xml:space="preserve">
+    <value>Open folder</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Content</comment>
+  </data>
+  <data name="StorageSection" xml:space="preserve">
+    <value>Storage</value>
+    <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Header; Crimson.WinUI/Views/StorageSettingsPage.xaml @Text</comment>
+  </data>
 </root>

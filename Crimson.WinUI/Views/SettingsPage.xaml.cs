@@ -3,6 +3,7 @@ using Crimson.Core;
 using Crimson.Resources;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.Windows.AppLifecycle;
 using System;
 using System.Threading.Tasks;
@@ -91,6 +92,9 @@ namespace Crimson.Views
             };
             return await dialog.ShowAsync();
         }
+
+        private void StorageSettingsClicked(object sender, RoutedEventArgs e) =>
+            Frame.Navigate(typeof(StorageSettingsPage), null, new SlideNavigationTransitionInfo { Effect = SlideNavigationTransitionEffect.FromRight });
 
         public SettingsPage()
         {

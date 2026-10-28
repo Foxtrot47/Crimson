@@ -32,7 +32,7 @@
                             Height="300"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}}"
+                            Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}, Mode=OneWay}"
                             Stretch="UniformToFill" />
                         <StackPanel MaxWidth="226" Spacing="8">
                             <TextBlock
