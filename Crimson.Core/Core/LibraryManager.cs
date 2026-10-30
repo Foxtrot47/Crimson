@@ -29,11 +29,25 @@ public class LibraryManager
     private readonly IStoreRepository _storeRepository;
     private readonly Storage _storage;
     private readonly AuthManager _authManager;
+    private readonly CloudSaveManager? _cloudSaveManager;
+    private readonly IGameProcessLauncher _processLauncher;
 
     internal int AccountGeneration => _storage.AccountGeneration;
 
     public event Action<IEnumerable<Game>> LibraryUpdated;
     public event Action<Game> GameStatusUpdated;
+
+    /// <summary>
+    /// Raised when a game's process tree starts or fully exits. Runtime-only state; a
+    /// Crimson restart while a game runs loses it.
+    /// </summary>
+    public event Action<string, bool>? GameRunningStateChanged;
+
+    public bool IsGameRunning(string appName)
+    {
+        lock (_operationLock)
+            return _runningGames.Contains(appName);
+    }
 
     /// <summary>
     /// Raised once per newly owned base game, after its metadata is available. The first
@@ -53,17 +67,21 @@ public class LibraryManager
     private bool _emptyOwnershipHeld;
     private readonly object _operationLock = new();
     private readonly Dictionary<string, Guid> _activeOperationApps = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _runningGames = new(StringComparer.Ordinal);
     private readonly HashSet<string> _pendingAddedAppNames = new(StringComparer.Ordinal);
     private volatile bool _authenticationCheckInProgress;
 
     public bool IsAuthenticationCheckInProgress => _authenticationCheckInProgress;
 
-    public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager)
+    public LibraryManager(ILogger log, IStoreRepository repository, Storage storage, AuthManager authManager,
+        CloudSaveManager? cloudSaveManager = null, IGameProcessLauncher? processLauncher = null)
     {
         _log = log;
         _storeRepository = repository;
         _storage = storage;
         _authManager = authManager;
+        _cloudSaveManager = cloudSaveManager;
+        _processLauncher = processLauncher ?? new DefaultGameProcessLauncher();
         _authManager.AuthStatusChanged += OnAuthStatusChanged;
     }
 
@@ -343,11 +361,18 @@ public class LibraryManager
         string? ownershipTokenPath = null;
         try
         {
+            // A tray or shortcut launch must wait for a sync that is still running for
+            // this game instead of racing it.
+            if (_cloudSaveManager is not null)
+                await _cloudSaveManager.WaitForIdleAsync(appName);
+
             var launchContext = GetLaunchContext(appName);
             if (launchContext is null)
                 return false;
 
             var (gameInfo, game) = launchContext.Value;
+            if (_cloudSaveManager is not null)
+                await _cloudSaveManager.SyncBeforeLaunchAsync(game);
             var credentials = await GetLaunchCredentialsAsync(appName);
             if (credentials is null)
                 return false;
@@ -459,19 +484,38 @@ public class LibraryManager
             WorkingDirectory = gameInfo.InstallPath
         };
 
-        var process = new Process { StartInfo = startInfo };
-        if (!process.Start())
+        var process = _processLauncher.Start(startInfo);
+        if (process is null)
         {
-            process.Dispose();
             DeleteOwnershipToken(ownershipTokenPath);
             return false;
         }
 
-        if (ownershipTokenPath is null)
-            process.Dispose();
-        else
-            _ = DeleteOwnershipTokenAfterExitAsync(process, ownershipTokenPath);
+        var syncSavesAfterExit = _cloudSaveManager is not null && CloudSaveManager.SupportsCloudSaves(game);
+        SetGameRunning(game.AppName, true);
+        _ = AfterGameExitAsync(process, ownershipTokenPath, game, syncSavesAfterExit);
         return true;
+    }
+
+    internal void SetGameRunning(string appName, bool isRunning)
+    {
+        lock (_operationLock)
+        {
+            var changed = isRunning ? _runningGames.Add(appName) : _runningGames.Remove(appName);
+            if (!changed)
+                return;
+        }
+
+        try
+        {
+            GameRunningStateChanged?.Invoke(appName, isRunning);
+        }
+        catch (Exception ex)
+        {
+            // A throwing observer must not strand the launch path (untracked game, leaked
+            // process handle) or suppress the exit-path save sync.
+            _log.Warning(ex, "A game-running observer for {AppName} failed", appName);
+        }
     }
 
     private bool CanLaunch(Game? game)
@@ -494,8 +538,17 @@ public class LibraryManager
             return false;
         }
 
+        if (IsGameRunning(game.AppName) && !AllowsMultipleInstances(game))
+        {
+            _log.Warning("LaunchApp: Game is already running");
+            return false;
+        }
+
         return true;
     }
+
+    internal static bool AllowsMultipleInstances(Game game) =>
+        bool.TryParse(game.Metadata.CustomAttributes?.AllowMultipleInstances?.Value, out var allowed) && allowed;
 
     private async Task<string> CreateOwnershipTokenFileAsync(Game game)
     {
@@ -541,20 +594,39 @@ public class LibraryManager
         return string.Join(" ", parameters);
     }
 
-    private async Task DeleteOwnershipTokenAfterExitAsync(Process process, string path)
+    private async Task AfterGameExitAsync(
+        IGameProcessHandle process,
+        string? ownershipTokenPath,
+        Game game,
+        bool syncSavesAfterExit)
     {
         try
         {
-            await process.WaitForExitAsync();
+            await process.Exited;
         }
         catch (Exception ex)
         {
-            _log.Warning(ex, "Failed while waiting to remove an ownership token");
+            _log.Warning(ex, "Failed while waiting for a game to exit");
         }
         finally
         {
             process.Dispose();
-            DeleteOwnershipToken(path);
+            DeleteOwnershipToken(ownershipTokenPath);
+        }
+
+        try
+        {
+            // Keep the game marked as running until the post-exit sync finishes: a launch
+            // from the tray or a shortcut must not start a new session while the save is
+            // still being uploaded or replaced.
+            if (syncSavesAfterExit && _cloudSaveManager is not null)
+                await _cloudSaveManager.SyncAfterExitAsync(
+                    game,
+                    onFinished: () => SetGameRunning(game.AppName, false));
+        }
+        finally
+        {
+            SetGameRunning(game.AppName, false);
         }
     }
 
@@ -686,7 +758,8 @@ public class LibraryManager
                 (asset.BuildVersion != game.AssetInfos?.Windows?.BuildVersion ||
                  asset.CatalogItemId != game.AssetInfos?.Windows?.CatalogItemId ||
                  asset.Namespace != game.AssetInfos?.Windows?.Namespace);
-            if (game is not null && !forceMetadataUpdate && !assetUpdated)
+            var metadataOutdated = game is not null && game.MetadataRevision < Game.CurrentMetadataRevision;
+            if (game is not null && !forceMetadataUpdate && !assetUpdated && !metadataOutdated)
                 continue;
 
             _log.Debug("Scheduling metadata update for {AppName}", asset.AppName);
@@ -717,6 +790,7 @@ public class LibraryManager
             {
                 AppName = item.AppName,
                 AppTitle = metadata.Title,
+                MetadataRevision = Game.CurrentMetadataRevision,
                 AssetInfos = new AssetInfos
                 {
                     Windows = gameAssets.First(asset => asset.AppName == item.AppName)

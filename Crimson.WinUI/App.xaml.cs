@@ -10,6 +10,7 @@ using Crimson.Repository;
 using Crimson.Utils;
 using Crimson.ViewModels;
 using Crimson.Views;
+using Crimson.WinUI.Core;
 using H.NotifyIcon;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -146,6 +147,9 @@ namespace Crimson
                     provider.GetRequiredService<ILogger>(),
                     Path.Combine(GetAppDataPath(), "artwork")));
                 services.AddSingleton<NotificationService>();
+                services.AddSingleton<IGameProcessLauncher>(provider => new WindowsGameProcessLauncher(
+                    provider.GetRequiredService<ILogger>()));
+                services.AddSingleton<CloudSaveManager>();
                 services.AddSingleton<LibraryManager>();
                 services.AddSingleton<IGameShortcutManager>(provider => new GameShortcutManager(
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
