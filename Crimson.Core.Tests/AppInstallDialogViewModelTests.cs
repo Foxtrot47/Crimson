@@ -634,5 +634,17 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
 
         public Task<byte[]?> GetOwnershipToken(string nameSpace, string catalogItemId) =>
             throw new NotSupportedException();
+
+        public Task<IReadOnlyDictionary<string, CloudSaveFileEntry>?> GetCloudSaveFilesAsync(string appName, bool manifestsOnly, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyDictionary<string, CloudSaveFileEntry>?> CreateCloudSaveFilesAsync(string appName, IReadOnlyList<string> files, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<byte[]?> DownloadCloudSaveFileAsync(string readLink, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<bool> UploadCloudSaveFileAsync(string writeLink, byte[] data, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }
