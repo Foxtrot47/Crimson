@@ -31,6 +31,25 @@ public sealed class SecurityContainmentTests
     }
 
     [Theory]
+    [InlineData("https://eos-cloudsaves-live.s3.amazonaws.com/savesync/account/game/manifests/x.manifest?sig=1")]
+    [InlineData("https://datastorage-public-service-liveegs.live.use1a.on.epicgames.com/api/v1/data/egstore/x")]
+    public void CloudSaveFilePolicy_AcceptsPreSignedSaveHosts(string value)
+    {
+        Assert.Equal(new Uri(value).AbsoluteUri, EpicEndpointPolicy.RequireCloudSaveFileUri(value).AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData("http://eos-cloudsaves-live.s3.amazonaws.com/savesync/x")]
+    [InlineData("https://evil.s3.amazonaws.com/savesync/x")]
+    [InlineData("https://eos-cloudsaves-live.s3.amazonaws.com.evil.test/x")]
+    [InlineData("https://user@eos-cloudsaves-live.s3.amazonaws.com/x")]
+    [InlineData("https://cdn1.epicgames.com/spt-assets/example/image.jpg")]
+    public void CloudSaveFilePolicy_RejectsUnapprovedUris(string value)
+    {
+        Assert.Throws<InvalidOperationException>(() => EpicEndpointPolicy.RequireCloudSaveFileUri(value));
+    }
+
+    [Theory]
     [InlineData("not a URI")]
     [InlineData("file:///C:/games/image.jpg")]
     [InlineData("http://cdn1.epicgames.com/image.jpg")]

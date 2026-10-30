@@ -21,6 +21,7 @@ namespace Crimson.Repository
         private const string EcommerceHost = "ecommerceintegration-public-service-ecomprod02.ol.epicgames.com";
         private const string OAuthHost = "account-public-service-prod03.ol.epicgames.com";
         private const string LibraryHost = "library-service.live.use1a.on.epicgames.com";
+        private const string DataStorageHost = "datastorage-public-service-liveegs.live.use1a.on.epicgames.com";
         private const string StoreSearchUrl = "https://launcher.store.epicgames.com/graphql";
         private const string StoreProductDetailsQuery = """
             query productDetails($locale: String!, $sandboxId: String!) {
@@ -484,6 +485,134 @@ namespace Crimson.Repository
             {
                 _log.Error("GetManifestUrls failed with {ErrorType}", ex.GetType().Name);
                 throw;
+            }
+        }
+
+        public async Task<IReadOnlyDictionary<string, CloudSaveFileEntry>?> GetCloudSaveFilesAsync(
+            string appName,
+            bool manifestsOnly,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var accessToken = await _authManager.GetAccessToken();
+                var userData = await _authManager.GetUserData();
+                if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(userData?.AccountId))
+                    return null;
+
+                var suffix = manifestsOnly ? "/manifests/" : "/";
+                var uri = $"https://{DataStorageHost}/api/v1/access/egstore/savesync/{Uri.EscapeDataString(userData.AccountId)}/{Uri.EscapeDataString(appName)}{suffix}";
+                using var request = CreateAuthenticatedRequest(HttpMethod.Get, uri, accessToken);
+                using var response = await _apiClient.SendAsync(request, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _log.Warning("GetCloudSaveFiles failed with HTTP {StatusCode}", (int)response.StatusCode);
+                    return null;
+                }
+
+                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                return JsonSerializer.Deserialize<CloudSaveListing>(json)?.Files;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Exception messages and request URLs may contain account identifiers.
+                _log.Warning("GetCloudSaveFiles failed with {ErrorType}", ex.GetType().Name);
+                return null;
+            }
+        }
+
+        public async Task<IReadOnlyDictionary<string, CloudSaveFileEntry>?> CreateCloudSaveFilesAsync(
+            string appName,
+            IReadOnlyList<string> files,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var accessToken = await _authManager.GetAccessToken();
+                var userData = await _authManager.GetUserData();
+                if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(userData?.AccountId))
+                    return null;
+
+                var uri = $"https://{DataStorageHost}/api/v1/access/egstore/savesync/{Uri.EscapeDataString(userData.AccountId)}/{Uri.EscapeDataString(appName)}/";
+                using var request = CreateAuthenticatedRequest(HttpMethod.Post, uri, accessToken);
+                request.Content = new StringContent(
+                    JsonSerializer.Serialize(new { files }),
+                    Encoding.UTF8,
+                    "application/json");
+                using var response = await _apiClient.SendAsync(request, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _log.Warning("CreateCloudSaveFiles failed with HTTP {StatusCode}", (int)response.StatusCode);
+                    return null;
+                }
+
+                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                return JsonSerializer.Deserialize<CloudSaveListing>(json)?.Files;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning("CreateCloudSaveFiles failed with {ErrorType}", ex.GetType().Name);
+                return null;
+            }
+        }
+
+        public async Task<byte[]?> DownloadCloudSaveFileAsync(
+            string readLink,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var uri = EpicEndpointPolicy.RequireCloudSaveFileUri(readLink);
+                using var response = await _contentClient.GetAsync(uri, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _log.Warning("Cloud save file download failed with HTTP {StatusCode}", (int)response.StatusCode);
+                    return null;
+                }
+
+                return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning("Cloud save file download failed with {ErrorType}", ex.GetType().Name);
+                return null;
+            }
+        }
+
+        public async Task<bool> UploadCloudSaveFileAsync(
+            string writeLink,
+            byte[] data,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var uri = EpicEndpointPolicy.RequireCloudSaveFileUri(writeLink);
+                using var content = new ByteArrayContent(data);
+                using var response = await _contentClient.PutAsync(uri, content, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                    _log.Warning("Cloud save file upload failed with HTTP {StatusCode}", (int)response.StatusCode);
+                return response.IsSuccessStatusCode;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning("Cloud save file upload failed with {ErrorType}", ex.GetType().Name);
+                return false;
             }
         }
 

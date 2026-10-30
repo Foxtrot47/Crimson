@@ -14,6 +14,7 @@ public static class EpicEndpointPolicy
     {
         "account-public-service-prod03.ol.epicgames.com",
         "catalog-public-service-prod06.ol.epicgames.com",
+        "datastorage-public-service-liveegs.live.use1a.on.epicgames.com",
         "ecommerceintegration-public-service-ecomprod02.ol.epicgames.com",
         "launcher-public-service-prod06.ol.epicgames.com",
         "library-service.live.use1a.on.epicgames.com"
@@ -32,6 +33,12 @@ public static class EpicEndpointPolicy
         "store.epicgames.com"
     };
 
+    private static readonly HashSet<string> CloudSaveFileHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "datastorage-public-service-liveegs.live.use1a.on.epicgames.com",
+        "eos-cloudsaves-live.s3.amazonaws.com"
+    };
+
     private static readonly string[] ContentHostSuffixes =
     [
         ".epicgames.com",
@@ -45,6 +52,17 @@ public static class EpicEndpointPolicy
     public static Uri RequireApiUri(string value) => Require(value, IsAllowedApiUri, "Epic API");
 
     public static Uri RequireContentUri(string value) => Require(value, IsAllowedContentUri, "Epic content");
+
+    /// <summary>
+    /// Cloud save read/write links are pre-signed by the savesync API and point at Epic's
+    /// save-data storage, which lives on a dedicated S3 bucket rather than the Epic CDN
+    /// hosts used for game content.
+    /// </summary>
+    public static Uri RequireCloudSaveFileUri(string value) =>
+        Require(value, IsAllowedCloudSaveFileUri, "Epic cloud save");
+
+    public static bool IsAllowedCloudSaveFileUri(Uri uri) =>
+        IsHttps(uri) && CloudSaveFileHosts.Contains(uri.Host);
 
     public static bool TryGetContentUri(string? value, out Uri uri) =>
         TryGetAllowedUri(value, IsAllowedContentUri, out uri);
