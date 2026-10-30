@@ -21,6 +21,16 @@ public class Game
     [JsonPropertyName("metadata")]
     public required Metadata Metadata { get; set; }
 
+    /// <summary>
+    /// Revision of the metadata model this record was fetched with. Unknown custom attributes
+    /// are dropped when metadata is cached, so records older than <see cref="CurrentMetadataRevision"/>
+    /// are fetched again to pick up newly modeled fields such as CloudSaveFolder.
+    /// </summary>
+    [JsonPropertyName("crimson_metadata_revision")]
+    public int MetadataRevision { get; set; }
+
+    public const int CurrentMetadataRevision = 1;
+
     [JsonIgnore]
     public LocalAppState? LocalAppState { get; set; }
 
@@ -223,6 +233,24 @@ public class CustomAttributes
 
     [JsonPropertyName("DlcProcessNames")]
     public DlcProcessNames DlcProcessNames { get; set; }
+
+    [JsonPropertyName("CloudSaveFolder")]
+    public CustomAttributeValue? CloudSaveFolder { get; set; }
+
+    [JsonPropertyName("CloudIncludeList")]
+    public CustomAttributeValue? CloudIncludeList { get; set; }
+
+    [JsonPropertyName("CloudExcludeList")]
+    public CustomAttributeValue? CloudExcludeList { get; set; }
+}
+
+public class CustomAttributeValue
+{
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+
+    [JsonPropertyName("value")]
+    public string? Value { get; set; }
 }
 
 public class DlcItemList

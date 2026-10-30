@@ -803,7 +803,8 @@ public sealed class CachingTests : IDisposable
     private static Asset Asset(string name) => new() { AppName = name, CatalogItemId = name, Namespace = "synthetic", BuildVersion = "1" };
     private static Game Game(string name) => new()
     {
-        AppName = name, AppTitle = name, AssetInfos = new AssetInfos { Windows = Asset(name) },
+        AppName = name, AppTitle = name, MetadataRevision = Models.Game.CurrentMetadataRevision,
+        AssetInfos = new AssetInfos { Windows = Asset(name) },
         Metadata = new Metadata { Id = name, Title = name, KeyImages = [new KeyImage { Type = "DieselGameBox", Url = $"https://cdn1.epicgames.com/{name}.png" }] }
     };
 
@@ -839,6 +840,10 @@ public sealed class CachingTests : IDisposable
         public Task<string> GetGameToken() => throw new NotSupportedException();
         public Task<byte[]?> GetOwnershipToken(string nameSpace, string catalogItemId) => throw new NotSupportedException();
         public Task<GetManifestUrlData> GetManifestUrls(string nameSpace, string catalogItem, string appName, string platform = "Windows", string label = "Live", CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<IReadOnlyDictionary<string, CloudSaveFileEntry>?> GetCloudSaveFilesAsync(string appName, bool manifestsOnly, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<IReadOnlyDictionary<string, CloudSaveFileEntry>?> CreateCloudSaveFilesAsync(string appName, IReadOnlyList<string> files, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<byte[]?> DownloadCloudSaveFileAsync(string readLink, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<bool> UploadCloudSaveFileAsync(string writeLink, byte[] data, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class BlockingAuthHandler : HttpMessageHandler
