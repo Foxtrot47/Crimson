@@ -40,6 +40,7 @@
     <Compile Include="..\Crimson.WinUI\Core\OperationDiagnosticActions.cs" Link="Production\Core\OperationDiagnosticActions.cs" />
     <Compile Include="..\Crimson.WinUI\Core\TrayMenuPresenter.cs" Link="Production\Core\TrayMenuPresenter.cs" />
     <Compile Include="..\Crimson.WinUI\Core\WindowSizeConstraints.cs" Link="Production\Core\WindowSizeConstraints.cs" />
+    <Compile Include="..\Crimson.WinUI\Core\WindowsGameProcessLauncher.cs" Link="Production\Core\WindowsGameProcessLauncher.cs" />
     <Compile Include="..\Crimson.WinUI\Utils\Encryption.cs" Link="Production\Utils\Encryption.cs" />
   </ItemGroup>
 
