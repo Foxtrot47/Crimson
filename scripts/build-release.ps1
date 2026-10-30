@@ -133,6 +133,74 @@ function Set-PackageVersion {
   try { $packageManifest.Save($writer) } finally { $writer.Dispose() }
 }
 
+# Windows App SDK 1.8 bundles its Windows AI (Phi Silica) and Windows ML (ONNX Runtime)
+# payload into every output via the monolithic WindowsAppRuntime MSIX (~25 MB, including a
+# 21 MB native onnxruntime.dll). Crimson never calls those APIs, and MSBuild-side exclusions
+# cannot filter the extracted MSIX payload, so the files are deleted during packaging instead.
+$script:BloatPatterns = @('onnxruntime*.dll', 'Microsoft.ML.OnnxRuntime*.dll', 'Microsoft.Windows.AI.*')
+
+function Remove-BloatFromDirectory {
+  param([Parameter(Mandatory)][string]$Path)
+
+  $removedBytes = 0L
+  $removedCount = 0
+  foreach ($pattern in $script:BloatPatterns) {
+    foreach ($file in Get-ChildItem $Path -Recurse -Filter $pattern -File) {
+      $removedBytes += $file.Length
+      $removedCount++
+      Remove-Item $file.FullName -Force
+    }
+  }
+  Write-Host ("Removed {0} unused Windows AI/ML payload file(s), {1:N1} MB." -f $removedCount, ($removedBytes / 1MB))
+  foreach ($pattern in $script:BloatPatterns) {
+    if (Get-ChildItem $Path -Recurse -Filter $pattern -File) {
+      throw "Bloat removal failed: files matching '$pattern' are still present under $Path."
+    }
+  }
+}
+
+function Remove-BloatFromMsix {
+  param([Parameter(Mandatory)][string]$MsixPath)
+
+  $makeAppx = Find-WindowsSdkTool 'makeappx.exe'
+  $work = Join-Path $staging ('msix-debloat-' + [guid]::NewGuid().ToString('N'))
+  try {
+    Invoke-Checked $makeAppx @('unpack', '/p', $MsixPath, '/d', $work, '/o') | Out-Null
+    Remove-BloatFromDirectory $work
+    # Pack to a temporary path first so a failure never destroys the only copy of the asset.
+    # Repacking drops any existing signature; the caller signs the result afterwards.
+    $repacked = Join-Path $staging ('msix-repack-' + [guid]::NewGuid().ToString('N') + '.msix')
+    Invoke-Checked $makeAppx @('pack', '/d', $work, '/p', $repacked) | Out-Null
+    Move-Item $repacked $MsixPath -Force
+  }
+  finally {
+    Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Remove-BloatFromMsixUpload {
+  param([Parameter(Mandatory)][string]$UploadPath)
+
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $work = Join-Path $staging ('msixupload-debloat-' + [guid]::NewGuid().ToString('N'))
+  try {
+    [IO.Compression.ZipFile]::ExtractToDirectory($UploadPath, $work)
+    $innerPackages = @(Get-ChildItem $work -Recurse -Filter *.msix -File)
+    if ($innerPackages.Count -ne 1) {
+      throw "Expected one MSIX inside the Store upload, found $($innerPackages.Count)."
+    }
+    Remove-BloatFromMsix $innerPackages[0].FullName
+    $repacked = $UploadPath + '.repack'
+    # ZipFile round-trips nested entry separators faithfully; Compress-Archive does not.
+    [IO.Compression.ZipFile]::CreateFromDirectory($work, $repacked)
+    Remove-Item $UploadPath -Force
+    Move-Item $repacked $UploadPath
+  }
+  finally {
+    Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Invoke-ReleaseTests {
   Invoke-Checked 'dotnet' @(
     'test', (Join-Path $repo 'Crimson.Core.Tests\Crimson.Core.Tests.csproj'),
@@ -178,6 +246,7 @@ function Publish-PortableAsset {
   $portableExe = Join-Path $staging 'unpackaged\Crimson.exe'
   if (-not (Test-Path $portableExe)) { throw 'Portable publish did not produce Crimson.exe.' }
   Assert-LicenseFile (Join-Path $staging 'unpackaged')
+  Remove-BloatFromDirectory (Join-Path $staging 'unpackaged')
   Compress-Archive `
     -Path (Join-Path $staging 'unpackaged\*') `
     -DestinationPath (Join-Path $dist "Crimson-$Version-win-x64.zip")
@@ -287,6 +356,8 @@ function Build-SignedAsset {
   }
   $signedPath = Join-Path $dist "Crimson-$Version-win-x64.msix"
   Copy-Item $signedPackages[0].FullName $signedPath
+  # Repacked unsigned; Confirm-SignedAsset applies the release signature afterwards.
+  Remove-BloatFromMsix $signedPath
   return $signedPath
 }
 
@@ -360,6 +431,7 @@ function Build-StoreAsset {
   $destination = if ($Unsigned) { $staging } else { $dist }
   $storePath = Join-Path $destination "Crimson-$Version-partner-center.msixupload"
   Copy-Item $storePackages[0].FullName $storePath
+  Remove-BloatFromMsixUpload $storePath
   return $storePath
 }
 
