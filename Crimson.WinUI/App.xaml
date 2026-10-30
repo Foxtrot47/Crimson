@@ -11,8 +11,8 @@
             </ResourceDictionary.MergedDictionaries>
             <!--  Other app resources here  -->
             <x:String x:Key="AppTitleName">Crimson</x:String>
+            <!--  Ceiling only: forcing ContentDialogWidth globally contradicts narrower per-dialog MaxWidth overrides and breaks ContentDialog centering.  -->
             <x:Double x:Key="ContentDialogMaxWidth">1000</x:Double>
-            <x:Double x:Key="ContentDialogWidth">1000</x:Double>
             <Style TargetType="MenuFlyoutItem">
                 <Setter Property="FontSize" Value="17" />
             </Style>
