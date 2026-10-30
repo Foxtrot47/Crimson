@@ -124,6 +124,9 @@
   <data name="CheckingAuthenticationStatus" xml:space="preserve">
     <value>Authentifizierungsstatus wird geprüft</value>
   </data>
+  <data name="CheckingCloudSaves" xml:space="preserve">
+    <value>Speicherstände werden geprüft…</value>
+  </data>
   <data name="ChooseAnotherFolderOrAllowCrimsonToWriteToThisLocation" xml:space="preserve">
     <value>Wählen Sie einen anderen Ordner oder erlauben Sie Crimson, an diesen Ort zu schreiben.</value>
   </data>
@@ -147,6 +150,9 @@
   </data>
   <data name="CloseTheImportWindowAndTryAgain" xml:space="preserve">
     <value>Schließen Sie das Importfenster und versuchen Sie es erneut.</value>
+  </data>
+  <data name="CloudSaveSizeUnknown" xml:space="preserve">
+    <value>unbekannte Größe</value>
   </data>
   <data name="Completed" xml:space="preserve">
     <value>Abgeschlossen</value>
@@ -222,6 +228,9 @@
   </data>
   <data name="DownloadSize" xml:space="preserve">
     <value>Download-Größe</value>
+  </data>
+  <data name="DownloadingCloudSaves" xml:space="preserve">
+    <value>Speicherstände werden heruntergeladen…</value>
   </data>
   <data name="Downloads" xml:space="preserve">
     <value>Downloads</value>
@@ -496,6 +505,9 @@
   <data name="PlayGameFormat" xml:space="preserve">
     <value>{0} spielen</value>
   </data>
+  <data name="Playing" xml:space="preserve">
+    <value>Wird gespielt</value>
+  </data>
   <data name="PlaytimeHoursMinutesFormat" xml:space="preserve">
     <value>{0} Std. {1} Min.</value>
   </data>
@@ -655,6 +667,9 @@
   <data name="SizeWithUnitFormat" xml:space="preserve">
     <value>{0:0.##} {1}</value>
   </data>
+  <data name="SkipCloudSync" xml:space="preserve">
+    <value>Überspringen</value>
+  </data>
   <data name="Specification" xml:space="preserve">
     <value>Spezifikation</value>
   </data>
@@ -669,6 +684,9 @@
   </data>
   <data name="MessageCloseAndRetryFormat" xml:space="preserve">
     <value>{0} Schließen und erneut versuchen.</value>
+  </data>
+  <data name="UploadingCloudSaves" xml:space="preserve">
+    <value>Speicherstände werden hochgeladen…</value>
   </data>
   <data name="VerificationFailedSentenceFormat" xml:space="preserve">
     <value>{0} Dateien haben die Überprüfung nicht bestanden.</value>
@@ -829,6 +847,9 @@
   <data name="ZeroTransferRate" xml:space="preserve">
     <value>0 MiB/s</value>
   </data>
+  <data name="KeepLocalSaves" xml:space="preserve">
+    <value>Lokal behalten</value>
+  </data>
   <data name="Language" xml:space="preserve">
     <value>Sprache</value>
   </data>
@@ -885,5 +906,26 @@
   </data>
   <data name="StorageSection" xml:space="preserve">
     <value>Speicher</value>
+  </data>
+  <data name="CloudSaveCloudCopyFormat" xml:space="preserve">
+    <value>Cloud-Speicherstände: {0}, zuletzt geändert {1}</value>
+  </data>
+  <data name="CloudSaveConflictMessage" xml:space="preserve">
+    <value>Die lokalen Speicherstände und die Cloud-Speicherstände für dieses Spiel unterscheiden sich.</value>
+  </data>
+  <data name="CloudSaveConflictPrompt" xml:space="preserve">
+    <value>Welche Kopie möchten Sie behalten?</value>
+  </data>
+  <data name="CloudSaveConflictTitle" xml:space="preserve">
+    <value>Cloud-Speicherstand-Konflikt</value>
+  </data>
+  <data name="CloudSaveLocalCopyFormat" xml:space="preserve">
+    <value>Lokale Speicherstände: {0}, zuletzt geändert {1}</value>
+  </data>
+  <data name="CloudSaveNewerSuffix" xml:space="preserve">
+    <value> (neuer)</value>
+  </data>
+  <data name="KeepCloudSaves" xml:space="preserve">
+    <value>Cloud behalten</value>
   </data>
 </root>

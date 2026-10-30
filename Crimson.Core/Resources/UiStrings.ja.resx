@@ -124,6 +124,9 @@
   <data name="CheckingAuthenticationStatus" xml:space="preserve">
     <value>認証ステータスを確認中</value>
   </data>
+  <data name="CheckingCloudSaves" xml:space="preserve">
+    <value>セーブを確認中…</value>
+  </data>
   <data name="ChooseAnotherFolderOrAllowCrimsonToWriteToThisLocation" xml:space="preserve">
     <value>別のフォルダーを選択するか、Crimson にこの場所への書き込みを許可してください。</value>
   </data>
@@ -147,6 +150,9 @@
   </data>
   <data name="CloseTheImportWindowAndTryAgain" xml:space="preserve">
     <value>インポート ウィンドウを閉じて、もう一度お試しください。</value>
+  </data>
+  <data name="CloudSaveSizeUnknown" xml:space="preserve">
+    <value>サイズ不明</value>
   </data>
   <data name="Completed" xml:space="preserve">
     <value>完了</value>
@@ -222,6 +228,9 @@
   </data>
   <data name="DownloadSize" xml:space="preserve">
     <value>ダウンロード サイズ</value>
+  </data>
+  <data name="DownloadingCloudSaves" xml:space="preserve">
+    <value>セーブをダウンロード中…</value>
   </data>
   <data name="Downloads" xml:space="preserve">
     <value>ダウンロード</value>
@@ -496,6 +505,9 @@
   <data name="PlayGameFormat" xml:space="preserve">
     <value>{0} をプレイ</value>
   </data>
+  <data name="Playing" xml:space="preserve">
+    <value>プレイ中</value>
+  </data>
   <data name="PlaytimeHoursMinutesFormat" xml:space="preserve">
     <value>{0}時間 {1}分</value>
   </data>
@@ -655,6 +667,9 @@
   <data name="SizeWithUnitFormat" xml:space="preserve">
     <value>{0:0.##} {1}</value>
   </data>
+  <data name="SkipCloudSync" xml:space="preserve">
+    <value>スキップ</value>
+  </data>
   <data name="Specification" xml:space="preserve">
     <value>スペック</value>
   </data>
@@ -669,6 +684,9 @@
   </data>
   <data name="MessageCloseAndRetryFormat" xml:space="preserve">
     <value>{0} 閉じて、もう一度お試しください。</value>
+  </data>
+  <data name="UploadingCloudSaves" xml:space="preserve">
+    <value>セーブをアップロード中…</value>
   </data>
   <data name="VerificationFailedSentenceFormat" xml:space="preserve">
     <value>{0} 個のファイルの検証に失敗しました。</value>
@@ -829,6 +847,9 @@
   <data name="ZeroTransferRate" xml:space="preserve">
     <value>0 MiB/s</value>
   </data>
+  <data name="KeepLocalSaves" xml:space="preserve">
+    <value>ローカルを保持</value>
+  </data>
   <data name="Language" xml:space="preserve">
     <value>言語</value>
   </data>
@@ -885,5 +906,26 @@
   </data>
   <data name="StorageSection" xml:space="preserve">
     <value>ストレージ</value>
+  </data>
+  <data name="CloudSaveCloudCopyFormat" xml:space="preserve">
+    <value>クラウドセーブ: {0}、最終更新 {1}</value>
+  </data>
+  <data name="CloudSaveConflictMessage" xml:space="preserve">
+    <value>このゲームのローカルセーブとクラウドセーブが一致しません。</value>
+  </data>
+  <data name="CloudSaveConflictPrompt" xml:space="preserve">
+    <value>どちらのコピーを保持しますか?</value>
+  </data>
+  <data name="CloudSaveConflictTitle" xml:space="preserve">
+    <value>クラウドセーブの競合</value>
+  </data>
+  <data name="CloudSaveLocalCopyFormat" xml:space="preserve">
+    <value>ローカルセーブ: {0}、最終更新 {1}</value>
+  </data>
+  <data name="CloudSaveNewerSuffix" xml:space="preserve">
+    <value> (新しい方)</value>
+  </data>
+  <data name="KeepCloudSaves" xml:space="preserve">
+    <value>クラウドを保持</value>
   </data>
 </root>

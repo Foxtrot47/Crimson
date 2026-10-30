@@ -42,6 +42,7 @@ public static class UiStrings
     public static string Cancelling => Get(nameof(Cancelling));
     public static string CancelOperation => Get(nameof(CancelOperation));
     public static string CheckingAuthenticationStatus => Get(nameof(CheckingAuthenticationStatus));
+    public static string CheckingCloudSaves => Get(nameof(CheckingCloudSaves));
     public static string CheckThatTheInstallationFolderIsAvailableAndTryAgain => Get(nameof(CheckThatTheInstallationFolderIsAvailableAndTryAgain));
     public static string CheckYourConnectionAndRetry => Get(nameof(CheckYourConnectionAndRetry));
     public static string CheckYourConnectionAndWebView2RuntimeThenTryAgain => Get(nameof(CheckYourConnectionAndWebView2RuntimeThenTryAgain));
@@ -54,6 +55,13 @@ public static class UiStrings
     public static string CloseGameProperties => Get(nameof(CloseGameProperties));
     public static string CloseScreenshot => Get(nameof(CloseScreenshot));
     public static string CloseTheImportWindowAndTryAgain => Get(nameof(CloseTheImportWindowAndTryAgain));
+    public static string CloudSaveCloudCopyFormat => Get(nameof(CloudSaveCloudCopyFormat));
+    public static string CloudSaveConflictMessage => Get(nameof(CloudSaveConflictMessage));
+    public static string CloudSaveConflictPrompt => Get(nameof(CloudSaveConflictPrompt));
+    public static string CloudSaveConflictTitle => Get(nameof(CloudSaveConflictTitle));
+    public static string CloudSaveLocalCopyFormat => Get(nameof(CloudSaveLocalCopyFormat));
+    public static string CloudSaveNewerSuffix => Get(nameof(CloudSaveNewerSuffix));
+    public static string CloudSaveSizeUnknown => Get(nameof(CloudSaveSizeUnknown));
     public static string Completed => Get(nameof(Completed));
     public static string ConfirmUninstallGame => Get(nameof(ConfirmUninstallGame));
     public static string ConnectionInterruptedRetrying => Get(nameof(ConnectionInterruptedRetrying));
@@ -77,6 +85,7 @@ public static class UiStrings
     public static string DLCArtwork => Get(nameof(DLCArtwork));
     public static string DLCChangesCouldNotBeQueued => Get(nameof(DLCChangesCouldNotBeQueued));
     public static string DownloadAndInstallerDiskWriteRatesOverTheLast60Seconds => Get(nameof(DownloadAndInstallerDiskWriteRatesOverTheLast60Seconds));
+    public static string DownloadingCloudSaves => Get(nameof(DownloadingCloudSaves));
     public static string DownloadRate => Get(nameof(DownloadRate));
     public static string Downloads => Get(nameof(Downloads));
     public static string DownloadSize => Get(nameof(DownloadSize));
@@ -122,6 +131,8 @@ public static class UiStrings
     public static string InstallSize => Get(nameof(InstallSize));
     public static string InYourLibrary => Get(nameof(InYourLibrary));
     public static string KB => Get(nameof(KB));
+    public static string KeepCloudSaves => Get(nameof(KeepCloudSaves));
+    public static string KeepLocalSaves => Get(nameof(KeepLocalSaves));
     public static string Language => Get(nameof(Language));
     public static string LanguageRestartBusy => Get(nameof(LanguageRestartBusy));
     public static string LanguageRestartFailed => Get(nameof(LanguageRestartFailed));
@@ -179,6 +190,7 @@ public static class UiStrings
     public static string PauseOperation => Get(nameof(PauseOperation));
     public static string Play => Get(nameof(Play));
     public static string PlayGameFormat => Get(nameof(PlayGameFormat));
+    public static string Playing => Get(nameof(Playing));
     public static string PlaytimeHoursMinutesFormat => Get(nameof(PlaytimeHoursMinutesFormat));
     public static string PlaytimeMinutesFormat => Get(nameof(PlaytimeMinutesFormat));
     public static string PleaseTryAgain => Get(nameof(PleaseTryAgain));
@@ -234,6 +246,7 @@ public static class UiStrings
     public static string SizeMiBFormat => Get(nameof(SizeMiBFormat));
     public static string SizeOfInstallation => Get(nameof(SizeOfInstallation));
     public static string SizeWithUnitFormat => Get(nameof(SizeWithUnitFormat));
+    public static string SkipCloudSync => Get(nameof(SkipCloudSync));
     public static string Specification => Get(nameof(Specification));
     public static string StartTheOperationAgainFromTheLibrary => Get(nameof(StartTheOperationAgainFromTheLibrary));
     public static string StorageSection => Get(nameof(StorageSection));
@@ -277,6 +290,7 @@ public static class UiStrings
     public static string UpdateAvailable => Get(nameof(UpdateAvailable));
     public static string Updated => Get(nameof(Updated));
     public static string Updating => Get(nameof(Updating));
+    public static string UploadingCloudSaves => Get(nameof(UploadingCloudSaves));
     public static string VerificationFailedSentenceFormat => Get(nameof(VerificationFailedSentenceFormat));
     public static string Verified => Get(nameof(Verified));
     public static string Verify => Get(nameof(Verify));

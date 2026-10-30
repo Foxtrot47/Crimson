@@ -124,6 +124,9 @@
   <data name="CheckingAuthenticationStatus" xml:space="preserve">
     <value>正在检查身份验证状态</value>
   </data>
+  <data name="CheckingCloudSaves" xml:space="preserve">
+    <value>正在检查存档…</value>
+  </data>
   <data name="ChooseAnotherFolderOrAllowCrimsonToWriteToThisLocation" xml:space="preserve">
     <value>请选择其他文件夹，或允许 Crimson 写入此位置。</value>
   </data>
@@ -147,6 +150,9 @@
   </data>
   <data name="CloseTheImportWindowAndTryAgain" xml:space="preserve">
     <value>请关闭导入窗口后重试。</value>
+  </data>
+  <data name="CloudSaveSizeUnknown" xml:space="preserve">
+    <value>大小未知</value>
   </data>
   <data name="Completed" xml:space="preserve">
     <value>已完成</value>
@@ -222,6 +228,9 @@
   </data>
   <data name="DownloadSize" xml:space="preserve">
     <value>下载大小</value>
+  </data>
+  <data name="DownloadingCloudSaves" xml:space="preserve">
+    <value>正在下载存档…</value>
   </data>
   <data name="Downloads" xml:space="preserve">
     <value>下载</value>
@@ -496,6 +505,9 @@
   <data name="PlayGameFormat" xml:space="preserve">
     <value>运行 {0}</value>
   </data>
+  <data name="Playing" xml:space="preserve">
+    <value>游玩中</value>
+  </data>
   <data name="PlaytimeHoursMinutesFormat" xml:space="preserve">
     <value>{0}小时 {1}分钟</value>
   </data>
@@ -655,6 +667,9 @@
   <data name="SizeWithUnitFormat" xml:space="preserve">
     <value>{0:0.##} {1}</value>
   </data>
+  <data name="SkipCloudSync" xml:space="preserve">
+    <value>跳过</value>
+  </data>
   <data name="Specification" xml:space="preserve">
     <value>系统配置要求</value>
   </data>
@@ -669,6 +684,9 @@
   </data>
   <data name="MessageCloseAndRetryFormat" xml:space="preserve">
     <value>{0} 请关闭并重试。</value>
+  </data>
+  <data name="UploadingCloudSaves" xml:space="preserve">
+    <value>正在上传存档…</value>
   </data>
   <data name="VerificationFailedSentenceFormat" xml:space="preserve">
     <value>{0} 个文件未通过验证。</value>
@@ -829,6 +847,9 @@
   <data name="ZeroTransferRate" xml:space="preserve">
     <value>0 MiB/s</value>
   </data>
+  <data name="KeepLocalSaves" xml:space="preserve">
+    <value>保留本地</value>
+  </data>
   <data name="Language" xml:space="preserve">
     <value>语言</value>
   </data>
@@ -885,5 +906,26 @@
   </data>
   <data name="StorageSection" xml:space="preserve">
     <value>存储</value>
+  </data>
+  <data name="CloudSaveCloudCopyFormat" xml:space="preserve">
+    <value>云端存档：{0}，最后修改时间 {1}</value>
+  </data>
+  <data name="CloudSaveConflictMessage" xml:space="preserve">
+    <value>此游戏的本地存档与云端存档不一致。</value>
+  </data>
+  <data name="CloudSaveConflictPrompt" xml:space="preserve">
+    <value>要保留哪个副本？</value>
+  </data>
+  <data name="CloudSaveConflictTitle" xml:space="preserve">
+    <value>云存档冲突</value>
+  </data>
+  <data name="CloudSaveLocalCopyFormat" xml:space="preserve">
+    <value>本地存档：{0}，最后修改时间 {1}</value>
+  </data>
+  <data name="CloudSaveNewerSuffix" xml:space="preserve">
+    <value> (较新)</value>
+  </data>
+  <data name="KeepCloudSaves" xml:space="preserve">
+    <value>保留云端</value>
   </data>
 </root>

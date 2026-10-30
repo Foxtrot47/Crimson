@@ -1,5 +1,6 @@
 using System.Reflection;
 using Crimson.Core;
+using Crimson.Resources;
 using Crimson.Models;
 using Crimson.ViewModels;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -124,6 +125,42 @@ public sealed class GameInfoActionStateTests : IDisposable
         await pending;
 
         Assert.Empty(_fixture.Installer.GetQueueOperations());
+    }
+
+    [Fact]
+    public async Task RunningGameLocksPrimaryActionBehindPlayingStatus()
+    {
+        var viewModel = CreateViewModel(InstallState.Installed);
+        await viewModel.OnNavigatedTo("base");
+        Assert.True(viewModel.IsPrimaryActionEnabled);
+        Assert.Equal(UiStrings.Play, viewModel.PrimaryActionButtonText);
+
+        _fixture.Library.SetGameRunning("base", true);
+
+        Assert.False(viewModel.IsPrimaryActionEnabled);
+        Assert.Equal(UiStrings.Playing, viewModel.PrimaryActionButtonText);
+        Assert.Equal(UiStrings.Playing, viewModel.GameStatusText);
+
+        _fixture.Library.SetGameRunning("base", false);
+
+        Assert.True(viewModel.IsPrimaryActionEnabled);
+        Assert.Equal(UiStrings.Play, viewModel.PrimaryActionButtonText);
+    }
+
+    [Fact]
+    public async Task RunningStateDoesNotLockGamesThatAllowMultipleInstances()
+    {
+        _fixture.BaseGame.Metadata.CustomAttributes = new CustomAttributes
+        {
+            AllowMultipleInstances = new AllowMultipleInstances { Value = "true" }
+        };
+        var viewModel = CreateViewModel(InstallState.Installed);
+        await viewModel.OnNavigatedTo("base");
+
+        _fixture.Library.SetGameRunning("base", true);
+
+        Assert.True(viewModel.IsPrimaryActionEnabled);
+        Assert.Equal(UiStrings.Play, viewModel.PrimaryActionButtonText);
     }
 
     private GameInfoViewModel CreateViewModel(InstallState state)
