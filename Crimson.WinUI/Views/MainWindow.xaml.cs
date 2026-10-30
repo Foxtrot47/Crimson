@@ -55,6 +55,7 @@ public sealed partial class MainWindow : Window
     private readonly LibraryManager _libraryManager;
     private readonly IStoreRepository _storeRepository;
     private readonly OperationErrorPresenter _operationErrors;
+    private readonly CloudSaveConflictPresenter _cloudSaveConflicts;
     private readonly WindowSizeConstraints _windowSizeConstraints;
     private readonly NotificationService _notifications;
     private readonly IArtworkCache _artworkCache;
@@ -128,6 +129,8 @@ public sealed partial class MainWindow : Window
         _log = App.GetService<ILogger>();
         _operationErrors = new OperationErrorPresenter(ContentFrame, _installManager, _libraryManager,
             App.GetService<DialogCoordinator>(), _log);
+        _cloudSaveConflicts = new CloudSaveConflictPresenter(ContentFrame, App.GetService<CloudSaveManager>(),
+            _libraryManager, App.GetService<DialogCoordinator>(), _log, () => Visible, EnsureVisible);
         Closed += Window_Closed;
         ContentFrame.NavigationFailed += ContentFrame_NavigationFailed;
 
@@ -145,6 +148,14 @@ public sealed partial class MainWindow : Window
 
         IsLoggedIn = false;
         _authManager.AuthStatusChanged += AuthStatusChangedHandler;
+    }
+
+    private void EnsureVisible()
+    {
+        if (!Visible) this.Show();
+        if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized } presenter)
+            presenter.Restore();
+        Activate();
     }
 
     private void SetWindowIcon()
