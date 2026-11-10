@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text.Json;
 using Crimson.Core;
 using Crimson.Models;
@@ -91,7 +91,7 @@ public sealed class DownloadRetryPresentationTests : IDisposable
     private static OperationSnapshot Snapshot(ActionType action, ActionStatus status) =>
         new("base", action, status, OperationPhase.Transferring, 42, 42, 100, 10, null);
 
-    private void ChangeRetry(InstallItem item, bool retrying) => typeof(InstallManager)
+    private void ChangeRetry(InstallItem item, bool retrying) => typeof(EpicInstallManager)
         .GetMethod("UpdateDownloadRetryState", BindingFlags.Instance | BindingFlags.NonPublic)!
         .Invoke(_fixture.Installer, [item, retrying]);
 

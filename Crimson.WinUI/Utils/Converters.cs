@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Serilog;
 using Microsoft.UI.Xaml.Data;
@@ -43,7 +45,8 @@ public class ImageUrlConverter : IValueConverter
 
         if (!uri.IsFile)
         {
-            if (!EpicEndpointPolicy.IsAllowedContentUri(uri)) return null!;
+            // Trust is provider-owned: any registered store may publish its own artwork hosts.
+            if (!ArtworkTrust.IsTrusted(uri)) return null!;
             // Remote artwork goes through the shared cache so every page reuses downloads and works offline.
             var remote = new BitmapImage();
             _ = CachedImageLoader.LoadAsync(remote, imageUrl, App.GetService<IArtworkCache>(), DispatcherQueue.GetForCurrentThread());
@@ -58,6 +61,40 @@ public class ImageUrlConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, string language)
     {
         throw new NotImplementedException();
+    }
+}
+
+/// <summary>Draws the store mark a provider registers for its library entries.</summary>
+public class ProviderLogoConverter : IValueConverter
+{
+    public object? Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is not string appName) return null;
+        string providerId;
+        try { providerId = Crimson.Providers.GameId.Parse(appName).ProviderId; }
+        catch (ArgumentException) { return null; }
+        try
+        {
+            var logo = App.GetService<Crimson.Providers.LauncherFrontendRegistry>().Get(providerId).StoreLogo;
+            return string.IsNullOrWhiteSpace(logo) ? null : new BitmapImage(new Uri(logo));
+        }
+        catch (Exception) { return null; } // An unregistered provider simply has no mark.
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+        throw new NotImplementedException();
+}
+
+/// <summary>Asks the registered providers whether an artwork URL is theirs to serve.</summary>
+public static class ArtworkTrust
+{
+    private static IReadOnlyList<Crimson.Providers.IProviderContentPolicy>? _policies;
+
+    public static bool IsTrusted(Uri uri)
+    {
+        if (uri.Scheme != Uri.UriSchemeHttps) return false;
+        _policies ??= App.GetServices<Crimson.Providers.IProviderContentPolicy>().ToList();
+        return _policies.Any(policy => policy.AllowsArtworkUri(uri.ToString()));
     }
 }
 

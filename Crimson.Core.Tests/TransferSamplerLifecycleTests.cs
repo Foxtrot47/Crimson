@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Crimson.Core;
 using Crimson.Models;
 
@@ -80,7 +80,7 @@ public sealed class TransferSamplerLifecycleTests
         using var fixture = new DlcTestFixture();
         var install = StartSampler(fixture, "base");
         using var viewModel = new Crimson.ViewModels.DownloadsViewModel(
-            Serilog.Log.Logger, fixture.Installer, fixture.Library, new ImmediateDispatcher());
+            Serilog.Log.Logger, fixture.Shared.Installer, fixture.Shared.Library, new ImmediateDispatcher());
         fixture.Installer.AddToQueue(new InstallItem("available", ActionType.Install, fixture.BasePath));
         var queue = viewModel.QueueItems;
         var history = viewModel.HistoryItems;
@@ -111,9 +111,9 @@ public sealed class TransferSamplerLifecycleTests
         return install;
     }
 
-    private static Timer? GetTimer(InstallManager installer) => (Timer?)typeof(InstallManager)
+    private static Timer? GetTimer(EpicInstallManager installer) => (Timer?)typeof(EpicInstallManager)
         .GetField("_transferTimer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(installer);
 
-    private static void Invoke(InstallManager installer, string method, InstallItem install) =>
-        typeof(InstallManager).GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(installer, [install]);
+    private static void Invoke(EpicInstallManager installer, string method, InstallItem install) =>
+        typeof(EpicInstallManager).GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(installer, [install]);
 }

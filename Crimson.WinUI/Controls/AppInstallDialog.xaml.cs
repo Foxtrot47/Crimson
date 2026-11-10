@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -23,7 +24,7 @@ namespace Crimson.Controls
             ViewModel.FolderPickerRequested += ShowFolderPicker;
         }
 
-        public async Task ShowAsync(Game gameInfo)
+        public async Task ShowAsync(LauncherGame gameInfo)
         {
             var cancellation = new CancellationTokenSource();
             var previous = Interlocked.Exchange(ref _initializationCancellation, cancellation);
@@ -44,7 +45,7 @@ namespace Crimson.Controls
             catch (Exception ex)
             {
                 App.GetService<ILogger>().Error("AppInstallDialog could not be shown: {ErrorType}", ex.GetType().Name);
-                App.GetService<InstallManager>().ReportPreparationFailure(gameInfo.AppName, ActionType.Install, ex);
+                App.GetService<LauncherInstaller>().ReportPreparationFailure(gameInfo.AppName, ActionType.Install, ex);
             }
             finally
             {
@@ -74,7 +75,7 @@ namespace Crimson.Controls
             catch (Exception ex)
             {
                 App.GetService<ILogger>().Error("AppInstallDialog initialization failed: {ErrorType}", ex.GetType().Name);
-                App.GetService<InstallManager>().ReportPreparationFailure(appName, ActionType.Install, ex);
+                App.GetService<LauncherInstaller>().ReportPreparationFailure(appName, ActionType.Install, ex);
                 OnRequestClose();
             }
         }

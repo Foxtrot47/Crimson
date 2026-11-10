@@ -1,11 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Threading;
 using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Crimson.Core;
+using Crimson.Providers.Epic;
+using Crimson.Providers.Ubisoft;
+using Crimson.Providers;
 using Crimson.Repository;
 using Crimson.Utils;
 using Crimson.ViewModels;
@@ -91,74 +94,49 @@ namespace Crimson
                     Log.Logger = logger;
                     return logger;
                 });
-                services.AddHttpClient("EpicOAuth", ConfigureEpicClient)
-                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
-                services.AddHttpClient("EpicApi", ConfigureEpicClient)
-                    // Library Service request paths contain account IDs.
-                    .RemoveAllLoggers()
-                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler)
-                    .AddResilienceHandler(
-                        "CustomPipeline",
-                        static builder =>
-                        {
-                            // See: https://www.pollydocs.org/strategies/retry.html
-                            builder.AddRetry(new HttpRetryStrategyOptions
-                            {
-                                BackoffType = DelayBackoffType.Exponential,
-                                MaxRetryAttempts = 5,
-                                UseJitter = true
-                            });
-
-                            // See: https://www.pollydocs.org/strategies/timeout.html
-                            builder.AddTimeout(TimeSpan.FromSeconds(5));
-                        });
-                services.AddHttpClient("EpicContent", ConfigureEpicClient)
-                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
-                services.AddHttpClient("EpicStore", ConfigureEpicStoreClient)
-                    .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
-
                 services.AddSingleton<Storage>(provider => new Storage(
                     provider.GetRequiredService<ILogger>(),
                     GetAppDataPath(),
                     Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)));
+                services.AddSingleton<IApplicationStorage>(provider => provider.GetRequiredService<Storage>());
                 services.AddSingleton<SettingsManager>(provider => new SettingsManager(
                     provider.GetRequiredService<Storage>(),
                     provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<SettingsManager>>(),
                     @"C:\Games\",
                     Path.Combine(GetAppDataPath(), "logs")));
                 services.AddSingleton<ICredentialProtector, WindowsCredentialProtector>();
-                services.AddSingleton<AuthManager>(provider => new AuthManager(
-                    provider.GetRequiredService<ILogger>(),
-                    provider.GetRequiredService<Storage>(),
-                    provider.GetRequiredService<ICredentialProtector>(),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicOAuth")));
-                services.AddSingleton<IStoreRepository>(provider => new EpicGamesRepository(
-                    provider.GetRequiredService<AuthManager>(),
-                    provider.GetRequiredService<ILogger>(),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicApi"),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicStore")));
+                // A stored sign-in password is only readable by this Windows account.
+                services.AddSingleton<IUserCredentialProtector>(_ => WindowsCredentialProtector.ForCurrentUser());
                 services.AddSingleton<DialogCoordinator>();
                 services.AddSingleton<EpicInstallDiscovery>(_ => new EpicInstallDiscovery(Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
                     "Epic", "EpicGamesLauncher", "Data", "Manifests")));
                 services.AddSingleton<IArtworkCache>(provider => new ArtworkCache(
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("Artwork"),
                     provider.GetRequiredService<ILogger>(),
-                    Path.Combine(GetAppDataPath(), "artwork")));
+                    Path.Combine(GetAppDataPath(), "artwork"),
+                    provider.GetServices<IProviderContentPolicy>()));
                 services.AddSingleton<NotificationService>();
                 services.AddSingleton<IGameProcessLauncher>(provider => new WindowsGameProcessLauncher(
                     provider.GetRequiredService<ILogger>()));
                 services.AddSingleton<CloudSaveManager>();
-                services.AddSingleton<LibraryManager>();
-                services.AddSingleton<IGameShortcutManager>(provider => new GameShortcutManager(
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent"),
-                    provider.GetRequiredService<ILogger>()));
                 services.AddSingleton<IInstallPermissionChecker, FileSystemInstallPermissionChecker>();
-                services.AddSingleton<InstallManager>();
-                services.AddSingleton<DownloadManager>(provider => new DownloadManager(
-                    provider.GetRequiredService<ILogger>(),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("EpicContent")));
+                services.AddHttpClient("Artwork").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+                {
+                    AllowAutoRedirect = true, UseCookies = false, MaxConnectionsPerServer = 16
+                });
+                services.AddSingleton<IGameShortcutManager>(provider => new GameShortcutManager(
+                    provider.GetRequiredService<IHttpClientFactory>().CreateClient("Artwork"),
+                    provider.GetRequiredService<ILogger>(), provider.GetServices<IProviderContentPolicy>()));
+                services.AddEpicLauncher();
+                services.AddUbisoftLauncher(GetAppDataPath());
+                services.AddSingleton<LauncherRegistry>(provider => new LauncherRegistry(
+                    provider.GetServices<ILauncherProvider>()));
+                services.AddSingleton<LauncherFrontendRegistry>();
+                services.AddSingleton<LauncherAuthentication>();
+                services.AddSingleton<LauncherLibrary>();
+                services.AddSingleton<LauncherInstaller>();
+                services.AddSingleton<LauncherStores>();
 
                 services.AddTransient<SettingsViewModel>();
                 services.AddTransient<DownloadsViewModel>();
@@ -174,27 +152,6 @@ namespace Crimson
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Crimson");
 
-        private static void ConfigureEpicClient(HttpClient client)
-        {
-            client.DefaultRequestHeaders.UserAgent.ParseAdd(
-                "UELauncher/11.0.1-14907503+++Portal+Release-Live Windows/10.0.19041.1.256.64bit");
-            client.Timeout = TimeSpan.FromSeconds(100);
-        }
-
-        private static void ConfigureEpicStoreClient(HttpClient client)
-        {
-            client.DefaultRequestHeaders.UserAgent.ParseAdd(
-                "EpicGamesLauncher/14.0.8-22004686+++Portal+Release-Live");
-            client.Timeout = TimeSpan.FromSeconds(10);
-        }
-
-        private static HttpMessageHandler CreateSecureHttpHandler() => new HttpClientHandler
-        {
-            AllowAutoRedirect = true,
-            UseCookies = false,
-            MaxConnectionsPerServer = 16
-        };
-
         /// <summary>
         /// Invoked when the application is launched normally by the end user.  Other entry points
         /// will be used such as when the application is launched to open a specific file.
@@ -209,7 +166,10 @@ namespace Crimson
             var activationArguments = InitialActivationArguments;
             InitialActivationArguments = null;
             if (activationArguments is not null && TryGetLaunchAppName(activationArguments, out var appName))
+            {
+                await EnsureAuthenticationAsync();
                 await LaunchFromShortcutAsync(appName);
+            }
             else
             {
                 ShowMainWindow();
@@ -271,35 +231,41 @@ namespace Crimson
 
         private async Task LaunchFromShortcutAsync(string appName)
         {
-            var authenticationStatus = await EnsureAuthenticationAsync();
+            GameId id;
+            try
+            {
+                id = GameId.Parse(appName);
+                GetService<LauncherRegistry>().Get(id.ProviderId);
+            }
+            catch (ArgumentException) { ShowMainWindow(); return; }
+            catch (KeyNotFoundException) { ShowMainWindow(); return; }
+            var authenticationStatus = await GetService<LauncherAuthentication>().CheckAuthStatus(id.ProviderId);
             if (authenticationStatus == AuthenticationStatus.LoggedIn)
             {
-                var libraryManager = GetService<LibraryManager>();
-                var installManager = GetService<InstallManager>();
+                var libraryManager = GetService<LauncherLibrary>();
+                var installer = GetService<LauncherInstaller>();
                 var library = await libraryManager.GetLibraryData();
-                if (library.Any(game => game.AppName == appName) &&
-                    installManager.GetActiveOperationForGame(appName) is null &&
-                    await libraryManager.LaunchApp(appName))
+                if (library.Any(game => game.Id == id) &&
+                    installer.GetActiveOperationForGame(id.ToString()) is null &&
+                    await libraryManager.LaunchApp(id.ToString()))
                     return;
             }
 
             ShowMainWindow();
+            if (authenticationStatus != AuthenticationStatus.LoggedIn)
+                GetService<LauncherAuthentication>().RequestSignIn(id.ProviderId);
         }
 
-        private async Task<AuthenticationStatus> EnsureAuthenticationAsync()
+        private async Task EnsureAuthenticationAsync()
         {
             await _authenticationGate.WaitAsync();
             try
             {
-                var authManager = GetService<AuthManager>();
-                return authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn
-                    ? AuthenticationStatus.LoggedIn
-                    : await authManager.CheckAuthStatus();
+                await GetService<LauncherAuthentication>().CheckAllAuthStatuses();
+                await GetService<LauncherLibrary>().GetLibraryData();
+                await GetService<LauncherInstaller>().LoadPendingInstalls();
             }
-            finally
-            {
-                _authenticationGate.Release();
-            }
+            finally { _authenticationGate.Release(); }
         }
 
         private void ShowMainWindow()
@@ -323,6 +289,13 @@ namespace Crimson
         {
             return m_window ?? throw new InvalidOperationException("The main window has not been created.");
         }
+        public static IEnumerable<T> GetServices<T>() where T : class
+        {
+            var services = (App.Current as App)?.Host.Services;
+            if (services?.GetService(typeof(IEnumerable<T>)) is IEnumerable<T> all) return all;
+            return services?.GetService(typeof(T)) is T single ? [single] : [];
+        }
+
         public static T GetService<T>() where T : class
         {
             if ((App.Current as App)!.Host.Services.GetService(typeof(T)) is not T service)

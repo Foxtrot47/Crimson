@@ -1,10 +1,11 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
+using Crimson.Providers;
 using Crimson.ViewModels;
 using Crimson.Utils;
 using Microsoft.UI.Xaml;
@@ -33,8 +34,8 @@ public sealed partial class GameManageDialog : UserControl
     public GameManageDialog()
     {
         Dlcs = new GameDlcViewModel(
-            App.GetService<LibraryManager>(),
-            App.GetService<InstallManager>(),
+            App.GetService<EpicLibraryManager>(),
+            App.GetService<EpicInstallManager>(),
             App.GetService<IUiDispatcher>());
         InitializeComponent();
         _folderLauncher = App.GetService<IFolderLauncher>();
@@ -55,8 +56,9 @@ public sealed partial class GameManageDialog : UserControl
         using var cancellation = new CancellationTokenSource();
         _dialogCancellation = cancellation;
         InstalledSizeText.Text = UiStrings.LoadingEllipsis;
+        var installedGame = App.GetService<EpicLibraryManager>().GetGameInfo(GameId.Parse(viewModel.Game.AppName).LocalId);
         var loading = Task.WhenAll(
-            Dlcs.LoadAsync(viewModel.Game, cancellation.Token),
+            installedGame is null ? Task.CompletedTask : Dlcs.LoadAsync(installedGame, cancellation.Token),
             LoadInstalledSizeAsync(viewModel.Game.AppName, cancellation.Token));
         Uri? storeUri = null;
         _isOpen = true;
@@ -88,7 +90,7 @@ public sealed partial class GameManageDialog : UserControl
     {
         try
         {
-            var size = await App.GetService<InstallManager>().GetCachedInstallSizeBytes(appName, cancellationToken);
+            var size = await App.GetService<EpicInstallManager>().GetCachedInstallSizeBytes(GameId.Parse(appName).LocalId, cancellationToken);
             if (cancellationToken.IsCancellationRequested) return;
             InstalledSizeText.Text = size.HasValue
                 ? StorageSizeFormatter.FormatMebibytes(size.Value / 1048576d)
@@ -206,7 +208,7 @@ public sealed partial class GameManageDialog : UserControl
                 exception.GetType().Name);
             if (!ReferenceEquals(cancellation, _dialogCancellation)) return;
             ShowActionError(UiStrings.TheDesktopShortcutCouldNotBeCreated, UiStrings.TryCreatingItAgainFromGameProperties);
-            App.GetService<InstallManager>().ReportPreparationFailure(game.AppName, Crimson.Models.ActionType.Install,
+            App.GetService<LauncherInstaller>().ReportPreparationFailure(game.AppName, Crimson.Models.ActionType.Install,
                 new Crimson.Models.OperationFailure(Crimson.Models.OperationFailureKind.Storage,
                     "desktop_shortcut_failed", UiStrings.TheDesktopShortcutCouldNotBeCreated,
                     UiStrings.TryCreatingItAgainFromGameProperties, false));
@@ -307,7 +309,7 @@ public sealed partial class GameManageDialog : UserControl
     {
         Log.Warning("DLC changes could not be queued: {ErrorType}", exception.GetType().Name);
         ShowActionError(UiStrings.DLCChangesCouldNotBeQueued, UiStrings.ReopenPropertiesAndTryAgain);
-        App.GetService<InstallManager>().ReportPreparationFailure(ViewModel?.Game?.AppName ?? string.Empty,
+        App.GetService<LauncherInstaller>().ReportPreparationFailure(ViewModel?.Game?.AppName ?? string.Empty,
             Crimson.Models.ActionType.Install, new Crimson.Models.OperationFailure(
                 Crimson.Models.OperationFailureKind.Unknown, "dlc_changes_failed",
                 UiStrings.DLCChangesCouldNotBeQueued, UiStrings.ReopenPropertiesAndTryAgain, false));
@@ -338,7 +340,7 @@ public sealed partial class GameManageDialog : UserControl
     private void ShowBrowseError(string code, string message)
     {
         ShowActionError(message, UiStrings.CheckThatTheInstallationFolderIsAvailableAndTryAgain);
-        App.GetService<InstallManager>().ReportPreparationFailure(ViewModel?.Game?.AppName ?? string.Empty,
+        App.GetService<LauncherInstaller>().ReportPreparationFailure(ViewModel?.Game?.AppName ?? string.Empty,
             Crimson.Models.ActionType.Install, new Crimson.Models.OperationFailure(
                 Crimson.Models.OperationFailureKind.Storage, code, message,
                 UiStrings.CheckThatTheInstallationFolderIsAvailableAndTryAgain, false));

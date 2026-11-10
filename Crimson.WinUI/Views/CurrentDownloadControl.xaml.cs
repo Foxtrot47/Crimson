@@ -1,6 +1,7 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using Crimson.Core;
+using Crimson.Providers;
 using Crimson.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -23,15 +24,15 @@ public sealed partial class CurrentDownloadControl : UserControl, IDisposable
     public event Action<DownloadSummary>? SummaryChanged;
 
     private readonly ILogger _log;
-    private readonly LibraryManager _libraryManager;
-    private readonly InstallManager _installManager;
+    private readonly LauncherLibrary _libraryManager;
+    private readonly LauncherInstaller _installManager;
 
     public CurrentDownloadControl()
     {
         InitializeComponent();
         _log = App.GetService<ILogger>();
-        _installManager = App.GetService<InstallManager>();
-        _libraryManager = App.GetService<LibraryManager>();
+        _installManager = App.GetService<LauncherInstaller>();
+        _libraryManager = App.GetService<LauncherLibrary>();
 
         HandleOperationUpdated(_installManager.CurrentOperation);
         _installManager.OperationUpdated += HandleOperationUpdated;

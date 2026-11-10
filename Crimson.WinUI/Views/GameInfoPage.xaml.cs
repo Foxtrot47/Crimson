@@ -1,8 +1,9 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
+using Crimson.Providers;
 using Crimson.Models;
 using Crimson.ViewModels;
 using Microsoft.UI.Xaml;
@@ -167,14 +168,16 @@ public sealed partial class GameInfoPage : Page
         NavigateToStore(storeUri);
     }
 
+    // The link came from the game's own provider, so it keeps that provider's store destination.
+    private void NavigateToStore(Uri? uri)
+    {
+        if (uri is null || ViewModel.Game is not { } game) return;
+        if (((App)Application.Current).GetWindow() is MainWindow window)
+            window.NavigateToStore(new StoreDestination(game.Id.ProviderId, uri));
+    }
+
     private void ViewInStoreClicked(object sender, RoutedEventArgs e) =>
         NavigateToStore(ViewModel.StorePageUri);
-
-    private static void NavigateToStore(Uri? uri)
-    {
-        if (uri is not null && ((App)Application.Current).GetWindow() is MainWindow window)
-            window.NavigateToStore(uri);
-    }
 
     private void SizeScreenshotViewer()
     {

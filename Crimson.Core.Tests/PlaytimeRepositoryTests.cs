@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Text;
 using Crimson.Core;
 using Crimson.Models;
@@ -19,7 +19,7 @@ public sealed class PlaytimeRepositoryTests : IDisposable
     private readonly HttpClient _apiClient;
     private readonly StubHandler _handler = new();
     private readonly Storage _storage;
-    private readonly AuthManager _auth;
+    private readonly EpicAuthManager _auth;
     private readonly EpicGamesRepository _repository;
 
     public PlaytimeRepositoryTests()
@@ -28,7 +28,7 @@ public sealed class PlaytimeRepositoryTests : IDisposable
         _storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         _authClient = new HttpClient(new StubHandler());
         _apiClient = new HttpClient(_handler);
-        _auth = new AuthManager(_logger, _storage, new TestCredentialProtector(), _authClient);
+        _auth = new EpicAuthManager(_logger, _storage, new TestCredentialProtector(), _authClient);
         _repository = new EpicGamesRepository(_auth, _logger, _apiClient, _apiClient, _apiClient);
     }
 

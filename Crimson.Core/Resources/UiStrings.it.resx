@@ -61,6 +61,81 @@
   <data name="About" xml:space="preserve">
     <value>Informazioni</value>
   </data>
+  <data name="Connected" xml:space="preserve">
+    <value>Connesso</value>
+  </data>
+  <data name="NotConnected" xml:space="preserve">
+    <value>Non connesso</value>
+  </data>
+  <data name="CheckingAccount" xml:space="preserve">
+    <value>Verifica dell'account…</value>
+  </data>
+  <data name="SignInFailed" xml:space="preserve">
+    <value>Accesso non riuscito. Riprova.</value>
+  </data>
+  <data name="Connect" xml:space="preserve">
+    <value>Connetti</value>
+  </data>
+  <data name="Disconnect" xml:space="preserve">
+    <value>Disconnetti</value>
+  </data>
+  <data name="UbisoftSignInHeading" xml:space="preserve">
+    <value>Accedi a Ubisoft</value>
+  </data>
+  <data name="Email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="RememberMe" xml:space="preserve">
+    <value>Resta connesso su questo PC</value>
+  </data>
+  <data name="SignIn" xml:space="preserve">
+    <value>Accedi</value>
+  </data>
+  <data name="UbisoftTwoFactorPrompt" xml:space="preserve">
+    <value>Inserisci il codice dell'app di autenticazione Ubisoft.</value>
+  </data>
+  <data name="UbisoftCodeLabel" xml:space="preserve">
+    <value>Codice di autenticazione</value>
+  </data>
+  <data name="VerifyCode" xml:space="preserve">
+    <value>Verifica codice</value>
+  </data>
+  <data name="UbisoftUseAnotherAccount" xml:space="preserve">
+    <value>Usa un altro account</value>
+  </data>
+  <data name="UbisoftSigningIn" xml:space="preserve">
+    <value>Accesso in corso…</value>
+  </data>
+  <data name="UbisoftVerifying" xml:space="preserve">
+    <value>Verifica in corso…</value>
+  </data>
+  <data name="UbisoftEmailPasswordRequired" xml:space="preserve">
+    <value>Inserisci email e password.</value>
+  </data>
+  <data name="UbisoftCodeRequired" xml:space="preserve">
+    <value>Inserisci il codice di autenticazione.</value>
+  </data>
+  <data name="UbisoftInvalidCredentials" xml:space="preserve">
+    <value>Ubisoft non ha accettato questa email o password.</value>
+  </data>
+  <data name="UbisoftInvalidCode" xml:space="preserve">
+    <value>Questo codice non è stato accettato. Riprova.</value>
+  </data>
+  <data name="UbisoftSignInBlocked" xml:space="preserve">
+    <value>Ubisoft ha bloccato questo accesso. Riprova più tardi.</value>
+  </data>
+  <data name="UbisoftSignInUnavailable" xml:space="preserve">
+    <value>Impossibile raggiungere Ubisoft. Controlla la connessione e riprova.</value>
+  </data>
+  <data name="UbisoftPasswordNotice" xml:space="preserve">
+    <value>Ubisoft riceve direttamente la password. Se resti connesso, Crimson la conserva su questo PC cifrata con Windows.</value>
+  </data>
+  <data name="UbisoftManageAccount" xml:space="preserve">
+    <value>Gestisci il tuo account Ubisoft</value>
+  </data>
   <data name="Accounts" xml:space="preserve">
     <value>Account</value>
   </data>
@@ -444,6 +519,12 @@
   </data>
   <data name="NoInstalledGames" xml:space="preserve">
     <value>Nessun gioco installato</value>
+  </data>
+  <data name="ManageConnectedAccounts" xml:space="preserve">
+    <value>Gestisci gli account collegati</value>
+  </data>
+  <data name="NoConnectedStoreGamesMessage" xml:space="preserve">
+    <value>I tuoi giochi dai negozi collegati appaiono qui.</value>
   </data>
   <data name="NoInstalledGamesMessage" xml:space="preserve">
     <value>Nessun gioco installato.</value>

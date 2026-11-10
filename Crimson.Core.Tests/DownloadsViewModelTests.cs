@@ -1,4 +1,5 @@
-using Crimson.Models;
+﻿using Crimson.Models;
+using Crimson.Providers.Epic;
 using Crimson.ViewModels;
 
 namespace Crimson.Tests;
@@ -176,12 +177,12 @@ public sealed class DownloadsViewModelTests
             new KeyImage { Type = "DieselGameBoxTall", Width = 600, Height = 900, Url = "https://cdn1.epicgames.com/portrait.png" },
             new KeyImage { Type = "DieselGameBox", Width = 512, Height = 512, Url = "https://cdn1.epicgames.com/square.png" }
         ];
-        Assert.Null(DownloadsViewModel.FindBannerUrl(fixture.BaseGame));
+        Assert.Null(EpicContentImages.FindLandscape(fixture.BaseGame.Metadata.KeyImages, "DieselGameBox", "OfferImageWide"));
         fixture.BaseGame.Metadata.KeyImages.Add(new KeyImage
         {
             Type = "OfferImageWide", Width = 1920, Height = 1080, Url = "https://cdn1.epicgames.com/wide.png"
         });
-        Assert.Equal("https://cdn1.epicgames.com/wide.png", DownloadsViewModel.FindBannerUrl(fixture.BaseGame));
+        Assert.Equal("https://cdn1.epicgames.com/wide.png", EpicContentImages.FindLandscape(fixture.BaseGame.Metadata.KeyImages, "DieselGameBox", "OfferImageWide"));
     }
 
     [Theory]
@@ -192,7 +193,7 @@ public sealed class DownloadsViewModelTests
         using var fixture = new DlcTestFixture();
         fixture.BaseGame.Metadata.KeyImages =
             [new KeyImage { Type = "OfferImageWide", Width = 1920, Height = 1080, Url = url }];
-        Assert.Null(DownloadsViewModel.FindBannerUrl(fixture.BaseGame));
+        Assert.Null(EpicContentImages.FindLandscape(fixture.BaseGame.Metadata.KeyImages, "DieselGameBox", "OfferImageWide"));
     }
 
     [Fact]
@@ -203,7 +204,7 @@ public sealed class DownloadsViewModelTests
     }
 
     private static DownloadsViewModel CreateViewModel(DlcTestFixture fixture) => new(
-        Serilog.Log.Logger, fixture.Installer, fixture.Library, new ImmediateDispatcher());
+        Serilog.Log.Logger, fixture.Shared.Installer, fixture.Shared.Library, new ImmediateDispatcher());
 
     private static void Apply(DownloadsViewModel viewModel, OperationSnapshot operation) =>
         typeof(DownloadsViewModel).GetMethod("ApplyOperationPresentation",
@@ -217,7 +218,7 @@ public sealed class DownloadsViewModelTests
         var install = fixture.Installer.CurrentInstall!;
         install.Phase = OperationPhase.Transferring;
         var dispatcher = new QueuedDispatcher();
-        using var viewModel = new DownloadsViewModel(Serilog.Log.Logger, fixture.Installer, fixture.Library, dispatcher);
+        using var viewModel = new DownloadsViewModel(Serilog.Log.Logger, fixture.Shared.Installer, fixture.Shared.Library, dispatcher);
         var snapshot = OperationSnapshot.From(install) with { DownloadSpeedMiB = 8, WriteSpeedMiB = 12 };
         typeof(DownloadsViewModel).GetMethod("HandleTransferRatesUpdated",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(viewModel, [snapshot]);

@@ -1,7 +1,8 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Crimson.Core;
 using Crimson.Resources;
 using Crimson.Models;
+using Crimson.Providers.Epic;
 using Crimson.ViewModels;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -120,7 +121,7 @@ public sealed class GameInfoActionStateTests : IDisposable
         var folder = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         viewModel.FolderPickerRequested += () => folder.Task;
         var pending = (move ? viewModel.MoveGameCommand : viewModel.ImportGameCommand).ExecuteAsync(null);
-        viewModel.Game = _fixture.InstalledDlc;
+        viewModel.Game = EpicLauncherProvider.ToLauncherGame(_fixture.InstalledDlc);
         folder.SetResult(_fixture.BasePath);
         await pending;
 
@@ -166,8 +167,8 @@ public sealed class GameInfoActionStateTests : IDisposable
     private GameInfoViewModel CreateViewModel(InstallState state)
     {
         _fixture.BaseGame.LocalAppState!.InstallStatus = state;
-        return new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance, _fixture.Installer,
-            _fixture.Library, _fixture.Storage, new ImmediateDispatcher()) { Game = _fixture.BaseGame };
+        return new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance, _fixture.Shared.Installer,
+            _fixture.Shared.Library, _fixture.Shared.Registry, new ImmediateDispatcher()) { Game = EpicLauncherProvider.ToLauncherGame(_fixture.BaseGame) };
     }
 
     private static OperationSnapshot Snapshot(ActionType action, ActionStatus status) => new(

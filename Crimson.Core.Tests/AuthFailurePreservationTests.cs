@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Text;
 using System.Text.Json;
 using Crimson.Core;
@@ -27,7 +27,7 @@ public sealed class AuthFailurePreservationTests : IDisposable
         var storage = await Seed(expired);
         var before = Snapshot();
         using var client = new HttpClient(new Handler(_ => Failure(failure)));
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), client);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), client);
 
         Assert.Equal(AuthenticationStatus.LoggedOut, await auth.CheckAuthStatus());
         Assert.Null(await auth.GetAccessToken());
@@ -50,7 +50,7 @@ public sealed class AuthFailurePreservationTests : IDisposable
             "malformed-success" => Response(HttpStatusCode.OK, "not-json"),
             _ => Response(HttpStatusCode.OK, "{}")
         }));
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), client);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), client);
 
         Assert.Equal(AuthenticationStatus.LoggedOut, await auth.CheckAuthStatus());
         AssertSnapshot(before);
@@ -66,7 +66,7 @@ public sealed class AuthFailurePreservationTests : IDisposable
         using var client = new HttpClient(new Handler(_ => invalidGrant
             ? Response(HttpStatusCode.BadRequest, "{\"error\":\"invalid_grant\"}")
             : Response(HttpStatusCode.Unauthorized, "{}")));
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), client);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), client);
 
         Assert.Equal(AuthenticationStatus.LoggedOut, await auth.CheckAuthStatus());
         Assert.False(File.Exists(Path.Combine(_root, "user.json")));
@@ -84,7 +84,7 @@ public sealed class AuthFailurePreservationTests : IDisposable
         using var client = new HttpClient(new Handler(request => request.Method == HttpMethod.Get
             ? Response(HttpStatusCode.OK, "{}")
             : unavailable ? Failure(failure) : Response(HttpStatusCode.OK, JsonSerializer.Serialize(User(expired: false)))));
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), client);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), client);
         Assert.Equal(AuthenticationStatus.LoggedIn, await auth.CheckAuthStatus());
         await storage.SaveUserData(User(expired: true));
         var before = Snapshot();

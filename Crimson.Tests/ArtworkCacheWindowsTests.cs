@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Crimson.Utils;
 using Serilog;
 using Windows.Graphics.Imaging;
@@ -17,7 +17,7 @@ public sealed class ArtworkCacheWindowsTests
         try
         {
             const string url = "https://cdn1.epicgames.com/windows-artwork.png";
-            var cache = new ArtworkCache(http, logger, directory);
+            var cache = new ArtworkCache(http, logger, directory, [new Crimson.Providers.Epic.EpicContentPolicy()]);
             var uri = await cache.GetImageUriAsync(url);
             Assert.NotNull(uri);
             // The WinUI converter opens cached files as random-access streams too;
@@ -30,7 +30,7 @@ public sealed class ArtworkCacheWindowsTests
                 Assert.Equal(1u, decoder.PixelHeight);
                 Assert.NotEmpty((await decoder.GetPixelDataAsync()).DetachPixelData());
             }
-            Assert.Equal(uri, await new ArtworkCache(http, logger, directory).GetImageUriAsync(url));
+            Assert.Equal(uri, await new ArtworkCache(http, logger, directory, [new Crimson.Providers.Epic.EpicContentPolicy()]).GetImageUriAsync(url));
             Assert.Equal(1, handler.Requests);
         }
         finally

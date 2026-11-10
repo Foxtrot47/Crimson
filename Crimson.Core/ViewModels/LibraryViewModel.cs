@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Crimson.Core;
 using Crimson.Interfaces;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Utils;
 using Serilog;
 
@@ -47,6 +48,9 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     [ObservableProperty]
     private bool _showQueueItems = false;
 
+    [ObservableProperty]
+    private bool _showEmptyLibrary;
+
     public bool HasNoInstalledGames => InstalledOnly && !ShowLoadingScreen && GamesList.Count == 0;
 
     partial void OnInstalledOnlyChanged(bool value)
@@ -56,20 +60,23 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     }
 
     private readonly ILogger _log;
-    private readonly InstallManager _installManager;
+    private readonly LauncherInstaller _installManager;
     private readonly IArtworkCache? _artworkCache;
     private int _accountGeneration = -1;
-    private readonly LibraryManager _libraryManager;
+    private readonly LauncherLibrary _libraryManager;
+    private readonly LauncherRegistry _launchers;
     private readonly IUiDispatcher _uiDispatcher;
     private int _navigationGeneration;
-    private Action<IEnumerable<Game>>? _libraryUpdatedHandler;
+    private Action<IEnumerable<LauncherGame>>? _libraryUpdatedHandler;
     private Action<OperationSnapshot>? _operationUpdatedHandler;
-    private IReadOnlyList<Game> _librarySnapshot = [];
+    private IReadOnlyList<LauncherGame> _librarySnapshot = [];
+    private int _artworkFailures;
 
     public LibraryViewModel(
         ILogger logger,
-        InstallManager installManager,
-        LibraryManager libraryManager,
+        LauncherInstaller installManager,
+        LauncherLibrary libraryManager,
+        LauncherRegistry launchers,
         IUiDispatcher uiDispatcher,
         IArtworkCache? artworkCache = null)
     {
@@ -77,6 +84,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         _installManager = installManager;
         _artworkCache = artworkCache;
         _libraryManager = libraryManager;
+        _launchers = launchers;
         _uiDispatcher = uiDispatcher;
     }
 
@@ -91,6 +99,8 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
             ShowLoadingScreen = true;
             ShowAppGrid = false;
         }
+        if (_artworkCache is null)
+            _log.Warning("Artwork cache is unavailable; library images will not load");
         _libraryUpdatedHandler = games => UpdateLibrary(games, generation);
         _operationUpdatedHandler = _ => RefreshOperationStatus(generation);
         _libraryManager.LibraryUpdated += _libraryUpdatedHandler;
@@ -119,6 +129,8 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         try
         {
             uri = await _artworkCache!.GetImageUriAsync(item.SourceImageUrl);
+            if (uri is null && Interlocked.Increment(ref _artworkFailures) <= 3)
+                _log.Warning("Library artwork was not cached for {Url}", item.SourceImageUrl);
         }
         catch (Exception ex)
         {
@@ -135,7 +147,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         });
     }
 
-    private void UpdateLibrary(IEnumerable<Game> games, int generation)
+    private void UpdateLibrary(IEnumerable<LauncherGame> games, int generation)
     {
         try
         {
@@ -185,7 +197,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     }
 
     private void ApplyLibrary(
-        IReadOnlyList<Game> games,
+        IReadOnlyList<LauncherGame> games,
         IReadOnlyDictionary<string, OperationSnapshot> operations,
         int generation,
         bool retryArtwork)
@@ -195,29 +207,39 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
 
         var existing = GamesList.ToDictionary(item => item.Name, StringComparer.Ordinal);
         var items = games
+            // Re-read every game so the list reflects current installed state, not a stale snapshot.
+            .Select(game => _libraryManager.GetGameInfo(game.AppName) ?? game)
             .Where(game => !game.IsDlc() && MatchesInstalledFilter(game))
             .Select(game => CreateOrUpdateLibraryItem(game, operations.GetValueOrDefault(game.AppName),
                 existing.GetValueOrDefault(game.AppName), generation, retryArtwork))
             .OrderBy(item => item.Title)
             .ToList();
         if (!GamesList.SequenceEqual(items)) GamesList = items;
+        if (items.Count > 0)
+            _log.Information("Library: {Cards} cards, {WithArtwork} with artwork sources; per provider: {Providers}",
+                items.Count, items.Count(item => item.SourceImageUrl is not null),
+                string.Join("; ", items.GroupBy(item => item.ProviderName)
+                    .Select(group => $"{group.Key}: {group.Count(item => item.SourceImageUrl is not null)}/{group.Count()}")));
+        foreach (var missing in items.Where(item => item.SourceImageUrl is null).Take(5))
+            _log.Information("Library: {Provider} card '{Title}' has no artwork source",
+                missing.ProviderName, missing.Title);
+        ShowEmptyLibrary = items.Count == 0;
         ShowLoadingScreen = false;
         ShowAppGrid = true;
     }
 
-    private bool MatchesInstalledFilter(Game game)
-    {
-        if (!InstalledOnly) return true;
-        var current = _libraryManager.GetGameInfo(game.AppName);
-        return current is not null && LibraryManager.IsSidebarListed(current, null);
-    }
+    private bool MatchesInstalledFilter(LauncherGame game) => !InstalledOnly || IsInstalled(game);
+
+    // Providers report presence through the normalized installation state, never through store metadata.
+    private static bool IsInstalled(LauncherGame game) => game.LocalAppState?.InstallStatus is
+        InstallState.Installed or InstallState.NeedUpdate or InstallState.Broken or InstallState.Playing
+        or InstallState.Installing or InstallState.InstallationPaused
+        or InstallState.Updating or InstallState.UpdatingPaused or InstallState.Repairing;
 
     private LibraryItem CreateOrUpdateLibraryItem(
-        Game game, OperationSnapshot? operation, LibraryItem? item, int generation, bool retryArtwork)
+        LauncherGame game, OperationSnapshot? operation, LibraryItem? item, int generation, bool retryArtwork)
     {
-        var imageUrl = game.Metadata?.KeyImages?
-            .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
-            ?? game.Metadata?.KeyImages?.FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
+        var imageUrl = game.CoverImageUrl ?? game.LandscapeImageUrl;
         var artworkGeneration = _artworkCache?.Generation ?? 0;
         if (item is null || item.Title != game.AppTitle || item.SourceImageUrl != imageUrl ||
             item.ArtworkGeneration != artworkGeneration)
@@ -226,6 +248,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
             {
                 Name = game.AppName,
                 Title = game.AppTitle,
+                ProviderName = _launchers.Get(game.Id.ProviderId).DisplayName,
                 SourceImageUrl = imageUrl,
                 ArtworkGeneration = artworkGeneration,
                 ImageUrl = _artworkCache is null ? imageUrl : null

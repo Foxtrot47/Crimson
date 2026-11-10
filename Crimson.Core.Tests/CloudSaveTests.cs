@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using Crimson.Core;
@@ -315,8 +315,8 @@ public sealed class CloudSaveTests : IDisposable
         File.WriteAllBytes(Path.Combine(savePath, "save.sav"), new byte[100]);
         File.SetLastWriteTimeUtc(Path.Combine(savePath, "save.sav"), DateTimeOffset.UtcNow.AddHours(1).UtcDateTime);
         using var http = new HttpClient();
-        var auth = new AuthManager(_logger, _storage, new TestCredentialProtector(), http);
-        var library = new LibraryManager(_logger, _repository, _storage, auth, _manager);
+        var auth = new EpicAuthManager(_logger, _storage, new TestCredentialProtector(), http);
+        var library = new EpicLibraryManager(_logger, _repository, _storage, auth, _manager);
         library.SetGameRunning(AppName, true);
         _repository.BlockManifestListings = true;
 
@@ -338,8 +338,8 @@ public sealed class CloudSaveTests : IDisposable
         File.WriteAllBytes(Path.Combine(savePath, "save.sav"), new byte[100]);
         File.SetLastWriteTimeUtc(Path.Combine(savePath, "save.sav"), DateTimeOffset.UtcNow.AddHours(1).UtcDateTime);
         using var http = new HttpClient();
-        var auth = new AuthManager(_logger, _storage, new TestCredentialProtector(), http);
-        var library = new LibraryManager(_logger, _repository, _storage, auth, _manager);
+        var auth = new EpicAuthManager(_logger, _storage, new TestCredentialProtector(), http);
+        var library = new EpicLibraryManager(_logger, _repository, _storage, auth, _manager);
         library.SetGameRunning(AppName, true);
         library.SetGameRunning(AppName, true); // a second instance is playing
 
@@ -581,7 +581,7 @@ public sealed class CloudSaveTests : IDisposable
     /// uploads address files through pre-signed-style links while reservations key entries
     /// by the relative paths that were posted, matching the savesync contract.
     /// </summary>
-    private sealed class FakeCloudRepository : IStoreRepository
+    private sealed class FakeCloudRepository : IEpicGamesRepository
     {
         public readonly Dictionary<string, byte[]> RemoteFiles = new(StringComparer.Ordinal);
         public int ManifestListings;

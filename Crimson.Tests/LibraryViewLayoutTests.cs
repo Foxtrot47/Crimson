@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 
 namespace Crimson.Tests;
 
@@ -48,9 +48,24 @@ public sealed class LibraryViewLayoutTests
             Assert.Equal("FontIcon", icon.Name.LocalName);
             Assert.Equal("14", (string?)icon.Attribute("FontSize"));
         });
-        var import = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "EpicImportButton");
-        Assert.Equal("36", (string?)import.Attribute("Height"));
-        Assert.Equal("Center", (string?)import.Attribute("VerticalAlignment"));
+        var actions = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "LibraryActionsBar");
+        Assert.Equal("Center", (string?)actions.Attribute("VerticalAlignment"));
+        Assert.Equal("Horizontal", (string?)actions.Attribute("Orientation"));
+    }
+
+    [Fact]
+    public void CardArtworkIsCentredAndFilled()
+    {
+        var document = Load();
+        var card = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "GameCardTemplate" ||
+            (string?)element.Attribute(Xaml + "Key") == "GameCardTemplate");
+        var image = Assert.Single(card.Descendants(), element => element.Name.LocalName == "Image" &&
+            ((string?)element.Attribute("Source"))?.Contains("ImageUrl") == true);
+        Assert.Equal("Fill", (string?)image.Attribute("Stretch"));
+        Assert.Equal("Center", (string?)image.Attribute("HorizontalAlignment"));
+        Assert.Equal("Center", (string?)image.Attribute("VerticalAlignment"));
+        // Missing artwork keeps a placeholder behind the image instead of an empty card.
+        Assert.Single(card.Descendants(), element => element.Name.LocalName == "FontIcon");
     }
 
     [Fact]
@@ -61,8 +76,8 @@ public sealed class LibraryViewLayoutTests
         Assert.Equal("Right", (string?)actions.Attribute("HorizontalAlignment"));
         Assert.All(actions.Elements().Single(element => element.Name.LocalName == "Grid.ColumnDefinitions").Elements(),
             column => Assert.Equal("Auto", (string?)column.Attribute("Width")));
-        var import = Assert.Single(actions.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "EpicImportButton");
-        Assert.Equal("2", (string?)import.Attribute("Grid.Column"));
+        var bar = Assert.Single(actions.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "LibraryActionsBar");
+        Assert.Equal("2", (string?)bar.Attribute("Grid.Column"));
     }
 
     [Fact]

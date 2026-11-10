@@ -1,4 +1,4 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,7 +8,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Models;
-using Crimson.Repository;
+using Crimson.Providers;
+using Crimson.Views;
 using Crimson.Utils;
 using H.NotifyIcon;
 using Microsoft.UI.Composition;
@@ -46,21 +47,24 @@ public sealed partial class MainWindow : Window
 
     private const string GameNavTagPrefix = "game:";
 
-    public bool IsLoggedIn;
     private Crimson.Controls.EpicImportDialog? _epicImportDialog;
     private ILogger _log = App.GetService<ILogger>();
     private readonly SettingsManager _settingsManager;
-    private readonly AuthManager _authManager;
-    private readonly InstallManager _installManager;
-    private readonly LibraryManager _libraryManager;
-    private readonly IStoreRepository _storeRepository;
+    private readonly LauncherAuthentication _authManager;
+    private readonly LauncherInstaller _installManager;
+    private readonly LauncherLibrary _libraryManager;
+    private readonly LauncherRegistry _launchers;
+    private readonly LauncherStores _stores;
+    private ContentDialog? _signInDialog;
+    private LoginPage? _signInPage;
+    private string? _signInProviderId;
     private readonly OperationErrorPresenter _operationErrors;
     private readonly CloudSaveConflictPresenter _cloudSaveConflicts;
     private readonly WindowSizeConstraints _windowSizeConstraints;
     private readonly NotificationService _notifications;
     private readonly IArtworkCache _artworkCache;
 
-    private List<Game> _libraryCache = new();
+    private List<LauncherGame> _libraryCache = new();
     private CancellationTokenSource? _storeSearchCancellation;
     private string? _currentGameAppName;
 
@@ -94,7 +98,7 @@ public sealed partial class MainWindow : Window
         public required string Subtitle { get; init; }
         public string? AppName { get; init; }
         public string? StoreQuery { get; init; }
-        public string? StoreProductSlug { get; init; }
+        public StoreDestination? StoreTarget { get; init; }
         public ImageSource? Thumbnail { get; init; }
         public string? IconGlyph { get; init; }
         public bool IsLoading { get; init; }
@@ -119,10 +123,12 @@ public sealed partial class MainWindow : Window
         GlobalSearchBox.Loaded += (_, _) => UpdateTitleBarInteractiveRegion();
         GlobalSearchBox.SizeChanged += (_, _) => UpdateTitleBarInteractiveRegion();
 
-        _authManager = App.GetService<AuthManager>();
-        _installManager = App.GetService<InstallManager>();
-        _libraryManager = App.GetService<LibraryManager>();
-        _storeRepository = App.GetService<IStoreRepository>();
+        _authManager = App.GetService<LauncherAuthentication>();
+        _installManager = App.GetService<LauncherInstaller>();
+        _libraryManager = App.GetService<LauncherLibrary>();
+        _launchers = App.GetService<LauncherRegistry>();
+        _stores = App.GetService<LauncherStores>();
+        StoreNavItem.Visibility = _stores.HasStores ? Visibility.Visible : Visibility.Collapsed;
         _notifications = App.GetService<NotificationService>();
         _artworkCache = App.GetService<IArtworkCache>();
         Notifications.Bind(_notifications);
@@ -139,15 +145,18 @@ public sealed partial class MainWindow : Window
         _libraryManager.GameStatusUpdated += GameStatusUpdatedHandler;
         CurrentDownload.SummaryChanged += OnDownloadSummaryChanged;
         _installManager.OperationUpdated += OperationUpdatedHandler;
+        _authManager.StatusChanged += AccountStatusChanged;
+        _authManager.SignInRequested += SignInRequested;
         DownloadsNavItem.Resources["NavigationViewItemOnLeftIconBoxHeight"] = 32d;
         DownloadIcon.Loaded += (_, _) => InitializeDownloadRing();
         DownloadIcon.ActualThemeChanged += (_, _) => UpdateDownloadRing();
+        // The shell opens on the library; navigation must not wait for an account status change.
+        ShowLibrary();
         CurrentDownload.PublishCurrentSummary();
         _activeInstall = _installManager.CurrentOperation is { IsActive: true } operation ? operation : null;
         RebuildInstalledMenu();
 
-        IsLoggedIn = false;
-        _authManager.AuthStatusChanged += AuthStatusChangedHandler;
+
     }
 
     private void EnsureVisible()
@@ -236,7 +245,7 @@ public sealed partial class MainWindow : Window
         try
         {
             await Task.Delay(TimeSpan.FromMilliseconds(400), cancellationSource.Token);
-            var results = await _storeRepository.SearchStore(query, cancellationSource.Token);
+            var results = await _stores.SearchStore(query, cancellationSource.Token);
             if (ReferenceEquals(_storeSearchCancellation, cancellationSource) &&
                 string.Equals(NormalizeSearchQuery(GlobalSearchBox.Text), query, StringComparison.Ordinal))
                 UpdateSearchSuggestions(query, results);
@@ -272,15 +281,16 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (suggestion.StoreProductSlug is not null)
-            NavigateToStore(StorePage.CreateProductUri(suggestion.StoreProductSlug));
-        else
-            NavigateToStore(StorePage.CreateSearchUri(suggestion.StoreQuery!));
+        if (suggestion.StoreTarget is not null)
+            NavigateToStore(suggestion.StoreTarget);
+        else if (_stores.HasStores)
+            NavigateToStore(new StoreDestination(_stores.Providers[0].Id,
+                _stores.Providers[0].Store!.CreateSearchUri(suggestion.StoreQuery!)));
     }
 
     private void UpdateSearchSuggestions(
         string query,
-        IReadOnlyList<StoreSearchResult>? storeResults = null,
+        IReadOnlyList<StoreProduct>? storeResults = null,
         bool showStoreLoading = false)
     {
         if (query.Length == 0)
@@ -295,8 +305,8 @@ public sealed partial class MainWindow : Window
             suggestions.AddRange(storeResults.Select(result => new SearchSuggestion
             {
                 DisplayText = result.Title,
-                Subtitle = UiStrings.EpicGamesStore,
-                StoreProductSlug = result.ProductSlug,
+                Subtitle = _stores.DisplayName(result.ProviderId),
+                StoreTarget = _stores.ProductDestination(result),
                 Thumbnail = CreateSearchThumbnail(result.ImageUrl)
             }));
         }
@@ -313,7 +323,7 @@ public sealed partial class MainWindow : Window
     private List<SearchSuggestion> GetLocalSearchSuggestions(string query)
     {
         return _libraryCache
-            .Where(game => game.Metadata is not null && !game.IsDlc())
+            .Where(game => !game.IsDlc())
             .Where(game =>
                 (game.AppTitle?.Contains(query, StringComparison.CurrentCultureIgnoreCase) ?? false) ||
                 game.AppName.Contains(query, StringComparison.OrdinalIgnoreCase))
@@ -323,19 +333,18 @@ public sealed partial class MainWindow : Window
             .Select(game => new SearchSuggestion
             {
                 DisplayText = string.IsNullOrWhiteSpace(game.AppTitle) ? game.AppName : game.AppTitle,
-                Subtitle = UiStrings.InYourLibrary,
+                Subtitle = $"{UiStrings.InYourLibrary} · {_launchers.Get(game.Id.ProviderId).DisplayName}",
                 AppName = game.AppName,
                 Thumbnail = CreateSearchThumbnail(game)
             })
             .ToList();
     }
 
-    private ImageSource? CreateSearchThumbnail(Game game)
+    private ImageSource? CreateSearchThumbnail(LauncherGame game) =>
+        CreateSearchThumbnail(game.CoverImageUrl ?? game.LandscapeImageUrl);
+
+    private ImageSource? CreateSearchThumbnail(string? url)
     {
-        var url = game.Metadata?.KeyImages?
-            .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
-                  ?? game.Metadata?.KeyImages?
-                      .FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
         if (string.IsNullOrEmpty(url)) return null;
 
         // Owned games reuse cached Library artwork instead of downloading on every keystroke.
@@ -344,19 +353,6 @@ public sealed partial class MainWindow : Window
         return bitmap;
     }
 
-    // Store results are transient, so they load directly from the allowed Epic content hosts.
-    private static ImageSource? CreateSearchThumbnail(string? url)
-    {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !EpicEndpointPolicy.IsAllowedContentUri(uri))
-            return null;
-
-        return new BitmapImage
-        {
-            DecodePixelType = DecodePixelType.Logical,
-            DecodePixelHeight = 84,
-            UriSource = uri
-        };
-    }
 
     private static SearchSuggestion CreateStoreLoadingSuggestion() => new()
     {
@@ -401,29 +397,29 @@ public sealed partial class MainWindow : Window
         }
         if (presenter?.State == OverlappedPresenterState.Minimized) presenter.Restore();
         Activate();
-        return _authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn;
+        return _authManager.Accounts.Any(account => account.IsConnected);
     }
 
     internal void LaunchFromTray(string appName)
     {
-        if (_authManager.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
-        var game = _libraryManager.GetGameInfo(appName);
-        if (game is not null) LaunchGame(appName, game.AppTitle);
+        var id = GameId.Parse(appName);
+        if (_launchers.Get(id.ProviderId).Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
+        var game = _libraryManager.GetGameInfo(id.ToString());
+        if (game is not null) LaunchGame(id.ToString(), game.AppTitle);
     }
 
-    internal void NavigateToStore(Uri uri)
+    // The provider owns the destination; the shell only routes it to the hosting page.
+    internal void NavigateToStore(StoreDestination destination)
     {
-        if (!EpicEndpointPolicy.IsAllowedStoreUri(uri))
-            throw new InvalidOperationException("Unapproved Store URI.");
         NavControl.SelectedItem = StoreNavItem;
         if (ContentFrame.Content is StorePage storePage)
         {
-            storePage.Open(uri);
+            storePage.Open(destination);
             return;
         }
 
         _currentGameAppName = null;
-        ContentFrame.Navigate(typeof(StorePage), uri, new EntranceNavigationTransitionInfo());
+        ContentFrame.Navigate(typeof(StorePage), destination, new EntranceNavigationTransitionInfo());
     }
 
     private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
@@ -445,7 +441,8 @@ public sealed partial class MainWindow : Window
 
     internal async Task ShowEpicImportAsync()
     {
-        if (_authManager.AuthenticationStatus != AuthenticationStatus.LoggedIn || _epicImportDialog is not null) return;
+        if (_launchers.Get(Crimson.Providers.Epic.EpicLauncherProvider.ProviderId).Authentication.AuthenticationStatus
+            != AuthenticationStatus.LoggedIn || _epicImportDialog is not null) return;
         Crimson.Controls.EpicImportDialog? dialog = null;
         try
         {
@@ -521,7 +518,7 @@ public sealed partial class MainWindow : Window
         ContentFrame.Navigate(typeof(GameInfoPage), appName, transitionInfo);
     }
 
-    private void LibraryUpdatedHandler(IEnumerable<Game> games)
+    private void LibraryUpdatedHandler(IEnumerable<LauncherGame> games)
     {
         if (games == null) return;
         var snapshot = games.ToList();
@@ -534,20 +531,19 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    private void GamesAddedHandler(IReadOnlyList<Game> games)
+    private void GamesAddedHandler(IReadOnlyList<LauncherGame> games)
     {
         var accountGeneration = _libraryManager.AccountGeneration;
         var notification = LibraryNotification.ForAddedGames(games);
         if (notification is null) return;
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (accountGeneration == _libraryManager.AccountGeneration &&
-                _authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn)
+            if (accountGeneration == _libraryManager.AccountGeneration)
                 _notifications.Show(notification);
         });
     }
 
-    private void GameStatusUpdatedHandler(Game game)
+    private void GameStatusUpdatedHandler(LauncherGame game)
     {
         if (game == null) return;
         DispatcherQueue.TryEnqueue(() =>
@@ -565,9 +561,8 @@ public sealed partial class MainWindow : Window
 
     private void RefreshTrayMenu()
     {
-        var isLoggedIn = _authManager.AuthenticationStatus == AuthenticationStatus.LoggedIn;
-        var games = isLoggedIn ? _libraryManager.GetSidebarGames(_libraryCache, null) : [];
-        TrayIconView.UpdateInstalledGames(games, isLoggedIn,
+        var games = _libraryCache.Where(game => !game.IsDlc() && IsPaneListed(game, null)).ToList();
+        TrayIconView.UpdateInstalledGames(games, _authManager.Accounts.Any(account => account.IsConnected),
             appName => _installManager.GetActiveOperationForGame(appName) is not null);
     }
 
@@ -575,7 +570,9 @@ public sealed partial class MainWindow : Window
     {
         RefreshTrayMenu();
         var activeAppName = GetDisplayedGameAppName(_activeInstall);
-        var installed = _libraryManager.GetSidebarGames(_libraryCache, activeAppName)
+        var installed = _libraryCache
+            .Where(game => !game.IsDlc())
+            .Where(game => IsPaneListed(game, activeAppName))
             .OrderBy(game => game.AppTitle, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
@@ -602,7 +599,14 @@ public sealed partial class MainWindow : Window
         ApplyInstallVisual(_activeInstall);
     }
 
-    private NavigationViewItem CreateInstalledGameItem(Game game)
+    private static bool IsPaneListed(LauncherGame game, string? activeAppName) =>
+        string.Equals(game.AppName, activeAppName, StringComparison.Ordinal) ||
+        game.LocalAppState?.InstallStatus is InstallState.Installed or InstallState.NeedUpdate
+            or InstallState.Installing or InstallState.InstallationPaused
+            or InstallState.Updating or InstallState.UpdatingPaused
+            or InstallState.Repairing;
+
+    private NavigationViewItem CreateInstalledGameItem(LauncherGame game)
     {
         var appName = game.AppName;
         var title = string.IsNullOrWhiteSpace(game.AppTitle) ? appName : game.AppTitle;
@@ -816,13 +820,9 @@ public sealed partial class MainWindow : Window
         brush.GradientStops[2].Offset = offset;
     }
 
-    private IconElement? CreateGameIcon(Game game)
+    private IconElement? CreateGameIcon(LauncherGame game)
     {
-        var keyImages = game.Metadata?.KeyImages;
-        if (keyImages is null) return null;
-
-        var url = keyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
-                  ?? keyImages.FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
+        var url = game.CoverImageUrl ?? game.LandscapeImageUrl;
 
         if (string.IsNullOrEmpty(url)) return null;
 
@@ -938,89 +938,69 @@ public sealed partial class MainWindow : Window
         if (Equals(_pendingNavigationPageType, e.SourcePageType))
             _pendingNavigationPageType = null;
     }
-    private void UpdateUIBasedOnAuthenticationStatus(AuthenticationStatus authStatus)
+    private void ShowLibrary()
     {
-        Log.Information("Auth status: {AuthStatus}", authStatus);
-        RefreshTrayMenu();
+        if (NavControl.MenuItems.Count == 0) return;
+        NavControl.SelectedItem = NavControl.MenuItems[0];
+        NavControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
+    }
 
-        switch (authStatus)
+    private void AccountStatusChanged(string providerId, AuthenticationStatus status)
+    {
+        DispatcherQueue.TryEnqueue(async () =>
         {
-            case AuthenticationStatus.Checking:
-                StoreNavItem.IsEnabled = false;
-                GlobalSearchBox.IsEnabled = false;
-                NavControl.Visibility = Visibility.Visible;
-                LoginPage.Visibility = Visibility.Collapsed;
-                LoginModal.Visibility = Visibility.Collapsed;
-                NavControl.SelectedItem = NavControl.MenuItems[0];
-                NavControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
-                break;
-
-            case AuthenticationStatus.LoggedOut:
+            RefreshTrayMenu();
+            // A status change before the frame was ready would otherwise leave an empty window.
+            if (ContentFrame.Content is null) ShowLibrary();
+            if (status == AuthenticationStatus.LoggedIn && _signInProviderId == providerId)
+                _signInDialog?.Hide();
+            if (status == AuthenticationStatus.LoggedOut)
+            {
                 _notifications.Dismiss();
-                ContentFrame.CacheSize = 0;
-                ContentFrame.CacheSize = 3;
-                _libraryCache.Clear();
+                _epicImportDialog?.ClosePicker();
+            }
+            if (status is AuthenticationStatus.LoggedIn or AuthenticationStatus.LoggedOut or AuthenticationStatus.LoginFailed)
+            {
+                try
+                {
+                    await _libraryManager.GetLibraryData();
+                    if (status == AuthenticationStatus.LoggedIn) await _installManager.LoadPendingInstalls();
+                }
+                catch (Exception ex) { _log.Error(ex, "Could not refresh connected libraries"); }
                 RebuildInstalledMenu(force: true);
-                ClearGlobalSearch();
-                StoreNavItem.IsEnabled = false;
-                GlobalSearchBox.IsEnabled = false;
-                NavControl.Visibility = Visibility.Collapsed;
-                LoginModal.Visibility = Visibility.Collapsed;
-                LoginPage.Visibility = Visibility.Visible;
-                LoginPage.InitWebView();
-                break;
-
-            case AuthenticationStatus.LoggedIn:
-                Log.Information("Logged in");
-                LoginModalTitle.Text = UiStrings.LoginSuccess;
-
-                LoginPage.CloseWebView();
-
-                NavControl.Visibility = Visibility.Visible;
-                NavControl.IsEnabled = true;
-                StoreNavItem.IsEnabled = true;
-                GlobalSearchBox.IsEnabled = true;
-                LoginPage.Visibility = Visibility.Collapsed;
-                LoginModal.Visibility = Visibility.Collapsed;
-                NavControl.SelectedItem = NavControl.MenuItems[0];
-                NavControl_Navigate(typeof(LibraryPage), new EntranceNavigationTransitionInfo());
-                Log.Information("Opening Library Page");
-
-                _installManager.LoadPendingInstalls();
-                _ = RefreshLibraryAsync();
-
-                break;
-
-            case AuthenticationStatus.LoginFailed:
-                LoginModalTitle.Text = UiStrings.LoginFailed;
-                LoginModalDescription.Text = UiStrings.PleaseTryAgain;
-                NavControl.Visibility = Visibility.Collapsed;
-                LoginModal.Visibility = Visibility.Visible;
-                LoginPage.Visibility = Visibility.Visible;
-                break;
-        }
-    }
-
-    private async Task RefreshLibraryAsync()
-    {
-        try
-        {
-            await _libraryManager.GetLibraryData();
-        }
-        catch (Exception ex)
-        {
-            _log.Error(ex, "MainWindow: could not load the installed games list");
-        }
-    }
-
-    private void AuthStatusChangedHandler(object sender, AuthStatusChangedEventArgs e)
-    {
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            if (e.NewStatus == AuthenticationStatus.LoggedOut) _epicImportDialog?.ClosePicker();
-            UpdateUIBasedOnAuthenticationStatus(e.NewStatus);
+            }
+            ApplyBackdrop();
         });
     }
+
+    private void SignInRequested(string providerId) => DispatcherQueue.TryEnqueue(async () =>
+    {
+        if (_signInDialog is not null) return;
+        _signInProviderId = providerId;
+        var frontend = App.GetService<LauncherFrontendRegistry>().Get(providerId);
+        var view = frontend.CreateSignInView();
+        var page = new LoginPage(view);
+        _signInPage = page;
+        var dialog = new ContentDialog
+        {
+            Title = _launchers.Get(providerId).DisplayName,
+            Content = page,
+            CloseButtonText = UiStrings.Cancel,
+            XamlRoot = Content.XamlRoot,
+            Style = (Style)Application.Current.Resources["DefaultContentDialogStyle"]
+        };
+        _signInDialog = dialog;
+        dialog.Opened += (_, _) => page.InitializeSignIn();
+        try { await dialog.ShowAsync(); }
+        catch (Exception ex) { _log.Error(ex, "Could not open account sign-in for {ProviderId}", providerId); }
+        finally
+        {
+            page.CloseSignIn();
+            _signInPage = null;
+            _signInDialog = null;
+            _signInProviderId = null;
+        }
+    });
     private void AcrylicPreferenceChanged(object? sender, EventArgs args) =>
         DispatcherQueue.TryEnqueue(ApplyBackdrop);
 
@@ -1051,7 +1031,11 @@ public sealed partial class MainWindow : Window
         CurrentDownload.SummaryChanged -= OnDownloadSummaryChanged;
         CurrentDownload.Dispose();
         _installManager.OperationUpdated -= OperationUpdatedHandler;
-        _installManager.Dispose();
+        _authManager.StatusChanged -= AccountStatusChanged;
+        _authManager.SignInRequested -= SignInRequested;
+        _signInDialog?.Hide();
+        _signInPage?.CloseSignIn();
+
     }
 
 }

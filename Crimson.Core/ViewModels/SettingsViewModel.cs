@@ -6,6 +6,7 @@ using Crimson.Resources;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
+using Crimson.Providers;
 using Crimson.Utils;
 
 namespace Crimson.ViewModels
@@ -13,11 +14,11 @@ namespace Crimson.ViewModels
     public partial class SettingsViewModel : ObservableObject
     {
         private readonly SettingsManager _settingsManager;
-        private readonly AuthManager _authManager;
+        private readonly LauncherAuthentication _authManager;
         private readonly IFolderLauncher _folderLauncher;
         private readonly Storage? _storage;
         private readonly IArtworkCache? _artworkCache;
-        private readonly LibraryManager? _libraryManager;
+        private readonly LauncherStores? _stores;
 
         public bool AcrylicEnabled
         {
@@ -160,21 +161,21 @@ namespace Crimson.ViewModels
 
         public SettingsViewModel(
             SettingsManager settingsManager,
-            AuthManager authManager,
+            LauncherAuthentication authManager,
             IFolderLauncher folderLauncher,
             Storage? storage = null,
             IArtworkCache? artworkCache = null,
-            LibraryManager? libraryManager = null)
+            LauncherStores? stores = null)
         {
             _settingsManager = settingsManager;
             _authManager = authManager;
             _folderLauncher = folderLauncher;
             _storage = storage;
             _artworkCache = artworkCache;
-            _libraryManager = libraryManager;
+            _stores = stores;
         }
 
-        public bool IsCacheUsageAvailable => _storage is not null && _artworkCache is not null && _libraryManager is not null;
+        public bool IsCacheUsageAvailable => _storage is not null && _artworkCache is not null && _stores is not null;
 
         [RelayCommand]
         private async Task LoadCacheUsage()
@@ -206,7 +207,7 @@ namespace Crimson.ViewModels
                         case CacheCategoryKind.Artwork:
                             return _artworkCache!.Clear();
                         case CacheCategoryKind.StoreDetails:
-                            _libraryManager!.ClearStoreProductDetailsCache();
+                            _stores!.ClearCache();
                             return true;
                         default:
                             return false;
@@ -250,11 +251,16 @@ namespace Crimson.ViewModels
             CacheUsageChanged?.Invoke(this, EventArgs.Empty);
         }
 
+        public IReadOnlyList<LauncherAccount> Accounts => _authManager.Accounts;
+
         [RelayCommand]
-        private async Task Logout()
+        private async Task DisconnectAccount(LauncherAccount account)
         {
-            await _authManager.Logout();
+            await _authManager.Logout(account.ProviderId);
         }
+
+        [RelayCommand]
+        private void ConnectAccount(LauncherAccount account) => _authManager.RequestSignIn(account.ProviderId);
 
         private async Task SaveSettingsAsync()
         {

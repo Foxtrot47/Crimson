@@ -1,5 +1,6 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.ViewModels;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -36,13 +37,7 @@ public sealed class GameInfoDetailsTests
     public void PendingGameDistinguishesRemoteLoadingFromMissingLocalDetails()
     {
         var viewModel = CreateViewModel();
-        Apply(viewModel, "ApplyCatalogMetadata", new Game
-        {
-            AppName = "sparse",
-            AssetInfos = Assets("sparse"),
-            AppTitle = "Sparse game",
-            Metadata = new Metadata()
-        });
+        Apply(viewModel, "ApplyCatalogMetadata", Game("sparse", "Sparse game"));
 
         Assert.Equal("Loading…", viewModel.DeveloperName);
         Assert.Equal("Loading…", viewModel.PublisherName);
@@ -59,14 +54,8 @@ public sealed class GameInfoDetailsTests
         viewModel.LastUpdatedText = "previous date";
         viewModel.TotalPlayTimeText = "9h 0m";
         viewModel.InstalledVersion = "old-build";
-        Apply(viewModel, "ApplyCatalogMetadata", new Game
-        {
-            AppName = "next",
-            AssetInfos = Assets("next"),
-            AppTitle = "Next game",
-            Metadata = new Metadata(),
-            LocalAppState = new LocalAppState { Version = "new-build" }
-        });
+        UseDetails(viewModel, new LauncherGameDetails(InstalledVersion: "new-build"));
+        Apply(viewModel, "ApplyCatalogMetadata", Game("next", "Next game"));
 
         Assert.Equal("Unavailable", viewModel.LastUpdatedText);
         Assert.Equal("new-build", viewModel.InstalledVersion);
@@ -96,14 +85,7 @@ public sealed class GameInfoDetailsTests
     {
         var viewModel = CreateViewModel();
         var timestamp = new DateTimeOffset(2026, 1, 12, 15, 30, 0, TimeSpan.Zero);
-        Apply(viewModel, "ApplyLocalGameDetails", new Game
-        {
-            AppName = "game",
-            AppTitle = "Game",
-            AssetInfos = Assets("game"),
-            Metadata = new Metadata(),
-            LocalAppState = new LocalAppState { LastUpdatedAt = timestamp }
-        });
+        Apply(viewModel, "ApplyLocalGameDetails", new LauncherGameDetails(LastUpdatedAt: timestamp));
 
         Assert.Equal(timestamp.ToLocalTime().ToString("g"), viewModel.LastUpdatedText);
     }
@@ -136,7 +118,31 @@ public sealed class GameInfoDetailsTests
     private static GameInfoViewModel CreateViewModel() => new(
         NullLogger<GameInfoViewModel>.Instance, null!, null!, null!, null!);
 
-    private static void Apply(GameInfoViewModel viewModel, string method, Game game) =>
+    private static LauncherGame Game(string appName, string title) => new()
+    {
+        Id = new GameId("epic", appName),
+        AppTitle = title
+    };
+
+    // The page only asks the owning provider for local details.
+    private static void UseDetails(GameInfoViewModel viewModel, LauncherGameDetails details) =>
+        typeof(GameInfoViewModel).GetField("_details", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(viewModel, new StubDetails(details));
+
+    private sealed class StubDetails(LauncherGameDetails details) : IGameDetailsSource
+    {
+        public event Action<string, bool>? RunningStateChanged { add { } remove { } }
+        public bool IsRunning(string appName) => false;
+        public bool AllowsMultipleInstances(string appName) => false;
+        public LauncherGameDetails? GetGameDetails(string appName) => details;
+        public Task<long?> GetGamePlaytimeSeconds(string appName, CancellationToken cancellationToken = default) =>
+            Task.FromResult<long?>(null);
+        public Task<StoreProductDetails?> GetStoreProductDetails(string appName, CancellationToken cancellationToken = default) =>
+            Task.FromResult<StoreProductDetails?>(null);
+        public Uri? GetStorePageUri(string appName) => null;
+    }
+
+    private static void Apply(GameInfoViewModel viewModel, string method, object argument) =>
         typeof(GameInfoViewModel).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(viewModel, [game]);
+            .Invoke(viewModel, [argument]);
 }

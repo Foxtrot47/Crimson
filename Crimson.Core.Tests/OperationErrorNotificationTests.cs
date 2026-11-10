@@ -1,7 +1,8 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text.Json;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 
 namespace Crimson.Tests;
 
@@ -88,7 +89,7 @@ public sealed class OperationErrorNotificationTests : IDisposable
         var errors = CaptureErrors();
         _fixture.SetCurrent("base");
         _fixture.Installer.CurrentInstall!.Phase = OperationPhase.Transferring;
-        var method = typeof(InstallManager).GetMethod("RequestStoppage", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var method = typeof(EpicInstallManager).GetMethod("RequestStoppage", BindingFlags.NonPublic | BindingFlags.Instance)!;
         method.Invoke(_fixture.Installer, ["File worker failed", new UnauthorizedAccessException("synthetic-private-path")]);
 
         await _fixture.Invoke("HandleInstallationStoppage", "File worker failed", null!);
@@ -108,7 +109,7 @@ public sealed class OperationErrorNotificationTests : IDisposable
         item.Phase = OperationPhase.Finalizing;
         item.CreateDesktopShortcut = true;
         item.CreateStartMenuShortcut = true;
-        typeof(InstallManager).GetField("_shortcutManager", BindingFlags.NonPublic | BindingFlags.Instance)!
+        typeof(EpicInstallManager).GetField("_shortcutManager", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(_fixture.Installer, new FailingShortcuts());
 
         await _fixture.Invoke("CreateRequestedShortcutsAsync", item, _fixture.BaseGame, _fixture.BaseGame.LocalAppState!);
@@ -158,14 +159,14 @@ public sealed class OperationErrorNotificationTests : IDisposable
         return errors;
     }
 
-    private void Publish(InstallItem item) => typeof(InstallManager)
+    private void Publish(InstallItem item) => typeof(EpicInstallManager)
         .GetMethod("PublishOperation", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(_fixture.Installer, [item]);
 
     private sealed class FailingShortcuts : IGameShortcutManager
     {
-        public Task CreateAsync(Game game, GameShortcutLocation location, CancellationToken cancellationToken = default) =>
+        public Task CreateAsync(LauncherGame game, GameShortcutLocation location, CancellationToken cancellationToken = default) =>
             Task.FromException(new UnauthorizedAccessException("synthetic-private-path"));
-        public void Remove(Game game) => throw new IOException("synthetic-private-path");
+        public void Remove(LauncherGame game) => throw new IOException("synthetic-private-path");
     }
 
     public void Dispose() => _fixture.Dispose();

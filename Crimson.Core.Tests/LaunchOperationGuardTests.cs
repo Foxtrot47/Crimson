@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text.Json;using Crimson.Core;
 using Crimson.Models;
 using Crimson.Repository;
@@ -49,13 +49,13 @@ public sealed class LaunchOperationGuardTests : IDisposable
         var repository = new HeldLaunchRepository();
         var errors = new CapturedErrors();
         using var logger = new LoggerConfiguration().WriteTo.Sink(errors).CreateLogger();
-        typeof(LibraryManager).GetField("_storeRepository", BindingFlags.NonPublic | BindingFlags.Instance)!
+        typeof(EpicLibraryManager).GetField("_storeRepository", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(_fixture.Library, repository);
-        typeof(LibraryManager).GetField("_log", BindingFlags.NonPublic | BindingFlags.Instance)!
+        typeof(EpicLibraryManager).GetField("_log", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(_fixture.Library, logger);
-        var auth = (AuthManager)typeof(LibraryManager).GetField("_authManager", BindingFlags.NonPublic | BindingFlags.Instance)!
+        var auth = (EpicAuthManager)typeof(EpicLibraryManager).GetField("_authManager", BindingFlags.NonPublic | BindingFlags.Instance)!
             .GetValue(_fixture.Library)!;
-        typeof(AuthManager).GetField("_authenticationStatus", BindingFlags.NonPublic | BindingFlags.Instance)!
+        typeof(EpicAuthManager).GetField("_authenticationStatus", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(auth, AuthenticationStatus.LoggedIn);
         await _fixture.Storage.SaveUserData(new UserData { AccountId = "synthetic-account" });
         // A regression reaches a path-policy rejection before any OS process can start.
@@ -241,10 +241,10 @@ public sealed class LaunchOperationGuardTests : IDisposable
         return _fixture.Library.TryStartGame("base", start);
     }
 
-    private void Publish(InstallItem item) => typeof(InstallManager)
+    private void Publish(InstallItem item) => typeof(EpicInstallManager)
         .GetMethod("PublishOperation", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(_fixture.Installer, [item]);
 
-    private object? LaunchContext() => typeof(LibraryManager)
+    private object? LaunchContext() => typeof(EpicLibraryManager)
         .GetMethod("GetLaunchContext", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(_fixture.Library, ["base"]);
 
     private static OperationSnapshot Snapshot(string appName, ActionStatus status) =>
@@ -256,7 +256,7 @@ public sealed class LaunchOperationGuardTests : IDisposable
         public void Emit(LogEvent entry) { if (entry.Level >= LogEventLevel.Error) Errors.Add(entry); }
     }
 
-    private sealed class HeldLaunchRepository : IStoreRepository
+    private sealed class HeldLaunchRepository : IEpicGamesRepository
     {
         public TaskCompletionSource Requested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<string> Credentials { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

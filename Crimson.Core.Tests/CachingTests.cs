@@ -1,7 +1,8 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Repository;
 using Crimson.Utils;
 using Crimson.ViewModels;
@@ -17,8 +18,8 @@ public sealed class CachingTests : IDisposable
     private readonly HttpClient _authHttp = new();
 
     private Storage CreateStorage() => new(_logger, _root, Path.Combine(_root, "games"));
-    private LibraryManager CreateLibrary(Storage storage, Repository repository) => new(
-        _logger, repository, storage, new AuthManager(_logger, storage, new TestCredentialProtector(), _authHttp));
+    private EpicLibraryManager CreateLibrary(Storage storage, Repository repository) => new(
+        _logger, repository, storage, new EpicAuthManager(_logger, storage, new TestCredentialProtector(), _authHttp));
 
     [Fact]
     public async Task FreshLibrarySurvivesRestartWithoutNetworkAndHydratesInstallState()
@@ -74,18 +75,19 @@ public sealed class CachingTests : IDisposable
 
         var authHandler = new BlockingAuthHandler();
         using var authHttp = new HttpClient(authHandler);
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), authHttp);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), authHttp);
         var repository = new Repository();
-        var library = new LibraryManager(_logger, repository, storage, auth);
-        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, null!);
-        var viewModel = new LibraryViewModel(_logger, installer, library, new ImmediateDispatcher());
+        var library = new EpicLibraryManager(_logger, repository, storage, auth);
+        var installer = new EpicInstallManager(_logger, library, repository, storage, null!, null!, null!);
+        var host = EpicHost.Create(library, installer, repository);
+        var viewModel = new LibraryViewModel(_logger, host.Installer, host.Library, host.Registry, new ImmediateDispatcher());
 
         var authCheck = auth.CheckAuthStatus();
         await authHandler.RequestEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await viewModel.OnNavigatedTo(null!);
 
         Assert.False(viewModel.ShowLoadingScreen);
-        Assert.Equal("game", Assert.Single(viewModel.GamesList).Name);
+        Assert.Equal("epic:game", Assert.Single(viewModel.GamesList).Name);
         Assert.Equal(0, repository.AssetRequests);
 
         authHandler.ReleaseRequest.SetResult();
@@ -442,14 +444,15 @@ public sealed class CachingTests : IDisposable
         var repository = new Repository { BeforeAssets = async () => { enteredRefresh.SetResult(); await releaseRefresh.Task; } };
         var library = CreateLibrary(reloadedStorage, repository);
         library.InvalidateCache();
-        var installer = new InstallManager(_logger, library, repository, reloadedStorage, null!, null!, null!);
-        var viewModel = new LibraryViewModel(_logger, installer, library, new ImmediateDispatcher());
+        var installer = new EpicInstallManager(_logger, library, repository, reloadedStorage, null!, null!, null!);
+        var host = EpicHost.Create(library, installer, repository);
+        var viewModel = new LibraryViewModel(_logger, host.Installer, host.Library, host.Registry, new ImmediateDispatcher());
 
         var navigation = viewModel.OnNavigatedTo(null!);
         await enteredRefresh.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(navigation.IsCompleted);
         Assert.False(viewModel.ShowLoadingScreen);
-        Assert.Equal("game", Assert.Single(viewModel.GamesList).Name);
+        Assert.Equal("epic:game", Assert.Single(viewModel.GamesList).Name);
 
         releaseRefresh.SetResult();
         await navigation;
@@ -469,14 +472,15 @@ public sealed class CachingTests : IDisposable
         var repository = new Repository { BeforeAssets = async () => { enteredRefresh.SetResult(); await releaseRefresh.Task; } };
         var restoredStorage = CreateStorage();
         var library = CreateLibrary(restoredStorage, repository);
-        var installer = new InstallManager(_logger, library, repository, restoredStorage, null!, null!, null!);
-        var viewModel = new LibraryViewModel(_logger, installer, library, new ImmediateDispatcher());
+        var installer = new EpicInstallManager(_logger, library, repository, restoredStorage, null!, null!, null!);
+        var host = EpicHost.Create(library, installer, repository);
+        var viewModel = new LibraryViewModel(_logger, host.Installer, host.Library, host.Registry, new ImmediateDispatcher());
 
         var navigation = viewModel.OnNavigatedTo(null!);
         await enteredRefresh.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(navigation.IsCompleted);
         Assert.False(viewModel.ShowLoadingScreen);
-        Assert.Equal("game", Assert.Single(viewModel.GamesList).Name);
+        Assert.Equal("epic:game", Assert.Single(viewModel.GamesList).Name);
 
         releaseRefresh.SetResult();
         await navigation;
@@ -489,8 +493,9 @@ public sealed class CachingTests : IDisposable
         var repository = new Repository();
         var storage = CreateStorage();
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, null!);
-        var vm = new LibraryViewModel(_logger, installer, library, new ImmediateDispatcher());
+        var installer = new EpicInstallManager(_logger, library, repository, storage, null!, null!, null!);
+        var host = EpicHost.Create(library, installer, repository);
+        var vm = new LibraryViewModel(_logger, host.Installer, host.Library, host.Registry, new ImmediateDispatcher());
         await vm.OnNavigatedTo(null!);
         var list = vm.GamesList;
         var card = Assert.Single(list);
@@ -512,10 +517,13 @@ public sealed class CachingTests : IDisposable
         var dispatcher = new QueuedDispatcher();
         var repository = new Repository();
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, null!);
-        var vm = new LibraryViewModel(_logger, installer, library, dispatcher);
+        var installer = new EpicInstallManager(_logger, library, repository, storage, null!, null!, null!);
+        var host = EpicHost.Create(library, installer, repository);
+        var vm = new LibraryViewModel(_logger, host.Installer, host.Library, host.Registry, dispatcher);
         await vm.OnNavigatedTo(null!);
         await storage.ClearUserData();
+        // The provider reports the account change; the shell must drop that account's games.
+        host.Auth.SignOut();
         dispatcher.Flush();
         Assert.Empty(vm.GamesList);
         vm.OnNavigatedFrom();
@@ -619,9 +627,10 @@ public sealed class CachingTests : IDisposable
         var storage = CreateStorage();
         var repository = new Repository();
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, null!);
+        var installer = new EpicInstallManager(_logger, library, repository, storage, null!, null!, null!);
         var artwork = new CountingArtworkCache();
-        var vm = new LibraryViewModel(_logger, installer, library, new ImmediateDispatcher(), artwork);
+        var host = EpicHost.Create(library, installer, repository);
+        var vm = new LibraryViewModel(_logger, host.Installer, host.Library, host.Registry, new ImmediateDispatcher(), artwork);
         await vm.OnNavigatedTo(null!);
         Assert.True(artwork.Requests > 0);
         Assert.Null(Assert.Single(vm.GamesList).ImageUrl);
@@ -695,7 +704,8 @@ public sealed class CachingTests : IDisposable
     {
         var handler = new ImageHandler { StalledBody = true };
         using var http = new HttpClient(handler);
-        var cache = new ArtworkCache(http, _logger, Path.Combine(_root, "artwork"), TimeSpan.FromMilliseconds(100), TimeSpan.Zero);
+        var cache = new ArtworkCache(http, _logger, Path.Combine(_root, "artwork"), TimeSpan.FromMilliseconds(100),
+            TimeSpan.Zero, policies: [new Providers.Epic.EpicContentPolicy()]);
 
         var paths = await Task.WhenAll(Enumerable.Range(0, 5)
             .Select(index => cache.GetImageUriAsync($"https://cdn1.epicgames.com/test/{index}.png")));
@@ -770,11 +780,12 @@ public sealed class CachingTests : IDisposable
         storage.SaveMetaData(Game("second"));
         var repository = new Repository();
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage,
-            new DownloadManager(_logger, _authHttp), new UnusedShortcutManager(), new AllowPermissionChecker());
+        var installer = new EpicInstallManager(_logger, library, repository, storage,
+            new EpicDownloadManager(_logger, _authHttp), new UnusedShortcutManager(), new AllowPermissionChecker());
         var artwork = new ControlledArtworkCache();
+        var host = EpicHost.Create(library, installer, repository);
         var vm = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance,
-            installer, library, storage, new ImmediateDispatcher(), artwork);
+            host.Installer, host.Library, host.Registry, new ImmediateDispatcher(), artwork);
         var first = vm.OnNavigatedTo("first");
         var second = vm.OnNavigatedTo("second");
         const string firstImage = "https://cdn1.epicgames.com/first.png";
@@ -785,7 +796,7 @@ public sealed class CachingTests : IDisposable
         artwork.Complete(firstImage);
         await first;
         await Task.Delay(50);
-        Assert.Equal("second", vm.Game?.AppName);
+        Assert.Equal("epic:second", vm.Game?.AppName);
         Assert.Equal(secondImage, vm.CoverImageUrl);
         vm.OnNavigatedFrom();
     }
@@ -798,7 +809,8 @@ public sealed class CachingTests : IDisposable
     }
 
     private ArtworkCache CreateArtworkCache(HttpClient http, TimeProvider? clock = null) =>
-        new(http, _logger, Path.Combine(_root, "artwork"), TimeSpan.FromSeconds(30), TimeSpan.Zero, clock);
+        new(http, _logger, Path.Combine(_root, "artwork"), TimeSpan.FromSeconds(30), TimeSpan.Zero, clock,
+            [new Providers.Epic.EpicContentPolicy()]);
     private const string ImageUrl = "https://cdn1.epicgames.com/test/image.png";
     private static Asset Asset(string name) => new() { AppName = name, CatalogItemId = name, Namespace = "synthetic", BuildVersion = "1" };
     private static Game Game(string name) => new()
@@ -808,7 +820,7 @@ public sealed class CachingTests : IDisposable
         Metadata = new Metadata { Id = name, Title = name, KeyImages = [new KeyImage { Type = "DieselGameBox", Url = $"https://cdn1.epicgames.com/{name}.png" }] }
     };
 
-    private sealed class Repository : IStoreRepository
+    private sealed class Repository : IEpicGamesRepository
     {
         public List<Asset> Assets = [Asset("game")];
         public bool FailAssets, FailMetadata;
@@ -966,8 +978,8 @@ public sealed class CachingTests : IDisposable
 
     private sealed class UnusedShortcutManager : IGameShortcutManager
     {
-        public Task CreateAsync(Game game, GameShortcutLocation location, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public void Remove(Game game) { }
+        public Task CreateAsync(LauncherGame game, GameShortcutLocation location, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void Remove(LauncherGame game) { }
     }
 
     private sealed class AllowPermissionChecker : IInstallPermissionChecker

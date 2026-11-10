@@ -1,5 +1,7 @@
-using Crimson.Core;
+﻿using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
+using Crimson.Providers.Epic;
 using Crimson.ViewModels;
 
 namespace Crimson.Tests;
@@ -49,7 +51,6 @@ public sealed class PortablePresentationTests
             new StoreProductImage { Type = "featuredMedia", Url = screenshotUrl, IsVideo = false },
             new StoreProductImage { Type = "featuredMedia", Url = screenshotUrl.ToUpperInvariant(), IsVideo = false },
             new StoreProductImage { Type = "featuredMedia", Url = "https://cdn1.epicgames.com/video.mp4", IsVideo = true },
-            new StoreProductImage { Type = "featuredMedia", Url = "https://example.test/unsafe.jpg", IsVideo = false },
             new StoreProductImage { Type = "ProductLogo", Url = "https://cdn1.epicgames.com/logo.png", IsVideo = false }
         ]);
 
@@ -57,34 +58,63 @@ public sealed class PortablePresentationTests
     }
 
     [Fact]
-    public void InstallArtworkPrefersTallImage()
+    public void InstallArtworkPrefersTheCoverTheProviderPublished()
     {
-        var game = GameWithImages(
-            new KeyImage { Type = "DieselGameBox", Url = "box" },
-            new KeyImage { Type = "DieselGameBoxTall", Url = "tall" });
+        var game = GameWithImages(cover: "https://cdn1.epicgames.com/tall.png",
+            landscape: "https://cdn1.epicgames.com/wide.png");
 
-        Assert.Equal("tall", AppInstallDialogViewModel.SelectImageUrl(game));
+        Assert.Equal("https://cdn1.epicgames.com/tall.png", AppInstallDialogViewModel.SelectImageUrl(game));
     }
 
     [Fact]
-    public void InstallArtworkFallsBackToRegularBox()
+    public void InstallArtworkFallsBackToTheLandscapeImage()
     {
-        var game = GameWithImages(new KeyImage { Type = "DieselGameBox", Url = "box" });
+        var game = GameWithImages(cover: null, landscape: "https://cdn1.epicgames.com/wide.png");
 
-        Assert.Equal("box", AppInstallDialogViewModel.SelectImageUrl(game));
+        Assert.Equal("https://cdn1.epicgames.com/wide.png", AppInstallDialogViewModel.SelectImageUrl(game));
     }
 
     [Fact]
     public void MissingInstallArtworkProducesNull()
     {
-        Assert.Null(AppInstallDialogViewModel.SelectImageUrl(GameWithImages()));
+        Assert.Null(AppInstallDialogViewModel.SelectImageUrl(GameWithImages(null, null)));
     }
 
-    private static Game GameWithImages(params KeyImage[] images) => new()
+    [Fact]
+    public void EpicCoverArtworkPrefersTallThenBoxArtworkFromTrustedHosts()
     {
-        AppName = "test",
+        var images = new[]
+        {
+            new KeyImage { Type = "DieselGameBox", Url = "https://cdn1.epicgames.com/box.png" },
+            new KeyImage { Type = "DieselGameBoxTall", Url = "https://unapproved.example/tall.png" },
+            new KeyImage { Type = "OfferImageTall", Url = "https://cdn1.epicgames.com/offer-tall.png" }
+        };
+
+        Assert.Equal("https://cdn1.epicgames.com/offer-tall.png",
+            EpicContentImages.Find(images, "DieselGameBoxTall", "OfferImageTall", "DieselGameBox"));
+    }
+
+    [Fact]
+    public void EpicStoreArtworkKeepsOnlyTrustedContentHosts()
+    {
+        var details = EpicContentImages.TrustStoreDetails(new StoreProductDetails
+        {
+            Images =
+            [
+                new StoreProductImage { Type = "featuredMedia", Url = "https://cdn1.epicgames.com/safe.jpg" },
+                new StoreProductImage { Type = "featuredMedia", Url = "https://example.test/unsafe.jpg" }
+            ]
+        });
+
+        var image = Assert.Single(details.Images);
+        Assert.Equal("https://cdn1.epicgames.com/safe.jpg", image.Url);
+    }
+
+    private static LauncherGame GameWithImages(string? cover, string? landscape) => new()
+    {
+        Id = new GameId("epic", "test"),
         AppTitle = "Test",
-        AssetInfos = null!,
-        Metadata = new Metadata { KeyImages = [.. images] }
+        CoverImageUrl = cover,
+        LandscapeImageUrl = landscape
     };
 }

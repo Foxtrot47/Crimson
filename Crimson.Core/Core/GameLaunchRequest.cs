@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace Crimson.Core;
 
@@ -57,6 +57,6 @@ public static class GameLaunchRequest
     }
 
     private static bool IsValidAppName(string value) =>
-        value.Length is > 0 and <= 256 &&
+        value.Length is > 0 and <= 16384 &&
         value.IndexOfAny(['\r', '\n', '\0']) < 0;
 }

@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Security.Cryptography;
@@ -96,7 +96,7 @@ public sealed class ImportFlowTests : IDisposable
             _fixture.Invoke("PrepareImportTasks", item, manifest));
 
         Assert.Same(original, _fixture.BaseGame.LocalAppState);
-        Assert.Null(typeof(InstallManager).GetField("_importVerificationResult", BindingFlags.NonPublic | BindingFlags.Instance)!
+        Assert.Null(typeof(EpicInstallManager).GetField("_importVerificationResult", BindingFlags.NonPublic | BindingFlags.Instance)!
             .GetValue(_fixture.Installer));
     }
 
@@ -208,12 +208,12 @@ public sealed class ImportFlowTests : IDisposable
         using var cancelled = new CancellationTokenSource();
         cancelled.Cancel();
         var manifest = Manifest.ReadAll(DlcTestFixture.ManifestBytes("game.exe"));
-        var method = typeof(InstallManager).GetMethod("VerifyImportFilesAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var method = typeof(EpicInstallManager).GetMethod("VerifyImportFilesAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
         var item = new InstallItem("base", ActionType.Import, _fixture.BasePath);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             (Task)method.Invoke(null, [item, manifest, cancelled.Token])!);
-        Assert.Null(typeof(InstallManager).GetField("_importVerificationResult", BindingFlags.NonPublic | BindingFlags.Instance)!
+        Assert.Null(typeof(EpicInstallManager).GetField("_importVerificationResult", BindingFlags.NonPublic | BindingFlags.Instance)!
             .GetValue(_fixture.Installer));
     }
 
@@ -296,7 +296,7 @@ public sealed class SidebarImportStateTests : IDisposable
     public void SidebarIncludesInstalledAndRepairableStates(InstallState state, bool expected)
     {
         _fixture.BaseGame.LocalAppState!.InstallStatus = state;
-        Assert.Equal(expected, LibraryManager.IsSidebarListed(_fixture.BaseGame, null));
+        Assert.Equal(expected, EpicLibraryManager.IsSidebarListed(_fixture.BaseGame, null));
     }
 
     [Fact]

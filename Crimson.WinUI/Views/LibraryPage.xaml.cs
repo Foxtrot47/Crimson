@@ -1,8 +1,10 @@
-﻿using Crimson.ViewModels;
-using Microsoft.UI.Xaml;
+﻿using Crimson.Providers;
+using Crimson.ViewModels;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using Microsoft.UI.Xaml;
+using System;
 namespace Crimson.Views;
 
 /// <summary>
@@ -21,6 +23,7 @@ public sealed partial class LibraryPage : Page
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
+        BuildLibraryActions();
         await ViewModel.OnNavigatedTo(e.Parameter);
     }
 
@@ -30,10 +33,29 @@ public sealed partial class LibraryPage : Page
         base.OnNavigatedFrom(e);
     }
 
-    private async void ImportButton_Click(object sender, RoutedEventArgs e)
+    /// <summary>Buttons come from the providers themselves; the shell never names one.</summary>
+    private void BuildLibraryActions()
     {
-        if (((App)Application.Current).GetWindow() is MainWindow window)
-            await window.ShowEpicImportAsync();
+        LibraryActionsBar.Children.Clear();
+        foreach (var frontend in App.GetService<LauncherFrontendRegistry>().All)
+        {
+            foreach (var action in frontend.LibraryActions)
+            {
+                var button = new Button { Height = 36, Tag = action };
+                var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                content.Children.Add(new FontIcon { FontSize = 16, Glyph = action.Glyph });
+                content.Children.Add(new TextBlock { Text = action.Label });
+                button.Content = content;
+                button.Click += async (sender, _) =>
+                {
+                    if (sender is Button { Tag: LauncherLibraryAction selected }) await selected.Invoke();
+                };
+                LibraryActionsBar.Children.Add(button);
+            }
+        }
+        LibraryActionsBar.Visibility = LibraryActionsBar.Children.Count > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void GameButton_Click(object sender, RoutedEventArgs e)
@@ -47,6 +69,8 @@ public sealed partial class LibraryPage : Page
 
         navControl.Navigate(typeof(GameInfoPage), game.Name);
     }
+
+    private void ManageAccounts_Click(object sender, RoutedEventArgs e) => Frame.Navigate(typeof(SettingsPage));
 
     private static Frame FindParentFrame(DependencyObject child)
     {

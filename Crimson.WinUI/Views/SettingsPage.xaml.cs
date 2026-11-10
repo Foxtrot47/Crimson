@@ -1,12 +1,13 @@
-﻿using Crimson.ViewModels;
+﻿using System;
+using System.Threading.Tasks;
 using Crimson.Core;
+using Crimson.Providers;
 using Crimson.Resources;
+using Crimson.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.Windows.AppLifecycle;
-using System;
-using System.Threading.Tasks;
 using Serilog;
 
 namespace Crimson.Views
@@ -41,7 +42,7 @@ namespace Crimson.Views
 
         private static bool HasPendingOperations()
         {
-            var installer = App.GetService<InstallManager>();
+            var installer = App.GetService<LauncherInstaller>();
             return installer.CurrentOperation is { IsActive: true } || installer.GetQueueOperations().Count > 0;
         }
 

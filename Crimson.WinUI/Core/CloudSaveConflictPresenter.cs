@@ -1,8 +1,9 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Utils;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -19,7 +20,7 @@ internal sealed class CloudSaveConflictPresenter : IDisposable
 {
     private readonly FrameworkElement _root;
     private readonly CloudSaveManager _cloudSaves;
-    private readonly LibraryManager _library;
+    private readonly LauncherLibrary _library;
     private readonly DialogCoordinator _dialogs;
     private readonly ILogger _log;
     private readonly Func<bool> _isWindowVisible;
@@ -31,7 +32,7 @@ internal sealed class CloudSaveConflictPresenter : IDisposable
     public CloudSaveConflictPresenter(
         FrameworkElement root,
         CloudSaveManager cloudSaves,
-        LibraryManager library,
+        LauncherLibrary library,
         DialogCoordinator dialogs,
         ILogger log,
         Func<bool> isWindowVisible,

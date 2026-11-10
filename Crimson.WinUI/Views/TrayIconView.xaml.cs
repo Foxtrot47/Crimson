@@ -1,4 +1,4 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Crimson.Core;
+using Crimson.Providers;
 using Crimson.Models;
 
 // To learn more about WinUI, the WinUI project structure,
@@ -29,7 +30,7 @@ namespace Crimson.Views
         }
 
         internal void UpdateInstalledGames(
-            IEnumerable<Game> games,
+            IEnumerable<LauncherGame> games,
             bool isLoggedIn,
             Func<string, bool> hasRelatedOperation)
         {

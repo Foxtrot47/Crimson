@@ -1,4 +1,4 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Utils;
 using Serilog;
 
@@ -18,9 +19,9 @@ namespace Crimson.ViewModels;
 
 public partial class AppInstallDialogViewModel : ObservableObject
 {
-    private readonly InstallManager _installManager;
-    private readonly LibraryManager _libraryManager;
-    private readonly Storage _storageService;
+    private readonly LauncherInstaller _installManager;
+    private readonly LauncherLibrary _libraryManager;
+    private readonly IApplicationStorage _storageService;
     private readonly ILogger _logger;
     private readonly IUiDispatcher _uiDispatcher;
     private readonly SettingsManager? _settingsManager;
@@ -35,7 +36,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
         public double InstallSize;
         public bool HasInstallSizes;
         public long? AvailableFreeSpace;
-        public Dictionary<string, (double DownloadBytes, double WriteBytes)> ContentSizes = new(StringComparer.Ordinal);
+        public Dictionary<string, (double DownloadBytes, double InstallBytes)> ContentSizes = new(StringComparer.Ordinal);
     }
 
     [ObservableProperty]
@@ -90,6 +91,11 @@ public partial class AppInstallDialogViewModel : ObservableObject
     private bool _hasDlcs;
 
     private bool _createDesktopShortcut;
+
+    // Shortcut options are only offered when the owning provider can create them.
+    public bool SupportsShortcuts => !string.IsNullOrEmpty(_gameAppName) &&
+        _installManager.SupportsShortcutsFor(_gameAppName);
+
     public bool CreateDesktopShortcut
     {
         get => _createDesktopShortcut;
@@ -110,9 +116,9 @@ public partial class AppInstallDialogViewModel : ObservableObject
 
     public AppInstallDialogViewModel(
         ILogger logger,
-        InstallManager installManager,
-        LibraryManager libraryManager,
-        Storage storage,
+        LauncherInstaller installManager,
+        LauncherLibrary libraryManager,
+        IApplicationStorage storage,
         IUiDispatcher uiDispatcher,
         SettingsManager? settingsManager = null)
     {
@@ -124,7 +130,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
         _settingsManager = settingsManager;
     }
 
-    public async Task InitializeAsync(Game gameInfo, CancellationToken cancellationToken = default)
+    public async Task InitializeAsync(LauncherGame gameInfo, CancellationToken cancellationToken = default)
     {
         var generation = new InitializationState(cancellationToken);
         Interlocked.Exchange(ref _initialization, generation);
@@ -134,8 +140,9 @@ public partial class AppInstallDialogViewModel : ObservableObject
             _gameAppName = gameInfo.AppName;
             GameTitle = gameInfo.AppTitle;
             GameImageUrl = SelectImageUrl(gameInfo);
-            InstallLocation = Path.Combine(
-                _settingsManager?.DefaultInstallLocation ?? _storageService.DefaultInstallPath, InstallPathPolicy.GetDirectoryName(gameInfo.AppTitle));
+            // Same titles from different stores stay in separate, provider-scoped folders.
+            InstallLocation = ProviderDataPaths.SuggestedInstallPath(
+                _settingsManager?.DefaultInstallLocation ?? _storageService.DefaultInstallPath, gameInfo.Id, gameInfo.AppTitle);
 
             ClearDlcOptions();
             var dlcs = _libraryManager.GetDlcsForGame(gameInfo.AppName);
@@ -159,7 +166,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
                 if (!IsCurrentInitialization(generation))
                     return;
 
-                BaseGameSize = SizeFormatter.Format(sizes[gameInfo.AppName].WriteBytes);
+                BaseGameSize = SizeFormatter.Format(sizes[gameInfo.AppName].InstallBytes);
                 UpdateContentTotals(generation);
             });
 
@@ -186,10 +193,10 @@ public partial class AppInstallDialogViewModel : ObservableObject
         }
     }
 
-    private async Task<Dictionary<string, (double DownloadBytes, double WriteBytes)>> LoadContentSizesAsync(
-        string baseAppName, IEnumerable<Game> dlcs, InitializationState generation)
+    private async Task<Dictionary<string, (double DownloadBytes, double InstallBytes)>> LoadContentSizesAsync(
+        string baseAppName, IEnumerable<LauncherGame> dlcs, InitializationState generation)
     {
-        var sizes = new Dictionary<string, (double DownloadBytes, double WriteBytes)>(StringComparer.Ordinal);
+        var sizes = new Dictionary<string, (double DownloadBytes, double InstallBytes)>(StringComparer.Ordinal);
         foreach (var appName in dlcs.Select(game => game.AppName).Prepend(baseAppName))
         {
             if (!IsCurrentInitialization(generation)) return sizes;
@@ -223,7 +230,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
         {
             if (!generation.ContentSizes.TryGetValue(appName, out var size)) { CanInstall = false; return; }
             download += size.DownloadBytes;
-            write += size.WriteBytes;
+            write += size.InstallBytes;
         }
         generation.InstallSize = write;
         TotalDownloadSize = SizeFormatter.Format(download);
@@ -231,11 +238,9 @@ public partial class AppInstallDialogViewModel : ObservableObject
         CanInstall = generation.AvailableFreeSpace is { } free && free > write;
     }
 
-    internal static string? SelectImageUrl(Game gameInfo)
+    internal static string? SelectImageUrl(LauncherGame gameInfo)
     {
-        var images = gameInfo.Metadata.KeyImages;
-        return images.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
-            ?? images.FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
+        return gameInfo.CoverImageUrl ?? gameInfo.LandscapeImageUrl;
     }
 
     public void Activate()
@@ -333,7 +338,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
             var newPath = await FolderPickerRequested.Invoke();
             if (!string.IsNullOrEmpty(newPath) && IsCurrentInitialization(generation))
             {
-                InstallLocation = Path.Combine(newPath, InstallPathPolicy.GetDirectoryName(GameTitle));
+                InstallLocation = ProviderDataPaths.SuggestedInstallPath(newPath, GameId.Parse(_gameAppName), GameTitle);
                 await UpdateDriveSpace(InstallLocation, generation);
             }
         }
@@ -360,8 +365,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
     {
         var install = new InstallItem(_gameAppName, ActionType.Install, InstallLocation)
         {
-            CreateDesktopShortcut = CreateDesktopShortcut,
-            CreateStartMenuShortcut = CreateStartMenuShortcut
+            CreateDesktopShortcut = SupportsShortcuts && CreateDesktopShortcut,
+            CreateStartMenuShortcut = SupportsShortcuts && CreateStartMenuShortcut
         };
         var selectedDlcs = AvailableDlcs.Where(dlc => dlc.IsSelected).Select(dlc => dlc.AppName).ToList();
         InvalidateInitialization();

@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -144,7 +144,7 @@ public sealed class StoreProductDetailsTests
         using var apiClient = new HttpClient();
         using var contentClient = new HttpClient();
         using var logger = new LoggerConfiguration().CreateLogger();
-        var authManager = (AuthManager)RuntimeHelpers.GetUninitializedObject(typeof(AuthManager));
+        var authManager = (EpicAuthManager)RuntimeHelpers.GetUninitializedObject(typeof(EpicAuthManager));
         var repository = new EpicGamesRepository(
             authManager,
             logger,

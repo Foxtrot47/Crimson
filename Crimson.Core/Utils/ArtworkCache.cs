@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -52,12 +52,14 @@ public sealed class ArtworkCache : IArtworkCache
     private readonly TimeSpan _downloadTimeout;
     private readonly TimeSpan _retryDelay;
     private readonly TimeProvider _timeProvider;
+    private readonly IReadOnlyList<Providers.IProviderContentPolicy> _policies;
     private int _generation;
 
     public int Generation => Volatile.Read(ref _generation);
 
-    public ArtworkCache(HttpClient http, ILogger log, string directory)
-        : this(http, log, directory, DownloadTimeout)
+    public ArtworkCache(HttpClient http, ILogger log, string directory,
+        IEnumerable<Providers.IProviderContentPolicy>? policies = null)
+        : this(http, log, directory, DownloadTimeout, policies: policies)
     {
     }
 
@@ -67,7 +69,8 @@ public sealed class ArtworkCache : IArtworkCache
         string directory,
         TimeSpan downloadTimeout,
         TimeSpan? retryDelay = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IEnumerable<Providers.IProviderContentPolicy>? policies = null)
     {
         _http = http;
         _log = log;
@@ -75,11 +78,16 @@ public sealed class ArtworkCache : IArtworkCache
         _downloadTimeout = downloadTimeout > TimeSpan.Zero ? downloadTimeout : throw new ArgumentOutOfRangeException(nameof(downloadTimeout));
         _retryDelay = retryDelay ?? RetryDelay;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _policies = (policies ?? []).ToList();
     }
+
+    // Every connected store decides which hosts may serve its artwork; the cache only obeys them.
+    private bool IsTrustedArtworkUrl(Uri uri) =>
+        uri.Scheme == Uri.UriSchemeHttps && _policies.Any(policy => policy.AllowsArtworkUri(uri.ToString()));
 
     public async Task<string?> GetImageUriAsync(string? url)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !EpicEndpointPolicy.IsAllowedContentUri(uri))
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !IsTrustedArtworkUrl(uri))
             return null;
 
         var request = _requests.GetOrAdd(url!, key => new Lazy<Task<string?>>(() => LoadAsync(key)));
@@ -157,8 +165,10 @@ public sealed class ArtworkCache : IArtworkCache
             using var timeout = new CancellationTokenSource(_downloadTimeout);
             using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
+            // CDNs do not agree on a type: Ubisoft serves JPEGs as application/octet-stream.
+            // Anything that is not clearly text/markup is accepted, then validated by its signature.
             if (response.Content.Headers.ContentLength > MaximumImageBytes ||
-                response.Content.Headers.ContentType?.MediaType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) != true)
+                !MayBeImage(response.Content.Headers.ContentType?.MediaType))
                 throw new InvalidDataException("The artwork response is not a supported image.");
 
             await using (var input = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false))
@@ -200,6 +210,14 @@ public sealed class ArtworkCache : IArtworkCache
         try { return new FileInfo(path).Length > 0 && HasSupportedImageSignature(path); }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private static bool MayBeImage(string? mediaType)
+    {
+        if (string.IsNullOrWhiteSpace(mediaType)) return true; // Let the signature decide.
+        if (mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return true;
+        return mediaType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase) ||
+            mediaType.Equals("binary/octet-stream", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasSupportedImageSignature(string path)

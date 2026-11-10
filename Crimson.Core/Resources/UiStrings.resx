@@ -63,6 +63,106 @@
     <value>About</value>
     <comment>Used by: Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
   </data>
+  <data name="Connected" xml:space="preserve">
+    <value>Connected</value>
+    <comment>Account row: the store connection is signed in. Used by: Crimson.WinUI/Views/SettingsPage.xaml @Text</comment>
+  </data>
+  <data name="NotConnected" xml:space="preserve">
+    <value>Not connected</value>
+    <comment>Account row: no account is connected for this store. Used by: Crimson.WinUI/Views/SettingsPage.xaml @Text</comment>
+  </data>
+  <data name="CheckingAccount" xml:space="preserve">
+    <value>Checking account…</value>
+    <comment>Account row: the connection state is being verified. Used by: Crimson.WinUI/Views/SettingsPage.xaml @Text</comment>
+  </data>
+  <data name="SignInFailed" xml:space="preserve">
+    <value>Sign-in failed. Try connecting again.</value>
+    <comment>Account row: the last sign-in attempt did not complete. Used by: Crimson.WinUI/Views/SettingsPage.xaml @Text</comment>
+  </data>
+  <data name="Connect" xml:space="preserve">
+    <value>Connect</value>
+    <comment>Account row: starts sign-in for a store. Used by: Crimson.WinUI/Views/SettingsPage.xaml @Content</comment>
+  </data>
+  <data name="Disconnect" xml:space="preserve">
+    <value>Disconnect</value>
+    <comment>Account row: signs out and removes that store's games. Used by: Crimson.WinUI/Views/SettingsPage.xaml @Content</comment>
+  </data>
+  <data name="UbisoftSignInHeading" xml:space="preserve">
+    <value>Sign in with Ubisoft</value>
+    <comment>Ubisoft sign-in dialog heading.</comment>
+  </data>
+  <data name="Email" xml:space="preserve">
+    <value>Email</value>
+    <comment>Ubisoft sign-in dialog: account email field.</comment>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>Password</value>
+    <comment>Ubisoft sign-in dialog: password field.</comment>
+  </data>
+  <data name="RememberMe" xml:space="preserve">
+    <value>Keep me signed in on this PC</value>
+    <comment>Ubisoft sign-in dialog: remembered session option.</comment>
+  </data>
+  <data name="SignIn" xml:space="preserve">
+    <value>Sign in</value>
+    <comment>Ubisoft sign-in dialog: submit button.</comment>
+  </data>
+  <data name="UbisoftTwoFactorPrompt" xml:space="preserve">
+    <value>Enter the code from your Ubisoft authenticator app.</value>
+    <comment>Ubisoft sign-in dialog: second step prompt.</comment>
+  </data>
+  <data name="UbisoftCodeLabel" xml:space="preserve">
+    <value>Authenticator code</value>
+    <comment>Ubisoft sign-in dialog: two-factor code field.</comment>
+  </data>
+  <data name="VerifyCode" xml:space="preserve">
+    <value>Verify code</value>
+    <comment>Ubisoft sign-in dialog: submit the two-factor code.</comment>
+  </data>
+  <data name="UbisoftUseAnotherAccount" xml:space="preserve">
+    <value>Use a different account</value>
+    <comment>Ubisoft sign-in dialog: return to the credential step.</comment>
+  </data>
+  <data name="UbisoftSigningIn" xml:space="preserve">
+    <value>Signing in…</value>
+    <comment>Ubisoft sign-in dialog: busy state.</comment>
+  </data>
+  <data name="UbisoftVerifying" xml:space="preserve">
+    <value>Verifying…</value>
+    <comment>Ubisoft sign-in dialog: busy state while checking a code.</comment>
+  </data>
+  <data name="UbisoftEmailPasswordRequired" xml:space="preserve">
+    <value>Enter your email and password.</value>
+    <comment>Ubisoft sign-in dialog: empty fields.</comment>
+  </data>
+  <data name="UbisoftCodeRequired" xml:space="preserve">
+    <value>Enter the authenticator code.</value>
+    <comment>Ubisoft sign-in dialog: empty code.</comment>
+  </data>
+  <data name="UbisoftInvalidCredentials" xml:space="preserve">
+    <value>Ubisoft did not accept that email or password.</value>
+    <comment>Ubisoft sign-in dialog: rejected credentials.</comment>
+  </data>
+  <data name="UbisoftInvalidCode" xml:space="preserve">
+    <value>That code was not accepted. Try again.</value>
+    <comment>Ubisoft sign-in dialog: rejected two-factor code.</comment>
+  </data>
+  <data name="UbisoftSignInBlocked" xml:space="preserve">
+    <value>Ubisoft blocked this sign-in. Try again later.</value>
+    <comment>Ubisoft sign-in dialog: forbidden response.</comment>
+  </data>
+  <data name="UbisoftSignInUnavailable" xml:space="preserve">
+    <value>Ubisoft could not be reached. Check your connection and try again.</value>
+    <comment>Ubisoft sign-in dialog: network or service failure.</comment>
+  </data>
+  <data name="UbisoftPasswordNotice" xml:space="preserve">
+    <value>Ubisoft receives your password directly. If you stay signed in, Crimson keeps it on this PC encrypted with Windows.</value>
+    <comment>Ubisoft sign-in dialog: privacy note under the heading.</comment>
+  </data>
+  <data name="UbisoftManageAccount" xml:space="preserve">
+    <value>Manage your Ubisoft account</value>
+    <comment>Ubisoft sign-in dialog: opens the account website.</comment>
+  </data>
   <data name="Accounts" xml:space="preserve">
     <value>Accounts</value>
     <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Text</comment>
@@ -606,6 +706,14 @@
   <data name="NoInstalledGames" xml:space="preserve">
     <value>No installed games</value>
     <comment>Used by: Crimson.WinUI/Views/TrayIconView.xaml @Text; Crimson.WinUI/Views/TrayIconView.xaml.cs</comment>
+  </data>
+  <data name="ManageConnectedAccounts" xml:space="preserve">
+    <value>Manage connected accounts</value>
+    <comment>Used by: Crimson.WinUI/Views/LibraryPage.xaml @Content</comment>
+  </data>
+  <data name="NoConnectedStoreGamesMessage" xml:space="preserve">
+    <value>Your games from connected stores appear here.</value>
+    <comment>Used by: Crimson.WinUI/Views/LibraryPage.xaml @Text</comment>
   </data>
   <data name="NoInstalledGamesMessage" xml:space="preserve">
     <value>No installed games.</value>

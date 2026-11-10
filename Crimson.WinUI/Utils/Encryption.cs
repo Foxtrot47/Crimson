@@ -5,8 +5,12 @@ using Crimson.Core;
 
 namespace Crimson.Utils;
 
-public sealed class WindowsCredentialProtector : ICredentialProtector
+public sealed class WindowsCredentialProtector(DataProtectionScope scope = DataProtectionScope.LocalMachine)
+    : ICredentialProtector, IUserCredentialProtector
 {
+    /// <summary>Sign-in secrets stay readable only to this Windows account; tokens may be machine-wide.</summary>
+    public static WindowsCredentialProtector ForCurrentUser() => new(DataProtectionScope.CurrentUser);
+
     public string Protect(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -24,7 +28,7 @@ public sealed class WindowsCredentialProtector : ICredentialProtector
         Buffer.BlockCopy(aes.IV, 0, payload, 0, aes.IV.Length);
         Buffer.BlockCopy(encryptedContent, 0, payload, aes.IV.Length, encryptedContent.Length);
 
-        var protectedKey = ProtectedData.Protect(key, null, DataProtectionScope.LocalMachine);
+        var protectedKey = ProtectedData.Protect(key, null, scope);
         return Convert.ToBase64String(payload) + "|" + Convert.ToBase64String(protectedKey);
     }
 
@@ -41,7 +45,7 @@ public sealed class WindowsCredentialProtector : ICredentialProtector
             throw new CryptographicException("Protected credential payload is too short.");
 
         var protectedKey = Convert.FromBase64String(parts[1]);
-        var key = ProtectedData.Unprotect(protectedKey, null, DataProtectionScope.LocalMachine);
+        var key = ProtectedData.Unprotect(protectedKey, null, scope);
         var iv = payload.AsSpan(0, ivLength).ToArray();
         var cipher = payload.AsSpan(ivLength).ToArray();
 

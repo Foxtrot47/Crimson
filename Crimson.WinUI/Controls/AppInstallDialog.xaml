@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
     x:Class="Crimson.Controls.AppInstallDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -99,9 +99,11 @@
                 <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.Shortcuts}" />
                 <CheckBox
                     Content="{x:Bind strings:UiStrings.CreateStartMenuShortcut}"
+                    IsEnabled="{x:Bind ViewModel.SupportsShortcuts, Mode=OneWay}"
                     IsChecked="{x:Bind ViewModel.CreateStartMenuShortcut, Mode=TwoWay}" />
                 <CheckBox
                     Content="{x:Bind strings:UiStrings.CreateDesktopShortcut}"
+                    IsEnabled="{x:Bind ViewModel.SupportsShortcuts, Mode=OneWay}"
                     IsChecked="{x:Bind ViewModel.CreateDesktopShortcut, Mode=TwoWay}" />
             </StackPanel>
 

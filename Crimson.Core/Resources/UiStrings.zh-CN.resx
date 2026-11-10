@@ -61,6 +61,81 @@
   <data name="About" xml:space="preserve">
     <value>关于</value>
   </data>
+  <data name="Connected" xml:space="preserve">
+    <value>已连接</value>
+  </data>
+  <data name="NotConnected" xml:space="preserve">
+    <value>未连接</value>
+  </data>
+  <data name="CheckingAccount" xml:space="preserve">
+    <value>正在检查帐户…</value>
+  </data>
+  <data name="SignInFailed" xml:space="preserve">
+    <value>登录失败。请重试。</value>
+  </data>
+  <data name="Connect" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="Disconnect" xml:space="preserve">
+    <value>断开连接</value>
+  </data>
+  <data name="UbisoftSignInHeading" xml:space="preserve">
+    <value>使用 Ubisoft 登录</value>
+  </data>
+  <data name="Email" xml:space="preserve">
+    <value>电子邮件</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>密码</value>
+  </data>
+  <data name="RememberMe" xml:space="preserve">
+    <value>在此电脑上保持登录状态</value>
+  </data>
+  <data name="SignIn" xml:space="preserve">
+    <value>登录</value>
+  </data>
+  <data name="UbisoftTwoFactorPrompt" xml:space="preserve">
+    <value>请输入 Ubisoft 验证器应用中的代码。</value>
+  </data>
+  <data name="UbisoftCodeLabel" xml:space="preserve">
+    <value>验证器代码</value>
+  </data>
+  <data name="VerifyCode" xml:space="preserve">
+    <value>验证代码</value>
+  </data>
+  <data name="UbisoftUseAnotherAccount" xml:space="preserve">
+    <value>使用其他帐户</value>
+  </data>
+  <data name="UbisoftSigningIn" xml:space="preserve">
+    <value>正在登录…</value>
+  </data>
+  <data name="UbisoftVerifying" xml:space="preserve">
+    <value>正在验证…</value>
+  </data>
+  <data name="UbisoftEmailPasswordRequired" xml:space="preserve">
+    <value>请输入电子邮件和密码。</value>
+  </data>
+  <data name="UbisoftCodeRequired" xml:space="preserve">
+    <value>请输入验证器代码。</value>
+  </data>
+  <data name="UbisoftInvalidCredentials" xml:space="preserve">
+    <value>Ubisoft 未接受该电子邮件或密码。</value>
+  </data>
+  <data name="UbisoftInvalidCode" xml:space="preserve">
+    <value>该代码未被接受。请重试。</value>
+  </data>
+  <data name="UbisoftSignInBlocked" xml:space="preserve">
+    <value>Ubisoft 阻止了本次登录。请稍后重试。</value>
+  </data>
+  <data name="UbisoftSignInUnavailable" xml:space="preserve">
+    <value>无法连接 Ubisoft。请检查网络连接后重试。</value>
+  </data>
+  <data name="UbisoftPasswordNotice" xml:space="preserve">
+    <value>Ubisoft 直接接收您的密码。若保持登录状态，Crimson 会在本机以 Windows 加密保存。</value>
+  </data>
+  <data name="UbisoftManageAccount" xml:space="preserve">
+    <value>管理您的 Ubisoft 帐户</value>
+  </data>
   <data name="Accounts" xml:space="preserve">
     <value>账户</value>
   </data>
@@ -444,6 +519,12 @@
   </data>
   <data name="NoInstalledGames" xml:space="preserve">
     <value>没有已安装的游戏</value>
+  </data>
+  <data name="ManageConnectedAccounts" xml:space="preserve">
+    <value>管理已连接的帐户</value>
+  </data>
+  <data name="NoConnectedStoreGamesMessage" xml:space="preserve">
+    <value>已连接商店中的游戏会显示在这里。</value>
   </data>
   <data name="NoInstalledGamesMessage" xml:space="preserve">
     <value>没有已安装的游戏。</value>

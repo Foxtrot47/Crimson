@@ -1,4 +1,4 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -32,8 +32,8 @@ public partial class GameDlcItem : ObservableObject
 
 public partial class GameDlcViewModel : ObservableObject
 {
-    private readonly LibraryManager _library;
-    private readonly InstallManager _installer;
+    private readonly EpicLibraryManager _library;
+    private readonly EpicInstallManager _installer;
     private readonly IUiDispatcher _dispatcher;
     private readonly List<GameDlcItem> _allItems = [];
     private string? _baseAppName;
@@ -70,7 +70,7 @@ public partial class GameDlcViewModel : ObservableObject
     public bool ShowApply => HasChanges && !IsConfirmingRemoval;
     public bool IsBlocked => !CanEdit;
 
-    public GameDlcViewModel(LibraryManager library, InstallManager installer, IUiDispatcher dispatcher)
+    public GameDlcViewModel(EpicLibraryManager library, EpicInstallManager installer, IUiDispatcher dispatcher)
     {
         _library = library;
         _installer = installer;

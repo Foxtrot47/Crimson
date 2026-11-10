@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Crimson.Models;
+using Crimson.Providers;
 
 namespace Crimson.Core;
 
@@ -10,7 +11,7 @@ internal sealed record TrayGameMenuItem(string AppName, string Title, bool CanLa
 internal static class TrayMenuPresenter
 {
     internal static IReadOnlyList<TrayGameMenuItem> GetInstalledGames(
-        IEnumerable<Game> games,
+        IEnumerable<LauncherGame> games,
         bool isLoggedIn,
         Func<string, bool> hasRelatedOperation)
     {

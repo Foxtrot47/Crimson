@@ -1,4 +1,4 @@
-using Crimson.Core;
+﻿using Crimson.Core;
 using Crimson.Models;
 
 namespace Crimson.Tests;
@@ -27,7 +27,7 @@ public sealed class InstallSizeCalculationTests
         chunks.Elements.Add(new ChunkInfo { Guid = uniqueGuid, FileSize = 200 });
         var manifest = new Manifest { CDL = chunks, FileManifestList = files };
 
-        var sizes = InstallManager.CalculateManifestSizes(manifest);
+        var sizes = EpicInstallManager.CalculateManifestSizes(manifest);
 
         Assert.Equal(300, sizes.DownloadBytes);
         Assert.Equal(90, sizes.WriteBytes);

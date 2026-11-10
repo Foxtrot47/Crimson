@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -143,7 +143,7 @@ public sealed class GameDlcViewModelTests : IDisposable
         };
         manifest.FileManifestList.Elements.Add(new FileManifest { Filename = "one.bin", FileSize = 3L * 1024 * 1024 * 1024 });
         manifest.FileManifestList.Elements.Add(new FileManifest { Filename = "two.bin", FileSize = 2L * 1024 * 1024 * 1024 });
-        var method = typeof(InstallManager).GetMethod("ApplyManifestState", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var method = typeof(EpicInstallManager).GetMethod("ApplyManifestState", BindingFlags.NonPublic | BindingFlags.Static)!;
 
         method.Invoke(null, [new InstallItem("installed", ActionType.Install, _fixture.BasePath),
             _fixture.InstalledDlc, _fixture.InstalledDlc.LocalAppState!, manifest]);
@@ -361,7 +361,7 @@ public sealed class DlcUninstallTests : IDisposable
         Assert.Equal(original, _fixture.InstalledDlc.LocalAppState.InstallPath);
     }
 
-    private void InvokeSynchronous(string method, params object[] arguments) => typeof(InstallManager)
+    private void InvokeSynchronous(string method, params object[] arguments) => typeof(EpicInstallManager)
         .GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(_fixture.Installer, arguments);
 
     [Fact]
@@ -393,9 +393,11 @@ internal sealed class DlcTestFixture : IDisposable
     private readonly HttpClient _http = new();
     private readonly List<GameDlcViewModel> _viewModels = [];
     public Storage Storage { get; }
-    public LibraryManager Library { get; }
-    public InstallManager Installer { get; }
+    public EpicLibraryManager Library { get; }
+    public EpicInstallManager Installer { get; }
     public EpicInstallDiscovery EpicDiscovery { get; }
+    // Shared launcher services around the same Epic engines, used by presentation tests.
+    public EpicHost Shared { get; }
     public string EpicRecordsPath => Path.Combine(Root, "epic-records");
     public Game BaseGame { get; }
     public Game InstalledDlc { get; }
@@ -413,17 +415,18 @@ internal sealed class DlcTestFixture : IDisposable
             Storage.AddToLocalAppState(game.AppName, game.LocalAppState!);
         }
         var repository = new NoNetworkRepository();
-        Library = new LibraryManager(_logger, repository, Storage, new AuthManager(_logger, Storage, new TestCredentialProtector(), _http));
+        Library = new EpicLibraryManager(_logger, repository, Storage, new EpicAuthManager(_logger, Storage, new TestCredentialProtector(), _http));
         EpicDiscovery = new EpicInstallDiscovery(EpicRecordsPath);
-        Installer = new InstallManager(_logger, Library, repository, Storage, null!, null!, new AllowPermission(), EpicDiscovery);
+        Installer = new EpicInstallManager(_logger, Library, repository, Storage, null!, null!, new AllowPermission(), EpicDiscovery);
+        Shared = EpicHost.Create(Library, Installer, repository);
         SetOwned("base", "installed", "available");
     }
 
     public void SetOwned(params string[] appNames)
     {
-        typeof(LibraryManager).GetField("_ownedAppNames", BindingFlags.NonPublic | BindingFlags.Instance)!
+        typeof(EpicLibraryManager).GetField("_ownedAppNames", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(Library, appNames.ToHashSet(StringComparer.Ordinal));
-        typeof(LibraryManager).GetField("_ownedAccountGeneration", BindingFlags.NonPublic | BindingFlags.Instance)!
+        typeof(EpicLibraryManager).GetField("_ownedAccountGeneration", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(Library, Storage.AccountGeneration);
     }
 
@@ -434,16 +437,16 @@ internal sealed class DlcTestFixture : IDisposable
         return viewModel;
     }
 
-    public void SetCurrent(string appName) => typeof(InstallManager).GetProperty(nameof(InstallManager.CurrentInstall))!
+    public void SetCurrent(string appName) => typeof(EpicInstallManager).GetProperty(nameof(EpicInstallManager.CurrentInstall))!
         .SetValue(Installer, new InstallItem(appName, ActionType.Install, BasePath) { Status = ActionStatus.Processing });
 
-    public List<InstallItem> Queue() => (List<InstallItem>)typeof(InstallManager)
+    public List<InstallItem> Queue() => (List<InstallItem>)typeof(EpicInstallManager)
         .GetField("_installQueue", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(Installer)!;
 
-    public IoTask[] IoTasks() => ((BlockingCollection<IoTask>)typeof(InstallManager)
+    public IoTask[] IoTasks() => ((BlockingCollection<IoTask>)typeof(EpicInstallManager)
         .GetField("_ioQueue", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(Installer)!).ToArray();
 
-    public Task Invoke(string method, params object[] args) => (Task)typeof(InstallManager)
+    public Task Invoke(string method, params object[] args) => (Task)typeof(EpicInstallManager)
         .GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(Installer, args)!;
 
     public Task Cache(string appName, string version, params string[] files) =>
@@ -486,7 +489,7 @@ internal sealed class DlcTestFixture : IDisposable
         public InstallPermissionCheckResult Check(string folderPath) => new(true);
     }
 
-    private sealed class NoNetworkRepository : IStoreRepository
+    private sealed class NoNetworkRepository : IEpicGamesRepository
     {
         public Task<Metadata> FetchGameMetaData(string nameSpace, string catalogItemId) => throw new NotSupportedException();
         public Task<StoreProductDetails?> FetchStoreProductDetails(string nameSpace, CancellationToken cancellationToken = default) => throw new NotSupportedException();

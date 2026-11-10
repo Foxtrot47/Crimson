@@ -1,5 +1,6 @@
-using Crimson.Core;
+﻿using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 
 namespace Crimson.Tests;
 
@@ -36,10 +37,13 @@ public sealed class TrayMenuPresenterTests
     [Fact]
     public void DlcAndMissingInstallationStatesAreExcluded()
     {
-        var dlc = Game("dlc", "DLC");
-        dlc.Metadata.MainGameItem = new MainGameItem();
-        var missing = Game("missing", "Missing");
-        missing.LocalAppState = null;
+        var dlc = Game("dlc", "DLC", isDlc: true);
+        var missing = new LauncherGame
+        {
+            Id = new GameId("epic", "missing"),
+            AppTitle = "Missing",
+            LocalAppState = null
+        };
 
         Assert.Empty(TrayMenuPresenter.GetInstalledGames([dlc, missing], true, _ => false));
     }
@@ -50,10 +54,10 @@ public sealed class TrayMenuPresenterTests
     public void RelatedOperationDisablesOtherwiseLaunchableGame(InstallState state)
     {
         var items = TrayMenuPresenter.GetInstalledGames(
-            [Game("base", "Base", state), Game("other", "Other")], true, app => app == "base");
+            [Game("base", "Base", state), Game("other", "Other")], true, app => app == "epic:base");
 
-        Assert.False(items.Single(item => item.AppName == "base").CanLaunch);
-        Assert.True(items.Single(item => item.AppName == "other").CanLaunch);
+        Assert.False(items.Single(item => item.AppName == "epic:base").CanLaunch);
+        Assert.True(items.Single(item => item.AppName == "epic:other").CanLaunch);
     }
 
     [Fact]
@@ -63,8 +67,8 @@ public sealed class TrayMenuPresenterTests
             [Game("z", "Zulu"), Game("b", "alpha"), Game("a", "alpha"), Game("c", " "), Game("z", "Duplicate")],
             true, _ => false);
 
-        Assert.Equal(["a", "b", "c", "z"], items.Select(item => item.AppName));
-        Assert.Equal("c", items.Single(item => item.AppName == "c").Title);
+        Assert.Equal(["epic:a", "epic:b", "epic:c", "epic:z"], items.Select(item => item.AppName));
+        Assert.Equal("epic:c", items.Single(item => item.AppName == "epic:c").Title);
     }
 
     [Fact]
@@ -87,12 +91,12 @@ public sealed class TrayMenuPresenterTests
         Assert.Equal(expected, TrayMenuPresenter.EscapeMenuText(title));
     }
 
-    private static Game Game(string appName, string title, InstallState state = InstallState.Installed) => new()
+    private static LauncherGame Game(string appName, string title, InstallState state = InstallState.Installed,
+        bool isDlc = false) => new()
     {
-        AppName = appName,
+        Id = new GameId("epic", appName),
         AppTitle = title,
-        AssetInfos = null!,
-        Metadata = new Metadata(),
-        LocalAppState = new LocalAppState { AppName = appName, InstallStatus = state }
+        IsDownloadableContent = isDlc,
+        LocalAppState = new LauncherInstallation(state, Path.GetTempPath())
     };
 }

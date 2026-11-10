@@ -1,4 +1,4 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Interfaces;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Utils;
 using Microsoft.Extensions.Logging;
 
@@ -23,16 +24,17 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 {
     private readonly IUiDispatcher _uiDispatcher;
     private readonly IArtworkCache? _artworkCache;
-    private readonly CloudSaveManager? _cloudSaveManager;
+    private readonly LauncherRegistry _launchers;
+    private IGameDetailsSource? _details;
+    private IGameCloudSaves? _cloudSaves;
+    private Uri? _storePageUri;
     private int _navigationGeneration;
-    private readonly InstallManager _installer;
-    private readonly LibraryManager _libraryManager;
-    private readonly Storage _storage;
+    private readonly LauncherInstaller _installer;
+    private readonly LauncherLibrary _libraryManager;
     private readonly ILogger<GameInfoViewModel> _log;
     private CloudSaveSyncStatus _cloudSyncStatus;
     private bool _isGameRunning;
     private CancellationTokenSource? _storeDetailsCancellation;
-    private Action<string, StoreProductDetails>? _storeDetailsUpdatedHandler;
     private int _storeDetailsUpdateVersion;
     private int _noticeGeneration;
 
@@ -44,10 +46,21 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StorePageUri), nameof(CanViewStore))]
-    private Game? _game;
+    private LauncherGame? _game;
 
-    public Uri? StorePageUri => EpicStoreLinks.ForGame(Game);
-    public bool CanViewStore => StorePageUri is not null;
+    // Store links are provider-owned: Epic publishes a product page, other stores may publish none.
+    public Uri? StorePageUri => _storePageUri;
+    public bool CanViewStore => _storePageUri is not null;
+
+    partial void OnGameChanged(LauncherGame? value)
+    {
+        var library = value is null ? null : _launchers.Get(value.Id.ProviderId).Library;
+        _details = library as IGameDetailsSource;
+        _cloudSaves = library as IGameCloudSaves;
+        _storePageUri = value is null ? null : _details?.GetStorePageUri(value.AppName);
+        OnPropertyChanged(nameof(StorePageUri));
+        OnPropertyChanged(nameof(CanViewStore));
+    }
 
     [ObservableProperty]
     private bool _isInstalled;
@@ -150,69 +163,57 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     public event Func<Task<string>> FolderPickerRequested;
 
     public GameInfoViewModel(ILogger<GameInfoViewModel> logger,
-            InstallManager installer,
-            LibraryManager libraryManager,
-            Storage storage,
+            LauncherInstaller installer,
+            LauncherLibrary libraryManager,
+            LauncherRegistry launchers,
             IUiDispatcher uiDispatcher,
-            IArtworkCache? artworkCache = null,
-            CloudSaveManager? cloudSaveManager = null)
+            IArtworkCache? artworkCache = null)
     {
         _uiDispatcher = uiDispatcher;
         _artworkCache = artworkCache;
-        _cloudSaveManager = cloudSaveManager;
+        _launchers = launchers;
         _log = logger;
         _installer = installer;
         _libraryManager = libraryManager;
-        _storage = storage;
-
     }
 
     public async Task OnNavigatedTo(object parameter)
     {
         OnNavigatedFrom();
-        if (parameter is not string appName) return;
+        if (parameter is not string requested) return;
+        var appName = GameId.Parse(requested).ToString();
 
         var generation = Volatile.Read(ref _navigationGeneration);
         var accountGeneration = _libraryManager.AccountGeneration;
         Game = _libraryManager.GetGameInfo(appName);
         if (Game is null) return;
 
-        var gameNamespace = Game.Metadata.Namespace;
+        // Rich per-game data is an optional provider capability; the page hides what is absent.
         ActionErrorMessage = string.Empty;
         ApplyCatalogMetadata(Game);
         _ = CacheGameArtworkAsync(Game, generation, accountGeneration);
-        _storeDetailsUpdatedHandler = (nameSpace, details) =>
-        {
-            if (!string.Equals(nameSpace, gameNamespace, StringComparison.Ordinal)) return;
-            Interlocked.Increment(ref _storeDetailsUpdateVersion);
-            _uiDispatcher.TryEnqueue(() =>
-            {
-                if (generation != Volatile.Read(ref _navigationGeneration) ||
-                    accountGeneration != _libraryManager.AccountGeneration || Game?.AppName != appName) return;
-                ApplyStoreDetails(details);
-                IsDetailsLoading = false;
-            });
-        };
-        _libraryManager.StoreProductDetailsUpdated += _storeDetailsUpdatedHandler;
         _installer.OperationError += HandleActionNotice;
         _libraryManager.GameStatusUpdated += CheckGameStatus;
         _installer.OperationUpdated += HandleOperationUpdated;
-        if (_cloudSaveManager is not null)
+        if (_cloudSaves is not null)
         {
-            _cloudSaveManager.SyncStatusChanged += HandleCloudSyncStatusChanged;
-            _cloudSyncStatus = _cloudSaveManager.GetSyncStatus(appName);
+            _cloudSaves.SyncStatusChanged += HandleCloudSyncStatusChanged;
+            _cloudSyncStatus = _cloudSaves.GetSyncStatus(appName);
         }
-        _libraryManager.GameRunningStateChanged += HandleGameRunningStateChanged;
-        _isGameRunning = _libraryManager.IsGameRunning(appName);
+        if (_details is not null)
+        {
+            _details.RunningStateChanged += HandleGameRunningStateChanged;
+            _isGameRunning = _details.IsRunning(appName);
+        }
         CheckGameStatus(Game);
 
         _storeDetailsCancellation = new CancellationTokenSource();
         await Task.WhenAll(
-            LoadStoreDetails(appName, gameNamespace, _storeDetailsCancellation.Token),
+            LoadStoreDetails(appName, _storeDetailsCancellation.Token),
             LoadPlaytime(appName, _storeDetailsCancellation.Token));
     }
 
-    private async Task CacheGameArtworkAsync(Game game, int generation, int accountGeneration)
+    private async Task CacheGameArtworkAsync(LauncherGame game, int generation, int accountGeneration)
     {
         if (_artworkCache is null) return;
         var coverUrl = CoverImageUrl;
@@ -256,12 +257,10 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _installer.OperationError -= HandleActionNotice;
         _libraryManager.GameStatusUpdated -= CheckGameStatus;
         _installer.OperationUpdated -= HandleOperationUpdated;
-        if (_cloudSaveManager is not null)
-            _cloudSaveManager.SyncStatusChanged -= HandleCloudSyncStatusChanged;
-        _libraryManager.GameRunningStateChanged -= HandleGameRunningStateChanged;
-        if (_storeDetailsUpdatedHandler is not null)
-            _libraryManager.StoreProductDetailsUpdated -= _storeDetailsUpdatedHandler;
-        _storeDetailsUpdatedHandler = null;
+        if (_cloudSaves is not null)
+            _cloudSaves.SyncStatusChanged -= HandleCloudSyncStatusChanged;
+        if (_details is not null)
+            _details.RunningStateChanged -= HandleGameRunningStateChanged;
     }
 
     private void HandleCloudSyncStatusChanged(string appName, CloudSaveSyncStatus status)
@@ -369,7 +368,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     /// </summary>
     private void ApplyRunningState()
     {
-        if (!_isGameRunning || Game is null || LibraryManager.AllowsMultipleInstances(Game)) return;
+        if (!_isGameRunning || Game is null || _details?.AllowsMultipleInstances(Game.AppName) == true) return;
         // A post-exit sync keeps the game marked as running; the sync label wins.
         if (_cloudSyncStatus != CloudSaveSyncStatus.Idle) return;
 
@@ -456,7 +455,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
             ApplyGameStatus(Game.LocalAppState?.InstallStatus);
     }
 
-    private void CheckGameStatus(Game updatedGame)
+    private void CheckGameStatus(LauncherGame updatedGame)
     {
         if (updatedGame == null || Game is null || updatedGame.AppName != Game.AppName) return;
         _log.LogInformation("GameInfoPage: Game Status Changed for {Game}", updatedGame.AppTitle);
@@ -464,7 +463,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         {
             if (Game?.AppName != updatedGame.AppName) return;
             Game = updatedGame;
-            ApplyLocalGameDetails(updatedGame);
+            ApplyLocalGameDetails(_details?.GetGameDetails(updatedGame.AppName));
             ApplyGameStatus(updatedGame.LocalAppState?.InstallStatus);
             ApplyOperation(FindOperation(updatedGame.AppName));
             ApplyCloudSyncStatus();
@@ -474,7 +473,6 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
     private async Task LoadStoreDetails(
         string appName,
-        string nameSpace,
         CancellationToken cancellationToken)
     {
         var updateVersion = Volatile.Read(ref _storeDetailsUpdateVersion);
@@ -482,7 +480,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         StoreProductDetails? details = null;
         try
         {
-            details = await _libraryManager.GetStoreProductDetails(nameSpace, cancellationToken);
+            if (_details is not null) details = await _details.GetStoreProductDetails(appName, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -507,7 +505,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         long? seconds = null;
         try
         {
-            seconds = await _libraryManager.GetGamePlaytimeSeconds(appName, cancellationToken);
+            seconds = _details is null ? null : await _details.GetGamePlaytimeSeconds(appName, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -534,15 +532,16 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         return minutes < 60 ? UiStrings.Format(UiStrings.PlaytimeMinutesFormat, minutes) : UiStrings.Format(UiStrings.PlaytimeHoursMinutesFormat, minutes / 60, minutes % 60);
     }
 
-    private void ApplyCatalogMetadata(Game game)
+    private void ApplyCatalogMetadata(LauncherGame game)
     {
-        CoverImageUrl = FindImage(game.Metadata.KeyImages, "DieselGameBoxTall", "OfferImageTall", "DieselGameBox");
+        var details = _details?.GetGameDetails(game.AppName);
+        CoverImageUrl = details?.CoverImageUrl ?? game.CoverImageUrl;
         HasCoverImage = !string.IsNullOrWhiteSpace(CoverImageUrl);
-        HeroImageUrl = FindImage(game.Metadata.KeyImages, "DieselGameBox", "OfferImageWide");
+        HeroImageUrl = details?.LandscapeImageUrl ?? game.LandscapeImageUrl;
         HasHeroImage = !string.IsNullOrWhiteSpace(HeroImageUrl);
         Screenshots = [];
         HasScreenshots = false;
-        DeveloperName = FirstNonEmpty(game.Metadata.Developer, UiStrings.LoadingEllipsis);
+        DeveloperName = FirstNonEmpty(details?.DeveloperName, UiStrings.LoadingEllipsis);
         PublisherName = UiStrings.LoadingEllipsis;
         TagsText = string.Empty;
         HasTags = false;
@@ -551,14 +550,14 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         WindowsRequirements = [];
         HasWindowsRequirements = false;
         IsStoreDetailsUnavailable = false;
-        ApplyDescription(game.Metadata.Description, game.AppTitle);
-        ApplyLocalGameDetails(game);
+        ApplyDescription(details?.Description, game.AppTitle);
+        ApplyLocalGameDetails(details);
     }
 
     private void ApplyStoreDetails(StoreProductDetails? details)
     {
         IsStoreDetailsUnavailable = details is null;
-        DeveloperName = GetDetailText(FirstNonEmpty(details?.DeveloperName, Game?.Metadata.Developer));
+        DeveloperName = GetDetailText(details?.DeveloperName);
         PublisherName = GetDetailText(details?.PublisherName);
         ReleaseDateText = details?.ReleaseDate?.ToString(UiStrings.ReleaseDateFormat) ?? UiStrings.Unavailable;
         if (details is null) return;
@@ -590,24 +589,14 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         HasGameDescription = !string.IsNullOrWhiteSpace(description);
     }
 
-    private void ApplyLocalGameDetails(Game game)
+    private void ApplyLocalGameDetails(LauncherGameDetails? details)
     {
-        InstalledVersion = GetDetailText(game.LocalAppState?.Version);
-        LastUpdatedText = game.LocalAppState?.LastUpdatedAt?.ToLocalTime().ToString("g") ?? UiStrings.Unavailable;
+        InstalledVersion = GetDetailText(details?.InstalledVersion);
+        LastUpdatedText = details?.LastUpdatedAt?.ToLocalTime().ToString("g") ?? UiStrings.Unavailable;
     }
 
     internal static string GetDetailText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? UiStrings.Unavailable : value;
-
-    private static string? FindImage(IEnumerable<KeyImage>? images, params string[] preferredTypes) =>
-        FindImage(
-            images?.Select(image => new StoreProductImage
-            {
-                Type = image.Type,
-                Url = image.Url,
-                IsVideo = false
-            }) ?? [],
-            preferredTypes);
 
     private static string? FindImage(
         IEnumerable<StoreProductImage> images,
@@ -617,8 +606,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         {
             var url = images.FirstOrDefault(image =>
                 !image.IsVideo &&
-                string.Equals(image.Type, preferredType, StringComparison.OrdinalIgnoreCase) &&
-                EpicEndpointPolicy.TryGetContentUri(image.Url, out _))?.Url;
+                string.Equals(image.Type, preferredType, StringComparison.OrdinalIgnoreCase))?.Url;
             if (!string.IsNullOrWhiteSpace(url)) return url;
         }
 
@@ -629,8 +617,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         IEnumerable<StoreProductImage> images) => images
         .Where(image =>
             !image.IsVideo &&
-            string.Equals(image.Type, "featuredMedia", StringComparison.OrdinalIgnoreCase) &&
-            EpicEndpointPolicy.TryGetContentUri(image.Url, out _))
+            string.Equals(image.Type, "featuredMedia", StringComparison.OrdinalIgnoreCase))
         .DistinctBy(image => image.Url, StringComparer.OrdinalIgnoreCase)
         .Take(8)
         .ToList();
@@ -642,7 +629,15 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     {
         IsProgressRingVisible = false;
         PrimaryAction = GetPrimaryAction(installState);
-        IsPrimaryActionEnabled = PrimaryAction != GamePrimaryAction.None;
+        // A provider advertises which actions it can perform; unsupported ones stay disabled.
+        IsPrimaryActionEnabled = Game is not null && PrimaryAction switch
+        {
+            GamePrimaryAction.Play => Game.CanLaunch,
+            GamePrimaryAction.Install => _installer.Supports(Game.AppName, ActionType.Install),
+            GamePrimaryAction.Update => _installer.Supports(Game.AppName, ActionType.Update),
+            GamePrimaryAction.Repair => _installer.Supports(Game.AppName, ActionType.Repair),
+            _ => false
+        };
         PrimaryActionButtonText = PrimaryAction switch
         {
             GamePrimaryAction.Install => UiStrings.Install,
@@ -685,25 +680,26 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     }
 
     private bool CanRunPrimaryAction() => Game is not null &&
-        (!_isGameRunning || LibraryManager.AllowsMultipleInstances(Game)) &&
+        (!_isGameRunning || _details?.AllowsMultipleInstances(Game.AppName) == true) &&
         _cloudSyncStatus == CloudSaveSyncStatus.Idle &&
         GetPrimaryAction(Game.LocalAppState?.InstallStatus) != GamePrimaryAction.None &&
         FindOperation(Game.AppName) is null;
 
-    private bool CanImport(Game? game) => game is not null &&
+    private bool CanImport(LauncherGame? game) => game is not null &&
         GetPrimaryAction(game.LocalAppState?.InstallStatus) == GamePrimaryAction.Install &&
-        FindOperation(game.AppName) is null;
+        FindOperation(game.AppName) is null &&
+        _installer.Supports(game.AppName, ActionType.Import);
 
-    private bool CanManage(Game? game) => game is not null &&
+    private bool CanManage(LauncherGame? game) => game is not null &&
         game.LocalAppState?.InstallStatus is InstallState.Installed or InstallState.NeedUpdate or InstallState.Broken &&
         FindOperation(game.AppName) is null;
 
     [RelayCommand]
     private void Uninstall()
     {
-        if (!CanManage(Game)) return;
+        if (!CanManage(Game) || !_installer.Supports(Game!.AppName, ActionType.Uninstall)) return;
 
-        _storage.LocalAppStateDictionary.TryGetValue(Game.AppName, out var installedGame);
+        var installedGame = Game.LocalAppState;
 
         if (installedGame == null)
         {
@@ -718,9 +714,9 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     [RelayCommand]
     private void VerifyRepair()
     {
-        if (!CanManage(Game)) return;
+        if (!CanManage(Game) || !_installer.Supports(Game!.AppName, ActionType.Repair)) return;
 
-        _storage.LocalAppStateDictionary.TryGetValue(Game.AppName, out var installedGame);
+        var installedGame = Game.LocalAppState;
 
         if (installedGame == null)
         {
@@ -755,7 +751,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     private async Task MoveGameAsync()
     {
         var game = Game;
-        if (!CanManage(game)) return;
+        if (!CanManage(game) || !_installer.Supports(game!.AppName, ActionType.Move)) return;
         ActionErrorMessage = string.Empty;
 
         if (FolderPickerRequested == null)
@@ -770,7 +766,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         try
         {
             var currentPath = game.LocalAppState.InstallPath;
-            var destPath = Path.Combine(folderPath, game.AppName);
+            var destPath = Path.Combine(folderPath, ProviderDataPaths.GameFileKey(game.Id));
             _installer.AddToQueue(new InstallItem(game.AppName, ActionType.Move, currentPath)
             {
                 MoveLocation = destPath

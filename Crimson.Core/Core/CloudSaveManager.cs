@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
@@ -28,7 +28,7 @@ public class CloudSaveManager
     private static readonly TimeSpan SameAgeTolerance = TimeSpan.FromSeconds(60);
 
     private readonly ILogger _log;
-    private readonly IStoreRepository _repository;
+    private readonly IEpicGamesRepository _repository;
     private readonly Storage _storage;
     private readonly ConcurrentDictionary<string, CloudSaveSyncStatus> _syncStates = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _syncGates = new(StringComparer.Ordinal);
@@ -41,7 +41,7 @@ public class CloudSaveManager
     /// </summary>
     public Func<CloudSaveConflict, Task<CloudSaveResolution>>? ConflictResolver { get; set; }
 
-    public CloudSaveManager(ILogger log, IStoreRepository repository, Storage storage)
+    public CloudSaveManager(ILogger log, IEpicGamesRepository repository, Storage storage)
     {
         _log = log;
         _repository = repository;

@@ -1,0 +1,398 @@
+﻿using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Threading;
+using System;
+using Crimson.Core;
+using Crimson.Models;
+using Serilog;
+
+namespace Crimson.Providers;
+
+/// <summary>Independent connections to store accounts; Crimson has no active launcher.</summary>
+public sealed class LauncherAuthentication
+{
+    private readonly LauncherRegistry _registry;
+    private readonly IUiDispatcher _dispatcher;
+    private readonly ILogger? _log;
+    private readonly object _statusGate = new();
+    private readonly Dictionary<string, AuthenticationStatus> _lastStatus = new(StringComparer.Ordinal);
+    public IReadOnlyList<LauncherAccount> Accounts { get; }
+    public event Action<string, AuthenticationStatus>? StatusChanged;
+    public event Action<string>? SignInRequested;
+
+    public LauncherAuthentication(LauncherRegistry registry, IUiDispatcher dispatcher, ILogger? log = null)
+    {
+        _registry = registry;
+        _dispatcher = dispatcher;
+        _log = log;
+        Accounts = registry.Providers.Select(provider => new LauncherAccount(provider.Id, provider.DisplayName,
+                provider.Authentication.AuthenticationStatus,
+                connect: () => RequestSignIn(provider.Id),
+                disconnect: () => _ = Logout(provider.Id)))
+            .ToList().AsReadOnly();
+        foreach (var provider in registry.Providers)
+        {
+            _lastStatus[provider.Id] = provider.Authentication.AuthenticationStatus;
+            provider.Authentication.StatusChanged += status => Publish(provider.Id, status);
+        }
+    }
+
+    /// <summary>Reads the account identity a provider publishes and mirrors it onto the shell account row.</summary>
+    public async Task RefreshUser(string providerId)
+    {
+        LauncherUser? user = null;
+        try
+        {
+            var provider = _registry.Get(providerId);
+            user = provider.Authentication.AuthenticationStatus == AuthenticationStatus.LoggedIn
+                ? await provider.Authentication.GetUser()
+                : null;
+        }
+        catch (Exception ex)
+        {
+            _log?.Warning(ex, "Could not read the account identity for {ProviderId}", providerId);
+            user = null;
+        }
+        _dispatcher.TryEnqueue(() => Accounts.Single(account => account.ProviderId == providerId).User = user);
+    }
+
+    private void Publish(string providerId, AuthenticationStatus status)
+    {
+        lock (_statusGate)
+        {
+            if (_lastStatus[providerId] == status) return;
+            _lastStatus[providerId] = status;
+        }
+        _dispatcher.TryEnqueue(() => Accounts.Single(account => account.ProviderId == providerId).Status = status);
+        if (status == AuthenticationStatus.LoggedIn) _ = RefreshUser(providerId);
+        StatusChanged?.Invoke(providerId, status);
+    }
+
+    public async Task<AuthenticationStatus> CheckAuthStatus(string providerId)
+    {
+        var provider = _registry.Get(providerId);
+        try
+        {
+            var status = await provider.Authentication.CheckAuthStatus();
+            Publish(providerId, status);
+            await RefreshUser(providerId);
+            return status;
+        }
+        catch (Exception ex)
+        {
+            _log?.Warning(ex, "Could not check account for {ProviderId}", providerId);
+            Publish(providerId, AuthenticationStatus.LoginFailed);
+            return AuthenticationStatus.LoginFailed;
+        }
+    }
+
+    public Task CheckAllAuthStatuses() => Task.WhenAll(_registry.Providers.Select(provider => CheckAuthStatus(provider.Id)));
+    public Task Logout(string providerId) => _registry.Get(providerId).Authentication.Logout();
+    public void RequestSignIn(string providerId)
+    {
+        if (_registry.Get(providerId).Authentication.AuthenticationStatus == AuthenticationStatus.LoggedIn) return;
+        SignInRequested?.Invoke(providerId);
+    }
+}
+
+/// <summary>One combined library. Account failures and logout affect only that provider's entries.</summary>
+public sealed class LauncherLibrary : ILauncherLibrary
+{
+    private readonly LauncherRegistry _registry;
+    private readonly ILogger? _log;
+    private readonly object _gate = new();
+    private readonly Dictionary<string, List<LauncherGame>> _libraries = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _sessions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SemaphoreSlim> _refreshGates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HashSet<string>> _knownGames = new(StringComparer.Ordinal);
+    private int _accountGeneration;
+    public event Action<IEnumerable<LauncherGame>>? LibraryUpdated;
+    public event Action<LauncherGame>? GameStatusUpdated;
+
+    /// <summary>Games a store added since its previous published snapshot; a first load is not news.</summary>
+    public event Action<IReadOnlyList<LauncherGame>>? GamesAdded;
+    public IReadOnlyList<LauncherGame> CachedGames { get { lock (_gate) return Snapshot(); } }
+
+    /// <summary>Changes whenever a store account connects or disconnects; presentation discards stale refreshes.</summary>
+    public int AccountGeneration { get { lock (_gate) return _accountGeneration; } }
+
+    public bool IsAuthenticationCheckInProgress => _registry.Providers.Any(provider =>
+        provider.Authentication.AuthenticationStatus == AuthenticationStatus.Checking);
+
+    public LauncherLibrary(LauncherRegistry registry, ILogger? log = null)
+    {
+        _registry = registry;
+        _log = log;
+        foreach (var provider in registry.Providers)
+        {
+            _sessions[provider.Id] = 0;
+            _refreshGates[provider.Id] = new(1, 1);
+            provider.Library.LibraryUpdated += games => PublishProvider(provider, games);
+            provider.Library.GameStatusUpdated += game =>
+            {
+                var valid = ValidateGame(provider, game);
+                if (provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
+                lock (_gate)
+                {
+                    if (_libraries.TryGetValue(provider.Id, out var games))
+                    {
+                        var index = games.FindIndex(existing => existing.Id == valid.Id);
+                        if (index >= 0) games[index] = valid;
+                    }
+                }
+                GameStatusUpdated?.Invoke(valid);
+            };
+            provider.Authentication.StatusChanged += status =>
+            {
+                if (status is not AuthenticationStatus.LoggedIn and not AuthenticationStatus.LoggedOut
+                    and not AuthenticationStatus.LoginFailed) return;
+                lock (_gate)
+                {
+                    _accountGeneration++;
+                    _knownGames.Remove(provider.Id);
+                    if (status is AuthenticationStatus.LoggedIn) return;
+                    _sessions[provider.Id]++;
+                    _libraries.Remove(provider.Id);
+                }
+                NotifyLibraryUpdated();
+            };
+        }
+    }
+
+    public async Task<IEnumerable<LauncherGame>> GetLibraryData(bool forceUpdate = false)
+    {
+        await Task.WhenAll(_registry.Providers.Select(provider => Refresh(provider, forceUpdate)));
+        lock (_gate) return Snapshot();
+    }
+
+    private async Task Refresh(ILauncherProvider provider, bool forceUpdate)
+    {
+        await _refreshGates[provider.Id].WaitAsync();
+        try
+        {
+            int session;
+            lock (_gate) session = _sessions[provider.Id];
+            if (provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
+            var games = ValidateGames(provider, await provider.Library.GetLibraryData(forceUpdate));
+            lock (_gate)
+            {
+                if (session != _sessions[provider.Id] ||
+                    provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
+            }
+            PublishGames(provider, games);
+        }
+        catch (Exception ex)
+        {
+            _log?.Warning(ex, "Could not refresh library for {ProviderId}", provider.Id);
+        }
+        finally { _refreshGates[provider.Id].Release(); }
+    }
+
+    private void PublishProvider(ILauncherProvider provider, IEnumerable<LauncherGame> games)
+    {
+        var valid = ValidateGames(provider, games);
+        if (provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
+        PublishGames(provider, valid);
+    }
+
+    private void PublishGames(ILauncherProvider provider, List<LauncherGame> games)
+    {
+        List<LauncherGame> added;
+        lock (_gate)
+        {
+            added = _knownGames.TryGetValue(provider.Id, out var previous)
+                ? games.Where(game => !previous.Contains(game.AppName)).ToList()
+                : [];
+            _knownGames[provider.Id] = games.Select(game => game.AppName).ToHashSet(StringComparer.Ordinal);
+            _libraries[provider.Id] = games;
+        }
+        if (added.Count > 0) GamesAdded?.Invoke(added);
+        NotifyLibraryUpdated();
+    }
+
+    private void NotifyLibraryUpdated()
+    {
+        lock (_gate) LibraryUpdated?.Invoke(Snapshot());
+    }
+
+    // Called under _gate; sort/filter belongs to presentation, never to a selected store.
+    private List<LauncherGame> Snapshot() => _registry.Providers
+        .Where(provider => provider.Authentication.AuthenticationStatus == AuthenticationStatus.LoggedIn)
+        .SelectMany(provider => _libraries.GetValueOrDefault(provider.Id) ?? []).ToList();
+
+    public LauncherGame? GetGameInfo(string appName)
+    {
+        var provider = Resolve(appName);
+        var game = provider.Library.GetGameInfo(GameId.Parse(appName).ToString());
+        return game is null ? null : ValidateGame(provider, game);
+    }
+
+    public List<LauncherGame> GetDlcsForGame(string appName)
+    {
+        var provider = Resolve(appName);
+        return ValidateGames(provider, provider.Library.GetDlcsForGame(GameId.Parse(appName).ToString()));
+    }
+
+    /// <summary>A job started for an owned addon still belongs to its base game's page.</summary>
+    public bool IsOperationForGame(string operationAppName, string gameAppName) =>
+        string.Equals(GetBaseGameAppName(operationAppName), GetBaseGameAppName(gameAppName), StringComparison.Ordinal);
+
+    public string GetBaseGameAppName(string appName)
+    {
+        var provider = Resolve(appName);
+        return provider.Library.GetBaseGameAppName(GameId.Parse(appName).ToString());
+    }
+
+    public async Task<bool> LaunchApp(string appName)
+    {
+        var id = GameId.Parse(appName);
+        var provider = _registry.Get(id.ProviderId);
+        if (provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn ||
+            provider.Library.GetGameInfo(id.ToString()) is not { CanLaunch: true }) return false;
+        // Licenses, IPC, helper processes and their lifetimes remain provider-owned.
+        return await provider.Library.LaunchApp(id.ToString());
+    }
+
+    public void InvalidateCache()
+    {
+        foreach (var provider in _registry.Providers) provider.Library.InvalidateCache();
+    }
+    private ILauncherProvider Resolve(string appName) => _registry.Get(GameId.Parse(appName).ProviderId);
+    private static List<LauncherGame> ValidateGames(ILauncherProvider provider, IEnumerable<LauncherGame> games) =>
+        games.Select(game => ValidateGame(provider, game)).ToList();
+    private static LauncherGame ValidateGame(ILauncherProvider provider, LauncherGame game) =>
+        game.Id.ProviderId == provider.Id ? game : throw new InvalidOperationException("Provider returned a foreign game identity.");
+}
+
+/// <summary>Routes qualified jobs to their owner independently of account connection and UI navigation.</summary>
+public sealed class LauncherInstaller : ILauncherInstaller
+{
+    private readonly LauncherRegistry _registry;
+    public event Action<InstallItem>? InstallationStatusChanged;
+    public event Action<InstallItem>? InstallProgressUpdate;
+    public event Action<OperationSnapshot>? OperationUpdated;
+    public event Action<OperationSnapshot>? TransferRatesUpdated;
+    public event Action<OperationSnapshot>? OperationError;
+    private ILauncherInstaller? CurrentInstaller => _registry.Providers
+        .Select(provider => provider.Installer).FirstOrDefault(installer => installer?.CurrentInstall is
+            { Status: not ActionStatus.Success and not ActionStatus.Failed and not ActionStatus.Cancelled });
+    public InstallItem? CurrentInstall => CurrentInstaller?.CurrentInstall;
+    public OperationSnapshot? CurrentOperation => _registry.Providers
+        .Select(provider => provider.Installer?.CurrentOperation).FirstOrDefault(operation => operation?.IsActive == true);
+    public bool SupportsPause => _registry.Providers.Any(provider => provider.Installer?.SupportsPause == true);
+    public bool SupportsShortcuts => _registry.Providers.Any(provider => provider.Installer?.SupportsShortcuts == true);
+
+    public LauncherInstaller(LauncherRegistry registry)
+    {
+        _registry = registry;
+        foreach (var provider in registry.Providers)
+        {
+            if (provider.Installer is not { } installer) continue;
+            installer.InstallationStatusChanged += item =>
+            {
+                RequireOwner(provider, item);
+                InstallationStatusChanged?.Invoke(item);
+            };
+            installer.InstallProgressUpdate += item =>
+            {
+                RequireOwner(provider, item);
+                InstallProgressUpdate?.Invoke(item);
+            };
+            installer.OperationUpdated += operation =>
+            {
+                RequireOperationOwner(provider, operation);
+                OperationUpdated?.Invoke(operation);
+            };
+            installer.TransferRatesUpdated += operation =>
+            {
+                RequireOperationOwner(provider, operation);
+                TransferRatesUpdated?.Invoke(operation);
+            };
+            installer.OperationError += operation =>
+            {
+                RequireOperationOwner(provider, operation);
+                OperationError?.Invoke(operation);
+            };
+        }
+    }
+
+    public IReadOnlyList<OperationSnapshot> GetQueueOperations() => _registry.Providers
+        .SelectMany(provider => provider.Installer?.GetQueueOperations() ?? []).ToList();
+    public IReadOnlyList<OperationSnapshot> GetHistoryOperations() => _registry.Providers
+        .SelectMany(provider => provider.Installer?.GetHistoryOperations() ?? []).ToList();
+    public bool RetryFailedOperation(string appName) =>
+        _registry.Get(GameId.Parse(appName).ProviderId).Installer?.RetryFailedOperation(appName) == true;
+    public OperationSnapshot? GetActiveOperationForGame(string appName) =>
+        OptionalInstaller(appName)?.GetActiveOperationForGame(GameId.Parse(appName).ToString());
+    public bool TryAddToQueue(InstallItem item) =>
+        OptionalInstaller(item.AppName)?.TryAddToQueue(item) == true;
+    public void ReportPreparationFailure(string appName, ActionType action, OperationFailure failure)
+    {
+        if (string.IsNullOrWhiteSpace(appName)) return;
+        OptionalInstaller(appName)?.ReportPreparationFailure(GameId.Parse(appName).ToString(), action, failure);
+    }
+    public void ReportPreparationFailure(string appName, ActionType action, Exception exception)
+    {
+        if (string.IsNullOrWhiteSpace(appName)) return;
+        OptionalInstaller(appName)?.ReportPreparationFailure(GameId.Parse(appName).ToString(), action, exception);
+    }
+    public void ReportSecondaryFailure(InstallItem install, OperationFailure failure) =>
+        OptionalInstaller(install.AppName)?.ReportSecondaryFailure(install, failure);
+    private ILauncherInstaller? OptionalInstaller(string appName) =>
+        _registry.Get(GameId.Parse(appName).ProviderId).Installer;
+
+    public bool Supports(ActionType action) => _registry.Providers.Any(provider => provider.Installer?.Supports(action) == true);
+    public bool Supports(string appName, ActionType action) =>
+        _registry.Get(GameId.Parse(appName).ProviderId).Installer?.Supports(action) == true;
+    public bool SupportsShortcutsFor(string appName) =>
+        _registry.Get(GameId.Parse(appName).ProviderId).Installer?.SupportsShortcuts == true;
+
+    public void AddToQueue(InstallItem item)
+    {
+        var installer = Resolve(item.AppName);
+        if (!installer.Supports(item.Action))
+            throw new NotSupportedException($"This launcher does not support {item.Action}.");
+        installer.AddToQueue(item.ForGame(GameId.Parse(item.AppName).ToString()));
+    }
+
+    public List<string> GetQueueItemNames() => _registry.Providers
+        .SelectMany(provider => provider.Installer?.GetQueueItemNames() ?? []).ToList();
+    public List<string> GetHistoryItemsNames() => _registry.Providers
+        .SelectMany(provider => provider.Installer?.GetHistoryItemsNames() ?? []).ToList();
+    public void CancelInstall(string appName) => Resolve(appName).CancelInstall(appName);
+    public void PauseInstall() { if (SupportsPause) CurrentInstaller?.PauseInstall(); }
+    public void ResumeInstall() { if (SupportsPause) CurrentInstaller?.ResumeInstall(); }
+    public void PauseInstall(string appName)
+    {
+        var installer = Resolve(appName);
+        if (installer.SupportsPause && installer.CurrentInstall?.AppName == appName) installer.PauseInstall();
+    }
+    public void ResumeInstall(string appName)
+    {
+        var installer = Resolve(appName);
+        if (installer.SupportsPause && installer.CurrentInstall?.AppName == appName) installer.ResumeInstall();
+    }
+    public Task StopProcessing() => CurrentInstaller?.StopProcessing() ?? Task.CompletedTask;
+    public Task LoadPendingInstalls() => Task.WhenAll(_registry.Providers
+        .Where(provider => provider.Authentication.AuthenticationStatus == AuthenticationStatus.LoggedIn)
+        .Select(provider => provider.Installer?.LoadPendingInstalls() ?? Task.CompletedTask));
+    public Task<(double DownloadBytes, double InstallBytes)> GetGameDownloadInstallSizes(
+        string appName, CancellationToken cancellationToken = default) =>
+        Resolve(appName).GetGameDownloadInstallSizes(appName, cancellationToken);
+    private ILauncherInstaller Resolve(string appName) =>
+        _registry.Get(GameId.Parse(appName).ProviderId).Installer
+        ?? throw new NotSupportedException("This launcher does not provide installation support.");
+    private static void RequireOperationOwner(ILauncherProvider provider, OperationSnapshot operation)
+    {
+        if (string.IsNullOrWhiteSpace(operation.AppName)) return;
+        if (GameId.Parse(operation.AppName).ProviderId != provider.Id)
+            throw new InvalidOperationException("Provider emitted a foreign operation identity.");
+    }
+    private static void RequireOwner(ILauncherProvider provider, InstallItem item)
+    {
+        if (string.IsNullOrWhiteSpace(item.AppName)) return;
+        if (GameId.Parse(item.AppName).ProviderId != provider.Id)
+            throw new InvalidOperationException("Provider emitted a foreign installation identity.");
+    }
+}

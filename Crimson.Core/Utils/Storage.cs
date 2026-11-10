@@ -10,7 +10,7 @@ using Serilog;
 
 namespace Crimson.Utils
 {
-    public class Storage
+    public class Storage : IApplicationStorage
     {
         private readonly string AppDataPath;
         private readonly string DefaultInstallDirectory;

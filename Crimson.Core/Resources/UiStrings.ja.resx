@@ -61,6 +61,81 @@
   <data name="About" xml:space="preserve">
     <value>バージョン情報</value>
   </data>
+  <data name="Connected" xml:space="preserve">
+    <value>接続済み</value>
+  </data>
+  <data name="NotConnected" xml:space="preserve">
+    <value>未接続</value>
+  </data>
+  <data name="CheckingAccount" xml:space="preserve">
+    <value>アカウントを確認しています…</value>
+  </data>
+  <data name="SignInFailed" xml:space="preserve">
+    <value>サインインに失敗しました。もう一度お試しください。</value>
+  </data>
+  <data name="Connect" xml:space="preserve">
+    <value>接続</value>
+  </data>
+  <data name="Disconnect" xml:space="preserve">
+    <value>切断</value>
+  </data>
+  <data name="UbisoftSignInHeading" xml:space="preserve">
+    <value>Ubisoft にサインイン</value>
+  </data>
+  <data name="Email" xml:space="preserve">
+    <value>メールアドレス</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>パスワード</value>
+  </data>
+  <data name="RememberMe" xml:space="preserve">
+    <value>この PC でサインインを維持する</value>
+  </data>
+  <data name="SignIn" xml:space="preserve">
+    <value>サインイン</value>
+  </data>
+  <data name="UbisoftTwoFactorPrompt" xml:space="preserve">
+    <value>Ubisoft 認証アプリのコードを入力してください。</value>
+  </data>
+  <data name="UbisoftCodeLabel" xml:space="preserve">
+    <value>認証コード</value>
+  </data>
+  <data name="VerifyCode" xml:space="preserve">
+    <value>コードを確認</value>
+  </data>
+  <data name="UbisoftUseAnotherAccount" xml:space="preserve">
+    <value>別のアカウントを使う</value>
+  </data>
+  <data name="UbisoftSigningIn" xml:space="preserve">
+    <value>サインインしています…</value>
+  </data>
+  <data name="UbisoftVerifying" xml:space="preserve">
+    <value>確認しています…</value>
+  </data>
+  <data name="UbisoftEmailPasswordRequired" xml:space="preserve">
+    <value>メールアドレスとパスワードを入力してください。</value>
+  </data>
+  <data name="UbisoftCodeRequired" xml:space="preserve">
+    <value>認証コードを入力してください。</value>
+  </data>
+  <data name="UbisoftInvalidCredentials" xml:space="preserve">
+    <value>Ubisoft はこのメールアドレスまたはパスワードを受け付けませんでした。</value>
+  </data>
+  <data name="UbisoftInvalidCode" xml:space="preserve">
+    <value>このコードは受け付けられませんでした。もう一度お試しください。</value>
+  </data>
+  <data name="UbisoftSignInBlocked" xml:space="preserve">
+    <value>Ubisoft がこのサインインをブロックしました。後でもう一度お試しください。</value>
+  </data>
+  <data name="UbisoftSignInUnavailable" xml:space="preserve">
+    <value>Ubisoft に接続できませんでした。接続を確認して再試行してください。</value>
+  </data>
+  <data name="UbisoftPasswordNotice" xml:space="preserve">
+    <value>パスワードは Ubisoft に直接送信されます。サインインを維持する場合、Crimson はこの PC に Windows で暗号化して保存します。</value>
+  </data>
+  <data name="UbisoftManageAccount" xml:space="preserve">
+    <value>Ubisoft アカウントを管理</value>
+  </data>
   <data name="Accounts" xml:space="preserve">
     <value>アカウント</value>
   </data>
@@ -444,6 +519,12 @@
   </data>
   <data name="NoInstalledGames" xml:space="preserve">
     <value>インストールされているゲームはありません</value>
+  </data>
+  <data name="ManageConnectedAccounts" xml:space="preserve">
+    <value>接続済みアカウントを管理</value>
+  </data>
+  <data name="NoConnectedStoreGamesMessage" xml:space="preserve">
+    <value>接続したストアのゲームがここに表示されます。</value>
   </data>
   <data name="NoInstalledGamesMessage" xml:space="preserve">
     <value>インストールされているゲームはありません。</value>

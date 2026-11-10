@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 
 namespace Crimson.Tests;
 
@@ -7,7 +7,7 @@ public sealed class EpicImportLayoutTests
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]
-    public void LibraryActionRowContainsInstalledFilterAndImportInsteadOfASidebarEntry()
+    public void LibraryActionRowContainsInstalledFilterAndProviderSuppliedActionsInsteadOfASidebarEntry()
     {
         var main = Load("MainWindow.xaml");
         Assert.DoesNotContain(main.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "EpicImportNavItem");
@@ -16,10 +16,13 @@ public sealed class EpicImportLayoutTests
         var filter = Assert.Single(actions.Descendants(), element => element.Name.LocalName == "CheckBox");
         Assert.Equal("Installed only", (string?)filter.Attribute("Content"));
         Assert.Equal("{x:Bind ViewModel.InstalledOnly, Mode=TwoWay}", (string?)filter.Attribute("IsChecked"));
-        var import = Assert.Single(actions.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "EpicImportButton");
-        Assert.Equal("ImportButton_Click", (string?)import.Attribute("Click"));
-        Assert.Single(import.Descendants(), element => (string?)element.Attribute("Text") == "Import from Epic");
-        Assert.Single(import.Descendants(), element => element.Name.LocalName == "FontIcon");
+        // The import button is contributed by the Epic frontend at runtime, so the shell markup
+        // must not name a provider or hardcode its label.
+        Assert.DoesNotContain(actions.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "EpicImportButton");
+        Assert.DoesNotContain(actions.Descendants(),
+            element => (string?)element.Attribute("Text") == "Import from Epic");
+        var bar = Assert.Single(actions.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "LibraryActionsBar");
+        Assert.Empty(bar.Elements());
     }
 
     [Fact]

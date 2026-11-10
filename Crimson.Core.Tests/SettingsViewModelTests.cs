@@ -1,4 +1,5 @@
-using Crimson.Core;
+﻿using Crimson.Core;
+using Crimson.Providers;
 using Crimson.Utils;
 using Crimson.ViewModels;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,6 +14,19 @@ public sealed class SettingsViewModelTests : IDisposable
         $"crimson-settings-{Guid.NewGuid():N}");
     private readonly ILogger _logger = new LoggerConfiguration().CreateLogger();
 
+    // Account and store services are provider-aggregated; one test provider is enough here.
+    private static LauncherRegistry SharedRegistry() => new([new TestLauncherProvider("test")]);
+    private static LauncherAuthentication SharedAuth() =>
+        new(SharedRegistry(), new TestUiDispatcher());
+    private static LauncherStores SharedStores(EpicLibraryManager library) => new(new LauncherRegistry([
+        new Crimson.Providers.Epic.EpicLauncherProvider(
+            new EpicAuthManager(new LoggerConfiguration().CreateLogger(),
+                new Storage(new LoggerConfiguration().CreateLogger(),
+                    Path.Combine(Path.GetTempPath(), "crimson-settings-host-" + Guid.NewGuid().ToString("N")),
+                    Path.GetTempPath()),
+                new TestCredentialProtector(), new HttpClient()),
+            library, null!, null!, null, new AlwaysSignedInAuthentication())]));
+
     [Fact]
     public void OpenLogsDirectoryUsesFolderLauncher()
     {
@@ -24,13 +38,8 @@ public sealed class SettingsViewModelTests : IDisposable
             NullLogger<SettingsManager>.Instance,
             installPath,
             logsPath);
-        var auth = new AuthManager(
-            _logger,
-            storage,
-            new TestCredentialProtector(),
-            new HttpClient());
         var folderLauncher = new RecordingFolderLauncher();
-        var viewModel = new SettingsViewModel(settings, auth, folderLauncher);
+        var viewModel = new SettingsViewModel(settings, new LauncherAuthentication(new LauncherRegistry([new TestLauncherProvider("test")]), new TestUiDispatcher()), folderLauncher);
 
         viewModel.OpenLogsDirectoryCommand.Execute(null);
 
@@ -55,7 +64,7 @@ public sealed class SettingsViewModelTests : IDisposable
         Assert.Equal("fr", reloaded.Language);
         Assert.Equal("fr", reloaded.StartupLanguage);
         var revisited = new SettingsViewModel(settings,
-            new AuthManager(_logger, storage, new TestCredentialProtector(), new HttpClient()), new RecordingFolderLauncher());
+            SharedAuth(), new RecordingFolderLauncher());
         Assert.True(revisited.IsLanguageRestartRequired);
 
         await model.ChangeLanguageCommand.ExecuteAsync(model.Languages[0]);
@@ -94,7 +103,7 @@ public sealed class SettingsViewModelTests : IDisposable
         var storage = new Storage(_logger, _appDataPath, Path.Combine(_appDataPath, "games"));
         var settings = new SettingsManager(storage, NullLogger<SettingsManager>.Instance,
             Path.Combine(_appDataPath, "games"), Path.Combine(_appDataPath, "logs"));
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), new HttpClient());
+        var auth = SharedAuth();
         return (new SettingsViewModel(settings, auth, new RecordingFolderLauncher()), settings, storage);
     }
 
@@ -258,16 +267,16 @@ public sealed class SettingsViewModelTests : IDisposable
         var storage = new Storage(_logger, _appDataPath, Path.Combine(_appDataPath, "games"));
         var settings = new SettingsManager(storage, NullLogger<SettingsManager>.Instance,
             Path.Combine(_appDataPath, "games"), Path.Combine(_appDataPath, "logs"));
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), new HttpClient());
+        var auth = SharedAuth();
         var artworkDirectory = Path.Combine(_appDataPath, "artwork");
         Directory.CreateDirectory(artworkDirectory);
         File.WriteAllBytes(Path.Combine(artworkDirectory, "a.image"), new byte[300]);
         File.WriteAllBytes(Path.Combine(_appDataPath, "manifests", "game_1.manifest"), new byte[200]);
         File.WriteAllBytes(Path.Combine(_appDataPath, "store-details.json"), new byte[100]);
         var artwork = new ArtworkCache(new HttpClient(), _logger, artworkDirectory);
-        var library = new LibraryManager(_logger, null!, storage, auth);
+        var library = new EpicLibraryManager(_logger, null!, storage, new EpicAuthManager(_logger, storage, new TestCredentialProtector(), new HttpClient()));
         var folderLauncher = new RecordingFolderLauncher();
-        var model = new SettingsViewModel(settings, auth, folderLauncher, storage, artwork, library);
+        var model = new SettingsViewModel(settings, auth, folderLauncher, storage, artwork, SharedStores(library));
 
         await model.LoadCacheUsageCommand.ExecuteAsync(null);
 

@@ -6,6 +6,7 @@ public sealed partial class LibraryItem : ObservableObject
 {
     public string Name { get; init; } = string.Empty;
     public string Title { get; init; } = string.Empty;
+    public string ProviderName { get; init; } = string.Empty;
     public string? SourceImageUrl { get; init; }
 
     // The artwork cache generation ImageUrl was resolved against; clearing the cache invalidates it.
