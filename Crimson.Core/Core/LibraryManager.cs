@@ -46,7 +46,17 @@ public class LibraryManager
     public bool IsGameRunning(string appName)
     {
         lock (_operationLock)
-            return _runningGames.Contains(appName);
+            return _runningGames.ContainsKey(appName);
+    }
+
+    /// <summary>
+    /// True while another instance of the game is still playing, so the exiting instance
+    /// must leave the save upload to the session that outlives it.
+    /// </summary>
+    internal bool HasOtherGameInstances(string appName)
+    {
+        lock (_operationLock)
+            return _runningGames.TryGetValue(appName, out var instances) && instances > 1;
     }
 
     /// <summary>
@@ -67,7 +77,9 @@ public class LibraryManager
     private bool _emptyOwnershipHeld;
     private readonly object _operationLock = new();
     private readonly Dictionary<string, Guid> _activeOperationApps = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _runningGames = new(StringComparer.Ordinal);
+    // Running instances per game. A game that allows multiple instances holds one entry per
+    // live process, so the state only clears when the last one exits.
+    private readonly Dictionary<string, int> _runningGames = new(StringComparer.Ordinal);
     private readonly HashSet<string> _pendingAddedAppNames = new(StringComparer.Ordinal);
     private volatile bool _authenticationCheckInProgress;
 
@@ -499,12 +511,28 @@ public class LibraryManager
 
     internal void SetGameRunning(string appName, bool isRunning)
     {
+        bool changed;
         lock (_operationLock)
         {
-            var changed = isRunning ? _runningGames.Add(appName) : _runningGames.Remove(appName);
-            if (!changed)
-                return;
+            if (isRunning)
+            {
+                _runningGames.TryGetValue(appName, out var instances);
+                _runningGames[appName] = instances + 1;
+                changed = instances == 0;
+            }
+            else if (_runningGames.TryGetValue(appName, out var remaining) && remaining > 1)
+            {
+                _runningGames[appName] = remaining - 1;
+                changed = false;
+            }
+            else
+            {
+                changed = _runningGames.Remove(appName);
+            }
         }
+
+        if (!changed)
+            return;
 
         try
         {
@@ -614,19 +642,34 @@ public class LibraryManager
             DeleteOwnershipToken(ownershipTokenPath);
         }
 
+        // Another instance is still playing: its exit uploads the save directory, so this
+        // one must neither touch the files nor clear the running state.
+        if (HasOtherGameInstances(game.AppName))
+        {
+            SetGameRunning(game.AppName, false);
+            return;
+        }
+
+        var released = false;
+        void ReleaseRunningState()
+        {
+            if (released)
+                return;
+            released = true;
+            SetGameRunning(game.AppName, false);
+        }
+
         try
         {
             // Keep the game marked as running until the post-exit sync finishes: a launch
             // from the tray or a shortcut must not start a new session while the save is
             // still being uploaded or replaced.
             if (cloudSaves is not null)
-                await cloudSaves.SyncAfterExitAsync(
-                    game,
-                    onFinished: () => SetGameRunning(game.AppName, false));
+                await cloudSaves.SyncAfterExitAsync(game, onFinished: ReleaseRunningState);
         }
         finally
         {
-            SetGameRunning(game.AppName, false);
+            ReleaseRunningState();
         }
     }
 

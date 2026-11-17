@@ -330,6 +330,32 @@ public sealed class CloudSaveTests : IDisposable
     }
 
     [Fact]
+    public async Task ExitOfOneInstanceLeavesSavesToTheLastInstance()
+    {
+        var game = CloudGame();
+        var savePath = SavePath(game);
+        Directory.CreateDirectory(savePath);
+        File.WriteAllBytes(Path.Combine(savePath, "save.sav"), new byte[100]);
+        File.SetLastWriteTimeUtc(Path.Combine(savePath, "save.sav"), DateTimeOffset.UtcNow.AddHours(1).UtcDateTime);
+        using var http = new HttpClient();
+        var auth = new AuthManager(_logger, _storage, new TestCredentialProtector(), http);
+        var library = new LibraryManager(_logger, _repository, _storage, auth, _manager);
+        library.SetGameRunning(AppName, true);
+        library.SetGameRunning(AppName, true); // a second instance is playing
+
+        await library.AfterGameExitAsync(new CompletedHandle(), null, game, _manager);
+
+        Assert.True(library.IsGameRunning(AppName));
+        Assert.Equal(0, _repository.ManifestListings);
+        Assert.Equal(0, _repository.Uploads);
+
+        await library.AfterGameExitAsync(new CompletedHandle(), null, game, _manager);
+
+        Assert.False(library.IsGameRunning(AppName));
+        Assert.True(_repository.Uploads > 0);
+    }
+
+    [Fact]
     public async Task ExitSyncUploadsWhenLocalSaveIsNewer()
     {
         var game = CloudGame();
