@@ -48,6 +48,7 @@ public sealed partial class MainWindow : Window
     private const string GameNavTagPrefix = "game:";
 
     private Crimson.Controls.EpicImportDialog? _epicImportDialog;
+    private Crimson.Controls.GameImportDialog? _gameImportDialog;
     private ILogger _log = App.GetService<ILogger>();
     private readonly SettingsManager _settingsManager;
     private readonly LauncherAuthentication _authManager;
@@ -60,6 +61,7 @@ public sealed partial class MainWindow : Window
     private string? _signInProviderId;
     private readonly OperationErrorPresenter _operationErrors;
     private readonly CloudSaveConflictPresenter _cloudSaveConflicts;
+    private readonly ElevationNoticePresenter _elevationNotice;
     private readonly WindowSizeConstraints _windowSizeConstraints;
     private readonly NotificationService _notifications;
     private readonly IArtworkCache _artworkCache;
@@ -135,8 +137,11 @@ public sealed partial class MainWindow : Window
         _log = App.GetService<ILogger>();
         _operationErrors = new OperationErrorPresenter(ContentFrame, _installManager, _libraryManager,
             App.GetService<DialogCoordinator>(), _log);
-        _cloudSaveConflicts = new CloudSaveConflictPresenter(ContentFrame, App.GetService<CloudSaveManager>(),
+        _cloudSaveConflicts = new CloudSaveConflictPresenter(ContentFrame,
+            App.GetService<IEnumerable<ICloudSaveConflictSource>>(),
             _libraryManager, App.GetService<DialogCoordinator>(), _log, () => Visible, EnsureVisible);
+        _elevationNotice = new ElevationNoticePresenter(ContentFrame, App.GetService<ElevationNotice>(), _log,
+            () => Visible, EnsureVisible);
         Closed += Window_Closed;
         ContentFrame.NavigationFailed += ContentFrame_NavigationFailed;
 
@@ -465,6 +470,35 @@ public sealed partial class MainWindow : Window
         {
             dialog?.ClosePicker();
             _epicImportDialog = null;
+        }
+    }
+
+    internal async Task ShowGameImportAsync(string providerId)
+    {
+        if (_launchers.Get(providerId).Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn ||
+            _gameImportDialog is not null || !_installManager.SupportsImport(providerId)) return;
+        Crimson.Controls.GameImportDialog? dialog = null;
+        try
+        {
+            if (ContentFrame.Content is LibraryPage libraryPage) libraryPage.ViewModel.ActionErrorMessage = string.Empty;
+            dialog = new Crimson.Controls.GameImportDialog { XamlRoot = Content.XamlRoot };
+            _gameImportDialog = dialog;
+            await dialog.ShowPickerAsync(providerId);
+        }
+        catch (Exception error)
+        {
+            _log.Error("Import dialog failed: {ErrorType}", error.GetType().Name);
+            if (ContentFrame.Content is LibraryPage libraryPage)
+                libraryPage.ViewModel.ActionErrorMessage = UiStrings.Format(UiStrings.MessageSuggestionFormat,
+                    UiStrings.TheImportWindowCouldNotBeOpened, UiStrings.TryAgainOrRestartCrimson);
+            _installManager.ReportPreparationFailure(string.Empty, ActionType.Import, new OperationFailure(
+                OperationFailureKind.Unknown, "import_dialog_failed", UiStrings.TheImportWindowCouldNotBeOpened,
+                UiStrings.TryAgainOrRestartCrimson, false));
+        }
+        finally
+        {
+            dialog?.ClosePicker();
+            _gameImportDialog = null;
         }
     }
 
@@ -954,11 +988,7 @@ public sealed partial class MainWindow : Window
             if (ContentFrame.Content is null) ShowLibrary();
             if (status == AuthenticationStatus.LoggedIn && _signInProviderId == providerId)
                 _signInDialog?.Hide();
-            if (status == AuthenticationStatus.LoggedOut)
-            {
-                _notifications.Dismiss();
-                _epicImportDialog?.ClosePicker();
-            }
+            if (status == AuthenticationStatus.LoggedOut) CloseSignedOutPrompts(providerId);
             if (status is AuthenticationStatus.LoggedIn or AuthenticationStatus.LoggedOut or AuthenticationStatus.LoginFailed)
             {
                 try
@@ -971,6 +1001,13 @@ public sealed partial class MainWindow : Window
             }
             ApplyBackdrop();
         });
+    }
+
+    private void CloseSignedOutPrompts(string providerId)
+    {
+        _notifications.Dismiss();
+        _epicImportDialog?.ClosePicker();
+        if (_gameImportDialog?.ProviderId == providerId) _gameImportDialog.ClosePicker();
     }
 
     private void SignInRequested(string providerId) => DispatcherQueue.TryEnqueue(async () =>
@@ -1019,6 +1056,7 @@ public sealed partial class MainWindow : Window
         _settingsManager.AcrylicChanged -= AcrylicPreferenceChanged;
         SystemBackdrop = null;
         _epicImportDialog?.ClosePicker();
+        _gameImportDialog?.ClosePicker();
         _windowSizeConstraints.Dispose();
 
         _operationErrors.Dispose();

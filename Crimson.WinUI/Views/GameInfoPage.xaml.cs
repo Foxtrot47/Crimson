@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.Storage.Pickers;
+using Serilog;
 
 namespace Crimson.Views;
 
@@ -32,7 +33,29 @@ public sealed partial class GameInfoPage : Page
         // Subscribe to dialog and picker events
         ViewModel.ShowInstallDialogRequested += ShowInstallDialog;
         ViewModel.FolderPickerRequested += ShowFolderPicker;
+        ViewModel.LaunchFailed += ShowLaunchFailed;
     }
+
+    private void ShowLaunchFailed(string reason) => DispatcherQueue.TryEnqueue(async () =>
+    {
+        if (XamlRoot is null) return;
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                Title = ViewModel.Game?.AppTitle ?? string.Empty,
+                Content = reason,
+                CloseButtonText = UiStrings.Close,
+                XamlRoot = XamlRoot,
+                Style = (Style)Application.Current.Resources["DefaultContentDialogStyle"]
+            };
+            await App.GetService<DialogCoordinator>().ShowAsync(async () => await dialog.ShowAsync());
+        }
+        catch (Exception error)
+        {
+            Log.Warning(error, "Could not show the launch failure dialog");
+        }
+    });
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {

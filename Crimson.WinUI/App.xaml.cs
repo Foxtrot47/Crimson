@@ -108,6 +108,7 @@ namespace Crimson
                 // A stored sign-in password is only readable by this Windows account.
                 services.AddSingleton<IUserCredentialProtector>(_ => WindowsCredentialProtector.ForCurrentUser());
                 services.AddSingleton<DialogCoordinator>();
+                services.AddSingleton<ElevationNotice>();
                 services.AddSingleton<EpicInstallDiscovery>(_ => new EpicInstallDiscovery(Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
                     "Epic", "EpicGamesLauncher", "Data", "Manifests")));
@@ -120,6 +121,7 @@ namespace Crimson
                 services.AddSingleton<IGameProcessLauncher>(provider => new WindowsGameProcessLauncher(
                     provider.GetRequiredService<ILogger>()));
                 services.AddSingleton<CloudSaveManager>();
+                services.AddSingleton<ICloudSaveConflictSource>(provider => provider.GetRequiredService<CloudSaveManager>());
                 services.AddSingleton<IInstallPermissionChecker, FileSystemInstallPermissionChecker>();
                 services.AddHttpClient("Artwork").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
                 {
@@ -143,6 +145,7 @@ namespace Crimson
                 services.AddTransient<LibraryViewModel>();
                 services.AddTransient<GameInfoViewModel>();
                 services.AddTransient<EpicImportViewModel>();
+                services.AddTransient<GameImportViewModel>();
                 services.AddTransient<AppInstallDialogViewModel>();
             }).
             Build();
