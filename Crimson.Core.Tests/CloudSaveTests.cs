@@ -230,7 +230,7 @@ public sealed class CloudSaveTests : IDisposable
         await _manager.SyncBeforeLaunchAsync(game);
 
         Assert.NotNull(shown);
-        Assert.Equal(AppName, shown.AppName);
+        Assert.Equal(new Crimson.Providers.GameId("epic", AppName).ToString(), shown.AppName);
         Assert.Equal(3_000, shown.LocalSizeBytes);
         Assert.Equal(2_000, shown.RemoteSizeBytes);
         Assert.True(shown.LocalTimestampUtc > shown.RemoteTimestampUtc);

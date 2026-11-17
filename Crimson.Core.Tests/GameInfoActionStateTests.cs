@@ -2,6 +2,7 @@
 using Crimson.Core;
 using Crimson.Resources;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Providers.Epic;
 using Crimson.ViewModels;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -162,6 +163,25 @@ public sealed class GameInfoActionStateTests : IDisposable
 
         Assert.True(viewModel.IsPrimaryActionEnabled);
         Assert.Equal(UiStrings.Play, viewModel.PrimaryActionButtonText);
+    }
+
+    [Fact]
+    public void InstallStaysDisabledForAProductTheStoreNoLongerOffers()
+    {
+        _fixture.BaseGame.LocalAppState!.InstallStatus = InstallState.NotInstalled;
+        var game = EpicLauncherProvider.ToLauncherGame(_fixture.BaseGame);
+        var retired = new LauncherGame
+        {
+            Id = game.Id,
+            AppTitle = game.AppTitle,
+            CanInstall = false
+        };
+        var viewModel = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance, _fixture.Shared.Installer,
+            _fixture.Shared.Library, _fixture.Shared.Registry, new ImmediateDispatcher()) { Game = retired };
+
+        Apply(viewModel, "ApplyGameStatus", InstallState.NotInstalled);
+
+        Assert.False(viewModel.IsPrimaryActionEnabled);
     }
 
     private GameInfoViewModel CreateViewModel(InstallState state)

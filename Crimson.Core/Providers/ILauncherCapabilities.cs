@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Models;
@@ -38,4 +39,31 @@ public interface IGameCloudSaves
     event Action<string, CloudSaveSyncStatus>? SyncStatusChanged;
     bool Supports(string appName);
     CloudSaveSyncStatus GetSyncStatus(string appName);
+}
+
+public sealed record InstallLanguageOption(string Code, string DisplayName);
+
+public sealed record InstallLanguageChoice(IReadOnlyList<InstallLanguageOption> Available, IReadOnlyList<string> Selected, bool AllowsMultiple);
+
+/// <summary>App names are qualified GameId strings.</summary>
+public interface IInstallLanguageSource
+{
+    /// <summary>Null when the game offers no language choice.</summary>
+    Task<InstallLanguageChoice?> GetInstallLanguages(string appName, CancellationToken cancellationToken = default);
+    Task<(double DownloadBytes, double InstallBytes)> GetSizesForLanguages(string appName, IReadOnlyList<string> languages, CancellationToken cancellationToken = default);
+}
+
+public sealed record ImportCandidate(string AppName, string Title, string InstallPath);
+
+public interface IInstallImportSource
+{
+    Task<IReadOnlyList<ImportCandidate>> DiscoverImportCandidates(CancellationToken cancellationToken = default);
+
+    /// <summary>Null when the folder is acceptable for the game.</summary>
+    Task<OperationFailure?> ValidateImportLocation(string appName, string installPath, CancellationToken cancellationToken = default);
+}
+
+public interface ICloudSaveConflictSource
+{
+    Func<CloudSaveConflict, Task<CloudSaveResolution>>? ConflictResolver { get; set; }
 }

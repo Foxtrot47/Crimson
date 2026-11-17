@@ -212,7 +212,7 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
     {
         var (viewModel, _, settings, _) = await CreateLocationFixture();
 
-        Assert.Equal(Path.Combine(settings.DefaultInstallLocation, "epic", "New Game"), viewModel.InstallLocation);
+        Assert.Equal(Path.Combine(settings.DefaultInstallLocation, "New Game"), viewModel.InstallLocation);
     }
 
     [Theory]
@@ -231,7 +231,7 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         }
 
         Assert.Equal(title, viewModel.GameTitle);
-        Assert.Equal(Path.Combine(parent, "epic", "Honkai_ Star Rail"), viewModel.InstallLocation);
+        Assert.Equal(Path.Combine(parent, "Honkai_ Star Rail"), viewModel.InstallLocation);
         Directory.CreateDirectory(viewModel.InstallLocation);
         Assert.True(Directory.Exists(viewModel.InstallLocation));
     }
@@ -329,6 +329,82 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
 
         Assert.Equal(Path.Combine(parent, "New Game"), installer.GameGameInQueue("new").Location);
         Assert.Equal(parent, settings.DefaultInstallLocation);
+    }
+
+    [Fact]
+    public async Task OfferedLanguagesArePreselectedResizedOnChangeAndQueuedWithTheInstall()
+    {
+        var (model, provider) = await CreateLanguageFixture(new InstallLanguageChoice(
+            [new("en-US", "English"), new("fr-FR", "French"), new("de-DE", "German")], ["fr-FR", "xx-XX"], true));
+
+        Assert.True(model.Languages.HasOptions);
+        Assert.Equal(["fr-FR"], model.Languages.SelectedCodes);
+        Assert.Equal(["fr-FR"], Assert.Single(provider.Jobs.SizeRequests).Languages);
+        Assert.Equal("200 B", model.TotalInstallSize);
+        Assert.True(model.CanInstall);
+
+        model.Languages.Items.Single(item => item.Code == "en-US").IsSelected = true;
+
+        Assert.Equal(["en-US", "fr-FR"], provider.Jobs.SizeRequests[^1].Languages);
+        Assert.Equal("400 B", model.TotalInstallSize);
+        Assert.Equal("200 B", model.TotalDownloadSize);
+        Assert.True(model.CanInstall);
+
+        await model.ConfirmInstallCommand.ExecuteAsync(null);
+
+        var queued = Assert.Single(provider.Jobs.Queued);
+        Assert.Equal(["en-US", "fr-FR"], queued.Languages!);
+    }
+
+    [Fact]
+    public async Task SingleLanguageGamesKeepExactlyOneChoice()
+    {
+        var (model, _) = await CreateLanguageFixture(new InstallLanguageChoice(
+            [new("en-US", "English"), new("fr-FR", "French")], ["en-US", "fr-FR"], false));
+        Assert.Equal(["en-US"], model.Languages.SelectedCodes);
+
+        model.Languages.Items.Single(item => item.Code == "fr-FR").IsSelected = true;
+
+        Assert.Equal(["fr-FR"], model.Languages.SelectedCodes);
+        Assert.True(model.CanInstall);
+    }
+
+    [Fact]
+    public async Task ClearingEveryLanguageDisablesInstall()
+    {
+        var (model, provider) = await CreateLanguageFixture(new InstallLanguageChoice(
+            [new("en-US", "English"), new("fr-FR", "French")], ["en-US"], true));
+        Assert.True(model.CanInstall);
+
+        model.Languages.Items.Single(item => item.Code == "en-US").IsSelected = false;
+
+        Assert.True(model.Languages.IsSelectionMissing);
+        Assert.False(model.CanInstall);
+        Assert.Single(provider.Jobs.SizeRequests);
+    }
+
+    [Fact]
+    public async Task EpicGamesShowNoLanguageOptions()
+    {
+        var (viewModel, _, _, installer) = await CreateLocationFixture();
+
+        Assert.False(viewModel.Languages.HasOptions);
+        await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
+        Assert.Null(installer.GameGameInQueue("new").Languages);
+    }
+
+    private async Task<(AppInstallDialogViewModel Model, TestLauncherProvider Provider)> CreateLanguageFixture(
+        InstallLanguageChoice? choice)
+    {
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var provider = new TestLauncherProvider("ubisoft");
+        provider.Jobs.LanguageChoice = choice;
+        var game = provider.Games.Add("2688", InstallState.NotInstalled);
+        var registry = new LauncherRegistry([provider]);
+        var model = new AppInstallDialogViewModel(_logger, new LauncherInstaller(registry), new LauncherLibrary(registry),
+            storage, new ImmediateUiDispatcher(), null);
+        await model.InitializeAsync(game);
+        return (model, provider);
     }
 
     private async Task<(AppInstallDialogViewModel ViewModel, Storage Storage, SettingsManager Settings, EpicInstallManager Installer)> CreateLocationFixture(string title = "New Game")

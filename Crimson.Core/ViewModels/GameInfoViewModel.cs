@@ -292,6 +292,8 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _storeDetailsCancellation = null;
     }
 
+    public event Action<string>? LaunchFailed;
+
     [RelayCommand]
     private async Task PrimaryActionAsync()
     {
@@ -304,8 +306,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
             if (Game.LocalAppState?.InstallStatus == InstallState.Installed)
             {
-                _log.LogInformation("GameInfoPage: Starting Game {Game}", Game.AppTitle);
-                await _libraryManager.LaunchApp(Game.AppName);
+                await LaunchGameAsync(Game);
                 return;
             }
 
@@ -340,6 +341,14 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
             ReportPrimaryActionFailure(requestedAction, ex);
             RefreshActionState();
         }
+    }
+
+    private async Task LaunchGameAsync(LauncherGame game)
+    {
+        _log.LogInformation("GameInfoPage: Starting Game {Game}", game.AppTitle);
+        if (await _libraryManager.LaunchApp(game.AppName)) return;
+        var reason = _libraryManager.LastLaunchError;
+        if (!string.IsNullOrWhiteSpace(reason)) LaunchFailed?.Invoke(reason);
     }
 
     private void ReportPrimaryActionFailure(ActionType action, Exception exception) =>
@@ -633,7 +642,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         IsPrimaryActionEnabled = Game is not null && PrimaryAction switch
         {
             GamePrimaryAction.Play => Game.CanLaunch,
-            GamePrimaryAction.Install => _installer.Supports(Game.AppName, ActionType.Install),
+            GamePrimaryAction.Install => Game.CanInstall && _installer.Supports(Game.AppName, ActionType.Install),
             GamePrimaryAction.Update => _installer.Supports(Game.AppName, ActionType.Update),
             GamePrimaryAction.Repair => _installer.Supports(Game.AppName, ActionType.Repair),
             _ => false
@@ -648,7 +657,8 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         };
         IsInstalled = PrimaryAction is not GamePrimaryAction.Install and not GamePrimaryAction.None;
         IsManageEnabled = IsInstalled;
-        IsImportVisible = PrimaryAction == GamePrimaryAction.Install;
+        // A store that no longer publishes a download cannot be helped by an import either.
+        IsImportVisible = PrimaryAction == GamePrimaryAction.Install && Game?.CanInstall != false;
         IsImportEnabled = IsImportVisible;
         GameStatusText = GetGameStatusLabel(installState);
     }
@@ -728,6 +738,21 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _installer.AddToQueue(new InstallItem(Game.AppName, ActionType.Repair, installedGame.InstallPath));
     }
 
+    /// <summary>Changes the installed languages: a repair that adds and removes language content.</summary>
+    [RelayCommand]
+    private void ChangeLanguages(IReadOnlyList<string>? languages)
+    {
+        var game = Game;
+        if (languages is not { Count: > 0 } || !CanManage(game) ||
+            !_installer.Supports(game!.AppName, ActionType.Repair)) return;
+        if (game.LocalAppState is not { } installed) return;
+        _log.LogInformation("GameInfoPage: Queueing language change for {Game}", game.AppTitle);
+        _installer.AddToQueue(new InstallItem(game.AppName, ActionType.Repair, installed.InstallPath)
+        {
+            Languages = languages.ToList()
+        });
+    }
+
     [RelayCommand]
     private async Task ImportGameAsync()
     {
@@ -743,6 +768,21 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
         var folderPath = await PickOperationFolderAsync(game.AppName, ActionType.Import);
         if (string.IsNullOrEmpty(folderPath) || !ReferenceEquals(Game, game) || !CanImport(game)) return;
+
+        try
+        {
+            if (await _installer.ValidateImportLocation(game.AppName, folderPath) is { } failure)
+            {
+                _installer.ReportPreparationFailure(game.AppName, ActionType.Import, failure);
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            _installer.ReportPreparationFailure(game.AppName, ActionType.Import, exception);
+            return;
+        }
+        if (!ReferenceEquals(Game, game) || !CanImport(game)) return;
 
         _installer.AddToQueue(new InstallItem(game.AppName, ActionType.Import, folderPath));
     }
@@ -766,7 +806,10 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         try
         {
             var currentPath = game.LocalAppState.InstallPath;
-            var destPath = Path.Combine(folderPath, ProviderDataPaths.GameFileKey(game.Id));
+            // The installation keeps its folder name in the new parent.
+            var folderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(currentPath));
+            var destPath = Path.Combine(folderPath,
+                string.IsNullOrEmpty(folderName) ? InstallPathPolicy.GetDirectoryName(game.AppTitle) : folderName);
             _installer.AddToQueue(new InstallItem(game.AppName, ActionType.Move, currentPath)
             {
                 MoveLocation = destPath

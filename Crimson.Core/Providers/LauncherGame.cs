@@ -12,6 +12,9 @@ public sealed class LauncherGame
     public string? LandscapeImageUrl { get; init; }
     public bool IsDownloadableContent { get; init; }
     public bool CanLaunch { get; init; } = true;
+
+    /// <summary>False when the store no longer offers this product for download.</summary>
+    public bool CanInstall { get; init; } = true;
     public LauncherInstallation? LocalAppState { get; init; }
     public bool IsDlc() => IsDownloadableContent;
 }

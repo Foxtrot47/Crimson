@@ -49,6 +49,8 @@ public interface ILauncherLibrary
 
     /// <summary>Maps an owned addon to the game it belongs to; returns the input when unknown.</summary>
     string GetBaseGameAppName(string appName);
+
+    string? LastLaunchError => null;
 }
 
 /// <summary>Provider-owned installer; does not prescribe manifests, slices or download protocols.</summary>

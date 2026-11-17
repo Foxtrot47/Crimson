@@ -106,7 +106,7 @@ internal sealed class TestLauncherProvider : ILauncherProvider
         public void PublishStatus(LauncherGame game) => GameStatusUpdated?.Invoke(game);
     }
 
-    internal sealed class TestInstaller(string providerId) : ILauncherInstaller
+    internal sealed class TestInstaller(string providerId) : ILauncherInstaller, IInstallLanguageSource, IInstallImportSource
     {
         public HashSet<ActionType> Actions { get; } = [ActionType.Install];
         public bool Supports(ActionType action) => Actions.Contains(action);
@@ -162,6 +162,35 @@ internal sealed class TestLauncherProvider : ILauncherProvider
         public Task LoadPendingInstalls() { Loads++; return Task.CompletedTask; }
         public Task<(double DownloadBytes, double InstallBytes)> GetGameDownloadInstallSizes(
             string appName, CancellationToken cancellationToken = default) => Task.FromResult((100d, 200d));
+
+        public InstallLanguageChoice? LanguageChoice { get; set; }
+        public List<(string AppName, IReadOnlyList<string> Languages)> SizeRequests { get; } = [];
+        public Exception? SizeFailure { get; set; }
+        public List<string> LanguageRequests { get; } = [];
+        public Task<InstallLanguageChoice?> GetInstallLanguages(string appName, CancellationToken cancellationToken = default)
+        {
+            LanguageRequests.Add(appName);
+            return Task.FromResult(LanguageChoice);
+        }
+        public Task<(double DownloadBytes, double InstallBytes)> GetSizesForLanguages(
+            string appName, IReadOnlyList<string> languages, CancellationToken cancellationToken = default)
+        {
+            SizeRequests.Add((appName, languages.ToList()));
+            return SizeFailure is not null
+                ? Task.FromException<(double, double)>(SizeFailure)
+                : Task.FromResult((100d * languages.Count, 200d * languages.Count));
+        }
+
+        public List<ImportCandidate> ImportCandidates { get; } = [];
+        public OperationFailure? ImportFailure { get; set; }
+        public List<(string AppName, string InstallPath)> ImportValidations { get; } = [];
+        public Task<IReadOnlyList<ImportCandidate>> DiscoverImportCandidates(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ImportCandidate>>(ImportCandidates.ToList());
+        public Task<OperationFailure?> ValidateImportLocation(string appName, string installPath, CancellationToken cancellationToken = default)
+        {
+            ImportValidations.Add((appName, installPath));
+            return Task.FromResult(ImportFailure);
+        }
     }
 }
 

@@ -12,6 +12,7 @@ using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Providers;
+using Crimson.Providers.Epic;
 using Crimson.Utils;
 using Serilog;
 
@@ -34,6 +35,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
         public CancellationToken CancellationToken { get; } = cancellationToken;
         public int DriveRequest;
         public double InstallSize;
+        public int LanguageRequest;
         public bool HasInstallSizes;
         public long? AvailableFreeSpace;
         public Dictionary<string, (double DownloadBytes, double InstallBytes)> ContentSizes = new(StringComparer.Ordinal);
@@ -111,6 +113,9 @@ public partial class AppInstallDialogViewModel : ObservableObject
 
     public ObservableCollection<DlcOption> AvailableDlcs { get; } = new();
 
+    /// <summary>Install languages; empty when the game offers no choice.</summary>
+    public InstallLanguageSelection Languages { get; } = new();
+
     public event Action RequestClose;
     public event Func<Task<string>> FolderPickerRequested;
 
@@ -128,6 +133,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
         _storageService = storage;
         _uiDispatcher = uiDispatcher;
         _settingsManager = settingsManager;
+        Languages.SelectionChanged += LanguageSelectionChanged;
     }
 
     public async Task InitializeAsync(LauncherGame gameInfo, CancellationToken cancellationToken = default)
@@ -140,35 +146,25 @@ public partial class AppInstallDialogViewModel : ObservableObject
             _gameAppName = gameInfo.AppName;
             GameTitle = gameInfo.AppTitle;
             GameImageUrl = SelectImageUrl(gameInfo);
-            // Same titles from different stores stay in separate, provider-scoped folders.
-            InstallLocation = ProviderDataPaths.SuggestedInstallPath(
-                _settingsManager?.DefaultInstallLocation ?? _storageService.DefaultInstallPath, gameInfo.Id, gameInfo.AppTitle);
+            InstallLocation = Path.Combine(_settingsManager?.DefaultInstallLocation ?? _storageService.DefaultInstallPath,
+                InstallPathPolicy.GetDirectoryName(gameInfo.AppTitle));
 
-            ClearDlcOptions();
-            var dlcs = _libraryManager.GetDlcsForGame(gameInfo.AppName);
-            HasDlcs = dlcs.Count > 0;
-            foreach (var dlc in dlcs)
-            {
-                var option = new DlcOption { AppName = dlc.AppName, Title = dlc.AppTitle, IsSelected = true };
-                option.PropertyChanged += DlcSelectionChanged;
-                AvailableDlcs.Add(option);
-            }
+            var dlcs = LoadDlcOptions(gameInfo);
 
-            var sizes = await LoadContentSizesAsync(gameInfo.AppName, dlcs, generation).ConfigureAwait(false);
+            var choice = await _installManager.GetInstallLanguages(gameInfo.AppName, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsCurrentInitialization(generation))
+                return;
+
+            var sizes = await LoadContentSizesAsync(gameInfo.AppName, dlcs,
+                choice is null ? null : InstallLanguageSelection.Normalize(choice), generation).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (!IsCurrentInitialization(generation))
                 return;
 
             generation.ContentSizes = sizes;
             generation.HasInstallSizes = true;
-            _uiDispatcher.TryEnqueue(() =>
-            {
-                if (!IsCurrentInitialization(generation))
-                    return;
-
-                BaseGameSize = SizeFormatter.Format(sizes[gameInfo.AppName].InstallBytes);
-                UpdateContentTotals(generation);
-            });
+            _uiDispatcher.TryEnqueue(() => ApplyLoadedSizes(generation, choice, sizes, gameInfo.AppName));
 
             await UpdateDriveSpace(InstallLocation, generation).ConfigureAwait(false);
         }
@@ -193,11 +189,43 @@ public partial class AppInstallDialogViewModel : ObservableObject
         }
     }
 
+    private List<LauncherGame> LoadDlcOptions(LauncherGame gameInfo)
+    {
+        ClearDlcOptions();
+        // Only Epic installs add-ons as separate jobs; other stores (Ubisoft) gate add-on content by
+        // ownership inside the base game's own download, so their add-ons are never offered here.
+        var dlcs = gameInfo.Id.ProviderId == EpicLauncherProvider.ProviderId
+            ? _libraryManager.GetDlcsForGame(gameInfo.AppName)
+            : [];
+        HasDlcs = dlcs.Count > 0;
+        foreach (var dlc in dlcs)
+        {
+            var option = new DlcOption { AppName = dlc.AppName, Title = dlc.AppTitle, IsSelected = true };
+            option.PropertyChanged += DlcSelectionChanged;
+            AvailableDlcs.Add(option);
+        }
+        return dlcs;
+    }
+
+    private void ApplyLoadedSizes(InitializationState generation, InstallLanguageChoice? choice,
+        Dictionary<string, (double DownloadBytes, double InstallBytes)> sizes, string baseAppName)
+    {
+        if (!IsCurrentInitialization(generation))
+            return;
+
+        if (choice is not null) Languages.Load(choice);
+        BaseGameSize = SizeFormatter.Format(sizes[baseAppName].InstallBytes);
+        UpdateContentTotals(generation);
+    }
+
     private async Task<Dictionary<string, (double DownloadBytes, double InstallBytes)>> LoadContentSizesAsync(
-        string baseAppName, IEnumerable<LauncherGame> dlcs, InitializationState generation)
+        string baseAppName, IEnumerable<LauncherGame> dlcs, IReadOnlyList<string>? languages, InitializationState generation)
     {
         var sizes = new Dictionary<string, (double DownloadBytes, double InstallBytes)>(StringComparer.Ordinal);
-        foreach (var appName in dlcs.Select(game => game.AppName).Prepend(baseAppName))
+        sizes[baseAppName] = languages is null
+            ? await _installManager.GetGameDownloadInstallSizes(baseAppName, generation.CancellationToken).ConfigureAwait(false)
+            : await _installManager.GetSizesForLanguages(baseAppName, languages, generation.CancellationToken).ConfigureAwait(false);
+        foreach (var appName in dlcs.Select(game => game.AppName))
         {
             if (!IsCurrentInitialization(generation)) return sizes;
             sizes[appName] = await _installManager.GetGameDownloadInstallSizes(appName, generation.CancellationToken)
@@ -205,6 +233,49 @@ public partial class AppInstallDialogViewModel : ObservableObject
         }
         return sizes;
     }
+
+    private async void LanguageSelectionChanged()
+    {
+        var generation = Volatile.Read(ref _initialization);
+        if (!generation.HasInstallSizes || !IsCurrentInitialization(generation)) return;
+        var request = Interlocked.Increment(ref generation.LanguageRequest);
+        var appName = _gameAppName;
+        // The old size no longer applies; Install stays disabled until the new one arrives.
+        generation.ContentSizes.Remove(appName);
+        UpdateContentTotals(generation);
+        var languages = Languages.SelectedCodes;
+        if (languages.Count == 0) return;
+        try
+        {
+            var size = await _installManager.GetSizesForLanguages(appName, languages, generation.CancellationToken)
+                .ConfigureAwait(false);
+            _uiDispatcher.TryEnqueue(() =>
+            {
+                if (!IsCurrentLanguageRequest(generation, request)) return;
+                generation.ContentSizes[appName] = size;
+                BaseGameSize = SizeFormatter.Format(size.InstallBytes);
+                ErrorMessage = string.Empty;
+                UpdateContentTotals(generation);
+            });
+        }
+        catch (OperationCanceledException) when (generation.CancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (!IsCurrentLanguageRequest(generation, request)) return;
+            _logger.Warning("Install sizes for the selected languages could not be loaded ({ErrorType})", ex.GetType().Name);
+            _uiDispatcher.TryEnqueue(() =>
+            {
+                if (!IsCurrentLanguageRequest(generation, request)) return;
+                ShowLocalError(ex);
+                _installManager.ReportPreparationFailure(appName, ActionType.Install, ex);
+            });
+        }
+    }
+
+    private bool IsCurrentLanguageRequest(InitializationState generation, int request) =>
+        IsCurrentInitialization(generation) && request == Volatile.Read(ref generation.LanguageRequest);
 
     private void ClearDlcOptions()
     {
@@ -224,7 +295,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
 
     private void UpdateContentTotals(InitializationState generation)
     {
-        if (!generation.HasInstallSizes) { CanInstall = false; return; }
+        if (!generation.HasInstallSizes || Languages.IsSelectionMissing) { CanInstall = false; return; }
         double download = 0, write = 0;
         foreach (var appName in AvailableDlcs.Where(option => option.IsSelected).Select(option => option.AppName).Prepend(_gameAppName))
         {
@@ -253,6 +324,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
         CreateDesktopShortcut = false;
         CreateStartMenuShortcut = false;
         ClearDlcOptions();
+        Languages.Clear();
         BaseGameSize = string.Empty;
         TotalDownloadSize = UiStrings.ZeroBytes;
         TotalInstallSize = UiStrings.ZeroBytes;
@@ -338,7 +410,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
             var newPath = await FolderPickerRequested.Invoke();
             if (!string.IsNullOrEmpty(newPath) && IsCurrentInitialization(generation))
             {
-                InstallLocation = ProviderDataPaths.SuggestedInstallPath(newPath, GameId.Parse(_gameAppName), GameTitle);
+                InstallLocation = Path.Combine(newPath, InstallPathPolicy.GetDirectoryName(GameTitle));
                 await UpdateDriveSpace(InstallLocation, generation);
             }
         }
@@ -366,7 +438,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
         var install = new InstallItem(_gameAppName, ActionType.Install, InstallLocation)
         {
             CreateDesktopShortcut = SupportsShortcuts && CreateDesktopShortcut,
-            CreateStartMenuShortcut = SupportsShortcuts && CreateStartMenuShortcut
+            CreateStartMenuShortcut = SupportsShortcuts && CreateStartMenuShortcut,
+            Languages = Languages.HasOptions ? Languages.SelectedCodes : null
         };
         var selectedDlcs = AvailableDlcs.Where(dlc => dlc.IsSelected).Select(dlc => dlc.AppName).ToList();
         InvalidateInitialization();

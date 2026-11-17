@@ -251,13 +251,17 @@ public sealed class LauncherLibrary : ILauncherLibrary
         if (provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn ||
             provider.Library.GetGameInfo(id.ToString()) is not { CanLaunch: true }) return false;
         // Licenses, IPC, helper processes and their lifetimes remain provider-owned.
-        return await provider.Library.LaunchApp(id.ToString());
+        var launched = await provider.Library.LaunchApp(id.ToString());
+        LastLaunchError = launched ? null : provider.Library.LastLaunchError;
+        return launched;
     }
 
     public void InvalidateCache()
     {
         foreach (var provider in _registry.Providers) provider.Library.InvalidateCache();
     }
+
+    public string? LastLaunchError { get; private set; }
     private ILauncherProvider Resolve(string appName) => _registry.Get(GameId.Parse(appName).ProviderId);
     private static List<LauncherGame> ValidateGames(ILauncherProvider provider, IEnumerable<LauncherGame> games) =>
         games.Select(game => ValidateGame(provider, game)).ToList();
@@ -380,6 +384,40 @@ public sealed class LauncherInstaller : ILauncherInstaller
     public Task<(double DownloadBytes, double InstallBytes)> GetGameDownloadInstallSizes(
         string appName, CancellationToken cancellationToken = default) =>
         Resolve(appName).GetGameDownloadInstallSizes(appName, cancellationToken);
+    public Task<InstallLanguageChoice?> GetInstallLanguages(string appName, CancellationToken cancellationToken = default) =>
+        OptionalInstaller(appName) is IInstallLanguageSource source
+            ? source.GetInstallLanguages(GameId.Parse(appName).ToString(), cancellationToken)
+            : Task.FromResult<InstallLanguageChoice?>(null);
+    public Task<(double DownloadBytes, double InstallBytes)> GetSizesForLanguages(
+        string appName, IReadOnlyList<string> languages, CancellationToken cancellationToken = default) =>
+        Resolve(appName) is IInstallLanguageSource source
+            ? source.GetSizesForLanguages(GameId.Parse(appName).ToString(), languages, cancellationToken)
+            : throw new NotSupportedException("This launcher does not offer install languages.");
+    public bool SupportsImport(string providerId) => _registry.Get(providerId).Installer?.Supports(ActionType.Import) == true;
+    public async Task<IReadOnlyList<ImportCandidate>> DiscoverImportCandidates(
+        string? providerId = null, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<ILauncherProvider> providers = providerId is null ? _registry.Providers.ToList() : [_registry.Get(providerId)];
+        var found = await Task.WhenAll(providers.Select(provider => DiscoverImportCandidates(provider, cancellationToken)));
+        return found.SelectMany(candidates => candidates).ToList();
+    }
+    private static async Task<IReadOnlyList<ImportCandidate>> DiscoverImportCandidates(
+        ILauncherProvider provider, CancellationToken cancellationToken)
+    {
+        if (provider.Installer is not IInstallImportSource source) return [];
+        return (await source.DiscoverImportCandidates(cancellationToken)).Select(candidate =>
+        {
+            var id = GameId.Parse(candidate.AppName);
+            if (id.ProviderId != provider.Id)
+                throw new InvalidOperationException("Provider emitted a foreign import identity.");
+            return candidate with { AppName = id.ToString() };
+        }).ToList();
+    }
+    /// <summary>Null when the folder is acceptable, or when the provider does not validate imports.</summary>
+    public Task<OperationFailure?> ValidateImportLocation(string appName, string installPath, CancellationToken cancellationToken = default) =>
+        OptionalInstaller(appName) is IInstallImportSource source
+            ? source.ValidateImportLocation(GameId.Parse(appName).ToString(), installPath, cancellationToken)
+            : Task.FromResult<OperationFailure?>(null);
     private ILauncherInstaller Resolve(string appName) =>
         _registry.Get(GameId.Parse(appName).ProviderId).Installer
         ?? throw new NotSupportedException("This launcher does not provide installation support.");

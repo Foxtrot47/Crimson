@@ -260,28 +260,121 @@ public sealed class LauncherProviderTests
     }
 
     [Fact]
-    public void SameTitleFromThreeStoresHasDistinctDefaultInstallPaths()
+    public async Task LanguageAndImportCallsReachOnlyTheOwningProviderWithQualifiedIds()
     {
-        var root = Path.Combine(Path.GetTempPath(), "games");
-        var paths = new[] { "epic", "ea", "ubisoft" }.Select(provider =>
-            ProviderDataPaths.SuggestedInstallPath(root, new GameId(provider, "123"), "Same Game")).ToList();
-        Assert.Equal(3, paths.Distinct().Count());
-        Assert.All(paths, path => Assert.Equal("Same Game", Path.GetFileName(path)));
+        var epic = new TestLauncherProvider("epic");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        var choice = new InstallLanguageChoice([new("en-US", "English"), new("fr-FR", "French")], ["en-US"], true);
+        ubisoft.Jobs.LanguageChoice = choice;
+        ubisoft.Jobs.ImportFailure = new OperationFailure(OperationFailureKind.Storage, "wrong_folder", "Wrong folder.", "Pick another.", false);
+        var installer = new LauncherInstaller(new LauncherRegistry([epic, ubisoft]));
+
+        Assert.Same(choice, await installer.GetInstallLanguages("ubisoft:2688"));
+        Assert.Equal((200d, 400d), await installer.GetSizesForLanguages("ubisoft:2688", ["en-US", "fr-FR"]));
+        Assert.Equal("wrong_folder", (await installer.ValidateImportLocation("ubisoft:2688", "D:\\Games\\WD2"))!.Code);
+        Assert.Null(await installer.GetInstallLanguages("epic:abc"));
+
+        Assert.Equal(["ubisoft:2688"], ubisoft.Jobs.LanguageRequests);
+        Assert.Equal(("ubisoft:2688", "D:\\Games\\WD2"), Assert.Single(ubisoft.Jobs.ImportValidations));
+        Assert.Equal(["en-US", "fr-FR"], Assert.Single(ubisoft.Jobs.SizeRequests).Languages);
+        Assert.Equal(["epic:abc"], epic.Jobs.LanguageRequests);
+        Assert.Empty(epic.Jobs.SizeRequests);
+        Assert.Empty(epic.Jobs.ImportValidations);
+    }
+
+    [Fact]
+    public async Task ImportCandidatesAreScopedToTheRequestedProviderAndCannotClaimForeignGames()
+    {
+        var epic = new TestLauncherProvider("epic");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        epic.Jobs.ImportCandidates.Add(new ImportCandidate("epic:abc", "Epic game", "C:\\Epic"));
+        ubisoft.Jobs.ImportCandidates.Add(new ImportCandidate("ubisoft:2688", "Watch Dogs 2", "E:\\WD2"));
+        var installer = new LauncherInstaller(new LauncherRegistry([epic, ubisoft]));
+
+        Assert.Equal("ubisoft:2688", Assert.Single(await installer.DiscoverImportCandidates("ubisoft")).AppName);
+        Assert.Equal(2, (await installer.DiscoverImportCandidates()).Count);
+
+        ubisoft.Jobs.ImportCandidates.Add(new ImportCandidate("epic:abc", "Spoofed", "C:\\Epic"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => installer.DiscoverImportCandidates("ubisoft"));
+    }
+
+    [Fact]
+    public async Task ProviderWithoutInstallerOffersNoLanguagesOrImports()
+    {
+        var provider = new TestLauncherProvider("ea") { Installer = null };
+        var installer = new LauncherInstaller(new LauncherRegistry([provider]));
+
+        Assert.Null(await installer.GetInstallLanguages("ea:1"));
+        Assert.Null(await installer.ValidateImportLocation("ea:1", "C:\\Games"));
+        Assert.Empty(await installer.DiscoverImportCandidates("ea"));
+        Assert.False(installer.SupportsImport("ea"));
+    }
+
+    [Fact]
+    public void SupportsImportFollowsTheProvidersInstaller()
+    {
+        var epic = new TestLauncherProvider("epic");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        ubisoft.Jobs.Actions.Add(ActionType.Import);
+        var installer = new LauncherInstaller(new LauncherRegistry([epic, ubisoft]));
+
+        Assert.True(installer.SupportsImport("ubisoft"));
+        Assert.False(installer.SupportsImport("epic"));
     }
 
     [Theory]
-    [InlineData("../../outside")]
-    [InlineData("C:\\outside")]
-    [InlineData("CON.txt")]
-    [InlineData("NUL")]
-    [InlineData("...")]
-    public void SuggestedInstallTitlesCannotEscapeTheirProviderDirectory(string title)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LanguageChangesQueueOnlyWhenTheProviderSupportsThem(bool supported)
     {
-        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "games"));
-        var path = ProviderDataPaths.SuggestedInstallPath(root, new GameId("ea", "123"), title);
-        Assert.Equal(Path.Combine(root, "ea"), Path.GetDirectoryName(path));
-        Assert.NotEqual("CON.txt", Path.GetFileName(path));
-        Assert.NotEqual("NUL", Path.GetFileName(path));
+        var provider = new TestLauncherProvider("ubisoft");
+        var game = provider.Games.Add("2688");
+        if (supported) provider.Jobs.Actions.UnionWith([ActionType.Repair]);
+        var registry = new LauncherRegistry([provider]);
+        var vm = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance,
+            new LauncherInstaller(registry), new LauncherLibrary(registry), registry, new ImmediateUiDispatcher());
+        await vm.OnNavigatedTo(game.AppName);
+
+        vm.ChangeLanguagesCommand.Execute(new List<string> { "fr-FR" });
+        vm.ChangeLanguagesCommand.Execute(new List<string>());
+
+        if (!supported)
+        {
+            Assert.Empty(provider.Jobs.Queued);
+            return;
+        }
+        Assert.Collection(provider.Jobs.Queued,
+            repair =>
+            {
+                Assert.Equal(ActionType.Repair, repair.Action);
+                Assert.Equal(["fr-FR"], repair.Languages!);
+                Assert.Equal(game.LocalAppState!.InstallPath, repair.Location);
+            });
+        vm.OnNavigatedFrom();
+    }
+
+    [Fact]
+    public async Task ImportFolderRejectedByTheProviderIsNotQueued()
+    {
+        var provider = new TestLauncherProvider("ubisoft");
+        var game = provider.Games.Add("2688", InstallState.NotInstalled);
+        provider.Jobs.Actions.Add(ActionType.Import);
+        provider.Jobs.ImportFailure = new OperationFailure(OperationFailureKind.Storage, "not_this_game", "Not this game.", "Pick its folder.", false);
+        var registry = new LauncherRegistry([provider]);
+        var vm = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance,
+            new LauncherInstaller(registry), new LauncherLibrary(registry), registry, new ImmediateUiDispatcher());
+        await vm.OnNavigatedTo(game.AppName);
+        vm.FolderPickerRequested += () => Task.FromResult("D:\\Elsewhere");
+
+        await vm.ImportGameCommand.ExecuteAsync(null);
+        Assert.Empty(provider.Jobs.Queued);
+        Assert.Equal("not_this_game", Assert.Single(provider.Jobs.Failures).Failure.Code);
+
+        provider.Jobs.ImportFailure = null;
+        await vm.ImportGameCommand.ExecuteAsync(null);
+        var queued = Assert.Single(provider.Jobs.Queued);
+        Assert.Equal((ActionType.Import, "D:\\Elsewhere"), (queued.Action, queued.Location));
+        vm.OnNavigatedFrom();
     }
     private sealed class ImmediateUiDispatcher : IUiDispatcher
     {
