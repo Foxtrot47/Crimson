@@ -15,6 +15,10 @@ public static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // The elevated Ubisoft setup helper applies one request and exits: no window, no single-instance redirection.
+        if (args.Length == 3 && args[0] == Providers.Ubisoft.UbisoftSystemSetupPolicy.HelperArgument)
+            return Providers.Ubisoft.UbisoftElevatedSystemSetup.Run(args[1], args[2]);
+
         WinRT.ComWrappersSupport.InitializeComWrappers();
         var activationArguments = AppInstance.GetCurrent().GetActivatedEventArgs();
         var mainInstance = AppInstance.FindOrRegisterForKey("Crimson");
