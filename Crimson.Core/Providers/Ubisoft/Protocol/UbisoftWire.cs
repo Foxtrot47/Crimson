@@ -71,6 +71,31 @@ internal static class UbisoftWire
         fields.LastOrDefault(f => f.Number == field && f.WireType == 0)?.Integer ?? fallback;
     internal static string String(this IReadOnlyList<Field> fields, int field) => Encoding.UTF8.GetString(fields.Data(field));
     internal static bool Has(this IReadOnlyList<Field> fields, int field) => fields.Any(f => f.Number == field);
+    internal static string? OptionalString(this IReadOnlyList<Field> fields, int field) =>
+        fields.LastOrDefault(f => f.Number == field && f.WireType == 2) is { } value ? Encoding.UTF8.GetString(value.Data) : null;
+    internal static IEnumerable<byte[]> All(this IReadOnlyList<Field> fields, int field) =>
+        fields.Where(f => f.Number == field && f.WireType == 2).Select(f => f.Data);
+    internal static IReadOnlyList<ulong> Numbers(this IReadOnlyList<Field> fields, int field)
+    {
+        var result = new List<ulong>();
+        foreach (var f in fields.Where(f => f.Number == field))
+        {
+            if (f.WireType == 0) result.Add(f.Integer);
+            else if (f.WireType == 2)
+            {
+                var offset = 0;
+                while (offset < f.Data.Length) result.Add(ReadVarint(f.Data, ref offset));
+            }
+        }
+        return result;
+    }
+    internal static byte[] Encode(Field field) => field.WireType switch
+    {
+        0 => Integer(field.Number, field.Integer),
+        2 => Bytes(field.Number, field.Data),
+        1 or 5 => Message(Varint(((ulong)field.Number << 3) | (ulong)field.WireType), field.Data),
+        _ => throw new InvalidDataException("Unsupported protobuf wire type.")
+    };
 
     internal static byte[] Frame(byte[] body)
     {
