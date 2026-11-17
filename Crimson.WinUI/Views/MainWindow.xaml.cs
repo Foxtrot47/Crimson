@@ -1042,6 +1042,7 @@ public sealed partial class MainWindow : Window
         _windowSizeConstraints.Dispose();
 
         _operationErrors.Dispose();
+        _cloudSaveConflicts.Dispose();
         _libraryManager.LibraryUpdated -= LibraryUpdatedHandler;
         _libraryManager.GamesAdded -= GamesAddedHandler;
         _notifications.Dismiss();
