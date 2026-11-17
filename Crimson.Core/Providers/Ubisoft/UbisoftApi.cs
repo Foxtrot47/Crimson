@@ -38,6 +38,10 @@ public sealed class UbisoftApi(HttpClient http)
         HttpMethod.Post, "/v3/profiles/sessions", "ubi_v1 t=" + ticket, new { }, null, null, token);
     public Task<JsonElement> Get(UbisoftSession session, string path, CancellationToken token = default) => Send(
         HttpMethod.Get, path, "Ubi_v1 t=" + session.Ticket, null, session.SessionId, null, token);
+    public Task<JsonElement> Put(UbisoftSession session, string path, object body, CancellationToken token = default) => Send(
+        HttpMethod.Put, path, "Ubi_v1 t=" + session.Ticket, body, session.SessionId, null, token);
+    public Task<JsonElement> Post(UbisoftSession session, string path, object body, CancellationToken token = default) => Send(
+        HttpMethod.Post, path, "Ubi_v1 t=" + session.Ticket, body, session.SessionId, null, token);
     public async Task PlaySession(UbisoftSession session, uint productId, bool end, CancellationToken token)
     {
         var path = $"/v1/profiles/{Uri.EscapeDataString(session.ProfileId)}/global/ubiconnect/playsession/api/sessions";
