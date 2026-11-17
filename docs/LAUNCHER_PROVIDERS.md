@@ -5,9 +5,9 @@ search, installed-games navigation and downloads view. There is no global active
 store or launcher switch. A game or store result carries its provider identity;
 that identity determines which implementation handles it.
 
-Epic is the first production provider. EA and Ubisoft are integration targets,
-not advertised as implemented by this refactor. Their protocol code can land in
-separate providers without changes to the shared game pages.
+Epic and Ubisoft Connect are production providers. EA is an integration target,
+not advertised as implemented. Its protocol code can land in a separate provider
+without changes to the shared game pages.
 
 ## Boundaries
 
@@ -19,6 +19,9 @@ separate providers without changes to the shared game pages.
 | `ILauncherAuthentication` | Independent account state, validation/refresh, logout, and the signed-in identity (`GetUser`) the Accounts row shows; no tokens exposed to the shell |
 | `ILauncherLibrary` | Normalized games, DLC relationships, status changes and provider-owned launch lifecycle |
 | `ILauncherInstaller` | Supported actions, size estimates in bytes, queue/history, progress, cancellation and optional pause/shortcuts |
+| `IInstallLanguageSource` (optional, on the installer) | Install languages a game offers, the default selection, and sizes for a chosen set; `InstallItem.Languages` carries the choice on Install and on Repair (language change) |
+| `IInstallImportSource` (optional, on the installer) | Existing installations found on disk and validation of a folder the user picks before an `ActionType.Import` job is queued |
+| `ICloudSaveConflictSource` | A cloud-save engine that asks the user to resolve conflicts; the WinUI presenter binds every registered source. `CloudSaveConflict.AppName` is the qualified game ID |
 | `ILauncherStore` | Public search results and provider-owned product/search URLs |
 | `IProviderContentPolicy` | Trusted artwork destinations for the shared Windows shortcut service |
 | `LauncherLibrary` | Merge connected accounts, isolate refresh failures and discard results from disconnected sessions |
@@ -134,9 +137,8 @@ The design was checked against the public proof-of-concepts:
   other accounts.
 - [Ubisoft-Connect-RE](https://github.com/Foxtrot47/Ubisoft-Connect-RE), inspected at
   `baebae37e9a7e981ddf7c99ed5fd5a6975ba9699`: password/2FA/remember-me sessions,
-  product IDs, Demux manifests/slices, named pipes and runtime supervision belong
-  in the Ubisoft provider. Unsupported cloud-save transfer must remain unavailable
-  until implemented and validated.
+  product IDs, Demux ownership/download/cloud-save services, manifests/slices,
+  named pipes and runtime supervision belong in the Ubisoft provider.
 
 Neither prototype's protocol formats, runtime supervision or sign-in requirements
 are approximated by fake Epic models. Registering both real implementations will
@@ -154,7 +156,7 @@ dependencies. Windows CI additionally builds WinUI and runs the shortcut/platfor
 adapter tests.
 
 The first additional provider is [Ubisoft Connect](UBISOFT_INTEGRATION.md): account authentication,
-shared-library entitlements, install/runtime discovery from the client's own registry records, native
-SDK session pipes, and live Denuvo authentication. Its optional installer/store capabilities remain
-absent. Frontends can implement `ILauncherConfigurationFrontend` when a provider genuinely needs
-user-supplied settings; Ubisoft does not, because everything it needs is discovered.
+the library from the Demux ownership service, install/update/verify/repair/import/move/uninstall
+with language selection, native SDK session pipes, live Denuvo authentication and cloud saves. Its store
+capability remains absent. Frontends can implement `ILauncherConfigurationFrontend` when a provider
+genuinely needs user-supplied settings; Ubisoft does not.
