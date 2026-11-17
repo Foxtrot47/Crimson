@@ -7,15 +7,86 @@ namespace Crimson.Core.Tests.Ubisoft;
 
 public class UbisoftGameSessionTests
 {
-    private static UbisoftGameSession Create(Tickets tickets, uint[]? addons = null) => new(
+    private static UbisoftGameSession Create(Tickets tickets, uint[]? addons = null, UbisoftSdkProduct[]? products = null) => new(
         new UbisoftSession { Ticket = "login", SessionId = "session", ProfileId = "profile", UserId = "user" },
-        new(2688, "Title", "game", "61ec338e-d607-4042-a55b-fc009cfc2dc6", true),
-        new(2688, "Title", "/games", "/games/game.exe", AddonValidationIds: addons ?? [90]),
+        new UbisoftLaunchPlan(2688, "/games", "/games/game.exe", "/games", "", "61ec338e-d607-4042-a55b-fc009cfc2dc6", "en-US")
+        {
+            AddonIds = addons ?? [90],
+            SdkProducts = products ?? [],
+            SaveDirectory = "/saves/user/2688/"
+        },
         new([1, 2, 3], [2688, 90]) { AddonsToValidate = [90, 91] },
-        JsonSerializer.SerializeToElement(new { username = "Player", email = "email", country = "GB" }), "/saves/user/2688/", tickets);
+        JsonSerializer.SerializeToElement(new { username = "Player", email = "email", country = "GB" }), tickets);
+
+    private static UbisoftOwnedProduct Owned(uint id, uint type, uint state, bool owned, uint[]? associations = null,
+        uint balance = 0) =>
+        new(id, owned, type, state, id, 0, null, null, 0, [], associations ?? [], null, null, 0, 0, balance, 0, false, 0);
+
     [Fact]
-    public void UnownedAddonCannotBeSentToTheRuntime() =>
-        Assert.Throws<InvalidOperationException>(() => Create(new Tickets(), [999]));
+    public void SdkProductsListTheGameItsOwnedReleasedAddonsAndItsConsumables()
+    {
+        var game = Owned(5487, UbisoftOwnedProduct.TypeGame, 3, true, [10, 11, 12, 13]);
+        UbisoftOwnedProduct[] catalog =
+        [
+            game, Owned(10, UbisoftOwnedProduct.TypeAddon, 3, true), Owned(11, UbisoftOwnedProduct.TypeAddon, 3, false),
+            Owned(12, 8, 0, false, balance: 7), Owned(13, UbisoftOwnedProduct.TypeAddon, 4, true),
+            Owned(99, UbisoftOwnedProduct.TypeAddon, 3, true)
+        ];
+        Assert.Equal(
+        [
+            new UbisoftSdkProduct(5487, UbisoftSdkProduct.TypeGame, true, 3, 0, 1),
+            new UbisoftSdkProduct(10, UbisoftSdkProduct.TypeAddon, true, 3, 0, 1),
+            new UbisoftSdkProduct(12, UbisoftSdkProduct.TypeConsumable, false, 3, 7, 1)
+        ], UbisoftSdkProduct.For(game, catalog));
+        Assert.Empty(UbisoftSdkProduct.For(game with { Owned = false }, catalog));
+    }
+
+    [Fact]
+    public void R2SessionCarriesEveryRequestedSubsystem()
+    {
+        var session = Create(new Tickets(), products: [new UbisoftSdkProduct(12, UbisoftSdkProduct.TypeConsumable, false, 3, 7, 1)]);
+        var response = Read(Read(session.SessionResponse(Bytes(1, Message(Integer(1, 2688), Integer(4, 1),
+            Integer(8, 1), Integer(9, 1), Integer(11, 1))))!).Data(1));
+        Assert.Equal(1UL, Read(response.Data(18)).Number(2));
+        Assert.Equal(1UL, Read(response.Data(20)).Number(2));
+        Assert.True(response.Has(23));
+        var install = Read(response.Data(14));
+        Assert.True(Read(install.Data(2)).Has(1));
+        Assert.Equal("en-US", install.String(3));
+        var consumable = Read(response.Data(9));
+        Assert.Equal((12UL, 7UL), (consumable.Number(1), consumable.Number(2)));
+
+        var r1 = Read(Read(session.SessionResponse(Bytes(1, Integer(1, 2688)))!).Data(1));
+        Assert.False(r1.Has(14) || r1.Has(20) || r1.Has(23));
+    }
+
+    [Fact]
+    public void R2RequestsAreAnsweredWithTheirRequestIds()
+    {
+        var session = Create(new Tickets(), products: [new UbisoftSdkProduct(2688, UbisoftSdkProduct.TypeGame, true, 3, 0, 1)]);
+        var friends = Read(Read(Read(session.SessionResponse(Bytes(7, Bytes(15, Integer(1, 5))))!).Data(4)).Data(12));
+        Assert.Equal((5UL, 1UL), (friends.Number(1), friends.Number(2)));
+
+        var achievements = Read(Read(session.SessionResponse(Bytes(8, Bytes(1, Integer(1, 6))))!).Data(5));
+        Assert.Equal((6UL, 1UL), (Read(achievements.Data(1)).Number(1), Read(achievements.Data(1)).Number(2)));
+        var earn = Read(Read(Read(session.SessionResponse(Bytes(8, Bytes(3, Integer(1, 7))))!).Data(5)).Data(3));
+        Assert.Equal(8UL, earn.Number(2));
+
+        var list = Read(Read(Read(session.SessionResponse(Bytes(23, Bytes(1, Integer(1, 8))))!).Data(15)).Data(1));
+        Assert.Equal((8UL, 1UL), (list.Number(1), list.Number(2)));
+        Assert.Equal(2688UL, Read(list.Data(3)).Number(1));
+        var other = Read(Read(Read(session.SessionResponse(Bytes(23, Bytes(1, Message(Integer(1, 9), Text(3, "someone")))))!)
+            .Data(15)).Data(1));
+        Assert.Equal(2UL, other.Number(2));
+        Assert.False(other.Has(3));
+    }
+    [Fact]
+    public async Task OnlyAddonsTheLiveSessionValidatesAreSentToTheRuntime()
+    {
+        var session = Create(new Tickets(), [90, 999]);
+        var init = Read(await session.AuxResponse(Message(Integer(1, 3), Bytes(2, Integer(1, 2688))), 123, default));
+        Assert.Equal(new ulong[] { 90 }, Read(init.Data(2)).Numbers(3));
+    }
     [Fact]
     public void SessionCarriesPcTicketRealAppIdAndEmptyPassword()
     {

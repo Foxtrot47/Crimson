@@ -66,6 +66,8 @@
         </Content>
         <Content Include="Assets\Crimson.ico" CopyToPublishDirectory="PreserveNewest" />
         <Content Include="Assets\Providers\*.png" CopyToPublishDirectory="PreserveNewest" />
+        <!-- Ubisoft runtime DLLs the games load beside their own executable. -->
+        <Content Include="Assets\UbisoftRuntime\*.dll" CopyToPublishDirectory="PreserveNewest" />
         <Content Include="Assets\SplashScreen.scale-200.png" CopyToPublishDirectory="PreserveNewest" />
         <Content Include="Assets\LockScreenLogo.scale-200.png" CopyToPublishDirectory="PreserveNewest" />
         <Content Include="Assets\Square150x150Logo.scale-200.png" CopyToPublishDirectory="PreserveNewest" />

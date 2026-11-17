@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -14,7 +14,7 @@ internal sealed class UbisoftProcess : IDisposable
     private readonly EventWaitHandle _ready = new(false, EventResetMode.AutoReset);
     private SafeProcessHandle? _process;
     internal void SignalReady() => _ready.Set();
-    internal void Start(UbisoftInstalledGame game)
+    internal void Start(string executable, string arguments, string workingDirectory)
     {
         var attributes = IntPtr.Zero;
         var handles = IntPtr.Zero;
@@ -32,10 +32,10 @@ internal sealed class UbisoftProcess : IDisposable
             if (!UpdateProcThreadAttribute(attributes, 0, (IntPtr)0x20002, handles, (nuint)IntPtr.Size, IntPtr.Zero, IntPtr.Zero))
                 throw new Win32Exception();
             var startup = new StartupInfoEx { Info = new StartupInfo { Size = Marshal.SizeOf<StartupInfoEx>() }, Attributes = attributes };
-            // Configuration is explicit user input. No shell or URI launcher is involved.
-            var command = new StringBuilder("\"" + game.Executable + "\"" + (string.IsNullOrWhiteSpace(game.Arguments) ? "" : " " + game.Arguments));
-            if (!CreateProcess(game.Executable, command, IntPtr.Zero, IntPtr.Zero, true, 0x80000,
-                IntPtr.Zero, game.InstallDirectory, ref startup, out var info)) throw new Win32Exception();
+            // The launch plan comes from the product configuration, confined to the installation. No shell is involved.
+            var command = new StringBuilder("\"" + executable + "\"" + (string.IsNullOrWhiteSpace(arguments) ? "" : " " + arguments));
+            if (!CreateProcess(executable, command, IntPtr.Zero, IntPtr.Zero, true, 0x80000,
+                IntPtr.Zero, workingDirectory, ref startup, out var info)) throw new Win32Exception();
             CloseHandle(info.Thread);
             _process = new SafeProcessHandle(info.Process, true);
         }
@@ -44,6 +44,13 @@ internal sealed class UbisoftProcess : IDisposable
             if (attributes != IntPtr.Zero) { if (initialized) DeleteProcThreadAttributeList(attributes); Marshal.FreeHGlobal(attributes); }
             if (handles != IntPtr.Zero) Marshal.FreeHGlobal(handles);
         }
+    }
+    /// <summary>Ends the game when the launcher cannot serve it, so its own error box does not linger.</summary>
+    internal void Terminate()
+    {
+        if (_process is null || _process.IsInvalid) return;
+        try { TerminateProcess(_process, 1); }
+        catch (InvalidOperationException) { } // the handle was disposed by a concurrent teardown
     }
     internal async Task WaitForExit(CancellationToken token)
     {
@@ -68,6 +75,8 @@ internal sealed class UbisoftProcess : IDisposable
     }
     [StructLayout(LayoutKind.Sequential)]
     private struct StartupInfoEx { public StartupInfo Info; public IntPtr Attributes; }
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool TerminateProcess(SafeProcessHandle process, uint exitCode);
     [StructLayout(LayoutKind.Sequential)]
     private struct ProcessInformation { public IntPtr Process, Thread; public uint ProcessId, ThreadId; }
     [DllImport("kernel32.dll", SetLastError = true)]

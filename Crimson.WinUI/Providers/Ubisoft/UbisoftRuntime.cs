@@ -9,58 +9,27 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Providers.Ubisoft.Protocol;
-using Microsoft.Win32;
 using Serilog;
 using static Crimson.Providers.Ubisoft.Protocol.UbisoftWire;
 
 namespace Crimson.Providers.Ubisoft;
 
-public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILogger log) : IUbisoftRuntime
+public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILogger log, string providerRoot) : IUbisoftRuntime
 {
-    // Only the runtime a protected game itself loads. The official launcher, its RPC helpers and the
-    // Steam shim are deliberately not required: this bridge replaces the launcher.
-    private static readonly string[] RuntimeFiles = ["uplay_r1.dll", "uplay_r164.dll", "uplay_aux_r1.dll", "uplay_aux_r164.dll"];
-    public async Task<IUbisoftRunningGame> Start(UbisoftSession session, UbisoftEntitlement game,
-        UbisoftInstalledGame installation, UbisoftConfigurationStore configuration, CancellationToken token)
+    public async Task<IUbisoftRunningGame> Start(UbisoftSession session, UbisoftLaunchPlan plan, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        // Runtime files ship with the game itself; a configured directory is the fallback for
-        // installations that keep them elsewhere.
-        ValidateRuntime(RuntimeDirectoryFor(installation, configuration));
-        UbisoftConfigurationStore.ValidateGame(installation);
+        if (!File.Exists(plan.Executable)) throw new FileNotFoundException("The game executable does not exist.");
         var profile = await api.Get(session, "/v3/users/me", token);
         if (!profile.TryGetProperty("userId", out var user) || user.GetString() != session.UserId)
             throw new InvalidOperationException("Ubisoft account identity could not be validated.");
-        var pc = await tickets.GetPcSession(session.Ticket, session.SessionId, game.ProductId, token);
+        var pc = await tickets.GetPcSession(session.Ticket, session.SessionId, plan.ProductId, token);
         token.ThrowIfCancellationRequested();
-        var protocol = new UbisoftGameSession(session, game, installation, pc, profile,
-            configuration.Saves(session.UserId, game.ProductId), tickets);
-        var running = new Running(api, log, session, game.ProductId, protocol, configuration.ProviderRoot, token);
-        try { running.Start(installation); return running; }
+        Directory.CreateDirectory(plan.SaveDirectory);
+        var protocol = new UbisoftGameSession(session, plan, pc, profile, tickets);
+        var running = new Running(api, log, session, plan.ProductId, protocol, Path.GetFullPath(providerRoot), token);
+        try { running.Start(plan); return running; }
         catch { await running.DisposeAsync(); throw; }
-    }
-    /// <summary>Game directory first, then the directory configured in settings. No client records.</summary>
-    internal static string? RuntimeDirectoryFor(UbisoftInstalledGame installation, UbisoftConfigurationStore configuration)
-    {
-        if (HasRuntime(installation.InstallDirectory)) return installation.InstallDirectory;
-        var configured = configuration.Current.RuntimeDirectory;
-        return string.IsNullOrWhiteSpace(configured) ? null : configured;
-    }
-
-    private static bool HasRuntime(string? directory) =>
-        !string.IsNullOrWhiteSpace(directory) && RuntimeFiles.Any(file => File.Exists(Path.Combine(directory, file)));
-
-    internal static void ValidateRuntime(string? directory)
-    {
-        if (string.IsNullOrWhiteSpace(directory) || !Path.IsPathFullyQualified(directory) || !Directory.Exists(directory))
-            throw new InvalidOperationException(
-                "The Ubisoft runtime DLLs were not found. Keep uplay_r1*/uplay_aux_r1* beside the game, or set the runtime directory in Settings.");
-        // The pair a protected game loads: the launcher shim and its aux (Denuvo) helper.
-        var present = RuntimeFiles.Where(file => File.Exists(Path.Combine(directory, file))).ToList();
-        var hasShim = present.Any(file => file.StartsWith("uplay_r1", StringComparison.OrdinalIgnoreCase));
-        var hasAux = present.Any(file => file.StartsWith("uplay_aux", StringComparison.OrdinalIgnoreCase));
-        if (!hasShim || !hasAux)
-            throw new InvalidOperationException($"The Ubisoft runtime in '{directory}' is incomplete: uplay_r1*.dll and uplay_aux_r1*.dll are required.");
     }
 
     private sealed class Running : IUbisoftRunningGame
@@ -78,13 +47,14 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
         private readonly TaskCompletionSource _done = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _activeGeneration;
         private int _disposed;
+        private int _connections;
         private Task? _heartbeat;
         private bool _playSessionStarted;
         public Task Completion => _done.Task;
         internal Running(UbisoftApi api, ILogger log, UbisoftSession login, uint productId,
             UbisoftGameSession protocol, string root, CancellationToken token)
         { _api = api; _log = log; _login = login; _productId = productId; _protocol = protocol; _root = root; _stop = CancellationTokenSource.CreateLinkedTokenSource(token); }
-        internal void Start(UbisoftInstalledGame game)
+        internal void Start(UbisoftLaunchPlan plan)
         {
             string[] names = ["game_start_ipc_pipe_", "uplay_api_process_ipc_pipe_", "uplay_ipc_pipe_", "uplay_aux_ipc_pipe_",
                 "uplay_service_ipc_pipe_", "upc_api_process_ipc_pipe_standard", "uplay_protocol_ipc_pipe_", "uplay_overlay_ipc_pipe_",
@@ -94,7 +64,7 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
             var listeners = names.Select(name => (Name: name, Pipe: CreatePipe(prefix + name, true))).ToList();
             foreach (var (name, pipe) in listeners) _workers.Add(Accept(name, prefix + name, pipe));
             _stop.Token.ThrowIfCancellationRequested();
-            _startup.Start(game);
+            _startup.Start(plan.Executable, plan.Arguments, plan.WorkingDirectory);
             _workers.Add(WatchStartup());
             _heartbeat = Heartbeat();
             _log.Information("Ubisoft runtime bridge started for product {ProductId}", _productId);
@@ -103,7 +73,9 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
         {
             var options = PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly;
             if (first) options |= PipeOptions.FirstPipeInstance;
-            var pipe = new NamedPipeServerStream(name, PipeDirection.InOut, 8, PipeTransmissionMode.Byte, options, 65536, 65536);
+            // R2 SDK games hold about 20 uplay_ipc connections open at once.
+            var pipe = new NamedPipeServerStream(name, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
+                PipeTransmissionMode.Byte, options, 65536, 65536);
             _pipes.TryAdd(pipe, 0);
             return pipe;
         }
@@ -114,6 +86,7 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
                 while (!_stop.IsCancellationRequested)
                 {
                     await pipe.WaitForConnectionAsync(_stop.Token);
+                    Interlocked.Increment(ref _connections);
                     _workers.Add(Handle(kind, pipe));
                     pipe = CreatePipe(name, false);
                 }
@@ -127,44 +100,52 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
         {
             try
             {
-                if (kind == "uplay_service_ipc_pipe_")
-                {
-                    var hwscore = Path.Combine(_root, "statistics", "hwscore");
-                    Directory.CreateDirectory(Path.GetDirectoryName(hwscore)!);
-                    await WriteFrame(pipe, Bytes(3, Message(Integer(1, 1), Bytes(3, Text(1, hwscore.Replace('\\', '/'))))), _stop.Token);
-                    var buffer = new byte[65536];
-                    while (await pipe.ReadAsync(buffer, _stop.Token) != 0) { } // cache sink, no credentials or bodies logged
-                    return;
-                }
-                while (!_stop.IsCancellationRequested && pipe.IsConnected)
-                {
-                    var request = await ReadFrame(pipe, _stop.Token);
-                    byte[]? response = null;
-                    switch (kind)
-                    {
-                        case "game_start_ipc_pipe_": response = _protocol.GameStartResponse(request); break;
-                        case "uplay_api_process_ipc_pipe_":
-                            var process = Read(Read(request).Data(2));
-                            if (process.Number(1) != _productId || process.Number(2) == 0) throw new InvalidDataException("Invalid game process registration.");
-                            RegisterProcess(checked((int)process.Number(2)));
-                            response = UbisoftGameSession.ProcessResponse();
-                            break;
-                        case "uplay_ipc_pipe_": response = _protocol.SessionResponse(request); break;
-                        case "uplay_aux_ipc_pipe_":
-                            try { response = await _protocol.AuxResponse(request, (uint)Environment.ProcessId, _stop.Token); }
-                            catch (IOException) { throw new InvalidOperationException("Live activation transport failed."); }
-                            break;
-                    }
-                    if (response is not null) await WriteFrame(pipe, response, _stop.Token);
-                    if (kind == "uplay_api_process_ipc_pipe_") _startup.SignalReady();
-                    // Unimplemented auxiliary traffic is drained, never replayed from a capture.
-                }
+                if (kind == "uplay_service_ipc_pipe_") await ServeStatistics(pipe);
+                else await ServeRequests(kind, pipe);
             }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
             catch (ObjectDisposedException) when (_stop.IsCancellationRequested) { }
             catch (IOException) { } // the starter and SDK routinely disconnect and reconnect
             catch (Exception error) { Fail(kind, error); }
             finally { _pipes.TryRemove(pipe, out _); pipe.Dispose(); }
+        }
+        private async Task ServeStatistics(NamedPipeServerStream pipe)
+        {
+            var hwscore = Path.Combine(_root, "statistics", "hwscore");
+            Directory.CreateDirectory(Path.GetDirectoryName(hwscore)!);
+            await WriteFrame(pipe, Bytes(3, Message(Integer(1, 1), Bytes(3, Text(1, hwscore.Replace('\\', '/'))))), _stop.Token);
+            var buffer = new byte[65536];
+            while (await pipe.ReadAsync(buffer, _stop.Token) != 0) { } // cache sink, no credentials or bodies logged
+        }
+        private async Task ServeRequests(string kind, NamedPipeServerStream pipe)
+        {
+            while (!_stop.IsCancellationRequested && pipe.IsConnected)
+            {
+                var response = await Respond(kind, await ReadFrame(pipe, _stop.Token));
+                if (response is not null) await WriteFrame(pipe, response, _stop.Token);
+                if (kind == "uplay_api_process_ipc_pipe_") _startup.SignalReady();
+                // Unimplemented auxiliary traffic is drained, never replayed from a capture.
+            }
+        }
+        private async Task<byte[]?> Respond(string kind, byte[] request)
+        {
+            switch (kind)
+            {
+                case "game_start_ipc_pipe_": return _protocol.GameStartResponse(request);
+                case "uplay_api_process_ipc_pipe_": return RegisterGameProcess(request);
+                case "uplay_ipc_pipe_": return _protocol.SessionResponse(request);
+                case "uplay_aux_ipc_pipe_":
+                    try { return await _protocol.AuxResponse(request, (uint)Environment.ProcessId, _stop.Token); }
+                    catch (IOException) { throw new InvalidOperationException("Live activation transport failed."); }
+                default: return null;
+            }
+        }
+        private byte[] RegisterGameProcess(byte[] request)
+        {
+            var process = Read(Read(request).Data(2));
+            if (process.Number(1) != _productId || process.Number(2) == 0) throw new InvalidDataException("Invalid game process registration.");
+            RegisterProcess(checked((int)process.Number(2)));
+            return UbisoftGameSession.ProcessResponse();
         }
         private void RegisterProcess(int pid)
         {
@@ -196,7 +177,17 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
                 var exit = _startup.WaitForExit(_stop.Token);
                 await Task.WhenAny(exit, Task.Delay(TimeSpan.FromSeconds(90), _stop.Token));
                 if (exit.IsCompleted) await Task.Delay(TimeSpan.FromSeconds(45), _stop.Token);
-                if (Volatile.Read(ref _activeGeneration) == 0) Fail("Game registration", new TimeoutException());
+                if (Volatile.Read(ref _activeGeneration) == 0)
+                {
+                    // A game built for the pre-2013 launcher never talks to this runtime and waits forever.
+                    if (Volatile.Read(ref _connections) == 0)
+                    {
+                        _startup.Terminate();
+                        FailWith(Crimson.Resources.UiStrings.UbisoftLegacyLauncherRequired);
+                        return;
+                    }
+                    Fail("Game registration", new TimeoutException());
+                }
                 await exit;
             }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
@@ -215,6 +206,11 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
                 }
             }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        }
+        private void FailWith(string message)
+        {
+            _log.Warning("Ubisoft runtime stopped: {Reason}", message);
+            _done.TrySetException(new InvalidOperationException(message));
         }
         private void Fail(string stage, Exception error)
         {
