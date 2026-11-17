@@ -23,11 +23,14 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 {
     private readonly IUiDispatcher _uiDispatcher;
     private readonly IArtworkCache? _artworkCache;
+    private readonly CloudSaveManager? _cloudSaveManager;
     private int _navigationGeneration;
     private readonly InstallManager _installer;
     private readonly LibraryManager _libraryManager;
     private readonly Storage _storage;
     private readonly ILogger<GameInfoViewModel> _log;
+    private CloudSaveSyncStatus _cloudSyncStatus;
+    private bool _isGameRunning;
     private CancellationTokenSource? _storeDetailsCancellation;
     private Action<string, StoreProductDetails>? _storeDetailsUpdatedHandler;
     private int _storeDetailsUpdateVersion;
@@ -151,10 +154,12 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
             LibraryManager libraryManager,
             Storage storage,
             IUiDispatcher uiDispatcher,
-            IArtworkCache? artworkCache = null)
+            IArtworkCache? artworkCache = null,
+            CloudSaveManager? cloudSaveManager = null)
     {
         _uiDispatcher = uiDispatcher;
         _artworkCache = artworkCache;
+        _cloudSaveManager = cloudSaveManager;
         _log = logger;
         _installer = installer;
         _libraryManager = libraryManager;
@@ -192,6 +197,13 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _installer.OperationError += HandleActionNotice;
         _libraryManager.GameStatusUpdated += CheckGameStatus;
         _installer.OperationUpdated += HandleOperationUpdated;
+        if (_cloudSaveManager is not null)
+        {
+            _cloudSaveManager.SyncStatusChanged += HandleCloudSyncStatusChanged;
+            _cloudSyncStatus = _cloudSaveManager.GetSyncStatus(appName);
+        }
+        _libraryManager.GameRunningStateChanged += HandleGameRunningStateChanged;
+        _isGameRunning = _libraryManager.IsGameRunning(appName);
         CheckGameStatus(Game);
 
         _storeDetailsCancellation = new CancellationTokenSource();
@@ -244,9 +256,34 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _installer.OperationError -= HandleActionNotice;
         _libraryManager.GameStatusUpdated -= CheckGameStatus;
         _installer.OperationUpdated -= HandleOperationUpdated;
+        if (_cloudSaveManager is not null)
+            _cloudSaveManager.SyncStatusChanged -= HandleCloudSyncStatusChanged;
+        _libraryManager.GameRunningStateChanged -= HandleGameRunningStateChanged;
         if (_storeDetailsUpdatedHandler is not null)
             _libraryManager.StoreProductDetailsUpdated -= _storeDetailsUpdatedHandler;
         _storeDetailsUpdatedHandler = null;
+    }
+
+    private void HandleCloudSyncStatusChanged(string appName, CloudSaveSyncStatus status)
+    {
+        if (Game is null || appName != Game.AppName) return;
+        _uiDispatcher.TryEnqueue(() =>
+        {
+            if (Game?.AppName != appName) return;
+            _cloudSyncStatus = status;
+            RefreshActionState();
+        });
+    }
+
+    private void HandleGameRunningStateChanged(string appName, bool isRunning)
+    {
+        if (Game is null || appName != Game.AppName) return;
+        _uiDispatcher.TryEnqueue(() =>
+        {
+            if (Game?.AppName != appName) return;
+            _isGameRunning = isRunning;
+            RefreshActionState();
+        });
     }
 
     private void CancelStoreDetailsRequest()
@@ -321,6 +358,51 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         if (Game is null) return;
         ApplyGameStatus(Game.LocalAppState?.InstallStatus);
         ApplyOperation(FindOperation(Game.AppName));
+        ApplyCloudSyncStatus();
+        ApplyRunningState();
+    }
+
+    /// <summary>
+    /// While the game's process tree is running the primary action is locked behind a
+    /// "Playing" status, so a second launch cannot race the exit-triggered save upload.
+    /// Games that allow multiple instances keep an enabled Play button.
+    /// </summary>
+    private void ApplyRunningState()
+    {
+        if (!_isGameRunning || Game is null || LibraryManager.AllowsMultipleInstances(Game)) return;
+        // A post-exit sync keeps the game marked as running; the sync label wins.
+        if (_cloudSyncStatus != CloudSaveSyncStatus.Idle) return;
+
+        PrimaryAction = GamePrimaryAction.None;
+        PrimaryActionButtonText = UiStrings.Playing;
+        IsPrimaryActionEnabled = false;
+        IsManageEnabled = false;
+        IsImportEnabled = false;
+        GameStatusText = UiStrings.Playing;
+    }
+
+    /// <summary>
+    /// While a cloud save sync runs for this game the primary action shows the sync
+    /// status and is disabled. The launch path also waits for an in-flight sync, and the
+    /// game stays marked running until a post-exit sync finishes.
+    /// </summary>
+    private void ApplyCloudSyncStatus()
+    {
+        var label = _cloudSyncStatus switch
+        {
+            CloudSaveSyncStatus.Checking => UiStrings.CheckingCloudSaves,
+            CloudSaveSyncStatus.Downloading => UiStrings.DownloadingCloudSaves,
+            CloudSaveSyncStatus.Uploading => UiStrings.UploadingCloudSaves,
+            _ => null
+        };
+        if (label is null) return;
+
+        PrimaryAction = GamePrimaryAction.None;
+        PrimaryActionButtonText = label;
+        IsPrimaryActionEnabled = false;
+        IsManageEnabled = false;
+        IsProgressRingVisible = true;
+        IsProgressRingIndeterminate = true;
     }
 
     private void HandleOperationUpdated(OperationSnapshot operation)
@@ -334,6 +416,8 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
             {
                 if (Game?.AppName != appName) return;
                 ApplyOperation(FindOperation(appName));
+                ApplyCloudSyncStatus();
+                ApplyRunningState();
             });
         }
         catch (Exception ex)
@@ -383,6 +467,8 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
             ApplyLocalGameDetails(updatedGame);
             ApplyGameStatus(updatedGame.LocalAppState?.InstallStatus);
             ApplyOperation(FindOperation(updatedGame.AppName));
+            ApplyCloudSyncStatus();
+            ApplyRunningState();
         });
     }
 
@@ -599,6 +685,8 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     }
 
     private bool CanRunPrimaryAction() => Game is not null &&
+        (!_isGameRunning || LibraryManager.AllowsMultipleInstances(Game)) &&
+        _cloudSyncStatus == CloudSaveSyncStatus.Idle &&
         GetPrimaryAction(Game.LocalAppState?.InstallStatus) != GamePrimaryAction.None &&
         FindOperation(Game.AppName) is null;
 

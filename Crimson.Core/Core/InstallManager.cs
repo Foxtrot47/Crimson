@@ -1106,6 +1106,8 @@ public class InstallManager : IDisposable
 
     private void CompleteUninstall(InstallItem install, Game game, LocalAppState localAppState)
     {
+        // Local saves live outside the install folder and are left alone on purpose: they are
+        // the only copy when the last cloud upload failed, so uninstall must not delete them.
         var dlcs = GetInstalledDlcsInRoot(game, install.Location);
         var preservedRoots = GetRemainingInstallRoots(dlcs.Select(dlc => dlc.AppName).Append(install.AppName));
         if (!preservedRoots.Any(root => InstallRootsOverlap(install.Location, root)))

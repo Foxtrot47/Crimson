@@ -11,6 +11,10 @@
     mc:Ignorable="d">
 
     <ContentDialog x:Name="InstallContentDialog" MinWidth="800">
+        <ContentDialog.Resources>
+            <!--  This dialog is designed to render wide; other dialogs size to content.  -->
+            <x:Double x:Key="ContentDialogWidth">1000</x:Double>
+        </ContentDialog.Resources>
         <StackPanel Spacing="20">
             <!--  Header  -->
             <Grid ColumnSpacing="10">

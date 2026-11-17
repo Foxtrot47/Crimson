@@ -23,6 +23,7 @@
 - Install, update, verify, repair, move, and uninstall supported games.
 - Pause, resume, or cancel downloads and monitor the installation queue.
 - Launch games with fresh Epic credentials and ownership tokens when required.
+- Sync cloud saves before launch and after exit, with conflict resolution when local and cloud saves diverge.
 - Optionally create per-game Start menu and desktop shortcuts.
 
 ## Screenshots

@@ -64,19 +64,19 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         </Content>
-        <Content Include="Assets\Crimson.ico" />
-        <Content Include="Assets\SplashScreen.scale-200.png" />
-        <Content Include="Assets\LockScreenLogo.scale-200.png" />
-        <Content Include="Assets\Square150x150Logo.scale-200.png" />
-        <Content Include="Assets\Square44x44Logo.scale-200.png" />
-        <Content Include="Assets\Square44x44Logo.targetsize-16_altform-unplated.png" />
-        <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
-        <Content Include="Assets\Square44x44Logo.targetsize-32_altform-unplated.png" />
-        <Content Include="Assets\Square44x44Logo.targetsize-48_altform-unplated.png" />
-        <Content Include="Assets\Square44x44Logo.targetsize-256_altform-unplated.png" />
-        <Content Include="Assets\StoreLogo.png" />
-        <Content Include="Assets\Wide310x150Logo.scale-200.png" />
-        <Content Include="Images\WindowIcon.png" />
+        <Content Include="Assets\Crimson.ico" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Assets\SplashScreen.scale-200.png" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Assets\LockScreenLogo.scale-200.png" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Assets\Square150x150Logo.scale-200.png" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Assets\Square44x44Logo.scale-200.png" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Assets\Square44x44Logo.targetsize-16_altform-unplated.png" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Assets\Square44x44Logo.targetsize-32_altform-unplated.png" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Assets\Square44x44Logo.targetsize-48_altform-unplated.png" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Assets\Square44x44Logo.targetsize-256_altform-unplated.png" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Assets\StoreLogo.png" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Assets\Wide310x150Logo.scale-200.png" CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="Images\WindowIcon.png" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
     
 	<ItemGroup>

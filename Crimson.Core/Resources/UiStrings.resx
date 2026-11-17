@@ -147,6 +147,10 @@
     <value>Checking authentication status</value>
     <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs</comment>
   </data>
+  <data name="CheckingCloudSaves" xml:space="preserve">
+    <value>Checking saves…</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs; shown on the Play button while cloud save state is checked</comment>
+  </data>
   <data name="ChooseAnotherFolderOrAllowCrimsonToWriteToThisLocation" xml:space="preserve">
     <value>Choose another folder or allow Crimson to write to this location.</value>
     <comment>Used by: Crimson.Core/Core/OperationFailureClassifier.cs</comment>
@@ -158,6 +162,34 @@
   <data name="ChooseTheFolderContainingTheGameFilesThenImportAgain" xml:space="preserve">
     <value>Choose the folder containing the game files, then import again.</value>
     <comment>Used by: Crimson.Core/Core/InstallManager.cs</comment>
+  </data>
+  <data name="CloudSaveCloudCopyFormat" xml:space="preserve">
+    <value>Cloud saves: {0}, last modified {1}</value>
+    <comment>Used by: Crimson.WinUI/Core/CloudSaveConflictPresenter.cs; Composite format: {0} is the size, {1} the timestamp.</comment>
+  </data>
+  <data name="CloudSaveConflictMessage" xml:space="preserve">
+    <value>The local saves and cloud saves for this game differ.</value>
+    <comment>Used by: Crimson.WinUI/Core/CloudSaveConflictPresenter.cs</comment>
+  </data>
+  <data name="CloudSaveConflictPrompt" xml:space="preserve">
+    <value>Which copy do you want to keep?</value>
+    <comment>Used by: Crimson.WinUI/Core/CloudSaveConflictPresenter.cs</comment>
+  </data>
+  <data name="CloudSaveConflictTitle" xml:space="preserve">
+    <value>Cloud Save Conflict</value>
+    <comment>Used by: Crimson.WinUI/Core/CloudSaveConflictPresenter.cs</comment>
+  </data>
+  <data name="CloudSaveLocalCopyFormat" xml:space="preserve">
+    <value>Local saves: {0}, last modified {1}</value>
+    <comment>Used by: Crimson.WinUI/Core/CloudSaveConflictPresenter.cs; Composite format: {0} is the size, {1} the timestamp.</comment>
+  </data>
+  <data name="CloudSaveNewerSuffix" xml:space="preserve">
+    <value> (newer)</value>
+    <comment>Used by: Crimson.WinUI/Core/CloudSaveConflictPresenter.cs; appended to the newer copy, leading space is intentional.</comment>
+  </data>
+  <data name="CloudSaveSizeUnknown" xml:space="preserve">
+    <value>unknown size</value>
+    <comment>Used by: Crimson.WinUI/Core/CloudSaveConflictPresenter.cs</comment>
   </data>
   <data name="Close" xml:space="preserve">
     <value>Close</value>
@@ -278,6 +310,10 @@
   <data name="DownloadSize" xml:space="preserve">
     <value>download size</value>
     <comment>Used by: Crimson.WinUI/Controls/AppInstallDialog.xaml @Text</comment>
+  </data>
+  <data name="DownloadingCloudSaves" xml:space="preserve">
+    <value>Downloading saves…</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs; shown on the Play button while cloud saves download</comment>
   </data>
   <data name="Downloads" xml:space="preserve">
     <value>Downloads</value>
@@ -450,6 +486,14 @@
   <data name="KB" xml:space="preserve">
     <value>KB</value>
     <comment>Used by: Crimson.Core/ViewModels/AppInstallDialogueViewModel.cs</comment>
+  </data>
+  <data name="KeepCloudSaves" xml:space="preserve">
+    <value>Keep Cloud</value>
+    <comment>Used by: Crimson.WinUI/Core/CloudSaveConflictPresenter.cs; resolves a cloud save conflict by keeping the cloud copy</comment>
+  </data>
+  <data name="KeepLocalSaves" xml:space="preserve">
+    <value>Keep Local</value>
+    <comment>Used by: Crimson.WinUI/Core/CloudSaveConflictPresenter.cs; resolves a cloud save conflict by keeping the local copy</comment>
   </data>
   <data name="LastUpdated" xml:space="preserve">
     <value>Last updated</value>
@@ -643,6 +687,10 @@
     <value>Play {0}</value>
     <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
   </data>
+  <data name="Playing" xml:space="preserve">
+    <value>Playing</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs; shown on the locked Play button and game status while the game runs</comment>
+  </data>
   <data name="PlaytimeHoursMinutesFormat" xml:space="preserve">
     <value>{0}h {1}m</value>
     <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
@@ -834,6 +882,10 @@
   <data name="ShowGamesInstalledOrBeingManagedByCrimson" xml:space="preserve">
     <value>Show games installed or being managed by Crimson</value>
     <comment>Used by: Crimson.WinUI/Views/LibraryPage.xaml @ToolTipService.ToolTip</comment>
+  </data>
+  <data name="SkipCloudSync" xml:space="preserve">
+    <value>Skip</value>
+    <comment>Used by: Crimson.WinUI/Core/CloudSaveConflictPresenter.cs; leaves a cloud save conflict unresolved</comment>
   </data>
   <data name="Size" xml:space="preserve">
     <value>Size</value>
@@ -1030,6 +1082,10 @@
   <data name="Updating" xml:space="preserve">
     <value>Updating</value>
     <comment>Used by: Crimson.Core/Core/OperationPresenter.cs</comment>
+  </data>
+  <data name="UploadingCloudSaves" xml:space="preserve">
+    <value>Uploading saves…</value>
+    <comment>Used by: Crimson.Core/ViewModels/GameInfoViewModel.cs; shown on the Play button while cloud saves upload</comment>
   </data>
   <data name="Verified" xml:space="preserve">
     <value>Verified</value>
