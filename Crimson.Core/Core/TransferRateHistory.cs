@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using Crimson.Models;
@@ -12,6 +12,7 @@ internal sealed class TransferRateHistory
     private readonly TimeProvider _time;
     private readonly long _started;
     private readonly List<TransferRateSample> _samples = [];
+    private IReadOnlyList<TransferRateSample> _snapshot = Array.Empty<TransferRateSample>();
     private long _downloadedBytes;
     private long _writtenBytes;
     private long _previousDownloaded;
@@ -64,12 +65,15 @@ internal sealed class TransferRateHistory
             _samples.Add(sample);
             _samples.RemoveAll(item => item.Seconds < sample.Seconds - 60);
             if (_samples.Count > 61) _samples.RemoveAt(0);
+            // The snapshot only changes when a sample is added, so consumers can tell them apart by
+            // reference instead of copying the list on every progress event.
+            _snapshot = Array.AsReadOnly(_samples.ToArray());
             return sample;
         }
     }
 
     internal IReadOnlyList<TransferRateSample> GetSamples()
     {
-        lock (_gate) return Array.AsReadOnly(_samples.ToArray());
+        lock (_gate) return _snapshot;
     }
 }

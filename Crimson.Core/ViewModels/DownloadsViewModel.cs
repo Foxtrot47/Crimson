@@ -270,7 +270,10 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
             ? UiStrings.Retrying
             : FormatTransferRate(transferring ? operation.DownloadSpeedMiB : 0);
         CurrentDiskWriteSpeed = FormatTransferRate(transferring ? operation.WriteSpeedMiB : 0);
-        TransferHistory = operation.TransferHistory ?? [];
+        // The sample list keeps its reference until a new sample lands, so a progress event that only
+        // moved a byte counter does not redraw the graph.
+        if (!ReferenceEquals(operation.TransferHistory, _transferHistory))
+            TransferHistory = operation.TransferHistory ?? [];
         ShowResumeButton = presentation.CanResume;
         ShowPauseButton = !presentation.CanResume;
         EnablePauseButton = presentation.CanPause;
