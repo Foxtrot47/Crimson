@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- Microsoft ResX Schema, Version 2.0 -->
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
@@ -1326,5 +1326,197 @@
   <data name="StorageSection" xml:space="preserve">
     <value>Storage</value>
     <comment>Used by: Crimson.WinUI/Views/SettingsPage.xaml @Header; Crimson.WinUI/Views/StorageSettingsPage.xaml @Text</comment>
+  </data>
+  <data name="UbisoftNoDownloadableBuild" xml:space="preserve">
+    <value>Ubisoft has not published a downloadable build for this game.</value>
+    <comment>Ubisoft install: no manifest exists for the product, or it names no content-addressed slices (quality-control builds).</comment>
+  </data>
+  <data name="UbisoftInstallIsNotRecorded" xml:space="preserve">
+    <value>Crimson has no installation of this game recorded.</value>
+    <comment>Ubisoft uninstall: the game is not in Crimson's own installation list.</comment>
+  </data>
+  <data name="UbisoftDownloadListIsUnusable" xml:space="preserve">
+    <value>Ubisoft's download list for this game could not be used.</value>
+    <comment>Ubisoft install: the manifest was rejected for its paths, duplicated entries or slice layout.</comment>
+  </data>
+  <data name="UbisoftInstallHasNoExecutable" xml:space="preserve">
+    <value>The files Ubisoft downloaded for this game contain no executable.</value>
+    <comment>Ubisoft install: the downloaded files contain no executable, so the game could not be launched.</comment>
+  </data>
+  <data name="UbisoftNoLongerOffersThisGameForDownload" xml:space="preserve">
+    <value>Ubisoft no longer offers this game for download.</value>
+    <comment>Ubisoft install: the ownership reply withholds the Downloadable flag, so the game is retired from download even though the account still owns it.</comment>
+  </data>
+  <data name="UbisoftLegacyLauncherRequired" xml:space="preserve">
+    <value>This game predates the Ubisoft runtime Crimson implements: it needs the original Ubisoft Game Launcher, which is not supported yet.</value>
+    <comment>Ubisoft launch: the game never registered with the runtime Crimson ships, which is what pre-2013 titles do.</comment>
+  </data>
+  <data name="InstallLanguages" xml:space="preserve">
+    <value>Languages</value>
+    <comment>Install dialog and game properties: heading for the game's install languages.</comment>
+  </data>
+  <data name="SelectAtLeastOneLanguage" xml:space="preserve">
+    <value>Select at least one language.</value>
+    <comment>Install dialog and game properties: shown when no install language is checked.</comment>
+  </data>
+  <data name="ChangeLanguagesDescription" xml:space="preserve">
+    <value>Crimson downloads files for added languages and removes files that only removed languages use.</value>
+    <comment>Game properties Languages section: explains what applying a change does.</comment>
+  </data>
+  <data name="InstallLanguagesCouldNotBeLoaded" xml:space="preserve">
+    <value>The game's languages could not be loaded.</value>
+    <comment>Game properties: the provider could not list install languages.</comment>
+  </data>
+  <data name="ImportFromUbisoft" xml:space="preserve">
+    <value>Import from Ubisoft Connect</value>
+    <comment>Library action contributed by the Ubisoft provider.</comment>
+  </data>
+  <data name="ImportFromProviderFormat" xml:space="preserve">
+    <value>Import from {0}</value>
+    <comment>Import dialog title; {0} is the store name. Composite format.</comment>
+  </data>
+  <data name="LookingForInstalledGames" xml:space="preserve">
+    <value>Looking for installed games…</value>
+    <comment>Import dialog: discovery in progress.</comment>
+  </data>
+  <data name="NoGamesAvailableToImport" xml:space="preserve">
+    <value>No owned games are available to import.</value>
+    <comment>Import dialog: nothing to list.</comment>
+  </data>
+  <data name="InstalledGamesCouldNotBeDetected" xml:space="preserve">
+    <value>Installed games could not be detected.</value>
+    <comment>Import dialog: discovery failed; shown with the close-and-retry format.</comment>
+  </data>
+  <data name="ChooseTheGameFolderToImport" xml:space="preserve">
+    <value>Choose the folder that contains the game</value>
+    <comment>Import dialog: hint for a game with no detected folder; also the location box placeholder.</comment>
+  </data>
+  <data name="ChooseFolder" xml:space="preserve">
+    <value>Choose folder</value>
+    <comment>Import dialog: button that opens the folder picker.</comment>
+  </data>
+  <data name="ThisImportCouldNotBeQueued" xml:space="preserve">
+    <value>This import could not be queued.</value>
+    <comment>Import dialog: the installer refused the job; shown with the close-and-retry format.</comment>
+  </data>
+  <data name="TheImportWindowCouldNotBeOpened" xml:space="preserve">
+    <value>The import window could not be opened.</value>
+    <comment>Library inline error when the provider-neutral import dialog fails to open.</comment>
+  </data>
+  <data name="UbisoftGameAlreadyRunning" xml:space="preserve">
+    <value>Another Ubisoft game is already running in Crimson. Close it before starting this one.</value>
+    <comment>Launch error: only one Ubisoft title can run at a time.</comment>
+  </data>
+  <data name="UbisoftLaunchExecutableMissing" xml:space="preserve">
+    <value>Crimson could not find the program that starts this game. Verify the game files and try again.</value>
+    <comment>Launch error: the product configuration names no executable, or it is missing from the installation folder.</comment>
+  </data>
+  <data name="UbisoftApplicationIdMissing" xml:space="preserve">
+    <value>Ubisoft did not provide the information this game needs to start. Refresh the library and try again.</value>
+    <comment>Launch error: the product has no Ubisoft application ID in its ownership data or configuration.</comment>
+  </data>
+  <data name="UbisoftReconnectAccount" xml:space="preserve">
+    <value>Connect your Ubisoft account again, then start the game.</value>
+    <comment>Launch error: the account signed out or changed while the launch was being prepared.</comment>
+  </data>
+  <data name="UbisoftInstallFolderNotEmpty" xml:space="preserve">
+    <value>The selected folder already contains other files.</value>
+    <comment>Ubisoft install/move refused: destination holds foreign content</comment>
+  </data>
+  <data name="UbisoftChooseAnEmptyFolder" xml:space="preserve">
+    <value>Choose an empty folder and try again.</value>
+    <comment>Suggested action for UbisoftInstallFolderNotEmpty</comment>
+  </data>
+  <data name="UbisoftGameIsSoldThroughAnotherStore" xml:space="preserve">
+    <value>This game is distributed through another store.</value>
+    <comment>Ubisoft product bound to a third-party platform (Steam/Epic etc.)</comment>
+  </data>
+  <data name="UbisoftInstallItFromThatStore" xml:space="preserve">
+    <value>Install it from the store you bought it on.</value>
+    <comment>Suggested action for UbisoftGameIsSoldThroughAnotherStore</comment>
+  </data>
+  <data name="UbisoftSystemSetupNotApplied" xml:space="preserve">
+    <value>The game is installed, but its Windows registry entries and prerequisites were not set up.</value>
+    <comment>Non-modal notice: UAC prompt declined after install/import/move/repair</comment>
+  </data>
+  <data name="UbisoftApproveTheAdministratorPrompt" xml:space="preserve">
+    <value>Launch or repair the game and approve the administrator prompt to finish setup.</value>
+    <comment>Suggested action for UbisoftSystemSetupNotApplied</comment>
+  </data>
+  <data name="UbisoftPrerequisiteFailed" xml:space="preserve">
+    <value>A prerequisite installer for this game did not finish successfully.</value>
+    <comment>Notice: an installRun (VC++ runtime, DirectX, anti-cheat) returned a failure exit code</comment>
+  </data>
+  <data name="UbisoftRepairToRetryPrerequisites" xml:space="preserve">
+    <value>Repair the game to run the prerequisite installers again.</value>
+    <comment>Suggested action for UbisoftPrerequisiteFailed</comment>
+  </data>
+  <data name="UbisoftRegistryCleanupNotApplied" xml:space="preserve">
+    <value>The game was removed, but its Windows registry entries could not be cleaned up.</value>
+    <comment>Notice: UAC prompt declined during uninstall</comment>
+  </data>
+  <data name="UbisoftRegistryEntriesAreReplacedOnReinstall" xml:space="preserve">
+    <value>The leftover entries are harmless and are replaced if you install the game again.</value>
+    <comment>Suggested action for UbisoftRegistryCleanupNotApplied</comment>
+  </data>
+  <data name="ElevationNoticeTitle" xml:space="preserve">
+    <value>Admin permission needed</value>
+    <comment>Title of the notice shown before a Windows administrator (UAC) prompt; Crimson.WinUI/Core/ElevationNoticePresenter.cs</comment>
+  </data>
+  <data name="ElevationNoticeIntro" xml:space="preserve">
+    <value>Crimson needs to:</value>
+    <comment>Elevation notice: introduces the list of changes that need the prompt</comment>
+  </data>
+  <data name="ElevationNoticeCountdownFormat" xml:space="preserve">
+    <value>Opening in {0} s</value>
+    <comment>Elevation notice countdown; {0} = whole seconds left (3, 2, 1)</comment>
+  </data>
+  <data name="ElevationNoticeContinue" xml:space="preserve">
+    <value>Continue</value>
+    <comment>Elevation notice button: open the Windows prompt without waiting for the countdown</comment>
+  </data>
+  <data name="UbisoftElevationRegistry" xml:space="preserve">
+    <value>Add the game's registry settings</value>
+    <comment>Elevation notice item: a Ubisoft game's registry values are written</comment>
+  </data>
+  <data name="UbisoftElevationPrerequisitesFormat" xml:space="preserve">
+    <value>Install required software: {0}</value>
+    <comment>Elevation notice item; {0} = comma-separated prerequisite names from the game's manifest</comment>
+  </data>
+  <data name="UbisoftElevationLauncherFolder" xml:space="preserve">
+    <value>Set up Ubisoft games to run from Crimson</value>
+    <comment>Elevation notice item: the launcher InstallDir is set before a Ubisoft game starts</comment>
+  </data>
+  <data name="UbisoftElevationRemoveRegistry" xml:space="preserve">
+    <value>Remove the game's registry settings</value>
+    <comment>Elevation notice item: registry cleanup after a Ubisoft uninstall</comment>
+  </data>
+  <data name="UbisoftElevationRemoveLauncherFolder" xml:space="preserve">
+    <value>Remove Crimson's Ubisoft setup, since no Ubisoft games are left</value>
+    <comment>Elevation notice item: the launcher InstallDir is removed with the last Ubisoft game</comment>
+  </data>
+  <data name="ElevationNoticeWaiting" xml:space="preserve">
+    <value>Choose Yes in the Windows prompt.</value>
+    <comment>Elevation notice: shown while the Windows administrator prompt is open</comment>
+  </data>
+  <data name="ElevationNoticeDeclinedTitle" xml:space="preserve">
+    <value>Permission not given</value>
+    <comment>Elevation notice: title of the warning after the user declined the administrator prompt</comment>
+  </data>
+  <data name="ElevationNoticeFailedTitle" xml:space="preserve">
+    <value>Something went wrong</value>
+    <comment>Elevation notice: title of the error when the administrator prompt failed to open</comment>
+  </data>
+  <data name="ElevationNoticeNothingChanged" xml:space="preserve">
+    <value>Nothing was changed.</value>
+    <comment>Elevation notice: message under the declined/failed title</comment>
+  </data>
+  <data name="ElevationNoticeRetry" xml:space="preserve">
+    <value>Try again</value>
+    <comment>Elevation notice button: open the Windows administrator prompt again after it was declined</comment>
+  </data>
+  <data name="UbisoftLaunchNeedsAdministrator" xml:space="preserve">
+    <value>This game needs admin permission to start. Press Play again and choose Yes.</value>
+    <comment>Launch error: the user did not approve the administrator prompt that sets up the game before launch</comment>
   </data>
 </root>

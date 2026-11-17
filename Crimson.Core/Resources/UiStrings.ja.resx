@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
@@ -1008,5 +1008,197 @@
   </data>
   <data name="KeepCloudSaves" xml:space="preserve">
     <value>クラウドを保持</value>
+  </data>
+  <data name="UbisoftNoDownloadableBuild" xml:space="preserve">
+    <value>Ubisoft はこのゲームのダウンロード可能なビルドを公開していません。</value>
+    <comment>Ubisoft install: no manifest exists for the product, or it names no content-addressed slices (quality-control builds).</comment>
+  </data>
+  <data name="UbisoftInstallIsNotRecorded" xml:space="preserve">
+    <value>このゲームのインストールは Crimson に記録されていません。</value>
+    <comment>Ubisoft uninstall: the game is not in Crimson's own installation list.</comment>
+  </data>
+  <data name="UbisoftDownloadListIsUnusable" xml:space="preserve">
+    <value>このゲームの Ubisoft のダウンロード一覧を使用できませんでした。</value>
+    <comment>Ubisoft install: the manifest was rejected for its paths, duplicated entries or slice layout.</comment>
+  </data>
+  <data name="UbisoftInstallHasNoExecutable" xml:space="preserve">
+    <value>Ubisoft からダウンロードしたファイルに実行ファイルが含まれていません。</value>
+    <comment>Ubisoft install: the downloaded files contain no executable, so the game could not be launched.</comment>
+  </data>
+  <data name="UbisoftNoLongerOffersThisGameForDownload" xml:space="preserve">
+    <value>Ubisoft はこのゲームのダウンロード提供を終了しました。</value>
+    <comment>Ubisoft install: the ownership reply withholds the Downloadable flag, so the game is retired from download even though the account still owns it.</comment>
+  </data>
+  <data name="UbisoftLegacyLauncherRequired" xml:space="preserve">
+    <value>このゲームは Crimson が実装している Ubisoft ランタイムより古く、未対応の旧 Ubisoft Game Launcher を必要とします。</value>
+    <comment>Ubisoft launch: the game never registered with the runtime Crimson ships, which is what pre-2013 titles do.</comment>
+  </data>
+  <data name="InstallLanguages" xml:space="preserve">
+    <value>言語</value>
+    <comment>Install dialog and game properties: heading for the game's install languages.</comment>
+  </data>
+  <data name="SelectAtLeastOneLanguage" xml:space="preserve">
+    <value>少なくとも 1 つの言語を選択してください。</value>
+    <comment>Install dialog and game properties: shown when no install language is checked.</comment>
+  </data>
+  <data name="ChangeLanguagesDescription" xml:space="preserve">
+    <value>Crimson は追加した言語のファイルをダウンロードし、削除した言語だけが使うファイルを削除します。</value>
+    <comment>Game properties Languages section: explains what applying a change does.</comment>
+  </data>
+  <data name="InstallLanguagesCouldNotBeLoaded" xml:space="preserve">
+    <value>ゲームの言語を読み込めませんでした。</value>
+    <comment>Game properties: the provider could not list install languages.</comment>
+  </data>
+  <data name="ImportFromUbisoft" xml:space="preserve">
+    <value>Ubisoft Connect からインポート</value>
+    <comment>Library action contributed by the Ubisoft provider.</comment>
+  </data>
+  <data name="ImportFromProviderFormat" xml:space="preserve">
+    <value>{0} からインポート</value>
+    <comment>Import dialog title; {0} is the store name. Composite format.</comment>
+  </data>
+  <data name="LookingForInstalledGames" xml:space="preserve">
+    <value>インストール済みのゲームを検索しています…</value>
+    <comment>Import dialog: discovery in progress.</comment>
+  </data>
+  <data name="NoGamesAvailableToImport" xml:space="preserve">
+    <value>インポートできる所有ゲームはありません。</value>
+    <comment>Import dialog: nothing to list.</comment>
+  </data>
+  <data name="InstalledGamesCouldNotBeDetected" xml:space="preserve">
+    <value>インストール済みのゲームを検出できませんでした。</value>
+    <comment>Import dialog: discovery failed; shown with the close-and-retry format.</comment>
+  </data>
+  <data name="ChooseTheGameFolderToImport" xml:space="preserve">
+    <value>ゲームが入っているフォルダーを選択してください</value>
+    <comment>Import dialog: hint for a game with no detected folder; also the location box placeholder.</comment>
+  </data>
+  <data name="ChooseFolder" xml:space="preserve">
+    <value>フォルダーを選択</value>
+    <comment>Import dialog: button that opens the folder picker.</comment>
+  </data>
+  <data name="ThisImportCouldNotBeQueued" xml:space="preserve">
+    <value>このインポートをキューに追加できませんでした。</value>
+    <comment>Import dialog: the installer refused the job; shown with the close-and-retry format.</comment>
+  </data>
+  <data name="TheImportWindowCouldNotBeOpened" xml:space="preserve">
+    <value>インポート ウィンドウを開けませんでした。</value>
+    <comment>Library inline error when the provider-neutral import dialog fails to open.</comment>
+  </data>
+  <data name="UbisoftGameAlreadyRunning" xml:space="preserve">
+    <value>Crimson で別の Ubisoft ゲームが既に実行中です。このゲームを起動する前に閉じてください。</value>
+    <comment>Launch error: only one Ubisoft title can run at a time.</comment>
+  </data>
+  <data name="UbisoftLaunchExecutableMissing" xml:space="preserve">
+    <value>このゲームを起動するプログラムが見つかりませんでした。ゲーム ファイルを検証してから、もう一度お試しください。</value>
+    <comment>Launch error: the product configuration names no executable, or it is missing from the installation folder.</comment>
+  </data>
+  <data name="UbisoftApplicationIdMissing" xml:space="preserve">
+    <value>このゲームの起動に必要な情報が Ubisoft から提供されませんでした。ライブラリを更新してから、もう一度お試しください。</value>
+    <comment>Launch error: the product has no Ubisoft application ID in its ownership data or configuration.</comment>
+  </data>
+  <data name="UbisoftReconnectAccount" xml:space="preserve">
+    <value>Ubisoft アカウントを再接続してから、ゲームを起動してください。</value>
+    <comment>Launch error: the account signed out or changed while the launch was being prepared.</comment>
+  </data>
+  <data name="UbisoftInstallFolderNotEmpty" xml:space="preserve">
+    <value>選択したフォルダーには既に他のファイルがあります。</value>
+    <comment>Ubisoft install/move refused: destination holds foreign content</comment>
+  </data>
+  <data name="UbisoftChooseAnEmptyFolder" xml:space="preserve">
+    <value>空のフォルダーを選択して、もう一度お試しください。</value>
+    <comment>Suggested action for UbisoftInstallFolderNotEmpty</comment>
+  </data>
+  <data name="UbisoftGameIsSoldThroughAnotherStore" xml:space="preserve">
+    <value>このゲームは別のストアで配信されています。</value>
+    <comment>Ubisoft product bound to a third-party platform (Steam/Epic etc.)</comment>
+  </data>
+  <data name="UbisoftInstallItFromThatStore" xml:space="preserve">
+    <value>購入したストアからインストールしてください。</value>
+    <comment>Suggested action for UbisoftGameIsSoldThroughAnotherStore</comment>
+  </data>
+  <data name="UbisoftSystemSetupNotApplied" xml:space="preserve">
+    <value>ゲームはインストールされましたが、Windows レジストリのエントリと前提条件は設定されていません。</value>
+    <comment>Non-modal notice: UAC prompt declined after install/import/move/repair</comment>
+  </data>
+  <data name="UbisoftApproveTheAdministratorPrompt" xml:space="preserve">
+    <value>ゲームを起動または修復し、管理者の確認を承認してセットアップを完了してください。</value>
+    <comment>Suggested action for UbisoftSystemSetupNotApplied</comment>
+  </data>
+  <data name="UbisoftPrerequisiteFailed" xml:space="preserve">
+    <value>このゲームの前提条件インストーラーが正常に完了しませんでした。</value>
+    <comment>Notice: an installRun (VC++ runtime, DirectX, anti-cheat) returned a failure exit code</comment>
+  </data>
+  <data name="UbisoftRepairToRetryPrerequisites" xml:space="preserve">
+    <value>ゲームを修復すると、前提条件インストーラーが再度実行されます。</value>
+    <comment>Suggested action for UbisoftPrerequisiteFailed</comment>
+  </data>
+  <data name="UbisoftRegistryCleanupNotApplied" xml:space="preserve">
+    <value>ゲームは削除されましたが、Windows レジストリのエントリをクリーンアップできませんでした。</value>
+    <comment>Notice: UAC prompt declined during uninstall</comment>
+  </data>
+  <data name="UbisoftRegistryEntriesAreReplacedOnReinstall" xml:space="preserve">
+    <value>残ったエントリは無害で、ゲームを再インストールすると置き換えられます。</value>
+    <comment>Suggested action for UbisoftRegistryCleanupNotApplied</comment>
+  </data>
+  <data name="ElevationNoticeTitle" xml:space="preserve">
+    <value>管理者の許可が必要です</value>
+    <comment>Title of the notice shown before a Windows administrator (UAC) prompt; Crimson.WinUI/Core/ElevationNoticePresenter.cs</comment>
+  </data>
+  <data name="ElevationNoticeIntro" xml:space="preserve">
+    <value>Crimson が行うこと:</value>
+    <comment>Elevation notice: introduces the list of changes that need the prompt</comment>
+  </data>
+  <data name="ElevationNoticeCountdownFormat" xml:space="preserve">
+    <value>{0} 秒後に開きます</value>
+    <comment>Elevation notice countdown; {0} = whole seconds left (3, 2, 1)</comment>
+  </data>
+  <data name="ElevationNoticeContinue" xml:space="preserve">
+    <value>続行</value>
+    <comment>Elevation notice button: open the Windows prompt without waiting for the countdown</comment>
+  </data>
+  <data name="UbisoftElevationRegistry" xml:space="preserve">
+    <value>ゲームのレジストリ設定を追加する</value>
+    <comment>Elevation notice item: a Ubisoft game's registry values are written</comment>
+  </data>
+  <data name="UbisoftElevationPrerequisitesFormat" xml:space="preserve">
+    <value>必要なソフトウェアをインストールする: {0}</value>
+    <comment>Elevation notice item; {0} = comma-separated prerequisite names from the game's manifest</comment>
+  </data>
+  <data name="UbisoftElevationLauncherFolder" xml:space="preserve">
+    <value>Ubisoft のゲームを Crimson から起動できるようにする</value>
+    <comment>Elevation notice item: the launcher InstallDir is set before a Ubisoft game starts</comment>
+  </data>
+  <data name="UbisoftElevationRemoveRegistry" xml:space="preserve">
+    <value>ゲームのレジストリ設定を削除する</value>
+    <comment>Elevation notice item: registry cleanup after a Ubisoft uninstall</comment>
+  </data>
+  <data name="UbisoftElevationRemoveLauncherFolder" xml:space="preserve">
+    <value>Ubisoft のゲームが残っていないため、Crimson の Ubisoft 設定を削除する</value>
+    <comment>Elevation notice item: the launcher InstallDir is removed with the last Ubisoft game</comment>
+  </data>
+  <data name="ElevationNoticeWaiting" xml:space="preserve">
+    <value>Windows の確認で [はい] を選んでください。</value>
+    <comment>Elevation notice: shown while the Windows administrator prompt is open</comment>
+  </data>
+  <data name="ElevationNoticeDeclinedTitle" xml:space="preserve">
+    <value>許可されませんでした</value>
+    <comment>Elevation notice: title of the warning after the user declined the administrator prompt</comment>
+  </data>
+  <data name="ElevationNoticeFailedTitle" xml:space="preserve">
+    <value>問題が発生しました</value>
+    <comment>Elevation notice: title of the error when the administrator prompt failed to open</comment>
+  </data>
+  <data name="ElevationNoticeNothingChanged" xml:space="preserve">
+    <value>何も変更されていません。</value>
+    <comment>Elevation notice: message under the declined/failed title</comment>
+  </data>
+  <data name="ElevationNoticeRetry" xml:space="preserve">
+    <value>再試行</value>
+    <comment>Elevation notice button: open the Windows administrator prompt again after it was declined</comment>
+  </data>
+  <data name="UbisoftLaunchNeedsAdministrator" xml:space="preserve">
+    <value>このゲームを起動するには管理者の許可が必要です。もう一度 [プレイ] を押して [はい] を選んでください。</value>
+    <comment>Launch error: the user did not approve the administrator prompt that sets up the game before launch</comment>
   </data>
 </root>
