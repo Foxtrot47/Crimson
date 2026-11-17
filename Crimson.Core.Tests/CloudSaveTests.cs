@@ -393,6 +393,24 @@ public sealed class CloudSaveTests : IDisposable
     }
 
     [Fact]
+    public async Task FailedChunkUploadDoesNotPublishAManifest()
+    {
+        var game = CloudGame();
+        var savePath = SavePath(game);
+        Directory.CreateDirectory(savePath);
+        File.WriteAllBytes(Path.Combine(savePath, "save.sav"), new byte[2_000]);
+        File.SetLastWriteTimeUtc(Path.Combine(savePath, "save.sav"), DateTimeOffset.UtcNow.AddHours(1).UtcDateTime);
+        _repository.FailChunkUploads = true;
+
+        await _manager.SyncAfterExitAsync(game);
+
+        // A manifest published without its chunks would break downloads of the newest save.
+        Assert.DoesNotContain(
+            _repository.RemoteFiles.Keys,
+            path => path.EndsWith(".manifest", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ExitSyncAsksWhenCloudSaveIsNewer()
     {
         var remoteTime = new DateTimeOffset(2024, 8, 9, 10, 11, 12, TimeSpan.Zero);
@@ -571,6 +589,7 @@ public sealed class CloudSaveTests : IDisposable
         public int Uploads;
         public bool FailListings;
         public bool FailChunkDownloads;
+        public bool FailChunkUploads;
         public bool BlockManifestListings;
         public TaskCompletionSource ManifestListingStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ReleaseManifestListing { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -619,8 +638,11 @@ public sealed class CloudSaveTests : IDisposable
 
         public Task<bool> UploadCloudSaveFileAsync(string writeLink, byte[] data, CancellationToken cancellationToken = default)
         {
+            var path = writeLink["write://".Length..];
+            if (FailChunkUploads && path.EndsWith(".chunk", StringComparison.Ordinal))
+                throw new IOException("Synthetic chunk upload failure");
             Uploads++;
-            RemoteFiles[writeLink["write://".Length..]] = data;
+            RemoteFiles[path] = data;
             return Task.FromResult(true);
         }
 

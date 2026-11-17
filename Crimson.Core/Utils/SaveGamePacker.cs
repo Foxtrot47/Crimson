@@ -26,7 +26,12 @@ public static class SaveGamePacker
     private const uint ManifestHeaderMagic = 0x44BEC00C;
     private const int ManifestHeaderSize = 41;
     private const int ManifestFeatureLevel = 18;
+    public const string ManifestDirectory = "manifests";
     public const string ManifestTimestampFormat = "yyyy.MM.dd-HH.mm.ss";
+
+    /// <summary>True when a packed path is a save manifest rather than chunk data.</summary>
+    public static bool IsManifestPath(string relativePath) =>
+        relativePath.StartsWith(ManifestDirectory + "/", StringComparison.Ordinal);
 
     /// <summary>
     /// Walks <paramref name="saveDirectory"/>, applies the cloud include/exclude filters and
@@ -101,7 +106,7 @@ public static class SaveGamePacker
         var manifestBytes = WriteManifest(appName, accountId, buildVersion, cloudSaveFolder, chunks, fileManifests);
         foreach (var chunk in chunks)
             result[chunk.Info.Path] = chunk.Bytes;
-        result[$"manifests/{buildVersion}.manifest"] = manifestBytes;
+        result[$"{ManifestDirectory}/{buildVersion}.manifest"] = manifestBytes;
         return result;
     }
 

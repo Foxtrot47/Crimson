@@ -446,6 +446,25 @@ public class CloudSaveManager
         if (listing is null)
             throw new InvalidOperationException("Reserving cloud save files failed.");
 
+        // Chunk data goes first: a manifest that landed before its chunks would make the
+        // newest cloud copy reference missing data and break every later download.
+        await UploadCloudSaveFilesAsync(
+            listing,
+            files.Where(file => !SaveGamePacker.IsManifestPath(file.Key)),
+            cancellationToken);
+        await UploadCloudSaveFilesAsync(
+            listing,
+            files.Where(file => SaveGamePacker.IsManifestPath(file.Key)),
+            cancellationToken);
+
+        _log.Information("Finished uploading cloud saves for {AppName}", game.AppName);
+    }
+
+    private async Task UploadCloudSaveFilesAsync(
+        IReadOnlyDictionary<string, CloudSaveFileEntry> listing,
+        IEnumerable<KeyValuePair<string, byte[]>> files,
+        CancellationToken cancellationToken)
+    {
         foreach (var (path, bytes) in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -454,8 +473,6 @@ public class CloudSaveManager
             if (!await _repository.UploadCloudSaveFileAsync(entry.WriteLink, bytes, cancellationToken))
                 throw new InvalidOperationException("A cloud save file upload failed.");
         }
-
-        _log.Information("Finished uploading cloud saves for {AppName}", game.AppName);
     }
 
     private async Task DownloadSaveAsync(
