@@ -5,10 +5,12 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Providers.Ubisoft.Protocol;
+using Microsoft.Win32.SafeHandles;
 using Serilog;
 using static Crimson.Providers.Ubisoft.Protocol.UbisoftWire;
 
@@ -42,9 +44,12 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
         private readonly string _root;
         private readonly CancellationTokenSource _stop;
         private readonly ConcurrentDictionary<NamedPipeServerStream, byte> _pipes = new();
+        private readonly ConcurrentDictionary<int, Process> _registered = new();
         private readonly ConcurrentBag<Task> _workers = [];
         private readonly UbisoftProcess _startup = new();
         private readonly TaskCompletionSource _done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private string _executable = "";
+        private string _installRoot = "";
         private int _activeGeneration;
         private int _disposed;
         private int _connections;
@@ -56,6 +61,8 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
         { _api = api; _log = log; _login = login; _productId = productId; _protocol = protocol; _root = root; _stop = CancellationTokenSource.CreateLinkedTokenSource(token); }
         internal void Start(UbisoftLaunchPlan plan)
         {
+            _executable = Path.GetFullPath(plan.Executable);
+            _installRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(plan.InstallPath));
             string[] names = ["game_start_ipc_pipe_", "uplay_api_process_ipc_pipe_", "uplay_ipc_pipe_", "uplay_aux_ipc_pipe_",
                 "uplay_service_ipc_pipe_", "upc_api_process_ipc_pipe_standard", "uplay_protocol_ipc_pipe_", "uplay_overlay_ipc_pipe_",
                 "orbit_ipc_pipe_", "uplay_crash_reporter_ipc_pipe_"];
@@ -79,6 +86,23 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
             _pipes.TryAdd(pipe, 0);
             return pipe;
         }
+
+        /// <summary>The session carries account identity and a uplay_pc ticket, so only the game's own processes
+        /// under this installation (or the starter) may connect.</summary>
+        private bool IsAllowedClient(NamedPipeServerStream pipe)
+        {
+            if (!GetNamedPipeClientProcessId(pipe.SafePipeHandle, out var pid)) return false;
+            try
+            {
+                using var process = Process.GetProcessById((int)pid);
+                return IsOwnedProcess(process);
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException or
+                System.ComponentModel.Win32Exception or NotSupportedException)
+            {
+                return false;
+            }
+        }
         private async Task Accept(string kind, string name, NamedPipeServerStream pipe)
         {
             try
@@ -86,6 +110,13 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
                 while (!_stop.IsCancellationRequested)
                 {
                     await pipe.WaitForConnectionAsync(_stop.Token);
+                    if (!IsAllowedClient(pipe))
+                    {
+                        _pipes.TryRemove(pipe, out _);
+                        pipe.Dispose();
+                        pipe = CreatePipe(name, false);
+                        continue;
+                    }
                     Interlocked.Increment(ref _connections);
                     _workers.Add(Handle(kind, pipe));
                     pipe = CreatePipe(name, false);
@@ -106,6 +137,12 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
             catch (ObjectDisposedException) when (_stop.IsCancellationRequested) { }
             catch (IOException) { } // the starter and SDK routinely disconnect and reconnect
+            catch (Exception error) when (error is InvalidDataException or NotSupportedException or
+                ArgumentException or OverflowException)
+            {
+                // A malformed or unsupported frame belongs to this connection only; the game can open another.
+                _log.Warning("Ubisoft runtime ignored an invalid {Pipe} frame ({ErrorType})", kind, error.GetType().Name);
+            }
             catch (Exception error) { Fail(kind, error); }
             finally { _pipes.TryRemove(pipe, out _); pipe.Dispose(); }
         }
@@ -150,10 +187,47 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
         private void RegisterProcess(int pid)
         {
             var process = Process.GetProcessById(pid); // retain a handle before the starter exits
+            if (!IsOwnedProcess(process) || _registered.Count >= 16)
+            {
+                process.Dispose();
+                throw new InvalidDataException("The registering process does not belong to this installation.");
+            }
+            _registered[pid] = process;
             _ = process.Handle;
             var generation = Interlocked.Increment(ref _activeGeneration);
             _workers.Add(WatchActive(process, generation));
         }
+
+        private bool IsOwnedProcess(Process process)
+        {
+            try
+            {
+                if (process.SessionId != Process.GetCurrentProcess().SessionId) return false;
+                var image = process.MainModule?.FileName;
+                if (image is not { Length: > 0 }) return false;
+                var full = Path.GetFullPath(image);
+                return string.Equals(full, _executable, StringComparison.OrdinalIgnoreCase) ||
+                    full.StartsWith(_installRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException or
+                System.ComponentModel.Win32Exception or NotSupportedException or IOException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>Ends every process this runtime started when the bridge can no longer serve it.</summary>
+        private void TerminateOwnedProcesses()
+        {
+            _startup.Terminate();
+            foreach (var process in _registered.Values)
+            {
+                try { process.Kill(entireProcessTree: true); }
+                catch (Exception error) when (error is InvalidOperationException or
+                    System.ComponentModel.Win32Exception or NotSupportedException or AggregateException) { }
+            }
+        }
+
         private async Task WatchActive(Process process, int generation)
         {
             using (process)
@@ -168,6 +242,7 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
                 }
                 catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
                 catch (Exception error) { Fail("Process monitoring", error); }
+                finally { _registered.TryRemove(process.Id, out _); }
             }
         }
         private async Task WatchStartup()
@@ -210,22 +285,24 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
         private void FailWith(string message)
         {
             _log.Warning("Ubisoft runtime stopped: {Reason}", message);
+            TerminateOwnedProcesses();
             _done.TrySetException(new InvalidOperationException(message));
         }
         private void Fail(string stage, Exception error)
         {
             var reason = error is UbisoftActivationException activation ? activation.Result.ToString() : error.GetType().Name;
             _log.Warning("Ubisoft runtime {Stage} failed: {Reason}", stage, reason);
+            TerminateOwnedProcesses();
             _done.TrySetException(new InvalidOperationException($"Ubisoft {stage} failed: {reason}."));
         }
         public async ValueTask DisposeAsync()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            // A normal game exit completes _done; any other teardown must not leave the game attached to a dead bridge.
+            if (!_done.Task.IsCompleted) TerminateOwnedProcesses();
             _stop.Cancel();
             foreach (var pipe in _pipes.Keys) pipe.Dispose();
-            // Listener tasks finish before the final snapshot, so no newly accepted handler is missed.
-            try { await Task.WhenAll(_workers.ToArray()); } catch (Exception) { }
-            try { await Task.WhenAll(_workers.ToArray()); } catch (Exception) { }
+            await DrainWorkersAsync();
             if (_heartbeat is not null) await _heartbeat;
             if (_playSessionStarted)
             {
@@ -236,6 +313,20 @@ public sealed class UbisoftRuntime(UbisoftApi api, IUbisoftTickets tickets, ILog
             _startup.Dispose();
             _stop.Dispose();
             _done.TrySetResult();
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetNamedPipeClientProcessId(SafePipeHandle pipe, out uint processId);
+
+        /// <summary>Listeners can add handlers while the snapshot is awaited; repeat until the bag stops growing.</summary>
+        private async Task DrainWorkersAsync()
+        {
+            while (true)
+            {
+                var snapshot = _workers.ToArray();
+                try { await Task.WhenAll(snapshot); } catch (Exception) { }
+                if (_workers.Count == snapshot.Length) return;
+            }
         }
     }
 }
