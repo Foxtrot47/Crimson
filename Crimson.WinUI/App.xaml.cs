@@ -170,7 +170,6 @@ namespace Crimson
             InitialActivationArguments = null;
             if (activationArguments is not null && TryGetLaunchAppName(activationArguments, out var appName))
             {
-                await EnsureAuthenticationAsync();
                 await LaunchFromShortcutAsync(appName);
             }
             else
@@ -247,7 +246,7 @@ namespace Crimson
             {
                 var libraryManager = GetService<LauncherLibrary>();
                 var installer = GetService<LauncherInstaller>();
-                var library = await libraryManager.GetLibraryData();
+                var library = await libraryManager.GetLibraryDataFor(id.ProviderId);
                 if (library.Any(game => game.Id == id) &&
                     installer.GetActiveOperationForGame(id.ToString()) is null &&
                     await libraryManager.LaunchApp(id.ToString()))

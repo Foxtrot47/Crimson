@@ -192,6 +192,27 @@ public sealed class LauncherProviderTests
     }
 
     [Fact]
+    public async Task ASecondProviderJobStartsOnlyAfterTheFirstFinishes()
+    {
+        var ea = new TestLauncherProvider("ea");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        var installer = new LauncherInstaller(new LauncherRegistry([ea, ubisoft]));
+        installer.AddToQueue(new InstallItem("ea:123", ActionType.Install, "ea-install"));
+        ea.Jobs.Start();
+        Assert.True(installer.TryAddToQueue(new InstallItem("ubisoft:456", ActionType.Install, "ubisoft-install")));
+
+        Assert.Empty(ubisoft.Jobs.Queued);
+        Assert.Contains("ubisoft:456", installer.GetQueueItemNames());
+
+        ea.Jobs.Finish();
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (ubisoft.Jobs.Queued.Count == 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(50);
+
+        Assert.Single(ubisoft.Jobs.Queued);
+    }
+
+    [Fact]
     public async Task OptionalInstallerAndStoreDoNotPreventLibraryOrLaunch()
     {
         var provider = new TestLauncherProvider("ea") { Installer = null };

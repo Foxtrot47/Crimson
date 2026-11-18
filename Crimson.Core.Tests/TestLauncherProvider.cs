@@ -152,6 +152,12 @@ internal sealed class TestLauncherProvider : ILauncherProvider
             CurrentInstall.Status = ActionStatus.Processing;
             InstallationStatusChanged?.Invoke(CurrentInstall);
         }
+        public void Finish()
+        {
+            if (CurrentInstall is not { } current) return;
+            current.Status = ActionStatus.Success;
+            InstallationStatusChanged?.Invoke(current);
+        }
         public void Progress() => InstallProgressUpdate?.Invoke(CurrentInstall!);
         public List<string> GetQueueItemNames() => Queued.Select(item => item.AppName).ToList();
         public List<string> GetHistoryItemsNames() => [];

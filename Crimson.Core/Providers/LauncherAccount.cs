@@ -38,6 +38,7 @@ public sealed class LauncherAccount : ObservableObject
             OnPropertyChanged(nameof(CanConnect));
             OnPropertyChanged(nameof(StatusText));
             OnPropertyChanged(nameof(AccountName));
+            OnPropertyChanged(nameof(AccountInitials));
             OnPropertyChanged(nameof(HasAccountName));
         }
     }

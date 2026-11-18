@@ -66,6 +66,7 @@ public sealed class LauncherAuthentication
         }
         _dispatcher.TryEnqueue(() => Accounts.Single(account => account.ProviderId == providerId).Status = status);
         if (status == AuthenticationStatus.LoggedIn) _ = RefreshUser(providerId);
+        else _dispatcher.TryEnqueue(() => Accounts.Single(account => account.ProviderId == providerId).User = null);
         StatusChanged?.Invoke(providerId, status);
     }
 
@@ -75,6 +76,10 @@ public sealed class LauncherAuthentication
         try
         {
             var status = await provider.Authentication.CheckAuthStatus();
+            // A logout or account switch can win the provider gate after its check returns. Publish what the
+            // provider says now, not the value the obsolete await produced.
+            if (provider.Authentication.AuthenticationStatus != status)
+                status = provider.Authentication.AuthenticationStatus;
             Publish(providerId, status);
             await RefreshUser(providerId);
             return status;
@@ -163,6 +168,14 @@ public sealed class LauncherLibrary : ILauncherLibrary
     public async Task<IEnumerable<LauncherGame>> GetLibraryData(bool forceUpdate = false)
     {
         await Task.WhenAll(_registry.Providers.Select(provider => Refresh(provider, forceUpdate)));
+        lock (_gate) return Snapshot();
+    }
+
+    /// <summary>Refreshes one provider; a shortcut must not wait for another store's network calls.</summary>
+    public async Task<IEnumerable<LauncherGame>> GetLibraryDataFor(string providerId)
+    {
+        var provider = _registry.Get(providerId);
+        await Refresh(provider, forceUpdate: false);
         lock (_gate) return Snapshot();
     }
 
@@ -273,6 +286,9 @@ public sealed class LauncherLibrary : ILauncherLibrary
 public sealed class LauncherInstaller : ILauncherInstaller
 {
     private readonly LauncherRegistry _registry;
+    private readonly object _pendingGate = new();
+    private readonly List<InstallItem> _pending = [];
+    private int _dispatchScheduled;
     public event Action<InstallItem>? InstallationStatusChanged;
     public event Action<InstallItem>? InstallProgressUpdate;
     public event Action<OperationSnapshot>? OperationUpdated;
@@ -297,6 +313,8 @@ public sealed class LauncherInstaller : ILauncherInstaller
             {
                 RequireOwner(provider, item);
                 InstallationStatusChanged?.Invoke(item);
+                if (item.Status is ActionStatus.Success or ActionStatus.Failed or ActionStatus.Cancelled)
+                    ScheduleDispatch();
             };
             installer.InstallProgressUpdate += item =>
             {
@@ -307,6 +325,7 @@ public sealed class LauncherInstaller : ILauncherInstaller
             {
                 RequireOperationOwner(provider, operation);
                 OperationUpdated?.Invoke(operation);
+                if (!operation.IsActive) ScheduleDispatch();
             };
             installer.TransferRatesUpdated += operation =>
             {
@@ -321,16 +340,47 @@ public sealed class LauncherInstaller : ILauncherInstaller
         }
     }
 
-    public IReadOnlyList<OperationSnapshot> GetQueueOperations() => _registry.Providers
-        .SelectMany(provider => provider.Installer?.GetQueueOperations() ?? []).ToList();
+    public IReadOnlyList<OperationSnapshot> GetQueueOperations()
+    {
+        var queued = _registry.Providers.SelectMany(provider => provider.Installer?.GetQueueOperations() ?? []).ToList();
+        lock (_pendingGate) return queued.Concat(_pending.Select(OperationSnapshot.From)).ToList();
+    }
     public IReadOnlyList<OperationSnapshot> GetHistoryOperations() => _registry.Providers
         .SelectMany(provider => provider.Installer?.GetHistoryOperations() ?? []).ToList();
     public bool RetryFailedOperation(string appName) =>
         _registry.Get(GameId.Parse(appName).ProviderId).Installer?.RetryFailedOperation(appName) == true;
     public OperationSnapshot? GetActiveOperationForGame(string appName) =>
         OptionalInstaller(appName)?.GetActiveOperationForGame(GameId.Parse(appName).ToString());
-    public bool TryAddToQueue(InstallItem item) =>
-        OptionalInstaller(item.AppName)?.TryAddToQueue(item) == true;
+    public bool TryAddToQueue(InstallItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        var id = GameId.Parse(item.AppName);
+        var installer = _registry.Get(id.ProviderId).Installer;
+        if (installer is null || !installer.Supports(item.Action)) return false;
+        // Keep the exact shell object when it is already qualified: providers map later notices by reference.
+        var normalized = string.Equals(item.AppName, id.ToString(), StringComparison.Ordinal)
+            ? item : item.ForGame(id.ToString());
+        if (IsRunning(installer, normalized)) return false;
+        lock (_pendingGate)
+        {
+            // One provider job at a time: the shared downloads UI can display only one active operation.
+            if (_pending.Count > 0 || HasOtherActiveProvider(id.ProviderId))
+            {
+                if (ContainsPending(normalized.AppName)) return false;
+                _pending.Add(normalized);
+                return true;
+            }
+        }
+        return installer.TryAddToQueue(normalized);
+    }
+
+    private static bool IsRunning(ILauncherInstaller installer, InstallItem item) =>
+        installer.CurrentInstall is { } running &&
+        string.Equals(running.AppName, item.AppName, StringComparison.Ordinal) &&
+        running.Status is not (ActionStatus.Success or ActionStatus.Failed or ActionStatus.Cancelled);
+
+    private bool ContainsPending(string appName) =>
+        _pending.Any(item => string.Equals(item.AppName, appName, StringComparison.Ordinal));
     public void ReportPreparationFailure(string appName, ActionType action, OperationFailure failure)
     {
         if (string.IsNullOrWhiteSpace(appName)) return;
@@ -354,17 +404,86 @@ public sealed class LauncherInstaller : ILauncherInstaller
 
     public void AddToQueue(InstallItem item)
     {
-        var installer = Resolve(item.AppName);
-        if (!installer.Supports(item.Action))
+        var id = GameId.Parse(item.AppName);
+        var installer = _registry.Get(id.ProviderId).Installer;
+        if (installer is null || !installer.Supports(item.Action))
             throw new NotSupportedException($"This launcher does not support {item.Action}.");
-        installer.AddToQueue(item.ForGame(GameId.Parse(item.AppName).ToString()));
+        TryAddToQueue(item);
     }
 
-    public List<string> GetQueueItemNames() => _registry.Providers
-        .SelectMany(provider => provider.Installer?.GetQueueItemNames() ?? []).ToList();
+    private bool HasOtherActiveProvider(string providerId) => _registry.Providers.Any(provider =>
+        provider.Id != providerId && IsActive(provider));
+
+    private bool HasAnyActiveProvider() => _registry.Providers.Any(IsActive);
+
+    private static bool IsActive(ILauncherProvider provider) =>
+        provider.Installer?.CurrentOperation is { IsActive: true } ||
+        provider.Installer?.CurrentInstall is { Status: not (ActionStatus.Success or ActionStatus.Failed or ActionStatus.Cancelled) };
+
+    /// <summary>Starts shell-pending jobs one at a time once no provider is busy.</summary>
+    private void ScheduleDispatch()
+    {
+        if (Interlocked.Exchange(ref _dispatchScheduled, 1) != 0) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                for (var attempt = 0; attempt < 40; attempt++)
+                {
+                    if (DispatchPending()) return;
+                    await Task.Delay(250);
+                }
+            }
+            finally { Interlocked.Exchange(ref _dispatchScheduled, 0); }
+        });
+    }
+
+    private bool DispatchPending()
+    {
+        while (true)
+        {
+            InstallItem next;
+            ILauncherInstaller installer;
+            lock (_pendingGate)
+            {
+                if (_pending.Count == 0) return true;
+                if (HasAnyActiveProvider()) return false;
+                next = _pending[0];
+                _pending.RemoveAt(0);
+                installer = OptionalInstaller(next.AppName)!;
+            }
+            if (installer.TryAddToQueue(next)) return true;
+        }
+    }
+
+    public List<string> GetQueueItemNames()
+    {
+        var queued = _registry.Providers.SelectMany(provider => provider.Installer?.GetQueueItemNames() ?? []).ToList();
+        lock (_pendingGate) return queued.Concat(_pending.Select(item => item.AppName)).ToList();
+    }
     public List<string> GetHistoryItemsNames() => _registry.Providers
         .SelectMany(provider => provider.Installer?.GetHistoryItemsNames() ?? []).ToList();
-    public void CancelInstall(string appName) => Resolve(appName).CancelInstall(appName);
+    public void CancelInstall(string appName)
+    {
+        var id = GameId.Parse(appName).ToString();
+        InstallItem? pending = null;
+        lock (_pendingGate)
+        {
+            pending = _pending.FirstOrDefault(item => string.Equals(item.AppName, id, StringComparison.Ordinal));
+            if (pending is not null)
+            {
+                _pending.Remove(pending);
+                pending.Status = ActionStatus.Cancelled;
+                pending.Phase = OperationPhase.Queued;
+            }
+        }
+        if (pending is not null)
+        {
+            OperationUpdated?.Invoke(OperationSnapshot.From(pending));
+            return;
+        }
+        Resolve(appName).CancelInstall(id);
+    }
     public void PauseInstall() { if (SupportsPause) CurrentInstaller?.PauseInstall(); }
     public void ResumeInstall() { if (SupportsPause) CurrentInstaller?.ResumeInstall(); }
     public void PauseInstall(string appName)
