@@ -63,7 +63,10 @@ and uninstall. Installs are recorded in `installed.json` (`UbisoftInstalledStore
 `configuration.json` games are migrated into it once.
 
 **Manifests.** The container is `u32 version | u32 signature length | u32 body length | signature |
-zlib(body)`, and inflation is capped at 256 MB. Each chunk can carry:
+zlib(body)`, and inflation is capped at 256 MB. The published manifest ID is the SHA-1 of the
+**compressed body**; Crimson verifies it before parsing either a downloaded manifest or a cached one, so a
+tampered cache or a mismatched mirror cannot supply install registry values or prerequisites. Each chunk
+can carry:
 - `type`: Required or Optional;
 - `language`;
 - `uplayIds`: an ownership gate, for example an ultra-texture DLC or a region pack.
@@ -112,8 +115,10 @@ normalised `%2f` breaks the signature.
 
 Progress is saved in `<install>/.Crimson/ubisoft-progress.json`:
 - pause stops issuing new fetches;
-- resume skips completed files;
-- cancelling a fresh install deletes only the files that job created.
+- resume verifies completed files and the bytes of every recorded partial slice before skipping them;
+  a file with wrong bytes, a missing partial file, or a manifest without content hashes is fetched again;
+- cancelling a fresh install deletes only the paths the transfer actually opened, never every manifest
+  entry or later user files.
 
 Transfer samples feed the Downloads page and graph exactly as Epic's do.
 
@@ -123,11 +128,11 @@ Transfer samples feed the Downloads page and graph exactly as Epic's do.
 | Update | Downloads files whose slice list changed. Deletes files that left the selection, and nothing else. |
 | Verify | Hashes every selected file's slices against their content SHA-1 (size only when a manifest has none). |
 | Repair | Verify, then download files that failed, then re-apply pending system setup. |
-| Import | Candidates come from `HKLM\SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs\<id>\InstallDir` or a picked folder. Sizes are compared with the manifest selection. The install is recorded, and a Verify is queued on a mismatch. |
-| Move | `Directory.Move` on the same volume; otherwise copy, verify, delete. The folder keeps its name in the new parent. The registry is rewritten. |
+| Import | Candidates come from `HKLM\SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs\<id>\InstallDir` or a picked folder. Sizes are compared with the manifest selection. The import records the build the selection came from and marks `NeedsRepair` when files differ, then queues a Verify. |
+| Move | `Directory.Move` on the same volume; otherwise copy, verify, then delete. The destination is durably recorded before the source is removed, and a failed record write rolls the move back. The folder keeps its name in the new parent. The registry is rewritten. |
 | Uninstall | Deletes the selection's files, `.Crimson`, empty folders and the runtime DLLs Crimson copied. Registry keys are removed through one elevated setup. With the last Ubisoft game, `Launcher\InstallDir` is removed too, but only while it still points at a Crimson runtime folder. User files stay. The manifest's `uninstallRuns` (the official client's uninstallers) are not run. |
 
-## System setup (one UAC prompt per operation)
+## System setup (one UAC prompt for registry changes)
 
 A game expects the registry entries and prerequisites the official client creates. After an install,
 import, move or repair, one `UbisoftSystemSetupRequest` collects:
@@ -144,27 +149,28 @@ Ubisoft Connect rewrites it whenever it runs, so every launch checks it and, whe
 Crimson's runtime folder, sets it in the same prompt as any pending setup. A launch with nothing to change
 shows no prompt.
 
-`ElevationNotice` shows an overlay that lists what the request changes
+`ElevationNotice` shows an overlay that lists the registry changes
 (`UbisoftSystemSetupRequest.Describe`) and opens the UAC prompt itself: after a 3-second countdown the
 first time, or on **Continue**. The overlay stays open until the prompt is approved. If the prompt is
 declined or fails to open, the overlay says so and offers **Try again**. **Cancel** or Escape closes it
 with the setup not applied. The overlay is a popup, not a ContentDialog, so it can appear over the game
 properties dialog that Move, Repair and Uninstall start from.
 
-The WinUI `UbisoftSystemSetup` then writes the request to a temporary file and starts
-`Crimson.exe --ubisoft-system-setup <request> <result>` with `runas`. `Program.Main` handles that
-argument before any window or single-instance logic.
+The WinUI `UbisoftSystemSetup` starts `Crimson.exe --ubisoft-system-setup <pipe> <parent-pid> <image>`
+with `runas`. No request or result is written to disk. The elevated helper creates a one-use pipe,
+accepts only the exact Crimson process that started it (client PID and image path), receives the request
+over that pipe and returns the result the same way. `Program.Main` handles the switch before any window or
+single-instance logic.
 
 The elevated helper re-validates the request:
 - it accepts only HKLM `SOFTWARE\Ubisoft\…` and `SOFTWARE\WOW6432Node\Ubisoft\…` keys;
-- it runs only executables inside an install folder the same request registers.
+- it never executes a program. Prerequisite installers (`installRuns`) run as the signed-in user after the
+  registry step and may show their own Windows prompts.
 
 If setup is never approved, an install still finishes with `SystemSetupPending`, and a non-modal notice says
 so. The next launch or repair offers the prompt again. A launch is not started while its setup is pending:
 without the runtime folder value or the game's registry keys the game fails on its own, so Crimson reports
-`UbisoftLaunchNeedsAdministrator` instead. The request file sits in the user's temp folder,
-so a process running as the same user could alter it before the helper reads it. The helper's
-validation bounds what such a change can do.
+`UbisoftLaunchNeedsAdministrator` instead.
 
 ## Launch
 
@@ -180,7 +186,9 @@ runtime when a bounded search of the install tree finds `uplay_r1_loader*`, `upl
 `upc_r1_loader*` or `upc_r2_loader*`.
 
 The game session uses named pipes, a session generated from the ownership product list, a live
-uplay_pc ticket and the Denuvo relay. One Ubisoft title runs at a time. R2 games hold about 20
+uplay_pc ticket and the Denuvo relay. One Ubisoft title runs at a time. Pipe clients are restricted to
+processes under the game's installation or the launched executable, and a runtime failure terminates the
+processes this session started before the next title may launch. R2 games hold about 20
 `uplay_ipc` connections open at once and request the session about ten times. They fail on any request
 left unanswered, and when a subsystem they asked for in the init request is missing from the session.
 So the session includes, when requested:
@@ -258,11 +266,11 @@ web `ssoId` used by `ssoSet.html` for the store, and does not renew the services
 Portable tests use synthetic data and cover:
 - Demux framing, handshake bytes, request correlation, timeouts and closes;
 - ownership parsing with secrets removed, and download URL batching;
-- manifest, metadata and configuration parsing, chunk gating, and the slice codec;
-- the install engine: offsets, mixed compression, resume, cancel, update deletions, verify, repair,
-  language changes and uninstall safety;
-- system-setup policy validation;
-- library projection, launch-plan resolution, the runtime probe and cloud-save sync.
+- manifest, metadata and configuration parsing, chunk gating, the slice codec and manifest-ID verification;
+- the install engine: offsets, mixed compression, resume revalidation, cancel cleanup, update deletions and
+  type transitions, verify, repair, language changes and uninstall safety;
+- system-setup policy validation and the rule that the elevated helper never executes programs;
+- library projection, launch-plan resolution, broken-install launch blocks, the runtime probe and cloud-save sync.
 
 A live check against this account (November 2026), run from a temporary test harness:
 - the library refresh listed 24 games;

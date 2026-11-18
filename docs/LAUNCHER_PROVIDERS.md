@@ -109,9 +109,10 @@ Shared settings remain at Crimson's root. `WebViewEnvironmentFactory.CreateAsync
 requires a provider ID and uses the same isolation rule for browser profiles,
 preserving Epic's original profile path.
 
-New install dialogs suggest `<install root>/<provider>/<game title>` so equal
-titles from different stores do not overwrite one another. Titles are sanitized
-as a single directory component. Existing installed-game paths are unchanged.
+New install dialogs suggest `<install root>/<provider>/<game title>` for stores other
+than Epic; Epic keeps its historical title-only suggestion so existing users are
+not migrated. Titles are sanitized as a single directory component. Existing
+installed-game paths are unchanged.
 
 For filenames derived from opaque native IDs, use `ProviderDataPaths.GameFileKey`.
 Never turn a native ID directly into an unchecked path. The shared Windows
