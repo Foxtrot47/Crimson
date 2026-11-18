@@ -251,6 +251,7 @@ public sealed class UbisoftCloudSaves : ICloudSaveConflictSource
                 throw new HttpRequestException($"Cloud save download failed (HTTP {(int)response.StatusCode}).", null, response.StatusCode);
             var compressed = await ReadBoundedAsync(response.Content, ct);
             var bytes = Inflate(compressed);
+            VerifySlot(slot, bytes);
             var target = Path.Combine(directory, slot.Filename + SaveExtension);
             if (File.Exists(target))
             {
@@ -504,6 +505,15 @@ public sealed class UbisoftCloudSaves : ICloudSaveConflictSource
 
     private static string Md5Hex(byte[] bytes) => Convert.ToHexStringLower(MD5.HashData(bytes));
 
+    /// <summary>The entity's hash and size describe the uncompressed bytes; never replace a local slot without them.</summary>
+    private static void VerifySlot(CloudSlot slot, byte[] bytes)
+    {
+        if (slot.Size > 0 && bytes.LongLength != slot.Size)
+            throw new InvalidDataException("The downloaded cloud save has the wrong size.");
+        if (slot.Hash.Length == 32 && !string.Equals(Md5Hex(bytes), slot.Hash, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The downloaded cloud save failed its MD5 check.");
+    }
+
     private static void TryDelete(string path)
     {
         try { File.Delete(path); }
@@ -578,10 +588,12 @@ public sealed class UbisoftCloudSaves : ICloudSaveConflictSource
             var path = System.IO.Path.Combine(directory, name + SaveExtension);
             var info = new FileInfo(path);
             if (!info.Exists) return new LocalSlot { Name = name, Path = path };
+            if (info.Length > MaximumSaveBytes) throw new InvalidDataException("Cloud save is too large.");
+            using var stream = info.OpenRead();
             return new LocalSlot
             {
                 Name = name, Path = path, Exists = true, Size = info.Length, LastWriteUtc = info.LastWriteTimeUtc,
-                Md5 = Md5Hex(File.ReadAllBytes(path)), Flagged = File.Exists(path + FlagSuffix)
+                Md5 = Convert.ToHexStringLower(MD5.HashData(stream)), Flagged = File.Exists(path + FlagSuffix)
             };
         }
 

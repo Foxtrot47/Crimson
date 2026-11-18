@@ -97,6 +97,19 @@ public sealed class UbisoftCloudSavesTests : IDisposable
     }
 
     [Fact]
+    public async Task A_cloud_slot_with_the_wrong_hash_does_not_replace_the_local_save()
+    {
+        Directory.CreateDirectory(Saves);
+        await File.WriteAllTextAsync(SlotFile, "older local save");
+        _cloudBytes = Encoding.UTF8.GetBytes("corrupt or wrong cloud bytes");
+
+        await Create().SyncBeforeLaunchAsync(_session, _product);
+
+        Assert.Equal("older local save", await File.ReadAllTextAsync(SlotFile));
+        Assert.False(Directory.Exists(Path.Combine(Provider, "savegames-backup")));
+    }
+
+    [Fact]
     public async Task ANewerCloudSlotReplacesTheLocalOneAfterABackup()
     {
         Directory.CreateDirectory(Saves);
