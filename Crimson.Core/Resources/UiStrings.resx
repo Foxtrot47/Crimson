@@ -1027,6 +1027,14 @@
     <value>Store</value>
     <comment>Used by: Crimson.WinUI/Views/MainWindow.xaml @Content; Crimson.WinUI/Views/TrayIconView.xaml @Text</comment>
   </data>
+  <data name="Stores" xml:space="preserve">
+    <value>Stores</value>
+    <comment>Used by: Crimson.WinUI/Views/StorePage.cs</comment>
+  </data>
+  <data name="SearchStoresForQueryFormat" xml:space="preserve">
+    <value>Search stores for “{0}”</value>
+    <comment>Used by: Crimson.WinUI/Views/StorePage.cs; Crimson.WinUI/Views/MainWindow.xaml.cs; Composite format: preserve numbered placeholders and format specifiers.</comment>
+  </data>
   <data name="TB" xml:space="preserve">
     <value>TB</value>
     <comment>Used by: Crimson.Core/ViewModels/AppInstallDialogueViewModel.cs</comment>
