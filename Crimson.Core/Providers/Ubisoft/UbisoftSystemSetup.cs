@@ -37,9 +37,6 @@ public sealed record UbisoftSystemSetupRequest(
     {
         var lines = new List<string>();
         if (Writes.Count > 0) lines.Add(UiStrings.UbisoftElevationRegistry);
-        if (Runs.Count > 0)
-            lines.Add(UiStrings.Format(UiStrings.UbisoftElevationPrerequisitesFormat,
-                string.Join(", ", Runs.Select(run => run.Description).Distinct(StringComparer.OrdinalIgnoreCase))));
         if (LauncherInstallDir is not null) lines.Add(UiStrings.UbisoftElevationLauncherFolder);
         if (DeleteKeys.Count > 0) lines.Add(UiStrings.UbisoftElevationRemoveRegistry);
         if (RemoveLauncherInstallDir) lines.Add(UiStrings.UbisoftElevationRemoveLauncherFolder);
@@ -69,13 +66,13 @@ public static class UbisoftSystemSetupPolicy
 {
     public const string MachineHive = @"HKEY_LOCAL_MACHINE\";
 
-    /// <summary>Command-line switch of the elevated helper: <c>--ubisoft-system-setup &lt;request.json&gt; &lt;result.json&gt;</c>.</summary>
+    /// <summary>Command-line switch of the elevated helper: <c>--ubisoft-system-setup &lt;pipe&gt; &lt;parent-pid&gt; &lt;image&gt;</c>.</summary>
     public const string HelperArgument = "--ubisoft-system-setup";
 
     public const string CrimsonRuntimeFolder = @"Assets\UbisoftRuntime";
 
     private static readonly string[] Roots = [@"SOFTWARE\Ubisoft\", @"SOFTWARE\WOW6432Node\Ubisoft\"];
-    private static readonly string[] RunnableExtensions = [".exe", ".bat", ".cmd"];
+    private static readonly string[] RunnableExtensions = [".exe"];
 
     public static IReadOnlyList<string> Validate(UbisoftSystemSetupRequest? request)
     {

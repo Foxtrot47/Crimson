@@ -15,9 +15,10 @@ public static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        // The elevated Ubisoft setup helper applies one request and exits: no window, no single-instance redirection.
-        if (args.Length == 3 && args[0] == Providers.Ubisoft.UbisoftSystemSetupPolicy.HelperArgument)
-            return Providers.Ubisoft.UbisoftElevatedSystemSetup.Run(args[1], args[2]);
+        // The elevated Ubisoft setup helper exchanges one request over a private pipe and exits: no window,
+        // no single-instance redirection, and no mutable request file on disk.
+        if (args.Length == 4 && args[0] == Providers.Ubisoft.UbisoftSystemSetupPolicy.HelperArgument)
+            return Providers.Ubisoft.UbisoftElevatedSystemSetup.Run(args[1], args[2], args[3]);
 
         WinRT.ComWrappersSupport.InitializeComWrappers();
         var activationArguments = AppInstance.GetCurrent().GetActivatedEventArgs();

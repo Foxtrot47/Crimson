@@ -1,14 +1,21 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
 using Microsoft.Win32;
+using Microsoft.Win32.SafeHandles;
 using Serilog;
 
 namespace Crimson.Providers.Ubisoft;
@@ -17,6 +24,7 @@ namespace Crimson.Providers.Ubisoft;
 public sealed class UbisoftSystemSetup(ElevationNotice notice, ILogger log) : IUbisoftSystemSetup
 {
     private const int ErrorCancelled = 1223;
+    private static readonly TimeSpan RunTimeout = TimeSpan.FromMinutes(30);
     private readonly ILogger _log = log.ForContext<UbisoftSystemSetup>();
 
     public async Task<UbisoftSystemSetupResult> ApplyAsync(UbisoftSystemSetupRequest request, CancellationToken ct)
@@ -29,47 +37,52 @@ public sealed class UbisoftSystemSetup(ElevationNotice notice, ILogger log) : IU
             _log.Warning("Ubisoft: system setup request refused ({Count} problems)", errors.Count);
             return new UbisoftSystemSetupResult(false, [], string.Join(" ", errors));
         }
+        var elevated = request with { Runs = [] };
+        if (elevated.IsEmpty)
+            return new UbisoftSystemSetupResult(true, await RunProgramsAsync(request.Runs, ct), null);
         if (Environment.ProcessPath is not { Length: > 0 } executable)
             return new UbisoftSystemSetupResult(false, [], "Crimson's executable path is unknown.");
 
-        var folder = Path.Combine(Path.GetTempPath(), "Crimson", "ubisoft-setup-" + Guid.NewGuid().ToString("N"));
-        var requestFile = Path.Combine(folder, "request.json");
-        var resultFile = Path.Combine(folder, "result.json");
-        try
+        var pipeName = "Crimson.UbisoftSetup." + Guid.NewGuid().ToString("N");
+        using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        var start = new ProcessStartInfo(executable)
         {
-            Directory.CreateDirectory(folder);
-            await File.WriteAllTextAsync(requestFile, JsonSerializer.Serialize(request), ct);
-            // ShellExecute takes one argument string; the temporary paths contain no quotes.
-            var start = new ProcessStartInfo(executable)
-            {
-                Arguments = $"{UbisoftSystemSetupPolicy.HelperArgument} \"{requestFile}\" \"{resultFile}\"",
-                UseShellExecute = true,
-                Verb = "runas",
-                WorkingDirectory = AppContext.BaseDirectory
-            };
+            Arguments = $"{UbisoftSystemSetupPolicy.HelperArgument} \"{pipeName}\" {Environment.ProcessId} \"{executable}\"",
+            UseShellExecute = true,
+            Verb = "runas",
+            WorkingDirectory = AppContext.BaseDirectory
+        };
 
-            var (process, failure) = await StartElevatedAsync(request, start, ct);
-            if (process is null)
-            {
-                _log.Information("Ubisoft: system setup was not approved ({Failure})", failure);
-                return new UbisoftSystemSetupResult(false, [], failure);
-            }
-            using (process)
-            {
-                // An elevated process cannot be stopped from here; cancellation only stops waiting for it.
-                await process.WaitForExitAsync(ct);
-            }
-            return await ReadResultAsync(resultFile, ct);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or Win32Exception)
+        var (process, failure) = await StartElevatedAsync(elevated, start, ct);
+        if (process is null)
         {
-            _log.Warning("Ubisoft: system setup helper failed ({Error})", error.GetType().Name);
-            return new UbisoftSystemSetupResult(false, [], error.GetType().Name);
+            _log.Information("Ubisoft: system setup was not approved ({Failure})", failure);
+            return new UbisoftSystemSetupResult(false, [], failure);
         }
-        finally
+        using (process)
         {
-            try { Directory.Delete(folder, recursive: true); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            try
+            {
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                deadline.CancelAfter(TimeSpan.FromMinutes(5));
+                await client.ConnectAsync(deadline.Token);
+                await SetupPipe.WriteAsync(client, JsonSerializer.Serialize(elevated), deadline.Token);
+                var result = await SetupPipe.ReadAsync<UbisoftSystemSetupResult>(client, deadline.Token);
+                if (result is null)
+                    return new UbisoftSystemSetupResult(false, [], "The setup helper result is empty.");
+                _log.Information("Ubisoft: registry setup {Outcome}", result.Applied ? "applied" : "failed");
+                // Prerequisite installers are never elevated by Crimson. They run as the signed-in user and may
+                // show their own prompts; this removes the arbitrary-elevated-program path from the helper.
+                return result.Applied
+                    ? result with { Runs = await RunProgramsAsync(request.Runs, ct) }
+                    : result with { Runs = [] };
+            }
+            catch (Exception error) when (error is IOException or TimeoutException or OperationCanceledException or
+                JsonException or InvalidDataException)
+            {
+                _log.Warning("Ubisoft: system setup helper did not answer ({Error})", error.GetType().Name);
+                return new UbisoftSystemSetupResult(false, [], error.GetType().Name);
+            }
         }
     }
 
@@ -102,41 +115,118 @@ public sealed class UbisoftSystemSetup(ElevationNotice notice, ILogger log) : IU
         return (process, failure);
     }
 
-    private async Task<UbisoftSystemSetupResult> ReadResultAsync(string resultFile, CancellationToken ct)
+    /// <summary>Prerequisites run unelevated, sequentially, after the registry step. A program that self-elevates
+    /// shows its own Windows prompt; Crimson never executes a game-supplied program as administrator.</summary>
+    private async Task<IReadOnlyList<UbisoftSystemRunResult>> RunProgramsAsync(IReadOnlyList<UbisoftSystemRun> runs,
+        CancellationToken ct)
     {
-        if (!File.Exists(resultFile)) return new UbisoftSystemSetupResult(false, [], "The setup helper wrote no result.");
-        var result = JsonSerializer.Deserialize<UbisoftSystemSetupResult>(await File.ReadAllTextAsync(resultFile, ct));
-        if (result is null) return new UbisoftSystemSetupResult(false, [], "The setup helper result is empty.");
-        _log.Information("Ubisoft: system setup {Outcome} ({Runs} programs)", result.Applied ? "applied" : "failed",
-            result.Runs?.Count ?? 0);
-        return result with { Runs = result.Runs ?? [] };
+        var results = new List<UbisoftSystemRunResult>(runs.Count);
+        foreach (var run in runs)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(RunTimeout);
+            try
+            {
+                var start = new ProcessStartInfo(run.Executable)
+                {
+                    Arguments = run.Arguments ?? "",
+                    WorkingDirectory = run.WorkingDirectory,
+                    // The shell honors the installer's own manifest. Crimson never attaches an elevated token; a
+                    // prerequisite that needs administrator rights shows its own prompt naming that binary.
+                    UseShellExecute = true,
+                    CreateNoWindow = false
+                };
+                using var process = Process.Start(start);
+                if (process is null)
+                {
+                    results.Add(NotStarted(run));
+                    continue;
+                }
+                await process.WaitForExitAsync(timeout.Token);
+                results.Add(new UbisoftSystemRunResult(run.Description, process.ExitCode));
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                results.Add(NotStarted(run));
+                throw;
+            }
+            catch (Exception error) when (error is OperationCanceledException or Win32Exception or
+                InvalidOperationException or IOException)
+            {
+                _log.Warning("Ubisoft: prerequisite {Description} did not finish ({Error})", run.Description,
+                    error.GetType().Name);
+                results.Add(NotStarted(run));
+            }
+        }
+        return results;
     }
+
+    private static UbisoftSystemRunResult NotStarted(UbisoftSystemRun run) =>
+        new(run.Description, UbisoftSystemRunResult.NotStarted);
 }
 
 /// <summary>Entered from <c>Program.Main</c> before any app activation.</summary>
 internal static class UbisoftElevatedSystemSetup
 {
-    private static readonly TimeSpan RunTimeout = TimeSpan.FromMinutes(30);
     private const string LauncherKey = @"SOFTWARE\Ubisoft\Launcher";
 
-    internal static int Run(string requestFile, string resultFile)
+    internal static int Run(string pipeName, string parentPidText, string expectedPath)
     {
-        UbisoftSystemSetupResult result;
-        try { result = Apply(JsonSerializer.Deserialize<UbisoftSystemSetupRequest>(File.ReadAllText(requestFile))); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or
-            NotSupportedException or ArgumentException)
-        {
-            result = new UbisoftSystemSetupResult(false, [], error.GetType().Name + ": " + error.Message);
-        }
+        if (!int.TryParse(parentPidText, out var parentPid) || parentPid <= 0) return 2;
         try
         {
-            File.WriteAllText(resultFile, JsonSerializer.Serialize(result));
+            using var server = CreateSetupPipe(pipeName);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            server.WaitForConnectionAsync(deadline.Token).GetAwaiter().GetResult();
+            if (!IsExpectedClient(server.SafePipeHandle, parentPid, expectedPath)) return 2;
+            var request = SetupPipe.ReadAsync<UbisoftSystemSetupRequest>(server, deadline.Token).GetAwaiter().GetResult();
+            var result = Apply(request);
+            SetupPipe.WriteAsync(server, JsonSerializer.Serialize(result), deadline.Token).GetAwaiter().GetResult();
+            return result.Applied ? 0 : 1;
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or
+            NotSupportedException or ArgumentException or OperationCanceledException)
         {
             return 3;
         }
-        return result.Applied ? 0 : 1;
+    }
+
+    /// <summary>
+    /// UAC may elevate with a different administrator account, so the pipe cannot be CurrentUserOnly. The
+    /// authenticated-user ACL lets the unelevated parent connect; PID and image checks decide whether to serve it.
+    /// </summary>
+    private static NamedPipeServerStream CreateSetupPipe(string name)
+    {
+        var security = new PipeSecurity();
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
+            PipeAccessRights.ReadWrite, AccessControlType.Allow));
+        return NamedPipeServerStreamAcl.Create(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous, 64 * 1024, 64 * 1024, security);
+    }
+
+    /// <summary>
+    /// The client must be the exact Crimson process that started this helper. The pipe name is public in the
+    /// command line, so PID and image-path checks stop another process from feeding the elevated helper.
+    /// </summary>
+    private static bool IsExpectedClient(SafePipeHandle pipe, int parentPid, string expectedPath)
+    {
+        if (!GetNamedPipeClientProcessId(pipe, out var clientPid) || clientPid != (uint)parentPid) return false;
+        if (Environment.ProcessPath is not { Length: > 0 } helperPath ||
+            !string.Equals(Path.GetFullPath(expectedPath), Path.GetFullPath(helperPath), StringComparison.OrdinalIgnoreCase))
+            return false;
+        try
+        {
+            using var process = Process.GetProcessById(parentPid);
+            var image = process.MainModule?.FileName;
+            return image is { Length: > 0 } &&
+                string.Equals(Path.GetFullPath(image), Path.GetFullPath(helperPath), StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or
+            System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return false;
+        }
     }
 
     internal static UbisoftSystemSetupResult Apply(UbisoftSystemSetupRequest? request)
@@ -155,7 +245,8 @@ internal static class UbisoftElevatedSystemSetup
         {
             return new UbisoftSystemSetupResult(false, [], error.GetType().Name + ": " + error.Message);
         }
-        return new UbisoftSystemSetupResult(true, request.Runs.Select(RunProgram).ToList(), null);
+        // Programs are intentionally never executed here: the parent runs prerequisites unelevated.
+        return new UbisoftSystemSetupResult(true, [], null);
     }
 
     private static readonly RegistryView[] BothViews = [RegistryView.Registry64, RegistryView.Registry32];
@@ -214,30 +305,39 @@ internal static class UbisoftElevatedSystemSetup
         }
     }
 
-    private static UbisoftSystemRunResult RunProgram(UbisoftSystemRun run)
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetNamedPipeClientProcessId(SafePipeHandle pipe, out uint processId);
+}
+
+/// <summary>Length-prefixed JSON over the private setup pipe.</summary>
+internal static class SetupPipe
+{
+    private const int MaximumMessageBytes = 4 * 1024 * 1024;
+
+    internal static async Task WriteAsync(Stream stream, string value, CancellationToken ct)
     {
-        try
-        {
-            var start = new ProcessStartInfo(run.Executable)
-            {
-                Arguments = run.Arguments ?? "",
-                WorkingDirectory = run.WorkingDirectory,
-                UseShellExecute = false,
-                CreateNoWindow = false
-            };
-            using var process = Process.Start(start);
-            if (process is null) return new UbisoftSystemRunResult(run.Description, UbisoftSystemRunResult.NotStarted);
-            if (!process.WaitForExit(RunTimeout))
-            {
-                try { process.Kill(entireProcessTree: true); }
-                catch (Exception error) when (error is InvalidOperationException or Win32Exception) { }
-                return new UbisoftSystemRunResult(run.Description, UbisoftSystemRunResult.NotStarted);
-            }
-            return new UbisoftSystemRunResult(run.Description, process.ExitCode);
-        }
-        catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException)
-        {
-            return new UbisoftSystemRunResult(run.Description, UbisoftSystemRunResult.NotStarted);
-        }
+        var body = Encoding.UTF8.GetBytes(value);
+        var header = new byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(header, body.Length);
+        await stream.WriteAsync(header, ct);
+        await stream.WriteAsync(body, ct);
+        await stream.FlushAsync(ct);
+    }
+
+    internal static async Task<T?> ReadAsync<T>(Stream stream, CancellationToken ct)
+    {
+        var body = await ReadBytesAsync(stream, ct);
+        return JsonSerializer.Deserialize<T>(body);
+    }
+
+    private static async Task<byte[]> ReadBytesAsync(Stream stream, CancellationToken ct)
+    {
+        var header = new byte[4];
+        await stream.ReadExactlyAsync(header, ct);
+        var length = BinaryPrimitives.ReadInt32LittleEndian(header);
+        if (length is <= 0 or > MaximumMessageBytes) throw new InvalidDataException("Invalid setup pipe message.");
+        var body = new byte[length];
+        await stream.ReadExactlyAsync(body, ct);
+        return body;
     }
 }
