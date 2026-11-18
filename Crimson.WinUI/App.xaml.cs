@@ -169,14 +169,11 @@ namespace Crimson
             var activationArguments = InitialActivationArguments;
             InitialActivationArguments = null;
             if (activationArguments is not null && TryGetLaunchAppName(activationArguments, out var appName))
-            {
                 await LaunchFromShortcutAsync(appName);
-            }
             else
-            {
                 ShowMainWindow();
-                await Task.Run(EnsureAuthenticationAsync);
-            }
+            // A shortcut checks only its own store; the rest of the app needs every account answered.
+            await Task.Run(EnsureAuthenticationAsync);
 
             while (_pendingActivations.TryDequeue(out var pending))
                 await ProcessActivationAsync(pending);

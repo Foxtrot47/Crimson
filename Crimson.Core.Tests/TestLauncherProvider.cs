@@ -38,6 +38,11 @@ internal sealed class TestLauncherProvider : ILauncherProvider
         public Task<AuthenticationStatus> CheckAuthStatus() => Task.FromResult(AuthenticationStatus);
         public Task<LauncherUser?> GetUser(CancellationToken cancellationToken = default) =>
             Task.FromResult<LauncherUser?>(new LauncherUser(ProviderId() + " account", ProviderId() + "-user"));
+        public void BeginCheck()
+        {
+            AuthenticationStatus = AuthenticationStatus.Checking;
+            StatusChanged?.Invoke(AuthenticationStatus);
+        }
         public void SignIn()
         {
             AuthenticationStatus = AuthenticationStatus.LoggedIn;

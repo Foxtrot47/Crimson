@@ -122,8 +122,20 @@ public sealed class LauncherLibrary : ILauncherLibrary
     /// <summary>Changes whenever a store account connects or disconnects; presentation discards stale refreshes.</summary>
     public int AccountGeneration { get { lock (_gate) return _accountGeneration; } }
 
-    public bool IsAuthenticationCheckInProgress => _registry.Providers.Any(provider =>
-        provider.Authentication.AuthenticationStatus == AuthenticationStatus.Checking);
+    /// <summary>A store is still checking its saved sign-in, or is signed in but has not delivered its first library.</summary>
+    public bool IsLoading
+    {
+        get
+        {
+            lock (_gate)
+                return _registry.Providers.Any(provider => provider.Authentication.AuthenticationStatus switch
+                {
+                    AuthenticationStatus.Checking => true,
+                    AuthenticationStatus.LoggedIn => !_libraries.ContainsKey(provider.Id),
+                    _ => false
+                });
+        }
+    }
 
     public LauncherLibrary(LauncherRegistry registry, ILogger? log = null)
     {
@@ -182,24 +194,38 @@ public sealed class LauncherLibrary : ILauncherLibrary
     private async Task Refresh(ILauncherProvider provider, bool forceUpdate)
     {
         await _refreshGates[provider.Id].WaitAsync();
+        int session;
+        lock (_gate) session = _sessions[provider.Id];
         try
         {
-            int session;
-            lock (_gate) session = _sessions[provider.Id];
             if (provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
             var games = ValidateGames(provider, await provider.Library.GetLibraryData(forceUpdate));
-            lock (_gate)
-            {
-                if (session != _sessions[provider.Id] ||
-                    provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn) return;
-            }
+            if (IsSuperseded(provider, session)) return;
             PublishGames(provider, games);
         }
         catch (Exception ex)
         {
             _log?.Warning(ex, "Could not refresh library for {ProviderId}", provider.Id);
+            if (SettleFailedLoad(provider, session)) NotifyLibraryUpdated();
         }
         finally { _refreshGates[provider.Id].Release(); }
+    }
+
+    /// <summary>The load was overtaken by a newer session or a disconnect, so its games are stale.</summary>
+    private bool IsSuperseded(ILauncherProvider provider, int session)
+    {
+        lock (_gate)
+            return session != _sessions[provider.Id] ||
+                provider.Authentication.AuthenticationStatus != AuthenticationStatus.LoggedIn;
+    }
+
+    /// <summary>A failed first load still settles, so the page stops waiting for this store.</summary>
+    private bool SettleFailedLoad(ILauncherProvider provider, int session)
+    {
+        lock (_gate)
+            return session == _sessions[provider.Id] &&
+                provider.Authentication.AuthenticationStatus == AuthenticationStatus.LoggedIn &&
+                _libraries.TryAdd(provider.Id, []);
     }
 
     private void PublishProvider(ILauncherProvider provider, IEnumerable<LauncherGame> games)

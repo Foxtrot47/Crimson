@@ -53,7 +53,13 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     [ObservableProperty]
     private bool _showEmptyLibrary;
 
-    public bool HasNoInstalledGames => InstalledOnly && !ShowLoadingScreen && GamesList.Count == 0;
+    /// <summary>No store is connected, so the library asks the user to sign in to one.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoInstalledGames))]
+    private bool _showSignInPrompt;
+
+    public bool HasNoInstalledGames =>
+        InstalledOnly && !ShowLoadingScreen && !ShowSignInPrompt && GamesList.Count == 0;
 
     /// <summary>Raised when a card's install action needs the page to show the install dialog.</summary>
     public event Func<LauncherGame, Task>? ShowInstallDialogRequested;
@@ -112,7 +118,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         _installManager.OperationUpdated += _operationUpdatedHandler;
         _log.Information("LibraryPage: Loading Page");
         var games = await _libraryManager.GetLibraryData();
-        if (games.Any() || !_libraryManager.IsAuthenticationCheckInProgress)
+        if (games.Any() || !_libraryManager.IsLoading)
             UpdateLibrary(games, generation);
         _log.Information("LibraryPage: Loading finished");
     }
@@ -220,6 +226,12 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
             .OrderBy(item => item.Title)
             .ToList();
         if (!GamesList.SequenceEqual(items)) GamesList = items;
+        LogLibrarySummary(items);
+        UpdateEmptyState(items.Count);
+    }
+
+    private void LogLibrarySummary(IReadOnlyList<LibraryItem> items)
+    {
         if (items.Count > 0)
             _log.Information("Library: {Cards} cards, {WithArtwork} with artwork sources; per provider: {Providers}",
                 items.Count, items.Count(item => item.SourceImageUrl is not null),
@@ -228,9 +240,18 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         foreach (var missing in items.Where(item => item.SourceImageUrl is null).Take(5))
             _log.Information("Library: {Provider} card '{Title}' has no artwork source",
                 missing.ProviderName, missing.Title);
-        ShowEmptyLibrary = items.Count == 0;
-        ShowLoadingScreen = false;
-        ShowAppGrid = true;
+    }
+
+    /// <summary>Chooses which empty surface the page shows; an empty list only means something once every store answered.</summary>
+    private void UpdateEmptyState(int cardCount)
+    {
+        var waiting = cardCount == 0 && _libraryManager.IsLoading;
+        ShowSignInPrompt = !waiting && !_launchers.Providers.Any(provider =>
+            provider.Authentication.AuthenticationStatus == AuthenticationStatus.LoggedIn);
+        // The installed-only filter has its own empty message.
+        ShowEmptyLibrary = cardCount == 0 && !waiting && !ShowSignInPrompt && !InstalledOnly;
+        ShowLoadingScreen = waiting;
+        ShowAppGrid = !waiting;
     }
 
     private bool MatchesInstalledFilter(LauncherGame game) => !InstalledOnly || IsInstalled(game);

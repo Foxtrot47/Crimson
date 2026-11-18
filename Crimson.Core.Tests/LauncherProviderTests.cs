@@ -89,6 +89,65 @@ public sealed class LauncherProviderTests
     }
 
     [Fact]
+    public async Task LibraryAsksToSignInOnlyWhileNoStoreIsConnected()
+    {
+        var ea = new TestLauncherProvider("ea");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        await ea.Auth.Logout();
+        await ubisoft.Auth.Logout();
+        var registry = new LauncherRegistry([ea, ubisoft]);
+        var library = new LauncherLibrary(registry);
+        using var log = new Serilog.LoggerConfiguration().CreateLogger();
+        var vm = new LibraryViewModel(log, new LauncherInstaller(registry), library, registry, new ImmediateUiDispatcher());
+        await vm.OnNavigatedTo(null!);
+        Assert.True(vm.ShowSignInPrompt);
+        Assert.False(vm.ShowEmptyLibrary);
+
+        // A connected store with no games is an empty library, not a missing account.
+        ubisoft.Auth.SignIn();
+        await library.GetLibraryData();
+        Assert.False(vm.ShowSignInPrompt);
+        Assert.True(vm.ShowEmptyLibrary);
+
+        await ubisoft.Auth.Logout();
+        Assert.True(vm.ShowSignInPrompt);
+        vm.OnNavigatedFrom();
+    }
+
+    [Fact]
+    public async Task LibraryKeepsLoadingUntilEveryStoreHasAnswered()
+    {
+        var epic = new TestLauncherProvider("epic");
+        var ubisoft = new TestLauncherProvider("ubisoft");
+        ubisoft.Auth.BeginCheck();
+        var registry = new LauncherRegistry([epic, ubisoft]);
+        var library = new LauncherLibrary(registry);
+        using var log = new Serilog.LoggerConfiguration().CreateLogger();
+        var vm = new LibraryViewModel(log, new LauncherInstaller(registry), library, registry, new ImmediateUiDispatcher());
+        await vm.OnNavigatedTo(null!);
+
+        // Epic answers first; Ubisoft is still restoring its saved sign-in, so nothing is known yet.
+        await epic.Auth.Logout();
+        Assert.True(vm.ShowLoadingScreen);
+        Assert.False(vm.ShowSignInPrompt);
+        Assert.False(vm.ShowEmptyLibrary);
+
+        // Signed in, but its library has not arrived: still not an empty library.
+        ubisoft.Auth.SignIn();
+        await epic.Auth.Logout();
+        Assert.True(vm.ShowLoadingScreen);
+        Assert.False(vm.ShowEmptyLibrary);
+
+        // A library that cannot load still answers, so the page stops waiting.
+        ubisoft.Games.Failure = new HttpRequestException("offline");
+        await library.GetLibraryData();
+        Assert.False(vm.ShowLoadingScreen);
+        Assert.False(vm.ShowSignInPrompt);
+        Assert.True(vm.ShowEmptyLibrary);
+        vm.OnNavigatedFrom();
+    }
+
+    [Fact]
     public async Task SignedOutProviderCannotLaunchThroughAnotherSignedInAccount()
     {
         var ea = new TestLauncherProvider("ea");
