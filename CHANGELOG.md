@@ -8,6 +8,7 @@ Release notes are taken from the matching entry here, so every release needs one
 - With no store connected, the library shows a card for each store with its logo and a Sign in button. The Accounts section in Settings shows each store's logo and who is signed in, with a single Sign in or Sign out button.
 - A saved Ubisoft sign-in shows the cached library at launch without waiting for Ubisoft to answer, and the library keeps its loading screen until every store has answered instead of briefly asking to connect a store.
 - One Import button replaces the per-store import buttons in the library. It opens a dialog with a card for each store: a connected store imports its installed games, and any other offers to sign in first.
+- Importing finds the games Ubisoft Connect already installed, from either of the registry views it writes, and imports the folder it reports instead of asking for one.
 - Signing in to a store opens a compact dialog headed by the store's logo and name with a close button. Epic's sign-in page fills it edge to edge instead of sitting clipped inside a frame, and Ubisoft's form sizes to whichever step is showing.
 - Sync cloud saves before launch and after exit for games that declare cloud save support.
 - Ask which copy survives when local and cloud saves diverge, with options to keep local, keep cloud, or skip.

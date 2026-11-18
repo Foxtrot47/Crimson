@@ -54,27 +54,11 @@
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
                             <TextBlock FontWeight="SemiBold" Text="{x:Bind Title}" TextWrapping="Wrap" />
-                            <TextBlock FontSize="12" Opacity="0.8" Text="{x:Bind LocationHint}" TextWrapping="Wrap" />
+                            <TextBlock FontSize="12" Opacity="0.8" Text="{x:Bind DetectedPath}" TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <Grid ColumnSpacing="8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBox
-                AutomationProperties.Name="{x:Bind strings:UiStrings.InstallLocation}"
-                IsReadOnly="True"
-                PlaceholderText="{x:Bind strings:UiStrings.ChooseTheGameFolderToImport}"
-                Text="{x:Bind ViewModel.Location, Mode=OneWay}" />
-            <Button
-                Grid.Column="1"
-                Click="ChooseFolderClicked"
-                Content="{x:Bind strings:UiStrings.ChooseFolder}"
-                IsEnabled="{x:Bind ViewModel.CanChooseLocation, Mode=OneWay}" />
-        </Grid>
     </StackPanel>
 </ContentDialog>

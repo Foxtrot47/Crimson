@@ -49,10 +49,8 @@ public static class UiStrings
     public static string CheckYourConnectionAndRetry => Get(nameof(CheckYourConnectionAndRetry));
     public static string CheckYourConnectionAndWebView2RuntimeThenTryAgain => Get(nameof(CheckYourConnectionAndWebView2RuntimeThenTryAgain));
     public static string ChooseAnotherFolderOrAllowCrimsonToWriteToThisLocation => Get(nameof(ChooseAnotherFolderOrAllowCrimsonToWriteToThisLocation));
-    public static string ChooseFolder => Get(nameof(ChooseFolder));
     public static string ChooseTheFolderAgainNextTimeCheckAppDataPermissionsIfThisContinues => Get(nameof(ChooseTheFolderAgainNextTimeCheckAppDataPermissionsIfThisContinues));
     public static string ChooseTheFolderContainingTheGameFilesThenImportAgain => Get(nameof(ChooseTheFolderContainingTheGameFilesThenImportAgain));
-    public static string ChooseTheGameFolderToImport => Get(nameof(ChooseTheGameFolderToImport));
     public static string ClearCache => Get(nameof(ClearCache));
     public static string Close => Get(nameof(Close));
     public static string CloseApplicationsUsingTheInstallationFolderAndRetryCleanup => Get(nameof(CloseApplicationsUsingTheInstallationFolderAndRetryCleanup));

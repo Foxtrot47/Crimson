@@ -1080,14 +1080,6 @@
     <value>Impossible de détecter les jeux installés.</value>
     <comment>Import dialog: discovery failed; shown with the close-and-retry format.</comment>
   </data>
-  <data name="ChooseTheGameFolderToImport" xml:space="preserve">
-    <value>Choisissez le dossier qui contient le jeu</value>
-    <comment>Import dialog: hint for a game with no detected folder; also the location box placeholder.</comment>
-  </data>
-  <data name="ChooseFolder" xml:space="preserve">
-    <value>Choisir un dossier</value>
-    <comment>Import dialog: button that opens the folder picker.</comment>
-  </data>
   <data name="ThisImportCouldNotBeQueued" xml:space="preserve">
     <value>Impossible de mettre cette importation en file d'attente.</value>
     <comment>Import dialog: the installer refused the job; shown with the close-and-retry format.</comment>

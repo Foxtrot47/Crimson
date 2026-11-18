@@ -1080,14 +1080,6 @@
     <value>无法检测已安装的游戏。</value>
     <comment>Import dialog: discovery failed; shown with the close-and-retry format.</comment>
   </data>
-  <data name="ChooseTheGameFolderToImport" xml:space="preserve">
-    <value>选择包含游戏的文件夹</value>
-    <comment>Import dialog: hint for a game with no detected folder; also the location box placeholder.</comment>
-  </data>
-  <data name="ChooseFolder" xml:space="preserve">
-    <value>选择文件夹</value>
-    <comment>Import dialog: button that opens the folder picker.</comment>
-  </data>
   <data name="ThisImportCouldNotBeQueued" xml:space="preserve">
     <value>无法将此导入加入队列。</value>
     <comment>Import dialog: the installer refused the job; shown with the close-and-retry format.</comment>

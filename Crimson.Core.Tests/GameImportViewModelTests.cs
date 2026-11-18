@@ -14,7 +14,7 @@ public sealed class GameImportViewModelTests
         var ubisoft = new TestLauncherProvider("ubisoft");
         ubisoft.Jobs.Actions.Add(ActionType.Import);
         var registry = new LauncherRegistry([epic, ubisoft]);
-        return (new GameImportViewModel(new LauncherInstaller(registry), new LauncherLibrary(registry), registry), ubisoft);
+        return (new GameImportViewModel(new LauncherInstaller(registry), new LauncherLibrary(registry)), ubisoft);
     }
 
     private static void AddGame(TestLauncherProvider provider, string localId, string title, InstallState? state,
@@ -26,7 +26,7 @@ public sealed class GameImportViewModelTests
         });
 
     [Fact]
-    public async Task DetectedGamesSortFirstAndPrefillTheirFolder()
+    public async Task OnlyTheInstallsTheStoreReportsAreOffered()
     {
         var (model, ubisoft) = Create();
         AddGame(ubisoft, "1", "Alpha", null);
@@ -35,41 +35,39 @@ public sealed class GameImportViewModelTests
 
         await model.LoadAsync("ubisoft", CancellationToken.None);
 
-        Assert.Equal(["ubisoft:2", "ubisoft:1"], model.Items.Select(item => item.AppName));
+        var choice = Assert.Single(model.Items);
+        Assert.Equal(("ubisoft:2", "Zeta", "E:\\Games\\Zeta"), (choice.AppName, choice.Title, choice.DetectedPath));
         Assert.Equal("ubisoft:2", model.SelectedItem!.AppName);
-        Assert.Equal("E:\\Games\\Zeta", model.Location);
         Assert.True(model.CanImport);
-
-        model.SelectedItem = model.Items[1];
-        Assert.Null(model.Location);
-        Assert.False(model.CanImport);
     }
 
     [Fact]
-    public async Task InstalledUninstallableAndDlcGamesAreNotOffered()
+    public async Task LibraryRulesOutInstalledDlcAndUninstallableInstallsButKeepsUnknownOnes()
     {
         var (model, ubisoft) = Create();
         AddGame(ubisoft, "installed", "Installed", InstallState.Installed);
         AddGame(ubisoft, "addon", "Add-on", null, isDlc: true);
         AddGame(ubisoft, "expired", "Expired", null, canInstall: false);
-        AddGame(ubisoft, "offered", "Offered", null);
+        ubisoft.Jobs.ImportCandidates.Add(new ImportCandidate("ubisoft:installed", "Installed", "E:\\Installed"));
+        ubisoft.Jobs.ImportCandidates.Add(new ImportCandidate("ubisoft:addon", "Add-on", "E:\\Addon"));
+        ubisoft.Jobs.ImportCandidates.Add(new ImportCandidate("ubisoft:expired", "Expired", "E:\\Expired"));
+        ubisoft.Jobs.ImportCandidates.Add(new ImportCandidate("ubisoft:unknown", "Ubisoft 7", "E:\\Unknown"));
 
         await model.LoadAsync("ubisoft", CancellationToken.None);
 
-        Assert.Equal(["ubisoft:offered"], model.Items.Select(item => item.AppName));
+        var choice = Assert.Single(model.Items);
+        Assert.Equal(("ubisoft:unknown", "Ubisoft 7"), (choice.AppName, choice.Title));
     }
 
     [Fact]
-    public async Task RejectedFolderIsNotQueuedAndExplainsWhy()
+    public async Task RejectedDetectedFolderIsNotQueuedAndExplainsWhy()
     {
         var (model, ubisoft) = Create();
         AddGame(ubisoft, "1", "Alpha", null);
+        ubisoft.Jobs.ImportCandidates.Add(new ImportCandidate("ubisoft:1", "Alpha", "E:\\Games\\Alpha"));
         ubisoft.Jobs.ImportFailure = new OperationFailure(OperationFailureKind.Storage, "not_this_game",
             "This folder does not contain the game.", "Choose its installation folder.", false);
         await model.LoadAsync("ubisoft", CancellationToken.None);
-        model.SelectedItem = model.Items[0];
-        model.FolderPickerRequested += () => Task.FromResult<string?>("D:\\Elsewhere");
-        await model.PickLocationAsync();
 
         Assert.False(await model.ImportSelectedAsync(CancellationToken.None));
 
@@ -78,19 +76,31 @@ public sealed class GameImportViewModelTests
     }
 
     [Fact]
-    public async Task AcceptedFolderQueuesAnImportForThatGame()
+    public async Task DetectedFolderQueuesAnImportForThatGame()
     {
         var (model, ubisoft) = Create();
         AddGame(ubisoft, "1", "Alpha", null);
+        ubisoft.Jobs.ImportCandidates.Add(new ImportCandidate("ubisoft:1", "Alpha", "E:\\Games\\Alpha"));
         await model.LoadAsync("ubisoft", CancellationToken.None);
-        model.SelectedItem = model.Items[0];
-        model.FolderPickerRequested += () => Task.FromResult<string?>("D:\\Games\\Alpha");
-        await model.PickLocationAsync();
 
         Assert.True(await model.ImportSelectedAsync(CancellationToken.None));
 
         var queued = Assert.Single(ubisoft.Jobs.Queued);
-        Assert.Equal(("ubisoft:1", ActionType.Import, "D:\\Games\\Alpha"), (queued.AppName, queued.Action, queued.Location));
-        Assert.Equal(("ubisoft:1", "D:\\Games\\Alpha"), Assert.Single(ubisoft.Jobs.ImportValidations));
+        Assert.Equal(("ubisoft:1", ActionType.Import, "E:\\Games\\Alpha"), (queued.AppName, queued.Action, queued.Location));
+        Assert.Equal(("ubisoft:1", "E:\\Games\\Alpha"), Assert.Single(ubisoft.Jobs.ImportValidations));
+    }
+
+    [Fact]
+    public async Task AStoreReportingNoInstallsOffersNothingToImport()
+    {
+        var (model, ubisoft) = Create();
+        AddGame(ubisoft, "1", "Alpha", null);
+
+        await model.LoadAsync("ubisoft", CancellationToken.None);
+
+        Assert.Empty(model.Items);
+        Assert.Null(model.SelectedItem);
+        Assert.False(model.CanImport);
+        Assert.True(model.HasStatusMessage);
     }
 }

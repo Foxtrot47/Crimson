@@ -20,7 +20,6 @@ public sealed partial class GameImportDialog : ContentDialog
     {
         ViewModel = App.GetService<GameImportViewModel>();
         InitializeComponent();
-        ViewModel.FolderPickerRequested += ShowFolderPicker;
     }
 
     public async Task ShowPickerAsync(string providerId)
@@ -44,7 +43,6 @@ public sealed partial class GameImportDialog : ContentDialog
             cancellation.Cancel();
             await _loading;
             ViewModel.Close();
-            ViewModel.FolderPickerRequested -= ShowFolderPicker;
             _cancellation = null;
         }
     }
@@ -62,18 +60,6 @@ public sealed partial class GameImportDialog : ContentDialog
     private void GameSelectionChanged(object sender, SelectionChangedEventArgs e) =>
         ViewModel.SelectedItem = GameList.SelectedItem as GameImportChoice;
 
-    private async void ChooseFolderClicked(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            await ViewModel.PickLocationAsync();
-        }
-        catch (Exception exception)
-        {
-            App.GetService<Serilog.ILogger>().Warning("Import folder picker failed: {ErrorType}", exception.GetType().Name);
-        }
-    }
-
     private async void ImportSelected(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         args.Cancel = true;
@@ -86,18 +72,6 @@ public sealed partial class GameImportDialog : ContentDialog
         {
             deferral.Complete();
         }
-    }
-
-    private async Task<string?> ShowFolderPicker()
-    {
-        var folderPicker = new Windows.Storage.Pickers.FolderPicker();
-        var window = ((App)Application.Current).GetWindow();
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
-        WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
-        folderPicker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Desktop;
-        folderPicker.FileTypeFilter.Add("*");
-        var folder = await folderPicker.PickSingleFolderAsync();
-        return folder?.Path;
     }
 
     public string ProviderId => _providerId;

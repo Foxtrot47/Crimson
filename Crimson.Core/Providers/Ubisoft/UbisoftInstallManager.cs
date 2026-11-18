@@ -385,16 +385,25 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (_store.Find(productId) is not null) continue;
-            string path;
-            try { path = UbisoftInstalledStore.NormalizePath(install.InstallDir.Replace('/', '\\')); }
-            catch (ArgumentException) { continue; }
-            if (!Directory.Exists(path)) continue;
-            var product = await _products.GetProduct(productId, cancellationToken);
-            if (product is not { Owned: true } || product.ProductType != UbisoftOwnedProduct.TypeGame) continue;
-            candidates.Add(new ImportCandidate(AppName(productId),
-                _products.GetTitle(productId) ?? "Ubisoft " + productId.ToString(CultureInfo.InvariantCulture), path));
+            if (await CandidateAsync(productId, install, cancellationToken) is { } candidate) candidates.Add(candidate);
         }
         return candidates;
+    }
+
+    /// <summary>One entry of the client's install list, or null when the folder or the ownership rules rule it out.</summary>
+    private async Task<ImportCandidate?> CandidateAsync(uint productId, UbisoftClientInstall install,
+        CancellationToken cancellationToken)
+    {
+        string path;
+        try { path = UbisoftInstalledStore.NormalizePath(install.InstallDir.Replace('/', '\\')); }
+        catch (ArgumentException) { return null; }
+        if (!Directory.Exists(path)) return null;
+        var product = await _products.GetProduct(productId, cancellationToken);
+        // The client's own install list already proves the game is on disk; ownership only refines the entry.
+        if (product is { Owned: false }) return null;
+        if (product is { ProductType: not UbisoftOwnedProduct.TypeGame }) return null;
+        return new ImportCandidate(AppName(productId),
+            _products.GetTitle(productId) ?? "Ubisoft " + productId.ToString(CultureInfo.InvariantCulture), path);
     }
 
     public async Task<OperationFailure?> ValidateImportLocation(string appName, string installPath,
@@ -1805,23 +1814,34 @@ internal sealed class UbisoftWindowsClientRegistry : IUbisoftClientRegistry
     {
         var installs = new Dictionary<uint, UbisoftClientInstall>();
         if (!OperatingSystem.IsWindows()) return installs;
-        try
-        {
-            using var root = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32);
-            using var key = root.OpenSubKey(InstallsKey);
-            if (key is null) return installs;
-            foreach (var name in key.GetSubKeyNames())
-            {
-                if (!uint.TryParse(name, NumberStyles.None, CultureInfo.InvariantCulture, out var productId) || productId == 0)
-                    continue;
-                using var product = key.OpenSubKey(name);
-                if (product?.GetValue("InstallDir") is not string { Length: > 0 } directory) continue;
-                installs[productId] = new UbisoftClientInstall(directory, product.GetValue("Language") as string);
-            }
-        }
-        catch (Exception error) when (error is UnauthorizedAccessException or System.Security.SecurityException or IOException) { }
+        // Connect writes the entry under the 32-bit view on some versions and the 64-bit view on others.
+        ReadInstalls(RegistryView.Registry32, installs);
+        ReadInstalls(RegistryView.Registry64, installs);
         return installs;
     }
+
+    private static void ReadInstalls(RegistryView view, Dictionary<uint, UbisoftClientInstall> installs)
+    {
+        try
+        {
+            using var root = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using var key = root.OpenSubKey(InstallsKey);
+            if (key is null) return;
+            foreach (var name in key.GetSubKeyNames()) ReadInstall(key, name, installs);
+        }
+        catch (Exception error) when (error is UnauthorizedAccessException or System.Security.SecurityException or IOException) { }
+    }
+
+    private static void ReadInstall(RegistryKey key, string name, Dictionary<uint, UbisoftClientInstall> installs)
+    {
+        if (!TryParseProductId(name, out var productId) || installs.ContainsKey(productId)) return;
+        using var product = key.OpenSubKey(name);
+        if (product?.GetValue("InstallDir") is not string { Length: > 0 } directory) return;
+        installs[productId] = new UbisoftClientInstall(directory, product.GetValue("Language") as string);
+    }
+
+    private static bool TryParseProductId(string name, out uint productId) =>
+        uint.TryParse(name, NumberStyles.None, CultureInfo.InvariantCulture, out productId) && productId != 0;
 
     public bool HasValue(UbisoftRegistryWrite write)
     {

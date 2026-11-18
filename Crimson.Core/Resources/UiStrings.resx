@@ -1403,14 +1403,6 @@
     <value>Installed games could not be detected.</value>
     <comment>Import dialog: discovery failed; shown with the close-and-retry format.</comment>
   </data>
-  <data name="ChooseTheGameFolderToImport" xml:space="preserve">
-    <value>Choose the folder that contains the game</value>
-    <comment>Import dialog: hint for a game with no detected folder; also the location box placeholder.</comment>
-  </data>
-  <data name="ChooseFolder" xml:space="preserve">
-    <value>Choose folder</value>
-    <comment>Import dialog: button that opens the folder picker.</comment>
-  </data>
   <data name="ThisImportCouldNotBeQueued" xml:space="preserve">
     <value>This import could not be queued.</value>
     <comment>Import dialog: the installer refused the job; shown with the close-and-retry format.</comment>
