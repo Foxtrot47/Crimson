@@ -118,6 +118,15 @@ public class UbisoftManifestTests
             Chunk(1, false, files: [FileEntry("a.bin", 100, [], Slice(64, 10, HashA, 50))])))));
 
     [Fact]
+    public void ComputeId_hashes_the_compressed_body_not_the_container()
+    {
+        var container = Container(Message(Integer(1, 1)));
+        var signatureLength = BitConverter.ToInt32(container, 4);
+        var body = container[(12 + signatureLength)..];
+        Assert.Equal(Convert.ToHexString(SHA1.HashData(body)), UbisoftManifest.ComputeId(container));
+    }
+
+    [Fact]
     public void Parse_rejects_a_truncated_or_inconsistent_container()
     {
         var complete = Container(Message(Chunk(1, false, files: [FileEntry("a", 0, [])])));
@@ -186,9 +195,12 @@ public class UbisoftManifestTests
         return Bytes(4, Message([.. parts]));
     }
 
-    internal static byte[] FileEntry(string path, ulong size, byte[][] contentHashes, params byte[][] slices)
+    internal static byte[] FileEntry(string path, ulong size, byte[][] contentHashes, params byte[][] slices) =>
+        FileEntry(path, size, contentHashes, directory: false, slices);
+
+    internal static byte[] FileEntry(string path, ulong size, byte[][] contentHashes, bool directory, params byte[][] slices)
     {
-        var parts = new List<byte[]> { Text(1, path), Integer(2, size), Integer(3, 0) };
+        var parts = new List<byte[]> { Text(1, path), Integer(2, size), Integer(3, directory ? 1UL : 0UL) };
         parts.AddRange(contentHashes.Select(hash => Bytes(4, hash)));
         parts.AddRange(slices.Select(slice => Bytes(7, slice)));
         return Message([.. parts]);

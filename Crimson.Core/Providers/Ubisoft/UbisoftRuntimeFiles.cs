@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using Crimson.Core;
 
 namespace Crimson.Providers.Ubisoft;
 
@@ -28,9 +29,21 @@ public static class UbisoftRuntimeFiles
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installDirectory);
         var source = bundledDirectory ?? BundledDirectory;
-        var copied = new List<string>();
-        if (!Directory.Exists(installDirectory) || !Directory.Exists(source)) return copied;
+        if (!Directory.Exists(installDirectory) || !Directory.Exists(source)) return [];
+        InstallPathPolicy.RequireSafeRoot(installDirectory);
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(installDirectory));
+        var copied = CopyBundledFiles(root, source, targetDirectories);
+        if (copied.Count == 0) return copied;
+        if (WriteRecord(root, ReadRecord(root).Union(copied, StringComparer.OrdinalIgnoreCase).ToList()))
+            return copied;
+        // No record means uninstall cannot find these copies. Remove them rather than leaving them behind.
+        RemoveBundledCopies(root, copied);
+        return [];
+    }
+
+    private static List<string> CopyBundledFiles(string root, string source, IEnumerable<string> targetDirectories)
+    {
+        var copied = new List<string>();
         foreach (var directory in targetDirectories.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             if (!IsInside(root, directory) || !Directory.Exists(directory)) continue;
@@ -50,8 +63,22 @@ public static class UbisoftRuntimeFiles
                 }
             }
         }
-        if (copied.Count > 0) WriteRecord(root, ReadRecord(root).Union(copied, StringComparer.OrdinalIgnoreCase).ToList());
         return copied;
+    }
+
+    private static void RemoveBundledCopies(string root, IEnumerable<string> relativePaths)
+    {
+        foreach (var relative in relativePaths)
+        {
+            try
+            {
+                var path = Path.Combine(root, relative);
+                if (!File.Exists(path)) continue;
+                File.SetAttributes(path, FileAttributes.Normal);
+                File.Delete(path);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
     }
 
     /// <summary>
@@ -61,25 +88,47 @@ public static class UbisoftRuntimeFiles
     public static int RemoveProvisioned(string? directory, string? bundledDirectory = null)
     {
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory)) return 0;
+        InstallPathPolicy.RequireSafeRoot(directory);
         var source = bundledDirectory ?? BundledDirectory;
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
-        var recorded = ReadRecord(root);
+        var remaining = new List<string>();
+        var removed = RemoveBundled(root, source, ReadRecord(root), remaining);
+        UpdateRecord(root, remaining);
+        return removed;
+    }
+
+    private static int RemoveBundled(string root, string source, IEnumerable<string> recorded, List<string> remaining)
+    {
         var removed = 0;
         foreach (var relative in recorded.Concat(Names).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var path = Path.GetFullPath(Path.Combine(root, relative));
-            if (!IsInside(root, path) || !File.Exists(path) || !MatchesBundled(path, Path.Combine(source, Path.GetFileName(path))))
+            if (!IsInside(root, path) || !File.Exists(path) ||
+                !MatchesBundled(path, Path.Combine(source, Path.GetFileName(path))))
                 continue;
             try
             {
                 File.Delete(path);
                 removed++;
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // Keep the record so a later uninstall can retry instead of orphaning the copy.
+                remaining.Add(relative);
+            }
+        }
+        return removed;
+    }
+
+    private static void UpdateRecord(string root, List<string> remaining)
+    {
+        if (remaining.Count > 0)
+        {
+            WriteRecord(root, remaining);
+            return;
         }
         try { File.Delete(RecordPath(root)); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
-        return removed;
     }
 
     private static string RecordPath(string root) => Path.Combine(root, ".Crimson", RecordName);
@@ -99,7 +148,7 @@ public static class UbisoftRuntimeFiles
         }
     }
 
-    private static void WriteRecord(string root, List<string> paths)
+    private static bool WriteRecord(string root, List<string> paths)
     {
         try
         {
@@ -107,8 +156,9 @@ public static class UbisoftRuntimeFiles
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);
             File.WriteAllText(file + ".tmp", JsonSerializer.Serialize(paths));
             File.Move(file + ".tmp", file, overwrite: true);
+            return true;
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
     }
 
     private static bool IsInside(string root, string path)

@@ -178,7 +178,8 @@ public sealed class UbisoftLibrary : ILauncherLibrary, IGameDetailsSource, IGame
             LandscapeImageUrl = display.LandscapeImageUrl,
             IsDownloadableContent = !isGame,
             CanInstall = IsInstallable(product, config),
-            CanLaunch = isGame && installed is not null && product.State != UbisoftOwnedProduct.StateExpired &&
+            CanLaunch = isGame && installed is not null && !installed.NeedsRepair &&
+                product.State != UbisoftOwnedProduct.StateExpired &&
                 config is not null && (config.OnlineExecutables.Count > 0 || config.OfflineExecutables.Count > 0),
             LocalAppState = installed is null ? null : new LauncherInstallation(State(product, installed), installed.InstallPath)
         };
@@ -298,15 +299,7 @@ public sealed class UbisoftLibrary : ILauncherLibrary, IGameDetailsSource, IGame
     {
         var session = await _auth.RequireSession();
         var epoch = Volatile.Read(ref _epoch);
-        if (_products is null) await GetLibraryData();
-        var product = Find(productId) ?? throw new InvalidOperationException(UiStrings.UbisoftInstallIsNotRecorded);
-        var installed = _installed.Find(productId) ?? throw new InvalidOperationException(UiStrings.UbisoftInstallIsNotRecorded);
-        installed = await PrepareSystemAsync(productId, installed);
-        var config = _metadata.Config(product) ?? throw new InvalidOperationException(UiStrings.UbisoftLaunchExecutableMissing);
-        var plan = UbisoftLaunchPlan.Resolve(installed, product, config, _readRegistry);
-        if (plan.ApplicationId is null) throw new InvalidOperationException(UiStrings.UbisoftApplicationIdMissing);
-        PlaceRuntimeFiles(productId, plan);
-
+        var (product, config, plan) = await ResolveLaunchAsync(productId);
         var products = _products ?? [];
         plan = plan with
         {
@@ -323,6 +316,21 @@ public sealed class UbisoftLibrary : ILauncherLibrary, IGameDetailsSource, IGame
         if (_products is { } current) GameStatusUpdated?.Invoke(ToGame(product, current));
         RunningStateChanged?.Invoke(Id(productId).ToString(), true);
         _ = ObserveGame(running, product, session, cloud);
+    }
+
+    private async Task<(UbisoftOwnedProduct Product, UbisoftProductConfig Config, UbisoftLaunchPlan Plan)>
+        ResolveLaunchAsync(uint productId)
+    {
+        if (_products is null) await GetLibraryData();
+        var product = Find(productId) ?? throw new InvalidOperationException(UiStrings.UbisoftInstallIsNotRecorded);
+        var installed = _installed.Find(productId) ?? throw new InvalidOperationException(UiStrings.UbisoftInstallIsNotRecorded);
+        if (installed.NeedsRepair) throw new InvalidOperationException(UiStrings.RepairRequired);
+        installed = await PrepareSystemAsync(productId, installed);
+        var config = _metadata.Config(product) ?? throw new InvalidOperationException(UiStrings.UbisoftLaunchExecutableMissing);
+        var plan = UbisoftLaunchPlan.Resolve(installed, product, config, _readRegistry);
+        if (plan.ApplicationId is null) throw new InvalidOperationException(UiStrings.UbisoftApplicationIdMissing);
+        PlaceRuntimeFiles(productId, plan);
+        return (product, config, plan);
     }
 
     private async Task<UbisoftInstalledGame> PrepareSystemAsync(uint productId, UbisoftInstalledGame installed)

@@ -655,6 +655,7 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
         IReadOnlyList<UbisoftManifestFile> changed = previous is null
             ? await VerifyAsync(job, root, files, ct)
             : FilesToTransfer(root, files, previous, UbisoftInstallProgress.Load(root, productId, manifestId));
+        if (previous is not null) RemoveTypeTransitions(root, previous, files);
 
         await TransferAsync(job, source, manifest, manifestId, root, changed, fresh: false, ct);
         EnterFinalizing(job);
@@ -719,6 +720,7 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
             : ResolveLanguages(item.Languages, installed.Languages, available);
         var files = UbisoftInstallSelection.Select(manifest, languages, owned);
         var previous = installed.ManifestId is null ? null : InstalledSelection(manifest, installed, owned);
+        if (previous is not null) RemoveTypeTransitions(root, previous, files);
 
         var damaged = await VerifyAsync(job, root, files, ct);
         var repaired = WithBuild(installed, manifestId, manifest, languages, owned, files);
@@ -784,6 +786,7 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
         var installed = await RequireInstalledAsync(productId, ct);
         var root = installed.InstallPath;
         item.Location = root;
+        InstallPathPolicy.RequireSafeRoot(root);
         item.Phase = OperationPhase.Uninstalling;
         item.Status = ActionStatus.Processing;
         Publish(item);
@@ -860,7 +863,10 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
         {
             ProductId = productId,
             InstallPath = root,
-            ManifestId = matches ? manifestId : null,
+            // Keep the build the selection came from even when files differ, so uninstall/repair apply the same
+            // manifest instead of a newer build's chunk IDs.
+            ManifestId = manifestId,
+            NeedsRepair = !matches,
             GameVersion = manifest.GameVersion,
             Languages = languages,
             ChunkIds = ChunkIds(manifest, languages, owned),
@@ -896,14 +902,18 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
         item.Phase = OperationPhase.Moving;
         item.Status = ActionStatus.Processing;
         Publish(item);
+        InstallPathPolicy.RequireSafeRoot(source);
+        InstallPathPolicy.RequireSafeRoot(destination);
 
-        if (string.Equals(Path.GetPathRoot(source), Path.GetPathRoot(destination), StringComparison.OrdinalIgnoreCase))
-            Directory.Move(source, destination);
+        var sameVolume = string.Equals(Path.GetPathRoot(source), Path.GetPathRoot(destination),
+            StringComparison.OrdinalIgnoreCase);
+        if (sameVolume) Directory.Move(source, destination);
         else await CopyAndVerifyAsync(job, installed, source, destination, ct);
 
         EnterFinalizing(job);
         var record = installed with { InstallPath = destination, SystemSetupPending = true };
-        await _store.SaveAsync(record, CancellationToken.None);
+        await CommitMoveAsync(record, source, destination, sameVolume);
+        if (!sameVolume) DeleteMovedSource(source);
         UbisoftManifest? manifest = null;
         try { manifest = await ManifestForRemovalAsync(installed, CancellationToken.None); }
         catch (Exception error) when (error is not OperationCanceledException)
@@ -915,6 +925,38 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
             includeRuns: installed.SystemSetupPending, CancellationToken.None);
         await _store.SaveAsync(record, CancellationToken.None);
         _log.Information("Ubisoft: moved {Game}", item.AppName);
+    }
+
+    private async Task CommitMoveAsync(UbisoftInstalledGame record, string source, string destination, bool sameVolume)
+    {
+        try
+        {
+            await _store.SaveAsync(record, CancellationToken.None);
+        }
+        catch
+        {
+            RollbackMove(source, destination, sameVolume);
+            throw;
+        }
+    }
+
+    private void RollbackMove(string source, string destination, bool sameVolume)
+    {
+        // The record is the authority for where the installation lives. Put the files back before reporting
+        // failure, or a same-volume move would leave installed.json pointing at a folder that no longer exists.
+        try
+        {
+            if (sameVolume)
+            {
+                if (Directory.Exists(destination) && !Directory.Exists(source))
+                    Directory.Move(destination, source);
+            }
+            else if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _log.Warning("Ubisoft: move rollback failed ({Error})", error.GetType().Name);
+        }
     }
 
     private static void PrepareMoveDestination(string source, string destination)
@@ -993,20 +1035,64 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { }
             throw;
         }
+        InstallPathPolicy.RemoveEmptyDirectories(destination, []);
+    }
 
-        foreach (var file in files)
+    /// <summary>Only called after the new location is durably recorded.</summary>
+    private void DeleteMovedSource(string source)
+    {
+        try
         {
-            try
+            InstallPathPolicy.RequireSafeRoot(source);
+            foreach (var file in Directory.EnumerateFiles(source, "*", new EnumerationOptions
+                { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint }))
             {
-                File.SetAttributes(file, FileAttributes.Normal);
-                File.Delete(file);
+                try
+                {
+                    File.SetAttributes(file, FileAttributes.Normal);
+                    File.Delete(file);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    _log.Warning("Ubisoft: a moved file could not be removed from the old folder ({Error})",
+                        error.GetType().Name);
+                }
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                _log.Warning("Ubisoft: a moved file could not be removed from the old folder ({Error})", error.GetType().Name);
-            }
+            InstallPathPolicy.RemoveEmptyDirectories(source, []);
         }
-        InstallPathPolicy.RemoveEmptyDirectories(source, []);
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            _log.Warning("Ubisoft: the old move folder could not be cleaned ({Error})", error.GetType().Name);
+        }
+    }
+
+    /// <summary>
+    /// A build can turn a file into a directory (or the reverse) at the same path. The old entry must go before the
+    /// transfer, because <see cref="UbisoftInstallFiles.DeleteLeaving"/> deliberately keeps paths present in both.
+    /// </summary>
+    private void RemoveTypeTransitions(string root, IReadOnlyList<UbisoftManifestFile> previous,
+        IReadOnlyList<UbisoftManifestFile> next)
+    {
+        var old = previous.GroupBy(file => UbisoftInstallFiles.Key(file.Path), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        foreach (var file in next)
+        {
+            var key = UbisoftInstallFiles.Key(file.Path);
+            if (!old.TryGetValue(key, out var before) || before.IsDirectory == file.IsDirectory) continue;
+            var path = InstallPathPolicy.ResolveFile(root, file.Path);
+            if (!before.IsDirectory)
+            {
+                InstallPathPolicy.DeleteFile(root, path);
+                continue;
+            }
+            var prefix = key + "\\";
+            var children = previous.Where(child =>
+                UbisoftInstallFiles.Key(child.Path).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+            UbisoftInstallFiles.Delete(root, children, _log);
+            InstallPathPolicy.RemoveEmptyDirectories(root, []);
+            if (Directory.Exists(path) && Directory.EnumerateFileSystemEntries(path).Any())
+                throw new UbisoftInstallUnavailableException("folder_not_empty");
+        }
     }
 
     private async Task TransferAsync(Job job, IUbisoftContentSource source, UbisoftManifest manifest, string manifestId,
@@ -1126,15 +1212,48 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
     private async Task RemoveCancelledInstallAsync(string root, uint productId)
     {
         if (!Directory.Exists(root) || _store.Find(productId) is not null) return;
+        InstallPathPolicy.RequireSafeRoot(root);
         if (await FreshProgressAsync(root, productId) is not { } stored) return;
-        if (CachedManifest(stored.ManifestId) is { } manifest)
-            // The folder held nothing but Crimson's own state when this install began: every manifest file in
-            // it was created by this job.
-            UbisoftInstallFiles.Delete(root, manifest.Chunks.SelectMany(chunk => chunk.Files), _log);
+        // Fresh means the folder was empty when the job began, but the user (or another process) may have created
+        // files since. Delete only paths the transfer actually opened; never every manifest chunk.
+        DeleteTouchedEntries(root, stored);
         UbisoftInstallProgress.Delete(root);
+        RemoveEmptyCrimsonFolder(root);
+        InstallPathPolicy.RemoveEmptyDirectories(root, []);
+    }
+
+    private void DeleteTouchedEntries(string root, UbisoftInstallProgress progress)
+    {
+        var paths = new HashSet<string>(progress.Touched, StringComparer.OrdinalIgnoreCase);
+        paths.UnionWith(progress.Completed);
+        paths.UnionWith(progress.Partial.Keys);
+        foreach (var relative in paths)
+        {
+            try { DeleteTouchedEntry(root, relative); }
+            catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                _log.Warning("Ubisoft: a file of a cancelled install could not be removed ({Error})", error.GetType().Name);
+            }
+        }
+    }
+
+    private static void DeleteTouchedEntry(string root, string relative)
+    {
+        var path = InstallPathPolicy.ResolveFile(root, relative);
+        if (Directory.Exists(path))
+        {
+            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0 &&
+                !Directory.EnumerateFileSystemEntries(path).Any())
+                Directory.Delete(path);
+            return;
+        }
+        if (File.Exists(path)) InstallPathPolicy.DeleteFile(root, path);
+    }
+
+    private static void RemoveEmptyCrimsonFolder(string root)
+    {
         var crimson = Path.Combine(root, UbisoftInstallProgress.CrimsonFolder);
         if (Directory.Exists(crimson) && !Directory.EnumerateFileSystemEntries(crimson).Any()) Directory.Delete(crimson);
-        InstallPathPolicy.RemoveEmptyDirectories(root, []);
     }
 
     private static async Task<UbisoftInstallProgress?> FreshProgressAsync(string root, uint productId)
@@ -1142,7 +1261,11 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
         var progressFile = UbisoftInstallProgress.PathFor(root);
         if (!File.Exists(progressFile)) return null;
         var stored = JsonSerializer.Deserialize<UbisoftInstallProgress>(await File.ReadAllTextAsync(progressFile));
-        return stored is not null && stored.ProductId == productId && stored.Fresh ? stored : null;
+        if (stored is null || stored.ProductId != productId || !stored.Fresh) return null;
+        stored.Completed ??= [];
+        stored.Touched ??= [];
+        stored.Partial ??= [];
+        return stored;
     }
 
     /// <summary>
@@ -1232,7 +1355,17 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
         if (!IsManifestId(manifestId)) return null;
         var file = ManifestCachePath(manifestId, ".manifest");
         if (!File.Exists(file)) return null;
-        try { return UbisoftManifest.Parse(File.ReadAllBytes(file)); }
+        try
+        {
+            var bytes = File.ReadAllBytes(file);
+            if (!string.Equals(UbisoftManifest.ComputeId(bytes), manifestId, StringComparison.OrdinalIgnoreCase))
+            {
+                _log.Warning("Ubisoft: cached manifest {ManifestId} failed its identity check; discarding it", manifestId);
+                File.Delete(file);
+                return null;
+            }
+            return UbisoftManifest.Parse(bytes);
+        }
         catch (Exception error) when (error is InvalidDataException or IOException)
         {
             try { File.Delete(file); } catch (IOException) { }
@@ -1245,6 +1378,10 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
         if (!IsManifestId(manifestId)) throw new UbisoftInstallUnavailableException("no_manifest");
         if (CachedManifest(manifestId) is { } cached) return cached;
         var bytes = await FetchSignedAsync(source, $"manifests/{manifestId}.manifest", MaximumManifestBytes, ct);
+        // The published ID is the SHA-1 of the compressed body. This also authenticates a manifest fetched from a
+        // cache or mirror that is not the ownership service.
+        if (!string.Equals(UbisoftManifest.ComputeId(bytes), manifestId, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The downloaded Ubisoft manifest does not match its published ID.");
         var manifest = UbisoftManifest.Parse(bytes);
         WriteCache(ManifestCachePath(manifestId, ".manifest"), bytes);
         return manifest;

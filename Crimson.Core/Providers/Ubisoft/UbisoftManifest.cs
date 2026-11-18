@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Security.Cryptography;
 using Crimson.Providers.Ubisoft.Protocol;
 using static Crimson.Providers.Ubisoft.Protocol.UbisoftWire;
 
@@ -97,7 +98,17 @@ public sealed class UbisoftManifest
         return string.Create(CultureInfo.InvariantCulture, $"slices_v3/{ShardAlphabet[first % ShardAlphabet.Length]}/{hash}");
     }
 
-    internal static byte[] Inflate(byte[] container, int maximumLength = MaximumBodyLength)
+    /// <summary>
+    /// The manifest ID published in ownership is the SHA-1 of the compressed body, not of the whole container.
+    /// Verify it before parsing a cached or downloaded manifest.
+    /// </summary>
+    public static string ComputeId(byte[] container)
+    {
+        var (offset, length) = BodyRange(container);
+        return Convert.ToHexString(SHA1.HashData(container.AsSpan(offset, length)));
+    }
+
+    private static (int Offset, int Length) BodyRange(byte[] container)
     {
         if (container.Length < HeaderLength) throw new InvalidDataException("Ubisoft manifest container is truncated.");
         var signatureLength = BinaryPrimitives.ReadUInt32LittleEndian(container.AsSpan(4));
@@ -105,7 +116,13 @@ public sealed class UbisoftManifest
         if ((ulong)HeaderLength + signatureLength + bodyLength > (ulong)container.Length)
             throw new InvalidDataException("Ubisoft manifest container is truncated.");
         if (bodyLength == 0) throw new InvalidDataException("Ubisoft manifest container has no body.");
-        using var source = new MemoryStream(container, HeaderLength + (int)signatureLength, (int)bodyLength, writable: false);
+        return (HeaderLength + (int)signatureLength, (int)bodyLength);
+    }
+
+    internal static byte[] Inflate(byte[] container, int maximumLength = MaximumBodyLength)
+    {
+        var (offset, length) = BodyRange(container);
+        using var source = new MemoryStream(container, offset, length, writable: false);
         using var inflated = new MemoryStream();
         try
         {

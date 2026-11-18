@@ -16,7 +16,7 @@ public sealed record UbisoftInstalledGame
     /// <summary>Absolute, normalized, no trailing separator.</summary>
     public required string InstallPath { get; init; }
 
-    /// <summary>40-hex id of the installed build; null for an import not verified yet.</summary>
+    /// <summary>40-hex id of the build the file selection came from; <see cref="NeedsRepair"/> marks an import not yet verified.</summary>
     public string? ManifestId { get; init; }
 
     public string? GameVersion { get; init; }

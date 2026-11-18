@@ -202,6 +202,7 @@ internal sealed class UbisoftInstallProgress
     public string ManifestId { get; set; } = "";
     public bool Fresh { get; set; }
     public HashSet<string> Completed { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> Touched { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, HashSet<int>> Partial { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     internal static string PathFor(string root) => Path.Combine(root, CrimsonFolder, FileName);
@@ -217,6 +218,7 @@ internal sealed class UbisoftInstallProgress
             if (stored is null || stored.ProductId != productId ||
                 !string.Equals(stored.ManifestId, manifestId, StringComparison.OrdinalIgnoreCase)) return null;
             stored.Completed = new HashSet<string>(stored.Completed ?? [], StringComparer.OrdinalIgnoreCase);
+            stored.Touched = new HashSet<string>(stored.Touched ?? [], StringComparer.OrdinalIgnoreCase);
             stored.Partial = new Dictionary<string, HashSet<int>>(stored.Partial ?? [], StringComparer.OrdinalIgnoreCase);
             return stored;
         }
@@ -251,6 +253,21 @@ internal sealed class UbisoftInstallProgress
         lock (_sync) return Partial.TryGetValue(path, out var slices) && slices.Contains(index);
     }
 
+    internal IReadOnlyList<int> SliceIndexes(string path)
+    {
+        lock (_sync) return Partial.TryGetValue(path, out var slices) ? slices.ToArray() : [];
+    }
+
+    internal void RemoveSlice(string path, int index)
+    {
+        lock (_sync)
+        {
+            if (!Partial.TryGetValue(path, out var slices)) return;
+            slices.Remove(index);
+            if (slices.Count == 0) Partial.Remove(path);
+        }
+    }
+
     internal void MarkSlice(string path, int index)
     {
         lock (_sync)
@@ -264,9 +281,15 @@ internal sealed class UbisoftInstallProgress
     {
         lock (_sync)
         {
+            Touched.Add(path);
             Completed.Add(path);
             Partial.Remove(path);
         }
+    }
+
+    internal void Touch(string path)
+    {
+        lock (_sync) Touched.Add(path);
     }
 
     internal void Forget(string path)
@@ -357,10 +380,11 @@ internal sealed class UbisoftDownloadEngine(
     internal async Task RunAsync(string root, IReadOnlyList<UbisoftManifestFile> files, UbisoftInstallProgress progress,
         UbisoftTransferCallbacks callbacks, CancellationToken ct)
     {
+        InstallPathPolicy.RequireSafeRoot(root);
         var transfer = new Transfer(root, progress, callbacks);
         try
         {
-            var pending = PrepareFiles(transfer, files, ct);
+            var pending = await PrepareFilesAsync(transfer, files, ct);
             transfer.SaveProgress(force: true);
             if (pending.Count == 0) return;
             await TransferSlicesAsync(transfer, pending, ct);
@@ -376,7 +400,7 @@ internal sealed class UbisoftDownloadEngine(
         }
     }
 
-    private static List<PendingSlice> PrepareFiles(Transfer transfer, IReadOnlyList<UbisoftManifestFile> files,
+    private static async Task<List<PendingSlice>> PrepareFilesAsync(Transfer transfer, IReadOnlyList<UbisoftManifestFile> files,
         CancellationToken ct)
     {
         var progress = transfer.Progress;
@@ -384,7 +408,7 @@ internal sealed class UbisoftDownloadEngine(
         foreach (var file in files)
         {
             ct.ThrowIfCancellationRequested();
-            if (progress.IsComplete(file.Path)) continue;
+            progress.Touch(file.Path);
             var target = InstallPathPolicy.ResolveFile(transfer.Root, file.Path);
             if (file.IsDirectory)
             {
@@ -392,7 +416,15 @@ internal sealed class UbisoftDownloadEngine(
                 progress.MarkFile(file.Path);
                 continue;
             }
+            if (progress.IsComplete(file.Path))
+            {
+                // A completed file is only trusted when its bytes still match the manifest.
+                if (await UbisoftFileVerifier.IsIntactAsync(transfer.Root, file, ct)) continue;
+                progress.Forget(file.Path);
+                TryDeleteFile(target);
+            }
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            await ValidatePartialAsync(target, file, progress, ct);
             var remaining = RemainingSlices(file, progress);
             if (remaining.Count == 0 || file.Size == 0)
             {
@@ -404,6 +436,49 @@ internal sealed class UbisoftDownloadEngine(
             pending.AddRange(remaining);
         }
         return pending;
+    }
+
+    /// <summary>
+    /// Recorded partial slices are only skipped when the bytes on disk still match their content hash. A manifest
+    /// without content hashes cannot prove a partial slice, so its partial state is discarded and fetched again.
+    /// </summary>
+    private static async Task ValidatePartialAsync(string target, UbisoftManifestFile file,
+        UbisoftInstallProgress progress, CancellationToken ct)
+    {
+        var indexes = progress.SliceIndexes(file.Path);
+        if (indexes.Count == 0) return;
+        if (!File.Exists(target) || new FileInfo(target).Length != (long)file.Size)
+        {
+            DiscardPartial(target, file, progress);
+            return;
+        }
+        foreach (var index in indexes)
+        {
+            if (index < 0 || index >= file.Slices.Count || file.Slices[index].ContentSha1 is not { Length: 20 })
+            {
+                DiscardPartial(target, file, progress);
+                return;
+            }
+            if (!await UbisoftFileVerifier.IsSliceIntactAsync(target, file.Slices[index], ct))
+                progress.RemoveSlice(file.Path, index);
+        }
+    }
+
+    private static void DiscardPartial(string target, UbisoftManifestFile file, UbisoftInstallProgress progress)
+    {
+        progress.Forget(file.Path);
+        TryDeleteFile(target);
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            File.SetAttributes(path, FileAttributes.Normal);
+            File.Delete(path);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
     private static List<PendingSlice> RemainingSlices(UbisoftManifestFile file, UbisoftInstallProgress progress)
@@ -662,19 +737,43 @@ internal static class UbisoftFileVerifier
         byte[]? buffer = null;
         foreach (var slice in file.Slices)
         {
-            if (slice.ContentSha1 is not { Length: 20 } expected) continue;
+            if (slice.ContentSha1 is not { Length: 20 }) continue;
             if (buffer is null || buffer.Length < slice.Size) buffer = new byte[slice.Size];
-            var read = 0;
-            while (read < slice.Size)
-            {
-                var count = await RandomAccess.ReadAsync(handle, buffer.AsMemory(read, (int)slice.Size - read),
-                    (long)slice.Offset + read, ct);
-                if (count == 0) return false;
-                read += count;
-            }
-            if (!SHA1.HashData(buffer.AsSpan(0, (int)slice.Size)).AsSpan().SequenceEqual(expected)) return false;
+            if (!await SliceMatchesAsync(handle, slice, buffer, ct)) return false;
         }
         return true;
+    }
+
+    /// <summary>Checks one recorded partial slice before resume skips it.</summary>
+    internal static async Task<bool> IsSliceIntactAsync(string path, UbisoftSlice slice, CancellationToken ct)
+    {
+        if (slice.ContentSha1 is not { Length: 20 }) return false;
+        try
+        {
+            using var handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite,
+                FileOptions.Asynchronous);
+            if (RandomAccess.GetLength(handle) < (long)(slice.Offset + slice.Size)) return false;
+            return await SliceMatchesAsync(handle, slice, new byte[slice.Size], ct);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static async Task<bool> SliceMatchesAsync(SafeFileHandle handle, UbisoftSlice slice, byte[] buffer,
+        CancellationToken ct)
+    {
+        if (slice.ContentSha1 is not { Length: 20 } expected || slice.Size == 0) return true;
+        var read = 0;
+        while (read < slice.Size)
+        {
+            var count = await RandomAccess.ReadAsync(handle, buffer.AsMemory(read, (int)slice.Size - read),
+                (long)slice.Offset + read, ct);
+            if (count == 0) return false;
+            read += count;
+        }
+        return SHA1.HashData(buffer.AsSpan(0, (int)slice.Size)).SequenceEqual(expected);
     }
 }
 
@@ -709,6 +808,7 @@ internal static class UbisoftInstallFiles
 
     internal static int Delete(string root, IEnumerable<UbisoftManifestFile> files, ILogger log)
     {
+        InstallPathPolicy.RequireSafeRoot(root);
         var removed = 0;
         var folders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in files.OrderByDescending(file => file.Path.Length))

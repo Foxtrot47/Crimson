@@ -44,6 +44,13 @@ internal static class InstallPathPolicy
         }
     }
 
+    public static void RequireSafeRoot(string installRoot)
+    {
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(installRoot));
+        if (IsReparsePoint(root))
+            throw new InvalidDataException("The installation folder is a link or junction; refusing to modify it.");
+    }
+
     public static void DeleteFile(string installRoot, string filePath)
     {
         var file = RequireFile(installRoot, filePath);

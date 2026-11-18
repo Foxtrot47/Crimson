@@ -247,6 +247,28 @@ public class UbisoftLibraryTests
     }
 
     [Fact]
+    public async Task AnInstallNeedingRepairCannotLaunch()
+    {
+        await using var fixture = await Fixture.Create();
+        var install = Path.Combine(fixture.Root, "Broken");
+        Directory.CreateDirectory(Path.Combine(install, "bin"));
+        await File.WriteAllTextAsync(Path.Combine(install, "bin", "Game.exe"), "fixture");
+        await File.WriteAllTextAsync(Path.Combine(install, "bin", "uplay_r1_loader64.dll"), "fixture");
+        fixture.Products = () => [Product(1, config: GameConfig)];
+        await fixture.Installed.SaveAsync(new UbisoftInstalledGame
+        {
+            ProductId = 1, InstallPath = install, ManifestId = Manifest, NeedsRepair = true
+        });
+        await fixture.Library.GetLibraryData();
+
+        var game = fixture.Library.GetGameInfo("ubisoft:1")!;
+        Assert.False(game.CanLaunch);
+        Assert.Equal(InstallState.Broken, game.LocalAppState!.InstallStatus);
+        Assert.False(await fixture.Library.LaunchApp("ubisoft:1"));
+        Assert.Null(fixture.Runtime.Plan);
+    }
+
+    [Fact]
     public async Task GameWithoutALoaderIsNotStarted()
     {
         await using var fixture = await Fixture.Create();

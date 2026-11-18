@@ -90,6 +90,139 @@ public sealed class UbisoftInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task Update_replaces_a_file_that_became_a_directory_and_the_reverse()
+    {
+        var first = new ManifestBuild().Chunk(1).File("thing", Content("old", 100));
+        Publish(first);
+        Assert.Equal(ActionStatus.Success, (await Run(new InstallItem(App, ActionType.Install, GameRoot))).Status);
+
+        var second = new ManifestBuild().Chunk(1)
+            .Directory("thing")
+            .File("thing\\child.bin", Content("child", 200));
+        Publish(second);
+        Assert.Equal(ActionStatus.Success, (await Run(new InstallItem(App, ActionType.Update, GameRoot))).Status);
+        Assert.True(File.Exists(Path.Combine(GameRoot, "thing", "child.bin")));
+
+        var third = new ManifestBuild().Chunk(1).File("thing", Content("replacement", 300));
+        Publish(third);
+        Assert.Equal(ActionStatus.Success, (await Run(new InstallItem(App, ActionType.Update, GameRoot))).Status);
+        Assert.Equal(Content("replacement", 300), await File.ReadAllBytesAsync(Path.Combine(GameRoot, "thing")));
+    }
+
+    [Fact]
+    public void Runtime_copy_is_rolled_back_when_its_record_cannot_be_written()
+    {
+        var source = Path.Combine(_folder, "bundled");
+        Directory.CreateDirectory(source);
+        File.WriteAllText(Path.Combine(source, "uplay_r1.dll"), "runtime");
+        Directory.CreateDirectory(GameRoot);
+        File.WriteAllText(Path.Combine(GameRoot, ".Crimson"), "blocks the record folder");
+
+        var copied = UbisoftRuntimeFiles.Provision(GameRoot, [GameRoot], source);
+
+        Assert.Empty(copied);
+        Assert.False(File.Exists(Path.Combine(GameRoot, "uplay_r1.dll")));
+    }
+
+    [Fact]
+    public async Task Install_rejects_a_manifest_that_does_not_match_its_published_id()
+    {
+        var build = new ManifestBuild().Chunk(1).File("game.exe", Content("game", 500));
+        Publish(build);
+        var path = $"manifests/{build.ManifestId}.manifest";
+        _cdn.Objects[path][^1] ^= 0xFF;
+
+        var result = await Run(new InstallItem(App, ActionType.Install, GameRoot));
+
+        Assert.Equal(ActionStatus.Failed, result.Status);
+        Assert.Null(_store.Find(Product));
+    }
+
+    [Fact]
+    public async Task A_tampered_cached_manifest_is_discarded_and_refetched()
+    {
+        var build = new ManifestBuild().Chunk(1).File("game.exe", Content("game", 500));
+        Publish(build);
+        var cache = Path.Combine(ProviderRoot, "manifests", build.ManifestId + ".manifest");
+        Directory.CreateDirectory(Path.GetDirectoryName(cache)!);
+        await File.WriteAllTextAsync(cache, "not the signed manifest");
+
+        var result = await Run(new InstallItem(App, ActionType.Install, GameRoot));
+
+        Assert.Equal(ActionStatus.Success, result.Status);
+        Assert.Equal(_cdn.Objects[$"manifests/{build.ManifestId}.manifest"], await File.ReadAllBytesAsync(cache));
+    }
+
+    [Fact]
+    public async Task A_completed_file_with_wrong_bytes_is_downloaded_again()
+    {
+        var game = Content("game", 2_000);
+        var build = new ManifestBuild().Chunk(1).File("game.bin", game);
+        Publish(build);
+        Directory.CreateDirectory(GameRoot);
+        await File.WriteAllBytesAsync(Path.Combine(GameRoot, "game.bin"), new byte[game.Length]);
+        new UbisoftInstallProgress { ProductId = Product, ManifestId = build.ManifestId, Fresh = true, Completed = { "game.bin" } }
+            .Save(GameRoot);
+
+        var result = await Run(new InstallItem(App, ActionType.Install, GameRoot));
+
+        Assert.Equal(ActionStatus.Success, result.Status);
+        Assert.All(build.SlicesOf("game.bin"), path => Assert.Equal(1, _cdn.Count(path)));
+        Assert.Equal(game, await File.ReadAllBytesAsync(Path.Combine(GameRoot, "game.bin")));
+    }
+
+    [Fact]
+    public async Task A_deleted_partial_file_is_downloaded_again()
+    {
+        var game = Content("game", 2_000);
+        var build = new ManifestBuild().Chunk(1).File("game.bin", game);
+        Publish(build);
+        Directory.CreateDirectory(GameRoot);
+        new UbisoftInstallProgress
+        {
+            ProductId = Product, ManifestId = build.ManifestId, Fresh = true,
+            Partial = { ["game.bin"] = [0] }
+        }.Save(GameRoot);
+
+        var result = await Run(new InstallItem(App, ActionType.Install, GameRoot));
+
+        Assert.Equal(ActionStatus.Success, result.Status);
+        Assert.All(build.SlicesOf("game.bin"), path => Assert.Equal(1, _cdn.Count(path)));
+    }
+
+    [Fact]
+    public async Task Cancelling_preserves_a_user_file_at_an_unselected_manifest_path()
+    {
+        var selected = Content("selected", 1_000);
+        var english = Content("english", 1_000);
+        var unselected = Content("unselected", 1_000);
+        var build = new ManifestBuild().Chunk(1).File("selected.bin", selected);
+        build.Chunk(2, "en-US").File("english.bin", english);
+        build.Chunk(3, "fr-FR").File("french.bin", unselected);
+        Publish(build);
+        var blocked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var slice = build.SlicesOf("selected.bin")[0];
+        _cdn.Before = async (path, ct) =>
+        {
+            if (path != slice) return;
+            blocked.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+        };
+        var finished = Finished(ActionType.Install);
+        Assert.True(_manager.TryAddToQueue(
+            new InstallItem(App, ActionType.Install, GameRoot) { Languages = ["en-US"] }));
+        await blocked.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        var userFile = Path.Combine(GameRoot, "french.bin");
+        await File.WriteAllTextAsync(userFile, "mine");
+
+        _manager.CancelInstall(App);
+        var result = await finished;
+
+        Assert.Equal(ActionStatus.Cancelled, result.Status);
+        Assert.Equal("mine", await File.ReadAllTextAsync(userFile));
+    }
+
+    [Fact]
     public async Task Install_resumes_from_its_progress_file_without_fetching_finished_files()
     {
         var done = Content("done", 2_000);
@@ -387,7 +520,8 @@ public sealed class UbisoftInstallerTests : IDisposable
         var result = await Run(new InstallItem(App, ActionType.Import, GameRoot));
 
         Assert.Equal(ActionStatus.Success, result.Status);
-        Assert.Null(_store.Find(Product)!.ManifestId);
+        Assert.NotNull(_store.Find(Product)!.ManifestId);
+        Assert.True(_store.Find(Product)!.NeedsRepair);
         Assert.Equal(ActionStatus.Failed, (await verify).Status);
     }
 
@@ -560,7 +694,7 @@ public sealed class UbisoftInstallerTests : IDisposable
                     Integer(21, (ulong)compression),
                     Integer(22, 3)
                 ]));
-                _manifestId = Convert.ToHexString(SHA1.HashData(container));
+                _manifestId = UbisoftManifest.ComputeId(container);
                 Objects[$"manifests/{_manifestId}.manifest"] = container;
                 return _manifestId;
             }
@@ -569,6 +703,12 @@ public sealed class UbisoftInstallerTests : IDisposable
         public ManifestBuild Chunk(uint id, string? language = null, params uint[] uplayIds)
         {
             _chunks.Add((id, language, uplayIds, []));
+            return this;
+        }
+
+        public ManifestBuild Directory(string path)
+        {
+            _chunks[^1].Files.Add(UbisoftManifestTests.FileEntry(path, 0, [], directory: true));
             return this;
         }
 
