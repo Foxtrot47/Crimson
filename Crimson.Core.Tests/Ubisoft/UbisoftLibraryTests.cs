@@ -220,6 +220,22 @@ public class UbisoftLibraryTests
     }
 
     [Fact]
+    public async Task ARenewedSessionKeepsTheLibraryLoadedForTheSameAccount()
+    {
+        await using var fixture = await Fixture.Create();
+        var released = new TaskCompletionSource<IReadOnlyList<UbisoftOwnedProduct>>();
+        fixture.Products = () => released.Task.GetAwaiter().GetResult();
+        var loading = Task.Run(() => fixture.Library.GetLibraryData());
+        SpinWait.SpinUntil(() => Volatile.Read(ref fixture.Fetches) == 1, TimeSpan.FromSeconds(10));
+
+        // The launch extension replaces the session object while the list is still loading.
+        await fixture.Auth.SignIn("email", "password", false);
+        released.SetResult([Product(1, config: GameConfig)]);
+
+        Assert.Equal("ubisoft:1", Assert.Single(await loading).AppName);
+    }
+
+    [Fact]
     public async Task LaunchStartsTheConfiguredExecutableWithOwnedAddons()
     {
         await using var fixture = await Fixture.Create();

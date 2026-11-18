@@ -40,7 +40,12 @@ public class UbisoftSessionRetentionTests
         var api = Api(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
         var auth = new UbisoftAuthentication(api, store);
 
-        Assert.Equal(AuthenticationStatus.LoginFailed, await auth.CheckAuthStatus());
+        // A live ticket signs in at once; Ubisoft's refusal arrives with the background extension.
+        Assert.Equal(AuthenticationStatus.LoggedIn, await auth.CheckAuthStatus());
+        await auth.LaunchExtension;
+
+        Assert.Equal(AuthenticationStatus.LoginFailed, auth.AuthenticationStatus);
+        Assert.Null(auth.Session);
         Assert.NotNull(store.Session);
     }
 
@@ -66,6 +71,7 @@ public class UbisoftSessionRetentionTests
         var store = new MemoryStore { Session = Stored("player@example.test", expired: false) };
         var auth = new UbisoftAuthentication(Api(_ => Json(new { userId = "user" })), store);
         await auth.CheckAuthStatus();
+        await auth.LaunchExtension;
         Assert.NotNull(store.Session);
 
         await auth.Logout();

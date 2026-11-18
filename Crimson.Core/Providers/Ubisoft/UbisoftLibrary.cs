@@ -134,8 +134,9 @@ public sealed class UbisoftLibrary : ILauncherLibrary, IGameDetailsSource, IGame
         });
     }
 
+    // Extension replaces the session object for the same account; only a sign-out or another account invalidates a load.
     private bool IsCurrent(UbisoftSession session, int epoch) =>
-        epoch == Volatile.Read(ref _epoch) && ReferenceEquals(session, _auth.Session);
+        epoch == Volatile.Read(ref _epoch) && _auth.Session?.UserId == session.UserId;
 
     private List<LauncherGame> Publish()
     {

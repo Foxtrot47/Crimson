@@ -58,7 +58,11 @@ public sealed class UbisoftAuthentication(UbisoftApi api, IUbisoftSessionStore s
     /// <summary>How often the renewing loop wakes up; the official client extends periodically too.</summary>
     private static readonly TimeSpan RenewInterval = TimeSpan.FromMinutes(10);
     public UbisoftSession? Session { get; private set; }
-    public AuthenticationStatus AuthenticationStatus { get; private set; } = AuthenticationStatus.LoggedOut;
+    // Unknown until the first check: a saved sign-in may still restore the session.
+    public AuthenticationStatus AuthenticationStatus { get; private set; } = AuthenticationStatus.Checking;
+
+    /// <summary>The extension of a restored session, which runs after the check so the cached library shows at once.</summary>
+    internal Task LaunchExtension { get; private set; } = Task.CompletedTask;
     public event Action<AuthenticationStatus>? StatusChanged;
     private void Publish(AuthenticationStatus status) { AuthenticationStatus = status; StatusChanged?.Invoke(status); }
 
@@ -143,7 +147,11 @@ public sealed class UbisoftAuthentication(UbisoftApi api, IUbisoftSessionStore s
                 (session.ExpiresAt - DateTimeOffset.UtcNow).TotalMinutes);
             if (session.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(2))
             {
-                await ExtendStoredSessionAsync(session, timeout.Token);
+                // Still valid: use it now and extend it in the background, so the library does not wait on Ubisoft.
+                Session = session;
+                Publish(AuthenticationStatus.LoggedIn);
+                StartRenewal();
+                LaunchExtension = Task.Run(() => ExtendRestoredSessionAsync(session));
                 return AuthenticationStatus;
             }
             var usable = await RenewStoredSessionAsync(session, timeout.Token);
@@ -170,13 +178,30 @@ public sealed class UbisoftAuthentication(UbisoftApi api, IUbisoftSessionStore s
         return AuthenticationStatus;
     }
 
-    private async Task ExtendStoredSessionAsync(UbisoftSession session, CancellationToken token)
+    private async Task ExtendRestoredSessionAsync(UbisoftSession session)
     {
-        // Still valid: extend it now so the next launch finds a live ticket.
-        var extended = UbisoftSession.Parse(await api.Extend(session, true, token), true)
-            with { Email = session.Email };
-        await Adopt(extended, true, token);
-        log?.Information("Ubisoft: session extended at launch");
+        await _gate.WaitAsync();
+        try
+        {
+            // A logout or a newer sign-in already replaced it.
+            if (!ReferenceEquals(Session, session)) return;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            // Extend now so the next launch finds a live ticket.
+            var extended = UbisoftSession.Parse(await api.Extend(session, true, timeout.Token), true)
+                with { Email = session.Email };
+            await Adopt(extended, true, timeout.Token);
+            log?.Information("Ubisoft: session extended at launch");
+        }
+        catch (UbisoftApiException ex) when (ex.Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            await RecoverRefusedTicketAsync(ex);
+        }
+        catch (Exception ex)
+        {
+            // Offline or unreachable: keep the restored ticket; the renewal loop extends it later.
+            log?.Warning("Ubisoft: launch extension could not reach the service ({ErrorType})", ex.GetType().Name);
+        }
+        finally { _gate.Release(); }
     }
 
     private async Task<UbisoftSession?> RenewStoredSessionAsync(UbisoftSession session, CancellationToken token)

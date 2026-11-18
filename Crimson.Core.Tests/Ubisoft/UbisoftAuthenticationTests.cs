@@ -37,7 +37,7 @@ public class UbisoftAuthenticationTests
         try
         {
             Assert.True(await auth.SignIn("üser@example.com", "päss", true));
-            Assert.Equal(AuthenticationStatus.LoggedOut, auth.AuthenticationStatus);
+            Assert.NotEqual(AuthenticationStatus.LoggedIn, auth.AuthenticationStatus);
             Assert.Null(store.Session);
             await auth.CompleteTwoFactor("123456");
             Assert.Equal("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("üser@example.com:päss")), requests[0]);

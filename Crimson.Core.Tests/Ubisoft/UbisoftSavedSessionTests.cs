@@ -27,6 +27,7 @@ public class UbisoftSavedSessionTests
         var auth = fixture.Auth();
 
         Assert.Equal(AuthenticationStatus.LoggedIn, await auth.CheckAuthStatus());
+        await auth.LaunchExtension;
         // The stored ticket now carries the extended expiry.
         Assert.NotNull(fixture.Store.Session);
         Assert.True(fixture.Store.Session!.ExpiresAt > DateTimeOffset.UtcNow.AddHours(2));
@@ -34,22 +35,28 @@ public class UbisoftSavedSessionTests
     }
 
     [Fact]
-    public async Task LaunchExtendsTheStoredTicketAndAdoptsTheResult()
+    public async Task LaunchSignsInFromTheStoredTicketThenExtendsItInTheBackground()
     {
         using var fixture = new Fixture();
         fixture.Store.Session = LiveSession(TimeSpan.FromHours(2));
+        using var ubisoftAnswers = new ManualResetEventSlim();
         var calls = new List<string>();
         fixture.Respond = request =>
         {
-            var auth = request.Headers.Authorization?.ToString() ?? "";
-            calls.Add(request.RequestUri!.AbsolutePath + " " + auth);
+            lock (calls) calls.Add(request.RequestUri!.AbsolutePath + " " + request.Headers.Authorization);
+            Assert.True(ubisoftAnswers.Wait(TimeSpan.FromSeconds(10)));
             return request.RequestUri.AbsolutePath.Contains("sessions")
                 ? Ok(ExtendedPayload(TimeSpan.FromHours(3)))
                 : Ok(new { userId = "user" });
         };
 
         var auth = fixture.Auth();
+        // The stored ticket is still valid, so the cached library does not wait for Ubisoft to answer.
         Assert.Equal(AuthenticationStatus.LoggedIn, await auth.CheckAuthStatus());
+        Assert.Equal("live-ticket", auth.Session!.Ticket);
+
+        ubisoftAnswers.Set();
+        await auth.LaunchExtension;
 
         // One authenticated call is enough: the extension itself proves the ticket.
         Assert.Equal("/v3/profiles/sessions Ubi_v1 t=live-ticket", Assert.Single(calls));
