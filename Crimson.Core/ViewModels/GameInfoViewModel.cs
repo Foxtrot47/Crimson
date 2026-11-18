@@ -35,7 +35,6 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
     private CloudSaveSyncStatus _cloudSyncStatus;
     private bool _isGameRunning;
     private CancellationTokenSource? _storeDetailsCancellation;
-    private int _storeDetailsUpdateVersion;
     private int _noticeGeneration;
 
     [ObservableProperty]
@@ -157,7 +156,6 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
 
     // Event for showing install dialog
     public event Func<Task> ShowInstallDialogRequested;
-    public event Action CloseInstallDialogRequested;
 
     // Event for requesting folder picker from view
     public event Func<Task<string>> FolderPickerRequested;
@@ -484,7 +482,6 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         string appName,
         CancellationToken cancellationToken)
     {
-        var updateVersion = Volatile.Read(ref _storeDetailsUpdateVersion);
         IsDetailsLoading = true;
         StoreProductDetails? details = null;
         try
@@ -503,8 +500,7 @@ public partial class GameInfoViewModel : ObservableObject, INavigationAware
         _uiDispatcher.TryEnqueue(() =>
         {
             if (cancellationToken.IsCancellationRequested || Game?.AppName != appName) return;
-            if (updateVersion == Volatile.Read(ref _storeDetailsUpdateVersion))
-                ApplyStoreDetails(details);
+            ApplyStoreDetails(details);
             IsDetailsLoading = false;
         });
     }
