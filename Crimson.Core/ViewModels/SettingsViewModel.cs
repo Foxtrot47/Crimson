@@ -253,15 +253,6 @@ namespace Crimson.ViewModels
 
         public IReadOnlyList<LauncherAccount> Accounts => _authManager.Accounts;
 
-        [RelayCommand]
-        private async Task DisconnectAccount(LauncherAccount account)
-        {
-            await _authManager.Logout(account.ProviderId);
-        }
-
-        [RelayCommand]
-        private void ConnectAccount(LauncherAccount account) => _authManager.RequestSignIn(account.ProviderId);
-
         private async Task SaveSettingsAsync()
         {
             await _settingsManager.SaveSettings();

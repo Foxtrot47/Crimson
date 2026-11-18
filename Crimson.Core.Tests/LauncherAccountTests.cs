@@ -7,27 +7,22 @@ namespace Crimson.Tests;
 public class LauncherAccountTests
 {
     [Fact]
-    public async Task ConnectedRowShowsTheSignedInPersonAndSignOutFallsBackToTheStoreName()
+    public async Task ConnectedRowNamesTheSignedInPersonAndSignOutFallsBackToTheConnectionState()
     {
         var provider = new TestLauncherProvider("ea");
         var registry = new LauncherRegistry([provider]);
         var accounts = new LauncherAuthentication(registry, new ImmediateDispatcher());
         var row = Assert.Single(accounts.Accounts);
         Assert.Equal("ea", row.DisplayName);
-        Assert.False(row.HasAccountName);
 
         await accounts.CheckAuthStatus("ea");
 
         Assert.True(row.IsConnected);
-        Assert.True(row.HasAccountName);
-        Assert.Equal("ea account", row.AccountName);
-        Assert.Equal("EA", row.AccountInitials);
-        Assert.Equal(UiStrings.Connected, row.StatusText);
+        Assert.Equal(UiStrings.Format(UiStrings.SignedInAsFormat, "ea account"), row.Summary);
 
         await provider.Auth.Logout();
-        Assert.False(row.HasAccountName);
-        Assert.Equal("ea", row.AccountName);
-        Assert.Equal(UiStrings.NotConnected, row.StatusText);
+        Assert.False(row.IsConnected);
+        Assert.Equal(UiStrings.NotConnected, row.Summary);
     }
 
     [Fact]

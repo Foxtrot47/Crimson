@@ -52,15 +52,6 @@ public sealed class UbisoftSignInTests
             UbisoftSignInFailure.Describe(new TaskCanceledException(), true));
     }
 
-    [Fact]
-    public void FormUsesAColumnNarrowEnoughForADialog()
-    {
-        // Browser sign-in needs a page; this form is laid out for a dialog-sized column.
-        var column = Assert.Single(Load().Descendants(), element => element.Name.LocalName == "StackPanel" &&
-            (string?)element.Attribute("Width") == "400");
-        Assert.NotNull(column);
-    }
-
     private static XElement Named(XDocument document, string name) =>
         Assert.Single(document.Descendants(), element => (string?)element.Attribute(X + "Name") == name);
 

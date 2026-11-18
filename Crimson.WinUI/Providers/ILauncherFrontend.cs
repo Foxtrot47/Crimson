@@ -3,11 +3,15 @@ using System.Linq;
 using System.Threading.Tasks;
 using System;
 using Microsoft.UI.Xaml;
+using Windows.UI;
 
 namespace Crimson.Providers;
 
-/// <summary>Space a provider asks for when its sign-in view is hosted in a dialog.</summary>
-public sealed record LauncherSignInSize(double Width, double Height);
+/// <summary>
+/// Space a provider asks for when its sign-in view is hosted in a dialog. A null height lets a form
+/// size to its content; a browser page has no natural height and needs one.
+/// </summary>
+public sealed record LauncherSignInSize(double Width, double? Height);
 
 public interface ILauncherSignInView
 {
@@ -16,7 +20,7 @@ public interface ILauncherSignInView
     void CloseSignIn();
 
     /// <summary>Browser-based flows need a page; forms need much less. Defaults to the browser size.</summary>
-    LauncherSignInSize PreferredSize => new(900, 620);
+    LauncherSignInSize PreferredSize => new(400, 680);
 }
 
 public interface ILauncherStoreView
@@ -25,9 +29,6 @@ public interface ILauncherStoreView
     void Open(Uri uri);
 }
 
-/// <summary>A command a provider contributes to the shared library chrome.</summary>
-public sealed record LauncherLibraryAction(string Label, string Glyph, Func<Task> Invoke);
-
 public interface ILauncherFrontend
 {
     string ProviderId { get; }
@@ -35,13 +36,16 @@ public interface ILauncherFrontend
     Type? StorePageType { get; }
 
     /// <summary>
-    /// Provider-owned library actions (import, migration, transfer). The shell renders whatever is
-    /// registered, so a provider with no actions contributes no chrome.
+    /// Opens the provider's import of games it finds already installed, or null when the store has none.
+    /// The shell lists every store that supplies one behind a single Import button.
     /// </summary>
-    IReadOnlyList<LauncherLibraryAction> LibraryActions => [];
+    Func<Task>? Import => null;
 
     /// <summary>Store mark shown next to a library entry; the shell draws whatever a provider supplies.</summary>
     string? StoreLogo => null;
+
+    /// <summary>Fill behind <see cref="StoreLogo"/> on account surfaces, so the mark keeps its brand contrast.</summary>
+    Color? StoreTileColor => null;
 }
 
 /// <summary>Optional provider-owned account/runtime/game configuration, independent of sign-in.</summary>

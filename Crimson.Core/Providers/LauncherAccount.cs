@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
@@ -36,10 +35,7 @@ public sealed class LauncherAccount : ObservableObject
             if (!SetProperty(ref _status, value)) return;
             OnPropertyChanged(nameof(IsConnected));
             OnPropertyChanged(nameof(CanConnect));
-            OnPropertyChanged(nameof(StatusText));
-            OnPropertyChanged(nameof(AccountName));
-            OnPropertyChanged(nameof(AccountInitials));
-            OnPropertyChanged(nameof(HasAccountName));
+            OnPropertyChanged(nameof(Summary));
         }
     }
     private LauncherUser? _user;
@@ -51,25 +47,18 @@ public sealed class LauncherAccount : ObservableObject
         internal set
         {
             if (!SetProperty(ref _user, value)) return;
-            OnPropertyChanged(nameof(AccountName));
-            OnPropertyChanged(nameof(AccountInitials));
-            OnPropertyChanged(nameof(HasAccountName));
+            OnPropertyChanged(nameof(Summary));
         }
     }
 
-    // Launchers name the account for the signed-in person; the store name is the fallback.
-    public string AccountName =>
-        IsConnected && User is { HasName: true } user ? user.DisplayName! : DisplayName;
-
-    public bool HasAccountName => IsConnected && User is { HasName: true };
-
-    public string AccountInitials => new((AccountName.Trim() is { Length: > 0 } name ? name : DisplayName)
-        .Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2)
-        .Select(part => char.ToUpperInvariant(part[0])).ToArray());
+    /// <summary>Who is signed in when the store names the account, otherwise the connection state.</summary>
+    public string Summary => IsConnected && User is { HasName: true } user
+        ? UiStrings.Format(UiStrings.SignedInAsFormat, user.DisplayName!)
+        : StatusText;
 
     public bool IsConnected => Status == AuthenticationStatus.LoggedIn;
     public bool CanConnect => Status is AuthenticationStatus.LoggedOut or AuthenticationStatus.LoginFailed;
-    public string StatusText => Status switch
+    private string StatusText => Status switch
     {
         AuthenticationStatus.LoggedIn => UiStrings.Connected,
         AuthenticationStatus.Checking => UiStrings.CheckingAccount,

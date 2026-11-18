@@ -56,8 +56,7 @@ public sealed partial class MainWindow : Window
     private readonly LauncherLibrary _libraryManager;
     private readonly LauncherRegistry _launchers;
     private readonly LauncherStores _stores;
-    private ContentDialog? _signInDialog;
-    private LoginPage? _signInPage;
+    private Crimson.Controls.SignInDialog? _signInDialog;
     private string? _signInProviderId;
     private readonly OperationErrorPresenter _operationErrors;
     private readonly CloudSaveConflictPresenter _cloudSaveConflicts;
@@ -1021,25 +1020,14 @@ public sealed partial class MainWindow : Window
         if (_signInDialog is not null) return;
         _signInProviderId = providerId;
         var frontend = App.GetService<LauncherFrontendRegistry>().Get(providerId);
-        var view = frontend.CreateSignInView();
-        var page = new LoginPage(view);
-        _signInPage = page;
-        var dialog = new ContentDialog
-        {
-            Title = _launchers.Get(providerId).DisplayName,
-            Content = page,
-            CloseButtonText = UiStrings.Cancel,
-            XamlRoot = Content.XamlRoot,
-            Style = (Style)Application.Current.Resources["DefaultContentDialogStyle"]
-        };
+        var store = StoreAccountItem.For(_authManager.Accounts.Single(account => account.ProviderId == providerId), frontend);
+        var dialog = new Crimson.Controls.SignInDialog(store, frontend.CreateSignInView()) { XamlRoot = Content.XamlRoot };
         _signInDialog = dialog;
-        dialog.Opened += (_, _) => page.InitializeSignIn();
         try { await dialog.ShowAsync(); }
         catch (Exception ex) { _log.Error(ex, "Could not open account sign-in for {ProviderId}", providerId); }
         finally
         {
-            page.CloseSignIn();
-            _signInPage = null;
+            dialog.EndSignIn();
             _signInDialog = null;
             _signInProviderId = null;
         }
@@ -1078,7 +1066,7 @@ public sealed partial class MainWindow : Window
         _authManager.StatusChanged -= AccountStatusChanged;
         _authManager.SignInRequested -= SignInRequested;
         _signInDialog?.Hide();
-        _signInPage?.CloseSignIn();
+        _signInDialog?.EndSignIn();
 
     }
 

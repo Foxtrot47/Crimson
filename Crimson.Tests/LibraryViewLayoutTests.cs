@@ -48,9 +48,8 @@ public sealed class LibraryViewLayoutTests
             Assert.Equal("FontIcon", icon.Name.LocalName);
             Assert.Equal("14", (string?)icon.Attribute("FontSize"));
         });
-        var actions = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "LibraryActionsBar");
-        Assert.Equal("Center", (string?)actions.Attribute("VerticalAlignment"));
-        Assert.Equal("Horizontal", (string?)actions.Attribute("Orientation"));
+        var import = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "ImportButton");
+        Assert.Equal("Center", (string?)import.Attribute("VerticalAlignment"));
     }
 
     [Fact]
@@ -117,8 +116,8 @@ public sealed class LibraryViewLayoutTests
         Assert.Equal("Right", (string?)actions.Attribute("HorizontalAlignment"));
         Assert.All(actions.Elements().Single(element => element.Name.LocalName == "Grid.ColumnDefinitions").Elements(),
             column => Assert.Equal("Auto", (string?)column.Attribute("Width")));
-        var bar = Assert.Single(actions.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "LibraryActionsBar");
-        Assert.Equal("2", (string?)bar.Attribute("Grid.Column"));
+        var import = Assert.Single(actions.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "ImportButton");
+        Assert.Equal("2", (string?)import.Attribute("Grid.Column"));
     }
 
     [Fact]
@@ -149,7 +148,7 @@ public sealed class LibraryViewLayoutTests
         var document = Load();
         var actions = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "LibraryActions");
         Assert.Equal("16,20,16,20", (string?)actions.Attribute("Margin"));
-        var repeater = Assert.Single(document.Descendants(), element => element.Name.LocalName == "ItemsRepeater");
+        var repeater = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "ItemsRepeater");
         Assert.Equal("0,0,0,20", (string?)repeater.Attribute("Margin"));
         var margins = document.Descendants().Where(element => (string?)element.Attribute("Target") == "ItemsRepeater.Margin")
             .Select(element => (string?)element.Attribute("Value")).ToList();
@@ -172,7 +171,7 @@ public sealed class LibraryViewLayoutTests
         Assert.Equal($"{{StaticResource {layout}}}", setters["ItemsRepeater.Layout"]);
         Assert.Equal($"{{StaticResource {template}}}", setters["ItemsRepeater.ItemTemplate"]);
         Assert.Equal(alignment, setters["ItemsRepeater.HorizontalAlignment"]);
-        var repeater = Assert.Single(document.Descendants(), element => element.Name.LocalName == "ItemsRepeater");
+        var repeater = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "ItemsRepeater");
         Assert.Equal("{x:Bind ViewModel.GamesList, Mode=TwoWay}", (string?)repeater.Attribute("ItemsSource"));
     }
 

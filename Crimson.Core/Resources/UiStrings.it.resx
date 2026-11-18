@@ -73,14 +73,20 @@
   <data name="SignInFailed" xml:space="preserve">
     <value>Accesso non riuscito. Riprova.</value>
   </data>
-  <data name="Connect" xml:space="preserve">
-    <value>Connetti</value>
+  <data name="SignOut" xml:space="preserve">
+    <value>Esci</value>
   </data>
-  <data name="Disconnect" xml:space="preserve">
-    <value>Disconnetti</value>
+  <data name="SignedInAsFormat" xml:space="preserve">
+    <value>Accesso effettuato come {0}</value>
   </data>
-  <data name="UbisoftSignInHeading" xml:space="preserve">
-    <value>Accedi a Ubisoft</value>
+  <data name="ConnectYourStores" xml:space="preserve">
+    <value>Collega i tuoi store</value>
+  </data>
+  <data name="ConnectYourStoresDescription" xml:space="preserve">
+    <value>Accedi a uno store per portare i suoi giochi nella tua libreria. Potrai collegare altri store più tardi nelle Impostazioni.</value>
+  </data>
+  <data name="SignInToStoreFormat" xml:space="preserve">
+    <value>Accedi a {0}</value>
   </data>
   <data name="Email" xml:space="preserve">
     <value>Email</value>
@@ -372,6 +378,12 @@
   </data>
   <data name="Import" xml:space="preserve">
     <value>Importa</value>
+  </data>
+  <data name="ImportGames" xml:space="preserve">
+    <value>Importa giochi</value>
+  </data>
+  <data name="ImportGamesDescription" xml:space="preserve">
+    <value>Porta in Crimson i giochi che hai già installato con un altro launcher. Scegli lo store a cui appartengono.</value>
   </data>
   <data name="ImportFromEpic" xml:space="preserve">
     <value>Importa da Epic</value>
@@ -1054,10 +1066,6 @@
   <data name="InstallLanguagesCouldNotBeLoaded" xml:space="preserve">
     <value>Impossibile caricare le lingue del gioco.</value>
     <comment>Game properties: the provider could not list install languages.</comment>
-  </data>
-  <data name="ImportFromUbisoft" xml:space="preserve">
-    <value>Importa da Ubisoft Connect</value>
-    <comment>Library action contributed by the Ubisoft provider.</comment>
   </data>
   <data name="ImportFromProviderFormat" xml:space="preserve">
     <value>Importa da {0}</value>

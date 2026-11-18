@@ -8,18 +8,14 @@
     xmlns:strings="using:Crimson.Resources"
     mc:Ignorable="d">
 
-    <StackPanel Width="400" Padding="4" Spacing="18">
+    <!--  The sign-in dialog names the store in its header; this form fills the space below it.  -->
+    <StackPanel Padding="24,20,24,24" Spacing="18">
 
-        <StackPanel Spacing="4">
-            <TextBlock
-                Style="{StaticResource SubtitleTextBlockStyle}"
-                Text="{x:Bind strings:UiStrings.UbisoftSignInHeading}" />
-            <TextBlock
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="{x:Bind strings:UiStrings.UbisoftPasswordNotice}"
-                TextWrapping="Wrap" />
-        </StackPanel>
+        <TextBlock
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            Style="{StaticResource CaptionTextBlockStyle}"
+            Text="{x:Bind strings:UiStrings.UbisoftPasswordNotice}"
+            TextWrapping="Wrap" />
 
         <!--  Credentials  -->
         <StackPanel x:Name="CredentialsPanel" Spacing="12">

@@ -1,8 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Crimson.Resources;
 using Microsoft.UI.Xaml;
+using Windows.UI;
 
 namespace Crimson.Providers.Epic;
 
@@ -12,13 +11,11 @@ public sealed class EpicFrontend : ILauncherFrontend
     public ILauncherSignInView CreateSignInView() => new EpicLoginPage();
     public Type StorePageType => typeof(EpicStorePage);
     public string? StoreLogo => "ms-appx:///Assets/Providers/epic.png";
+    public Color? StoreTileColor => Color.FromArgb(255, 255, 255, 255);
 
     // Importing existing Epic launcher installations belongs to the Epic provider, not the shell.
-    public IReadOnlyList<LauncherLibraryAction> LibraryActions =>
-    [
-        new LauncherLibraryAction(UiStrings.ImportFromEpic, "\uE8B5", () =>
-            ((App)Application.Current).GetWindow() is Views.MainWindow window
-                ? window.ShowEpicImportAsync()
-                : Task.CompletedTask)
-    ];
+    public Func<Task>? Import => () =>
+        ((App)Application.Current).GetWindow() is Views.MainWindow window
+            ? window.ShowEpicImportAsync()
+            : Task.CompletedTask;
 }

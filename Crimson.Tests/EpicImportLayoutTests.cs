@@ -7,7 +7,7 @@ public sealed class EpicImportLayoutTests
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
     [Fact]
-    public void LibraryActionRowContainsInstalledFilterAndProviderSuppliedActionsInsteadOfASidebarEntry()
+    public void LibraryActionRowContainsInstalledFilterAndOneImportButtonInsteadOfPerStoreButtons()
     {
         var main = Load("MainWindow.xaml");
         Assert.DoesNotContain(main.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "EpicImportNavItem");
@@ -16,13 +16,32 @@ public sealed class EpicImportLayoutTests
         var filter = Assert.Single(actions.Descendants(), element => element.Name.LocalName == "CheckBox");
         Assert.Equal("Installed only", (string?)filter.Attribute("Content"));
         Assert.Equal("{x:Bind ViewModel.InstalledOnly, Mode=TwoWay}", (string?)filter.Attribute("IsChecked"));
-        // The import button is contributed by the Epic frontend at runtime, so the shell markup
-        // must not name a provider or hardcode its label.
-        Assert.DoesNotContain(actions.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "EpicImportButton");
-        Assert.DoesNotContain(actions.Descendants(),
-            element => (string?)element.Attribute("Text") == "Import from Epic");
-        var bar = Assert.Single(actions.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "LibraryActionsBar");
-        Assert.Empty(bar.Elements());
+        // Every store's import sits behind one button; the shell markup never names a store.
+        var import = Assert.Single(actions.Descendants(), element => element.Name.LocalName == "Button");
+        Assert.Equal("ImportButton", (string?)import.Attribute(Xaml + "Name"));
+        Assert.Equal("Import_Click", (string?)import.Attribute("Click"));
+        Assert.Single(import.Descendants(), element => (string?)element.Attribute("Text") == "Import");
+        Assert.DoesNotContain(actions.Descendants(), element =>
+            ((string?)element.Attribute("Text"))?.Contains("Epic") == true ||
+            ((string?)element.Attribute("Text"))?.Contains("Ubisoft") == true);
+    }
+
+    [Fact]
+    public void ImportChooserOffersEachStoreAsACardThatImportsOrAsksToSignIn()
+    {
+        var document = Load("ImportSourceDialog.xaml");
+        Assert.Equal("Import games", (string?)document.Root!.Attribute("Title"));
+        var card = Assert.Single(document.Descendants(), element => element.Name.LocalName == "DataTemplate");
+        Assert.Equal("providers:StoreAccountItem", (string?)card.Attribute(Xaml + "DataType"));
+        Assert.Single(card.Descendants(), element => (string?)element.Attribute("Source") == "{x:Bind Logo}");
+        var buttons = card.Descendants().Where(element => element.Name.LocalName == "Button").ToList();
+        var import = Assert.Single(buttons, button => (string?)button.Attribute("Click") == "ImportClicked");
+        var signIn = Assert.Single(buttons, button => (string?)button.Attribute("Click") == "SignInClicked");
+        // Exactly one of the two shows: a connected store imports, any other signs in first.
+        Assert.Equal("{x:Bind Account.IsConnected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}",
+            (string?)import.Attribute("Visibility"));
+        Assert.Equal("{x:Bind Account.IsConnected, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}",
+            (string?)signIn.Attribute("Visibility"));
     }
 
     [Fact]

@@ -73,14 +73,20 @@
   <data name="SignInFailed" xml:space="preserve">
     <value>El inicio de sesión falló. Inténtalo de nuevo.</value>
   </data>
-  <data name="Connect" xml:space="preserve">
-    <value>Conectar</value>
+  <data name="SignOut" xml:space="preserve">
+    <value>Cerrar sesión</value>
   </data>
-  <data name="Disconnect" xml:space="preserve">
-    <value>Desconectar</value>
+  <data name="SignedInAsFormat" xml:space="preserve">
+    <value>Sesión iniciada como {0}</value>
   </data>
-  <data name="UbisoftSignInHeading" xml:space="preserve">
-    <value>Iniciar sesión en Ubisoft</value>
+  <data name="ConnectYourStores" xml:space="preserve">
+    <value>Conecta tus tiendas</value>
+  </data>
+  <data name="ConnectYourStoresDescription" xml:space="preserve">
+    <value>Inicia sesión en una tienda para traer sus juegos a tu biblioteca. Puedes conectar más tiendas después en Configuración.</value>
+  </data>
+  <data name="SignInToStoreFormat" xml:space="preserve">
+    <value>Iniciar sesión en {0}</value>
   </data>
   <data name="Email" xml:space="preserve">
     <value>Correo electrónico</value>
@@ -372,6 +378,12 @@
   </data>
   <data name="Import" xml:space="preserve">
     <value>Importar</value>
+  </data>
+  <data name="ImportGames" xml:space="preserve">
+    <value>Importar juegos</value>
+  </data>
+  <data name="ImportGamesDescription" xml:space="preserve">
+    <value>Trae a Crimson los juegos que ya instalaste con otro launcher. Elige la tienda a la que pertenecen.</value>
   </data>
   <data name="ImportFromEpic" xml:space="preserve">
     <value>Importar desde Epic</value>
@@ -1054,10 +1066,6 @@
   <data name="InstallLanguagesCouldNotBeLoaded" xml:space="preserve">
     <value>No se pudieron cargar los idiomas del juego.</value>
     <comment>Game properties: the provider could not list install languages.</comment>
-  </data>
-  <data name="ImportFromUbisoft" xml:space="preserve">
-    <value>Importar desde Ubisoft Connect</value>
-    <comment>Library action contributed by the Ubisoft provider.</comment>
   </data>
   <data name="ImportFromProviderFormat" xml:space="preserve">
     <value>Importar desde {0}</value>

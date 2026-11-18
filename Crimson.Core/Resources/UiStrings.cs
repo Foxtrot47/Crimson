@@ -68,9 +68,10 @@ public static class UiStrings
     public static string CloudSaveSizeUnknown => Get(nameof(CloudSaveSizeUnknown));
     public static string Completed => Get(nameof(Completed));
     public static string ConfirmUninstallGame => Get(nameof(ConfirmUninstallGame));
-    public static string Connect => Get(nameof(Connect));
     public static string Connected => Get(nameof(Connected));
     public static string ConnectionInterruptedRetrying => Get(nameof(ConnectionInterruptedRetrying));
+    public static string ConnectYourStores => Get(nameof(ConnectYourStores));
+    public static string ConnectYourStoresDescription => Get(nameof(ConnectYourStoresDescription));
     public static string ContentToInstall => Get(nameof(ContentToInstall));
     public static string Copied => Get(nameof(Copied));
     public static string CopyDiagnostics => Get(nameof(CopyDiagnostics));
@@ -86,7 +87,6 @@ public static class UiStrings
     public static string CrimsonCouldNotWriteToTheSelectedInstallationLocation => Get(nameof(CrimsonCouldNotWriteToTheSelectedInstallationLocation));
     public static string DesktopShortcut => Get(nameof(DesktopShortcut));
     public static string DetectingEpicGamesLauncherInstallations => Get(nameof(DetectingEpicGamesLauncherInstallations));
-    public static string Disconnect => Get(nameof(Disconnect));
     public static string DiskWriteRate => Get(nameof(DiskWriteRate));
     public static string DLC => Get(nameof(DLC));
     public static string DLCArtwork => Get(nameof(DLCArtwork));
@@ -130,7 +130,8 @@ public static class UiStrings
     public static string Imported => Get(nameof(Imported));
     public static string ImportFromEpic => Get(nameof(ImportFromEpic));
     public static string ImportFromProviderFormat => Get(nameof(ImportFromProviderFormat));
-    public static string ImportFromUbisoft => Get(nameof(ImportFromUbisoft));
+    public static string ImportGames => Get(nameof(ImportGames));
+    public static string ImportGamesDescription => Get(nameof(ImportGamesDescription));
     public static string Importing => Get(nameof(Importing));
     public static string ImportRepairFilesFormat => Get(nameof(ImportRepairFilesFormat));
     public static string ImportSelected => Get(nameof(ImportSelected));
@@ -271,8 +272,11 @@ public static class UiStrings
     public static string Shortcuts => Get(nameof(Shortcuts));
     public static string ShowAdavancedSettings => Get(nameof(ShowAdavancedSettings));
     public static string ShowGamesInstalledOrBeingManagedByCrimson => Get(nameof(ShowGamesInstalledOrBeingManagedByCrimson));
+    public static string SignedInAsFormat => Get(nameof(SignedInAsFormat));
     public static string SignIn => Get(nameof(SignIn));
     public static string SignInFailed => Get(nameof(SignInFailed));
+    public static string SignInToStoreFormat => Get(nameof(SignInToStoreFormat));
+    public static string SignOut => Get(nameof(SignOut));
     public static string Size => Get(nameof(Size));
     public static string SizeGiBFormat => Get(nameof(SizeGiBFormat));
     public static string SizeMiBFormat => Get(nameof(SizeMiBFormat));
@@ -350,7 +354,6 @@ public static class UiStrings
     public static string UbisoftRepairToRetryPrerequisites => Get(nameof(UbisoftRepairToRetryPrerequisites));
     public static string UbisoftSignInBlocked => Get(nameof(UbisoftSignInBlocked));
     public static string UbisoftSigningIn => Get(nameof(UbisoftSigningIn));
-    public static string UbisoftSignInHeading => Get(nameof(UbisoftSignInHeading));
     public static string UbisoftSignInUnavailable => Get(nameof(UbisoftSignInUnavailable));
     public static string UbisoftSystemSetupNotApplied => Get(nameof(UbisoftSystemSetupNotApplied));
     public static string UbisoftTwoFactorPrompt => Get(nameof(UbisoftTwoFactorPrompt));

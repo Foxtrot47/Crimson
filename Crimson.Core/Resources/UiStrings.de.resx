@@ -73,14 +73,20 @@
   <data name="SignInFailed" xml:space="preserve">
     <value>Anmeldung fehlgeschlagen. Versuche es erneut.</value>
   </data>
-  <data name="Connect" xml:space="preserve">
-    <value>Verbinden</value>
+  <data name="SignOut" xml:space="preserve">
+    <value>Abmelden</value>
   </data>
-  <data name="Disconnect" xml:space="preserve">
-    <value>Trennen</value>
+  <data name="SignedInAsFormat" xml:space="preserve">
+    <value>Angemeldet als {0}</value>
   </data>
-  <data name="UbisoftSignInHeading" xml:space="preserve">
-    <value>Bei Ubisoft anmelden</value>
+  <data name="ConnectYourStores" xml:space="preserve">
+    <value>Verbinde deine Stores</value>
+  </data>
+  <data name="ConnectYourStoresDescription" xml:space="preserve">
+    <value>Melde dich bei einem Store an, um seine Spiele in deine Bibliothek zu holen. Weitere Stores kannst du später in den Einstellungen verbinden.</value>
+  </data>
+  <data name="SignInToStoreFormat" xml:space="preserve">
+    <value>Bei {0} anmelden</value>
   </data>
   <data name="Email" xml:space="preserve">
     <value>E-Mail</value>
@@ -372,6 +378,12 @@
   </data>
   <data name="Import" xml:space="preserve">
     <value>Importieren</value>
+  </data>
+  <data name="ImportGames" xml:space="preserve">
+    <value>Spiele importieren</value>
+  </data>
+  <data name="ImportGamesDescription" xml:space="preserve">
+    <value>Hole Spiele, die du bereits mit einem anderen Launcher installiert hast, in Crimson. Wähle den Store, zu dem sie gehören.</value>
   </data>
   <data name="ImportFromEpic" xml:space="preserve">
     <value>Aus Epic importieren</value>
@@ -1054,10 +1066,6 @@
   <data name="InstallLanguagesCouldNotBeLoaded" xml:space="preserve">
     <value>Die Sprachen des Spiels konnten nicht geladen werden.</value>
     <comment>Game properties: the provider could not list install languages.</comment>
-  </data>
-  <data name="ImportFromUbisoft" xml:space="preserve">
-    <value>Aus Ubisoft Connect importieren</value>
-    <comment>Library action contributed by the Ubisoft provider.</comment>
   </data>
   <data name="ImportFromProviderFormat" xml:space="preserve">
     <value>Aus {0} importieren</value>

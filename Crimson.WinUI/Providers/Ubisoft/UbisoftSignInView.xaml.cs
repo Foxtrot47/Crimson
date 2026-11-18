@@ -28,8 +28,8 @@ public sealed partial class UbisoftSignInView : UserControl, ILauncherSignInView
 
     public FrameworkElement Element => this;
 
-    // A form, not a browser surface.
-    public LauncherSignInSize PreferredSize => new(440, 520);
+    // A form, not a browser surface: it sizes to whichever step is showing.
+    public LauncherSignInSize PreferredSize => new(440, null);
 
     public void InitializeSignIn()
     {

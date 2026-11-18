@@ -79,17 +79,25 @@
     <value>Sign-in failed. Try connecting again.</value>
     <comment>Account row: the last sign-in attempt did not complete. Used by: Crimson.WinUI/Views/SettingsPage.xaml @Text</comment>
   </data>
-  <data name="Connect" xml:space="preserve">
-    <value>Connect</value>
-    <comment>Account row: starts sign-in for a store. Used by: Crimson.WinUI/Views/SettingsPage.xaml @Content</comment>
-  </data>
-  <data name="Disconnect" xml:space="preserve">
-    <value>Disconnect</value>
+  <data name="SignOut" xml:space="preserve">
+    <value>Sign out</value>
     <comment>Account row: signs out and removes that store's games. Used by: Crimson.WinUI/Views/SettingsPage.xaml @Content</comment>
   </data>
-  <data name="UbisoftSignInHeading" xml:space="preserve">
-    <value>Sign in with Ubisoft</value>
-    <comment>Ubisoft sign-in dialog heading.</comment>
+  <data name="SignedInAsFormat" xml:space="preserve">
+    <value>Signed in as {0}</value>
+    <comment>Account row: {0} is the signed-in account name the store reports.</comment>
+  </data>
+  <data name="ConnectYourStores" xml:space="preserve">
+    <value>Connect your stores</value>
+    <comment>Library heading shown while no store account is connected. Used by: Crimson.WinUI/Views/LibraryPage.xaml @Text</comment>
+  </data>
+  <data name="ConnectYourStoresDescription" xml:space="preserve">
+    <value>Sign in to a store to bring its games into your library. You can connect more stores later in Settings.</value>
+    <comment>Library text below the sign-in heading. Used by: Crimson.WinUI/Views/LibraryPage.xaml @Text</comment>
+  </data>
+  <data name="SignInToStoreFormat" xml:space="preserve">
+    <value>Sign in to {0}</value>
+    <comment>Sign-in dialog heading. {0} is the store name, such as Epic Games or Ubisoft Connect.</comment>
   </data>
   <data name="Email" xml:space="preserve">
     <value>Email</value>
@@ -105,7 +113,7 @@
   </data>
   <data name="SignIn" xml:space="preserve">
     <value>Sign in</value>
-    <comment>Ubisoft sign-in dialog: submit button.</comment>
+    <comment>Sign-in button for a store: Ubisoft sign-in dialog, library store cards and settings account rows.</comment>
   </data>
   <data name="UbisoftTwoFactorPrompt" xml:space="preserve">
     <value>Enter the code from your Ubisoft authenticator app.</value>
@@ -501,11 +509,19 @@
   </data>
   <data name="Import" xml:space="preserve">
     <value>Import</value>
-    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.WinUI/Views/GameInfoPage.xaml @Text</comment>
+    <comment>Used by: Crimson.Core/Core/OperationPresenter.cs; Crimson.WinUI/Views/GameInfoPage.xaml @Text; Crimson.WinUI/Views/LibraryPage.xaml @Text; Crimson.WinUI/Controls/ImportSourceDialog.xaml @Content</comment>
+  </data>
+  <data name="ImportGames" xml:space="preserve">
+    <value>Import games</value>
+    <comment>Title of the dialog that chooses which store to import installed games from. Used by: Crimson.WinUI/Controls/ImportSourceDialog.xaml @Title</comment>
+  </data>
+  <data name="ImportGamesDescription" xml:space="preserve">
+    <value>Bring games you already installed with another launcher into Crimson. Choose the store they belong to.</value>
+    <comment>Text below the import dialog title. Used by: Crimson.WinUI/Controls/ImportSourceDialog.xaml @Text</comment>
   </data>
   <data name="ImportFromEpic" xml:space="preserve">
     <value>Import from Epic</value>
-    <comment>Used by: Crimson.WinUI/Controls/EpicImportDialog.xaml @Title; Crimson.WinUI/Views/LibraryPage.xaml @Text</comment>
+    <comment>Used by: Crimson.WinUI/Controls/EpicImportDialog.xaml @Title</comment>
   </data>
   <data name="ImportRepairFilesFormat" xml:space="preserve">
     <value>Verified {0} files: {1} require repair</value>
@@ -1374,10 +1390,6 @@
   <data name="InstallLanguagesCouldNotBeLoaded" xml:space="preserve">
     <value>The game's languages could not be loaded.</value>
     <comment>Game properties: the provider could not list install languages.</comment>
-  </data>
-  <data name="ImportFromUbisoft" xml:space="preserve">
-    <value>Import from Ubisoft Connect</value>
-    <comment>Library action contributed by the Ubisoft provider.</comment>
   </data>
   <data name="ImportFromProviderFormat" xml:space="preserve">
     <value>Import from {0}</value>

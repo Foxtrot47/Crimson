@@ -1,4 +1,6 @@
-﻿using Crimson.Providers;
+﻿using Crimson.Controls;
+using Crimson.Providers;
+using Crimson.Resources;
 using Crimson.ViewModels;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
@@ -7,6 +9,8 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Microsoft.UI.Xaml;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 namespace Crimson.Views;
@@ -21,8 +25,17 @@ public sealed partial class LibraryPage : Page
 
     public LibraryViewModel ViewModel => (LibraryViewModel)DataContext;
 
+    public IReadOnlyList<StoreAccountItem> StoreAccounts { get; }
+
+    /// <summary>Stores whose installed games can be imported; the Import button hides when none can.</summary>
+    public IReadOnlyList<StoreAccountItem> ImportSources { get; }
+    public bool HasImportSources => ImportSources.Count > 0;
+
     public LibraryPage()
     {
+        StoreAccounts = StoreAccountItem.Create(
+            App.GetService<LauncherAuthentication>().Accounts, App.GetService<LauncherFrontendRegistry>());
+        ImportSources = StoreAccounts.Where(source => source.Import is not null).ToList();
         InitializeComponent();
         NavigationCacheMode = NavigationCacheMode.Enabled;
         DataContext = App.GetService<LibraryViewModel>();
@@ -30,7 +43,6 @@ public sealed partial class LibraryPage : Page
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
-        BuildLibraryActions();
         ViewModel.ShowInstallDialogRequested -= ShowInstallDialog;
         ViewModel.ShowInstallDialogRequested += ShowInstallDialog;
         await ViewModel.OnNavigatedTo(e.Parameter);
@@ -43,29 +55,19 @@ public sealed partial class LibraryPage : Page
         base.OnNavigatedFrom(e);
     }
 
-    /// <summary>Buttons come from the providers themselves; the shell never names one.</summary>
-    private void BuildLibraryActions()
+    private async void Import_Click(object sender, RoutedEventArgs e)
     {
-        LibraryActionsBar.Children.Clear();
-        foreach (var frontend in App.GetService<LauncherFrontendRegistry>().All)
+        try
         {
-            foreach (var action in frontend.LibraryActions)
-            {
-                var button = new Button { Height = 36, Tag = action };
-                var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-                content.Children.Add(new FontIcon { FontSize = 16, Glyph = action.Glyph });
-                content.Children.Add(new TextBlock { Text = action.Label });
-                button.Content = content;
-                button.Click += async (sender, _) =>
-                {
-                    if (sender is Button { Tag: LauncherLibraryAction selected }) await selected.Invoke();
-                };
-                LibraryActionsBar.Children.Add(button);
-            }
+            ViewModel.ActionErrorMessage = string.Empty;
+            await new ImportSourceDialog(ImportSources) { XamlRoot = XamlRoot }.RunAsync();
         }
-        LibraryActionsBar.Visibility = LibraryActionsBar.Children.Count > 0
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        catch (Exception error)
+        {
+            App.GetService<Serilog.ILogger>().Error("Import dialog failed: {ErrorType}", error.GetType().Name);
+            ViewModel.ActionErrorMessage = UiStrings.Format(UiStrings.MessageSuggestionFormat,
+                UiStrings.TheImportWindowCouldNotBeOpened, UiStrings.TryAgainOrRestartCrimson);
+        }
     }
 
     private void GameButton_Click(object sender, RoutedEventArgs e)

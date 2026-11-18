@@ -7,6 +7,7 @@
     xmlns:controls="using:Crimson.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:providers="using:Crimson.Providers"
     xmlns:utils="using:Crimson.Utils"
     xmlns:viewModels="using:Crimson.ViewModels"
     mc:Ignorable="d">
@@ -275,7 +276,12 @@
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
 
-        <Grid x:Name="LibraryActions" Margin="16,20,16,20" HorizontalAlignment="Right" ColumnSpacing="12">
+        <Grid
+            x:Name="LibraryActions"
+            Margin="16,20,16,20"
+            HorizontalAlignment="Right"
+            ColumnSpacing="12"
+            Visibility="{x:Bind ViewModel.ShowSignInPrompt, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
@@ -319,12 +325,20 @@
                     <FontIcon FontSize="14" Glyph="&#xEA37;" />
                 </RadioButton>
             </StackPanel>
-            <StackPanel
-                x:Name="LibraryActionsBar"
+            <!-- One entry point for every store's import; the dialog lists the stores that offer one. -->
+            <Button
+                x:Name="ImportButton"
                 Grid.Column="2"
+                Height="36"
                 VerticalAlignment="Center"
-                Orientation="Horizontal"
-                Spacing="8" />
+                AutomationProperties.Name="{x:Bind strings:UiStrings.Import}"
+                Click="Import_Click"
+                Visibility="{x:Bind HasImportSources, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon FontSize="16" Glyph="&#xE8B5;" />
+                    <TextBlock Text="{x:Bind strings:UiStrings.Import}" />
+                </StackPanel>
+            </Button>
         </Grid>
 
         <TextBlock
@@ -335,6 +349,21 @@
             Text="{x:Bind ViewModel.ActionErrorMessage, Mode=OneWay}"
             TextWrapping="Wrap"
             Visibility="{x:Bind ViewModel.HasActionError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+        <ScrollViewer
+            x:Name="LibraryScroller"
+            Grid.Row="2"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto"
+            ZoomMode="Disabled">
+            <ItemsRepeater
+                x:Name="ItemsRepeater"
+                Margin="0,0,0,20"
+                HorizontalAlignment="Center"
+                ItemTemplate="{StaticResource GameCardTemplate}"
+                ItemsSource="{x:Bind ViewModel.GamesList, Mode=TwoWay}"
+                Layout="{StaticResource UniformGridLayout}" />
+        </ScrollViewer>
 
         <StackPanel
             x:Name="LoadingSection"
@@ -378,18 +407,98 @@
             Visibility="{x:Bind ViewModel.HasNoInstalledGames, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
 
         <ScrollViewer
-            x:Name="LibraryScroller"
-            Grid.Row="2"
+            x:Name="SignInPrompt"
+            Grid.RowSpan="3"
             HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Auto"
-            ZoomMode="Disabled">
-            <ItemsRepeater
-                x:Name="ItemsRepeater"
-                Margin="0,0,0,20"
+            Visibility="{x:Bind ViewModel.ShowSignInPrompt, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+            <StackPanel
+                Margin="24,48"
                 HorizontalAlignment="Center"
-                ItemTemplate="{StaticResource GameCardTemplate}"
-                ItemsSource="{x:Bind ViewModel.GamesList, Mode=TwoWay}"
-                Layout="{StaticResource UniformGridLayout}" />
+                VerticalAlignment="Center"
+                Spacing="36">
+                <StackPanel HorizontalAlignment="Center" Spacing="10">
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource TitleTextBlockStyle}"
+                        Text="{x:Bind strings:UiStrings.ConnectYourStores}"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        MaxWidth="440"
+                        HorizontalAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource BodyTextBlockStyle}"
+                        Text="{x:Bind strings:UiStrings.ConnectYourStoresDescription}"
+                        TextAlignment="Center" />
+                </StackPanel>
+                <ItemsRepeater HorizontalAlignment="Center" ItemsSource="{x:Bind StoreAccounts}">
+                    <ItemsRepeater.Layout>
+                        <UniformGridLayout
+                            ItemsJustification="Center"
+                            MinColumnSpacing="16"
+                            MinRowSpacing="16" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <!-- The layout sizes every card like the first, so cards have a fixed height. -->
+                        <DataTemplate x:DataType="providers:StoreAccountItem">
+                            <Grid
+                                Width="240"
+                                Height="288"
+                                Padding="24,32,24,24"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Border
+                                    Width="80"
+                                    Height="80"
+                                    HorizontalAlignment="Center"
+                                    Background="{x:Bind TileBrush}"
+                                    CornerRadius="20">
+                                    <Image
+                                        Width="48"
+                                        Height="48"
+                                        Source="{x:Bind Logo}"
+                                        Stretch="Uniform" />
+                                </Border>
+                                <TextBlock
+                                    Grid.Row="1"
+                                    Margin="0,20,0,0"
+                                    HorizontalAlignment="Center"
+                                    Style="{StaticResource SubtitleTextBlockStyle}"
+                                    Text="{x:Bind Account.DisplayName}"
+                                    TextAlignment="Center"
+                                    TextTrimming="CharacterEllipsis" />
+                                <TextBlock
+                                    Grid.Row="2"
+                                    Margin="0,4,0,0"
+                                    HorizontalAlignment="Center"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    MaxLines="2"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind Account.Summary, Mode=OneWay}"
+                                    TextAlignment="Center"
+                                    TextTrimming="CharacterEllipsis" />
+                                <Button
+                                    Grid.Row="3"
+                                    HorizontalAlignment="Stretch"
+                                    AutomationProperties.HelpText="{x:Bind Account.DisplayName}"
+                                    Command="{x:Bind Account.ConnectCommand}"
+                                    Content="{x:Bind strings:UiStrings.SignIn}"
+                                    IsEnabled="{x:Bind Account.CanConnect, Mode=OneWay}"
+                                    Style="{StaticResource AccentButtonStyle}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
         </ScrollViewer>
 
         <controls:AppInstallDialog x:Name="InstallDialog" />
@@ -397,6 +506,10 @@
 
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:BoolToVisibilityConverter
+            x:Key="InverseBoolToVisibilityConverter"
+            FalseValue="Visible"
+            TrueValue="Collapsed" />
         <utils:ImageUrlConverter x:Key="ImageUrlConverter" />
         <utils:ProviderLogoConverter x:Key="ProviderLogoConverter" />
         <utils:GamePrimaryActionGlyphConverter x:Key="GamePrimaryActionGlyphConverter" />

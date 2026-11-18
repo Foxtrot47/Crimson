@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Crimson.Core;
 using Crimson.Providers;
@@ -18,6 +19,7 @@ namespace Crimson.Views
     public sealed partial class SettingsPage : Page
     {
         public SettingsViewModel ViewModel => (SettingsViewModel)DataContext;
+        public IReadOnlyList<StoreAccountItem> StoreAccounts { get; }
         private bool _restartDialogOpen;
 
         private async void LanguageSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -101,6 +103,7 @@ namespace Crimson.Views
         {
             InitializeComponent();
             DataContext = App.GetService<SettingsViewModel>();
+            StoreAccounts = StoreAccountItem.Create(ViewModel.Accounts, App.GetService<LauncherFrontendRegistry>());
         }
     }
 }

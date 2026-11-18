@@ -73,14 +73,20 @@
   <data name="SignInFailed" xml:space="preserve">
     <value>サインインに失敗しました。もう一度お試しください。</value>
   </data>
-  <data name="Connect" xml:space="preserve">
-    <value>接続</value>
+  <data name="SignOut" xml:space="preserve">
+    <value>サインアウト</value>
   </data>
-  <data name="Disconnect" xml:space="preserve">
-    <value>切断</value>
+  <data name="SignedInAsFormat" xml:space="preserve">
+    <value>{0} としてサインイン中</value>
   </data>
-  <data name="UbisoftSignInHeading" xml:space="preserve">
-    <value>Ubisoft にサインイン</value>
+  <data name="ConnectYourStores" xml:space="preserve">
+    <value>ストアを接続</value>
+  </data>
+  <data name="ConnectYourStoresDescription" xml:space="preserve">
+    <value>ストアにサインインすると、そのストアのゲームがライブラリに追加されます。ほかのストアは後から設定で接続できます。</value>
+  </data>
+  <data name="SignInToStoreFormat" xml:space="preserve">
+    <value>{0} にサインイン</value>
   </data>
   <data name="Email" xml:space="preserve">
     <value>メールアドレス</value>
@@ -372,6 +378,12 @@
   </data>
   <data name="Import" xml:space="preserve">
     <value>インポート</value>
+  </data>
+  <data name="ImportGames" xml:space="preserve">
+    <value>ゲームをインポート</value>
+  </data>
+  <data name="ImportGamesDescription" xml:space="preserve">
+    <value>ほかのランチャーでインストール済みのゲームを Crimson に取り込みます。ゲームが属するストアを選んでください。</value>
   </data>
   <data name="ImportFromEpic" xml:space="preserve">
     <value>Epic からインポート</value>
@@ -1054,10 +1066,6 @@
   <data name="InstallLanguagesCouldNotBeLoaded" xml:space="preserve">
     <value>ゲームの言語を読み込めませんでした。</value>
     <comment>Game properties: the provider could not list install languages.</comment>
-  </data>
-  <data name="ImportFromUbisoft" xml:space="preserve">
-    <value>Ubisoft Connect からインポート</value>
-    <comment>Library action contributed by the Ubisoft provider.</comment>
   </data>
   <data name="ImportFromProviderFormat" xml:space="preserve">
     <value>{0} からインポート</value>

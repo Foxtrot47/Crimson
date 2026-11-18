@@ -73,14 +73,20 @@
   <data name="SignInFailed" xml:space="preserve">
     <value>登录失败。请重试。</value>
   </data>
-  <data name="Connect" xml:space="preserve">
-    <value>连接</value>
+  <data name="SignOut" xml:space="preserve">
+    <value>退出登录</value>
   </data>
-  <data name="Disconnect" xml:space="preserve">
-    <value>断开连接</value>
+  <data name="SignedInAsFormat" xml:space="preserve">
+    <value>已登录为 {0}</value>
   </data>
-  <data name="UbisoftSignInHeading" xml:space="preserve">
-    <value>使用 Ubisoft 登录</value>
+  <data name="ConnectYourStores" xml:space="preserve">
+    <value>连接你的商店</value>
+  </data>
+  <data name="ConnectYourStoresDescription" xml:space="preserve">
+    <value>登录商店即可将其中的游戏添加到你的库中。之后可以在设置中连接更多商店。</value>
+  </data>
+  <data name="SignInToStoreFormat" xml:space="preserve">
+    <value>登录 {0}</value>
   </data>
   <data name="Email" xml:space="preserve">
     <value>电子邮件</value>
@@ -372,6 +378,12 @@
   </data>
   <data name="Import" xml:space="preserve">
     <value>导入</value>
+  </data>
+  <data name="ImportGames" xml:space="preserve">
+    <value>导入游戏</value>
+  </data>
+  <data name="ImportGamesDescription" xml:space="preserve">
+    <value>将已通过其他启动器安装的游戏导入 Crimson。请选择这些游戏所属的商店。</value>
   </data>
   <data name="ImportFromEpic" xml:space="preserve">
     <value>从 Epic 导入</value>
@@ -1054,10 +1066,6 @@
   <data name="InstallLanguagesCouldNotBeLoaded" xml:space="preserve">
     <value>无法加载游戏的语言。</value>
     <comment>Game properties: the provider could not list install languages.</comment>
-  </data>
-  <data name="ImportFromUbisoft" xml:space="preserve">
-    <value>从 Ubisoft Connect 导入</value>
-    <comment>Library action contributed by the Ubisoft provider.</comment>
   </data>
   <data name="ImportFromProviderFormat" xml:space="preserve">
     <value>从 {0} 导入</value>

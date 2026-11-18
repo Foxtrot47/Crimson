@@ -1,8 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Crimson.Resources;
 using Microsoft.UI.Xaml;
+using Windows.UI;
 
 namespace Crimson.Providers.Ubisoft;
 
@@ -12,12 +11,10 @@ public sealed class UbisoftFrontend : ILauncherFrontend
     public ILauncherSignInView CreateSignInView() => new UbisoftSignInView();
     public Type? StorePageType => null;
     public string? StoreLogo => "ms-appx:///Assets/Providers/ubisoft.png";
+    public Color? StoreTileColor => Color.FromArgb(255, 0, 110, 245);
 
-    public IReadOnlyList<LauncherLibraryAction> LibraryActions =>
-    [
-        new LauncherLibraryAction(UiStrings.ImportFromUbisoft, "\uE8B5", () =>
-            ((App)Application.Current).GetWindow() is Views.MainWindow window
-                ? window.ShowGameImportAsync(ProviderId)
-                : Task.CompletedTask)
-    ];
+    public Func<Task>? Import => () =>
+        ((App)Application.Current).GetWindow() is Views.MainWindow window
+            ? window.ShowGameImportAsync(ProviderId)
+            : Task.CompletedTask;
 }
