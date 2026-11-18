@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace Crimson.ViewModels;
 
@@ -32,4 +33,18 @@ public sealed partial class LibraryItem : ObservableObject
 
     [ObservableProperty]
     private int _operationProgress;
+
+    [ObservableProperty]
+    private GamePrimaryAction _primaryAction;
+
+    [ObservableProperty]
+    private string _primaryActionText = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasPrimaryAction;
+
+    [ObservableProperty]
+    private bool _isPrimaryActionEnabled;
+
+    public IAsyncRelayCommand? PrimaryActionCommand { get; set; }
 }

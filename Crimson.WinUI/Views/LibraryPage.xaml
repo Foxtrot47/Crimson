@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:strings="using:Crimson.Resources"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
+    xmlns:controls="using:Crimson.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:utils="using:Crimson.Utils"
@@ -17,62 +18,168 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Grid.Resources>
+            <!-- The card provides its own hover states, so the button template is bare. -->
+            <Style x:Key="GameCardButtonStyle" TargetType="Button">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <ContentPresenter
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Content="{TemplateBinding Content}" />
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <!-- The default button template would replace the accent fill on hover; this keeps it. -->
+            <Style x:Key="CardActionButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="40" />
+                <Setter Property="Height" Value="40" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Background" Value="#C42B1C" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid x:Name="Root" Background="Transparent">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="Fill.Background" Value="#D9372A" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="Fill.Background" Value="#A82418" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Opacity" Value="0.5" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <Border
+                                    x:Name="Fill"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="20">
+                                    <ContentPresenter
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Content="{TemplateBinding Content}" />
+                                </Border>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <UniformGridLayout x:Name="UniformGridLayout" />
             <StackLayout x:Key="ListStackLayout" Orientation="Vertical" Spacing="4" />
             <DataTemplate x:Key="GameCardTemplate" x:DataType="viewModels:LibraryItem">
                 <Button
-                    Padding="16,16,16,16"
-                    Background="Transparent"
-                    BorderThickness="0"
+                    Margin="6,6,10,16"
+                    AutomationProperties.Name="{x:Bind Title}"
                     Click="GameButton_Click"
-                    DataContext="{x:Bind}">
-                    <StackPanel Spacing="20">
-                        <Grid
-                            Width="226"
-                            Height="300"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                            <FontIcon
-                                FontSize="40"
-                                Glyph="&#xE7FC;"
-                                Opacity="0.35" />
-                            <Image
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}, Mode=OneWay}"
-                                Stretch="Fill" />
-                        </Grid>
-                        <StackPanel MaxWidth="226" Spacing="8">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Center"
-                                    FontSize="18"
-                                    Foreground="White"
-                                    Text="{x:Bind Title}"
-                                    TextTrimming="CharacterEllipsis" />
+                    DataContext="{x:Bind}"
+                    PointerEntered="GameCard_PointerEntered"
+                    PointerExited="GameCard_PointerExited"
+                    Style="{StaticResource GameCardButtonStyle}">
+                    <Grid Width="226" Height="300">
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="10">
+                            <Grid>
+                                <FontIcon
+                                    FontSize="40"
+                                    Glyph="&#xE7FC;"
+                                    Opacity="0.35" />
                                 <Image
-                                    Width="18"
-                                    Height="18"
+                                    HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
-                                    AutomationProperties.Name="{x:Bind ProviderName}"
-                                    Source="{x:Bind Name, Converter={StaticResource ProviderLogoConverter}}"
-                                    Stretch="Uniform"
-                                    ToolTipService.ToolTip="{x:Bind ProviderName}" />
-                            </StackPanel>
-                            <StackPanel
-                                Spacing="6"
-                                Visibility="{x:Bind HasActiveOperation, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <TextBlock
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="{x:Bind OperationStatus, Mode=OneWay}"
-                                    TextTrimming="CharacterEllipsis" />
-                                <ProgressBar
-                                    IsIndeterminate="{x:Bind IsOperationIndeterminate, Mode=OneWay}"
-                                    Value="{x:Bind OperationProgress, Mode=OneWay}" />
-                            </StackPanel>
-                        </StackPanel>
-                    </StackPanel>
+                                    Source="{x:Bind ImageUrl, Converter={StaticResource ImageUrlConverter}, Mode=OneWay}"
+                                    Stretch="Fill" />
+                                <Grid x:Name="CardOverlay" Visibility="Collapsed">
+                                    <Grid.Background>
+                                        <LinearGradientBrush StartPoint="0,0.35" EndPoint="0,1">
+                                            <GradientStop Offset="0" Color="#00000000" />
+                                            <GradientStop Offset="0.55" Color="#B0000000" />
+                                            <GradientStop Offset="1" Color="#F0000000" />
+                                        </LinearGradientBrush>
+                                    </Grid.Background>
+                                    <StackPanel
+                                        Margin="12"
+                                        VerticalAlignment="Bottom"
+                                        Spacing="10">
+                                        <!-- Auto columns keep the mark beside the title; MaxWidth bounds a wrapped title. -->
+                                        <Grid ColumnSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                MaxWidth="180"
+                                                FontSize="15"
+                                                FontWeight="SemiBold"
+                                                Foreground="White"
+                                                MaxLines="2"
+                                                Text="{x:Bind Title}"
+                                                TextTrimming="CharacterEllipsis"
+                                                TextWrapping="Wrap" />
+                                            <Image
+                                                Grid.Column="1"
+                                                Width="16"
+                                                Height="16"
+                                                Margin="0,2,0,0"
+                                                VerticalAlignment="Top"
+                                                AutomationProperties.Name="{x:Bind ProviderName}"
+                                                Source="{x:Bind Name, Converter={StaticResource ProviderLogoConverter}}"
+                                                Stretch="Uniform"
+                                                ToolTipService.ToolTip="{x:Bind ProviderName}" />
+                                        </Grid>
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button
+                                                AutomationProperties.Name="{x:Bind PrimaryActionText, Mode=OneWay}"
+                                                Command="{x:Bind PrimaryActionCommand}"
+                                                IsEnabled="{x:Bind IsPrimaryActionEnabled, Mode=OneWay}"
+                                                Style="{StaticResource CardActionButtonStyle}"
+                                                ToolTipService.ToolTip="{x:Bind PrimaryActionText, Mode=OneWay}"
+                                                Visibility="{x:Bind HasPrimaryAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <FontIcon
+                                                    FontSize="18"
+                                                    Foreground="White"
+                                                    Glyph="{x:Bind PrimaryAction, Mode=OneWay, Converter={StaticResource GamePrimaryActionGlyphConverter}}" />
+                                            </Button>
+                                            <StackPanel
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Spacing="4"
+                                                Visibility="{x:Bind HasActiveOperation, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <ProgressBar
+                                                    Height="4"
+                                                    IsIndeterminate="{x:Bind IsOperationIndeterminate, Mode=OneWay}"
+                                                    Value="{x:Bind OperationProgress, Mode=OneWay}" />
+                                                <TextBlock
+                                                    FontSize="10"
+                                                    Foreground="#D0FFFFFF"
+                                                    Text="{x:Bind OperationStatus, Mode=OneWay}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
                 </Button>
             </DataTemplate>
             <DataTemplate x:Key="GameListTemplate" x:DataType="viewModels:LibraryItem">
@@ -284,11 +391,14 @@
                 ItemsSource="{x:Bind ViewModel.GamesList, Mode=TwoWay}"
                 Layout="{StaticResource UniformGridLayout}" />
         </ScrollViewer>
+
+        <controls:AppInstallDialog x:Name="InstallDialog" />
     </Grid>
 
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <utils:ImageUrlConverter x:Key="ImageUrlConverter" />
         <utils:ProviderLogoConverter x:Key="ProviderLogoConverter" />
+        <utils:GamePrimaryActionGlyphConverter x:Key="GamePrimaryActionGlyphConverter" />
     </Page.Resources>
 </Page>

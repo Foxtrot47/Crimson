@@ -1,10 +1,14 @@
 ﻿using Crimson.Providers;
 using Crimson.ViewModels;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Microsoft.UI.Xaml;
 using System;
+using System.Numerics;
+using System.Threading.Tasks;
 namespace Crimson.Views;
 
 /// <summary>
@@ -12,6 +16,9 @@ namespace Crimson.Views;
 /// </summary>
 public sealed partial class LibraryPage : Page
 {
+    private const float CardHoverScale = 1.04f;
+    private static readonly TimeSpan CardHoverDuration = TimeSpan.FromMilliseconds(150);
+
     public LibraryViewModel ViewModel => (LibraryViewModel)DataContext;
 
     public LibraryPage()
@@ -24,11 +31,14 @@ public sealed partial class LibraryPage : Page
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         BuildLibraryActions();
+        ViewModel.ShowInstallDialogRequested -= ShowInstallDialog;
+        ViewModel.ShowInstallDialogRequested += ShowInstallDialog;
         await ViewModel.OnNavigatedTo(e.Parameter);
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        ViewModel.ShowInstallDialogRequested -= ShowInstallDialog;
         ViewModel.OnNavigatedFrom();
         base.OnNavigatedFrom(e);
     }
@@ -71,6 +81,34 @@ public sealed partial class LibraryPage : Page
     }
 
     private void ManageAccounts_Click(object sender, RoutedEventArgs e) => Frame.Navigate(typeof(SettingsPage));
+
+    private void GameCard_PointerEntered(object sender, PointerRoutedEventArgs e) =>
+        SetCardHover((FrameworkElement)sender, hovered: true);
+
+    private void GameCard_PointerExited(object sender, PointerRoutedEventArgs e) =>
+        SetCardHover((FrameworkElement)sender, hovered: false);
+
+    private static void SetCardHover(FrameworkElement card, bool hovered)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(card);
+        visual.CenterPoint = new Vector3((float)card.ActualWidth / 2f, (float)card.ActualHeight / 2f, 0f);
+        var scale = visual.Compositor.CreateVector3KeyFrameAnimation();
+        var factor = hovered ? CardHoverScale : 1f;
+        scale.InsertKeyFrame(1f, new Vector3(factor, factor, 1f));
+        scale.Duration = CardHoverDuration;
+        visual.StartAnimation("Scale", scale);
+
+        if (card.FindName("CardOverlay") is not FrameworkElement overlay) return;
+        // Visibility, not opacity: an overlay laid out at zero opacity never rasterizes its
+        // text, so the title stayed blank until some later repaint.
+        overlay.Visibility = hovered ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async Task ShowInstallDialog(LauncherGame game)
+    {
+        InstallDialog.XamlRoot = XamlRoot;
+        await InstallDialog.ShowAsync(game);
+    }
 
     private static Frame FindParentFrame(DependencyObject child)
     {

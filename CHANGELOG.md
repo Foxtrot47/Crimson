@@ -4,6 +4,7 @@ Release notes are taken from the matching entry here, so every release needs one
 
 ## [Unreleased]
 
+- Library cards show the cover, title and the game's primary action on hover, so a game can be installed, updated, repaired or started without opening its page. A running operation takes that spot and shows its progress.
 - Sync cloud saves before launch and after exit for games that declare cloud save support.
 - Ask which copy survives when local and cloud saves diverge, with options to keep local, keep cloud, or skip.
 - Lock Play while a game runs unless it allows multiple instances, and show cloud save progress on the game page.
