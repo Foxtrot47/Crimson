@@ -147,7 +147,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
             GameTitle = gameInfo.AppTitle;
             GameImageUrl = SelectImageUrl(gameInfo);
             InstallLocation = Path.Combine(_settingsManager?.DefaultInstallLocation ?? _storageService.DefaultInstallPath,
-                InstallPathPolicy.GetDirectoryName(gameInfo.AppTitle));
+                SuggestedFolderName(gameInfo.AppTitle));
 
             var dlcs = LoadDlcOptions(gameInfo);
 
@@ -394,6 +394,8 @@ public partial class AppInstallDialogViewModel : ObservableObject
         IsCurrentInitialization(generation) &&
         driveRequest == Volatile.Read(ref generation.DriveRequest);
 
+    private static string SuggestedFolderName(string title) => InstallPathPolicy.GetDirectoryName(title);
+
     public void InvalidateInitialization()
     {
         Interlocked.Exchange(ref _initialization, new InitializationState());
@@ -410,7 +412,7 @@ public partial class AppInstallDialogViewModel : ObservableObject
             var newPath = await FolderPickerRequested.Invoke();
             if (!string.IsNullOrEmpty(newPath) && IsCurrentInitialization(generation))
             {
-                InstallLocation = Path.Combine(newPath, InstallPathPolicy.GetDirectoryName(GameTitle));
+                InstallLocation = Path.Combine(newPath, SuggestedFolderName(GameTitle));
                 await UpdateDriveSpace(InstallLocation, generation);
             }
         }

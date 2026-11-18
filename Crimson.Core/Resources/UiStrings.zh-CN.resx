@@ -712,6 +712,12 @@
   <data name="SearchDLC" xml:space="preserve">
     <value>搜索 DLC</value>
   </data>
+  <data name="Stores" xml:space="preserve">
+    <value>Stores</value>
+  </data>
+  <data name="SearchStoresForQueryFormat" xml:space="preserve">
+    <value>Search stores for “{0}”</value>
+  </data>
   <data name="SearchStoreForQueryFormat" xml:space="preserve">
     <value>在 Epic Games Store 中搜索“{0}”</value>
   </data>

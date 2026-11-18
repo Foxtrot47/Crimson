@@ -144,13 +144,23 @@ public sealed class GameShortcutManager : IGameShortcutManager
             link.GetArguments(arguments, arguments.Capacity);
             var targetsCrimson = string.Equals(target.ToString(), GetPackagedAliasPath(), StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(target.ToString(), Environment.ProcessPath, StringComparison.OrdinalIgnoreCase);
-            return targetsCrimson && string.Equals(arguments.ToString(),
-                GameLaunchRequest.CreateCommandLineArgument(appName), StringComparison.Ordinal);
+            if (!targetsCrimson) return false;
+            return MatchesOwnedArguments(arguments.ToString(), appName);
         }
         finally
         {
             Marshal.FinalReleaseComObject(link);
         }
+    }
+
+    /// <summary>Accepts the current qualified command line and the unqualified Epic form written by older builds.</summary>
+    internal static bool MatchesOwnedArguments(string actual, string appName)
+    {
+        if (string.Equals(actual, GameLaunchRequest.CreateCommandLineArgument(appName), StringComparison.Ordinal))
+            return true;
+        var id = GameId.Parse(appName);
+        return id.ProviderId == GameId.LegacyProviderId &&
+            string.Equals(actual, GameLaunchRequest.CreateCommandLineArgument(id.LocalId), StringComparison.Ordinal);
     }
 
     // Epic keeps its historical icon names so existing shortcuts are not orphaned.

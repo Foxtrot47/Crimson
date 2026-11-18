@@ -712,6 +712,12 @@
   <data name="SearchDLC" xml:space="preserve">
     <value>Buscar DLC</value>
   </data>
+  <data name="Stores" xml:space="preserve">
+    <value>Stores</value>
+  </data>
+  <data name="SearchStoresForQueryFormat" xml:space="preserve">
+    <value>Search stores for “{0}”</value>
+  </data>
   <data name="SearchStoreForQueryFormat" xml:space="preserve">
     <value>Buscar “{0}” en Epic Games Store</value>
   </data>

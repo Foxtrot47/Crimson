@@ -137,7 +137,7 @@ public static class CachedImageLoader
         {
             if (Uri.TryCreate(cached, UriKind.Absolute, out var local) && local.IsFile)
                 _ = LoadFileAsync(image, local.LocalPath, remote);
-            else
+            else if (ArtworkTrust.IsTrusted(remote))
                 image.UriSource = remote;
         });
     }

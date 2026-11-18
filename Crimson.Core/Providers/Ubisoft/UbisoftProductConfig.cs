@@ -134,12 +134,14 @@ public sealed class UbisoftProductConfig
         return result;
     }
 
-    /// <summary>Asset file names become CDN URLs; absolute URLs stay; unresolved placeholders are dropped.</summary>
+    /// <summary>Asset file names become CDN URLs; absolute URLs stay only on the Ubisoft artwork host; unresolved
+    /// placeholders are dropped.</summary>
     private static string? Image(string? value)
     {
         if (value is null) return null;
-        if (value.StartsWith("https://", StringComparison.OrdinalIgnoreCase) || value.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-            return value;
+        if (value.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            return UbisoftContentPolicy.AllowsArtworkUri(value) ? value : null;
         var dot = value.LastIndexOf('.');
         if (dot <= 0 || dot == value.Length - 1) return null;
         foreach (var character in value)

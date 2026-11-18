@@ -12,6 +12,18 @@ public sealed class ShortcutOwnershipTests : IDisposable
     private readonly Serilog.Core.Logger _logger = new LoggerConfiguration().CreateLogger();
 
     [Fact]
+    public void LegacyUnqualifiedEpicShortcutArgumentsAreOwned()
+    {
+        var qualified = new GameId("epic", "TestGame").ToString();
+        Assert.True(GameShortcutManager.MatchesOwnedArguments(
+            GameLaunchRequest.CreateCommandLineArgument("TestGame"), qualified));
+        Assert.True(GameShortcutManager.MatchesOwnedArguments(
+            GameLaunchRequest.CreateCommandLineArgument(qualified), qualified));
+        Assert.False(GameShortcutManager.MatchesOwnedArguments(
+            GameLaunchRequest.CreateCommandLineArgument("TestGame"), new GameId("ubisoft", "TestGame").ToString()));
+    }
+
+    [Fact]
     public void RemovePreservesUnrelatedSameNameFile()
     {
         var manager = CreateManager();

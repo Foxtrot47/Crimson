@@ -312,7 +312,7 @@ public sealed partial class MainWindow : Window
                 DisplayText = result.Title,
                 Subtitle = _stores.DisplayName(result.ProviderId),
                 StoreTarget = _stores.ProductDestination(result),
-                Thumbnail = CreateSearchThumbnail(result.ImageUrl)
+                Thumbnail = CreateSearchThumbnail(result.ImageUrl, result.ProviderId)
             }));
         }
         else if (showStoreLoading)
@@ -346,11 +346,17 @@ public sealed partial class MainWindow : Window
     }
 
     private ImageSource? CreateSearchThumbnail(LauncherGame game) =>
-        CreateSearchThumbnail(game.CoverImageUrl ?? game.LandscapeImageUrl);
+        CreateSearchThumbnail(game.CoverImageUrl ?? game.LandscapeImageUrl, game.Id.ProviderId);
 
-    private ImageSource? CreateSearchThumbnail(string? url)
+    private ImageSource? CreateSearchThumbnail(string? url, string? providerId = null)
     {
         if (string.IsNullOrEmpty(url)) return null;
+        if (providerId is not null)
+        {
+            var policy = App.GetServices<IProviderContentPolicy>()
+                .FirstOrDefault(candidate => candidate.ProviderId == providerId);
+            if (policy is null || !policy.AllowsArtworkUri(url)) return null;
+        }
 
         // Owned games reuse cached Library artwork instead of downloading on every keystroke.
         var bitmap = new BitmapImage { DecodePixelType = DecodePixelType.Logical, DecodePixelHeight = 84 };
@@ -369,7 +375,7 @@ public sealed partial class MainWindow : Window
 
     private static SearchSuggestion CreateStoreSearchSuggestion(string query) => new()
     {
-        DisplayText = UiStrings.Format(UiStrings.SearchStoreForQueryFormat, query),
+        DisplayText = UiStrings.Format(UiStrings.SearchStoresForQueryFormat, query),
         Subtitle = UiStrings.ViewAllStoreResults,
         StoreQuery = query,
         IconGlyph = "\uE719"

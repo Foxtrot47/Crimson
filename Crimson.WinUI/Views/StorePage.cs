@@ -1,5 +1,6 @@
 ﻿using System;
 using Crimson.Providers;
+using Crimson.Resources;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using Microsoft.UI.Xaml;
@@ -28,7 +29,7 @@ public sealed class StorePage : Page
         _hub.Children.Clear();
         _hub.Children.Add(new TextBlock
         {
-            Text = query is null ? "Stores" : $"Search stores for “{query}”",
+            Text = query is null ? UiStrings.Stores : UiStrings.Format(UiStrings.SearchStoresForQueryFormat, query),
             Style = (Style)Application.Current.Resources["TitleTextBlockStyle"]
         });
         foreach (var provider in App.GetService<LauncherStores>().Providers)
