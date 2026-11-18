@@ -17,6 +17,8 @@ public static class EpicServiceCollectionExtensions
         services.AddHttpClient("EpicOAuth", ConfigureEpicClient)
             .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler);
         services.AddHttpClient("EpicApi", ConfigureEpicClient)
+            // Library Service request paths contain account IDs.
+            .RemoveAllLoggers()
             .ConfigurePrimaryHttpMessageHandler(CreateSecureHttpHandler)
             .AddResilienceHandler(
                 "CustomPipeline",
