@@ -31,15 +31,28 @@ public class UbisoftAuthenticationTests
             return Json(SessionPayload());
         })));
         var store = new MemoryStore();
-        var auth = new UbisoftAuthentication(api, store);
-        Assert.True(await auth.SignIn("üser@example.com", "päss", true));
-        Assert.Equal(AuthenticationStatus.LoggedOut, auth.AuthenticationStatus);
-        Assert.Null(store.Session);
-        await auth.CompleteTwoFactor("123456");
-        Assert.Equal("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("üser@example.com:päss")), requests[0]);
-        Assert.Equal("ubi_2fa_v1 t=2fa-secret", requests[1]);
-        Assert.Equal(AuthenticationStatus.LoggedIn, auth.AuthenticationStatus);
-        Assert.Equal("login-secret", store.Session!.Ticket);
+        var root = Path.Combine(Path.GetTempPath(), "crimson-2fa-" + Guid.NewGuid().ToString("N"));
+        var credentials = new UbisoftSignInCredentialStore(root, new TestProtector());
+        var auth = new UbisoftAuthentication(api, store, credentials);
+        try
+        {
+            Assert.True(await auth.SignIn("üser@example.com", "päss", true));
+            Assert.Equal(AuthenticationStatus.LoggedOut, auth.AuthenticationStatus);
+            Assert.Null(store.Session);
+            await auth.CompleteTwoFactor("123456");
+            Assert.Equal("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("üser@example.com:päss")), requests[0]);
+            Assert.Equal("ubi_2fa_v1 t=2fa-secret", requests[1]);
+            Assert.Equal(AuthenticationStatus.LoggedIn, auth.AuthenticationStatus);
+            Assert.Equal("login-secret", store.Session!.Ticket);
+            Assert.Equal("üser@example.com", store.Session.Email);
+            var remembered = credentials.Load();
+            Assert.Equal("üser@example.com", remembered!.Email);
+            Assert.Equal("päss", remembered.Password);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
     }
     [Fact]
     public async Task NonRememberedLoginDeletesOldAccountAndLogoutClearsMemory()
@@ -100,7 +113,7 @@ public class UbisoftAuthenticationTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) => handle(request);
     }
-    private sealed class TestProtector : ICredentialProtector
+    private sealed class TestProtector : IUserCredentialProtector
     {
         public string Protect(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
         public string Unprotect(string value) => Encoding.UTF8.GetString(Convert.FromBase64String(value));

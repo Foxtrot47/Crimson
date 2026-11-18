@@ -46,6 +46,8 @@ public sealed class UbisoftAuthentication(UbisoftApi api, IUbisoftSessionStore s
     private readonly SemaphoreSlim _gate = new(1, 1);
     private string? _twoFactorChallenge;
     private bool _remember;
+    private string _pendingEmail = "";
+    private UbisoftSignInCredential? _pendingCredential;
     private bool _keepStoredSession;
     private CancellationTokenSource? _renewal;
     private Task? _renewalLoop;
@@ -60,13 +62,15 @@ public sealed class UbisoftAuthentication(UbisoftApi api, IUbisoftSessionStore s
     public event Action<AuthenticationStatus>? StatusChanged;
     private void Publish(AuthenticationStatus status) { AuthenticationStatus = status; StatusChanged?.Invoke(status); }
 
-    /// <returns>True when a two-factor code is required. Passwords are never saved.</returns>
+    /// <returns>True when a two-factor code is required. The password is retained only until the sign-in finishes.</returns>
     public async Task<bool> SignIn(string email, string password, bool remember, CancellationToken token = default)
     {
         await _gate.WaitAsync(token);
         try
         {
             _twoFactorChallenge = null;
+            _pendingEmail = email.Trim();
+            _pendingCredential = remember ? new UbisoftSignInCredential(_pendingEmail, password) : null;
             var json = await api.Password(email, password, remember, token);
             if (json.TryGetProperty("twoFactorAuthenticationTicket", out var challenge) && !string.IsNullOrEmpty(challenge.GetString()))
             {
@@ -74,11 +78,13 @@ public sealed class UbisoftAuthentication(UbisoftApi api, IUbisoftSessionStore s
                 _remember = remember;
                 return true;
             }
+            var session = UbisoftSession.Parse(json, remember) with { Email = _pendingEmail };
+            await Adopt(session, remember, token);
             // Staying signed in needs the sign-in itself: Ubisoft's ticket lasts hours and its
             // remember-me renewal rejects third-party clients.
-            if (remember) credentials?.Save(new UbisoftSignInCredential(email.Trim(), password));
+            if (remember && _pendingCredential is { } credential) credentials?.Save(credential);
             else credentials?.Delete();
-            await Adopt(UbisoftSession.Parse(json, remember) with { Email = email.Trim() }, remember, token);
+            ClearPendingSignIn();
             log?.Information("Ubisoft: signed in; account remembered={Remembered}", remember);
             return false;
         }
@@ -91,13 +97,27 @@ public sealed class UbisoftAuthentication(UbisoftApi api, IUbisoftSessionStore s
         {
             if (_twoFactorChallenge is null) throw new InvalidOperationException("Start sign-in before submitting a code.");
             var json = await api.TwoFactor(_twoFactorChallenge, code, token);
-            var pending = Session?.Email ?? ""; // Carried from the password step, where the address is known.
-            await Adopt(UbisoftSession.Parse(json, _remember) with { Email = pending }, _remember, token);
+            var email = _pendingEmail;
+            await Adopt(UbisoftSession.Parse(json, _remember) with { Email = email }, _remember, token);
+            if (_remember && _pendingCredential is { } credential) credentials?.Save(credential);
+            else credentials?.Delete();
             _twoFactorChallenge = null;
+            ClearPendingSignIn();
+            log?.Information("Ubisoft: two-factor sign-in completed; account remembered={Remembered}", _remember);
         }
         finally { _gate.Release(); }
     }
-    public void CancelSignIn() => _twoFactorChallenge = null;
+    public void CancelSignIn()
+    {
+        _twoFactorChallenge = null;
+        ClearPendingSignIn();
+    }
+
+    private void ClearPendingSignIn()
+    {
+        _pendingEmail = "";
+        _pendingCredential = null;
+    }
     public Task<LauncherUser?> GetUser(CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
@@ -115,15 +135,7 @@ public sealed class UbisoftAuthentication(UbisoftApi api, IUbisoftSessionStore s
             Publish(AuthenticationStatus.Checking);
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
             var session = Session ?? await store.Load(timeout.Token);
-            if (session is null)
-            {
-                log?.Information("Ubisoft: no stored session; remembered sign-in {Remembered}",
-                    credentials?.Exists == true ? "available" : "missing");
-                // Nothing usable on disk, but a remembered sign-in can still restore the session.
-                if (await TrySilentSignInAsync(timeout.Token)) return AuthenticationStatus;
-                Publish(AuthenticationStatus.LoggedOut);
-                return AuthenticationStatus;
-            }
+            if (session is null) return await RestoreRememberedSessionAsync(timeout.Token);
             // A stored session is the remembered identity; only an explicit disconnect forgets it.
             _keepStoredSession = true;
             LastEmail = session.Email;
@@ -131,41 +143,65 @@ public sealed class UbisoftAuthentication(UbisoftApi api, IUbisoftSessionStore s
                 (session.ExpiresAt - DateTimeOffset.UtcNow).TotalMinutes);
             if (session.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(2))
             {
-                // Still valid: extend it now so the next launch finds a live ticket.
-                var extended = UbisoftSession.Parse(await api.Extend(session, true, timeout.Token), true)
-                    with { Email = session.Email };
-                await Adopt(extended, true, timeout.Token);
-                log?.Information("Ubisoft: session extended at launch");
+                await ExtendStoredSessionAsync(session, timeout.Token);
                 return AuthenticationStatus;
             }
-            if (session.ExpiresAt <= DateTimeOffset.UtcNow.AddMinutes(2))
-            {
-                // Renewal is expected to fail: Ubisoft answers 401 "Ticket is invalid" to
-                // third-party clients. Keep the stored session and ask for the password again.
-                if (string.IsNullOrEmpty(session.RememberMeTicket))
-                {
-                    Session = null;
-                    Publish(AuthenticationStatus.LoginFailed);
-                    return AuthenticationStatus;
-                }
-                session = UbisoftSession.Parse(await api.Remember(session.RememberMeTicket, timeout.Token), true)
-                    with { Email = session.Email };
-            }
-            await api.Get(session, "/v3/users/me", timeout.Token);
-            await Adopt(session, true, timeout.Token);
+            var usable = await RenewStoredSessionAsync(session, timeout.Token);
+            if (usable is null) return AuthenticationStatus;
+            await api.Get(usable, "/v3/users/me", timeout.Token);
+            await Adopt(usable, true, timeout.Token);
         }
         catch (UbisoftApiException ex) when (ex.Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            // The ticket is no longer accepted. Reconnect silently when the person asked to stay
-            // signed in; otherwise keep the stored session so the next sign-in is pre-filled.
-            Session = null;
-            log?.Information("Ubisoft: stored ticket refused ({Status}); replaying the remembered sign-in", ex.Status);
-            if (await TrySilentSignInAsync(CancellationToken.None)) return AuthenticationStatus;
-            log?.Warning("Ubisoft: could not reconnect automatically; sign-in required");
-            Publish(AuthenticationStatus.LoginFailed);
+            return await RecoverRefusedTicketAsync(ex);
         }
         catch (Exception) { Session = null; Publish(AuthenticationStatus.LoginFailed); }
         finally { _gate.Release(); }
+        return AuthenticationStatus;
+    }
+
+    private async Task<AuthenticationStatus> RestoreRememberedSessionAsync(CancellationToken token)
+    {
+        log?.Information("Ubisoft: no stored session; remembered sign-in {Remembered}",
+            credentials?.Exists == true ? "available" : "missing");
+        // Nothing usable on disk, but a remembered sign-in can still restore the session.
+        if (await TrySilentSignInAsync(token)) return AuthenticationStatus;
+        Publish(AuthenticationStatus.LoggedOut);
+        return AuthenticationStatus;
+    }
+
+    private async Task ExtendStoredSessionAsync(UbisoftSession session, CancellationToken token)
+    {
+        // Still valid: extend it now so the next launch finds a live ticket.
+        var extended = UbisoftSession.Parse(await api.Extend(session, true, token), true)
+            with { Email = session.Email };
+        await Adopt(extended, true, token);
+        log?.Information("Ubisoft: session extended at launch");
+    }
+
+    private async Task<UbisoftSession?> RenewStoredSessionAsync(UbisoftSession session, CancellationToken token)
+    {
+        // Renewal is expected to fail: Ubisoft answers 401 "Ticket is invalid" to
+        // third-party clients. Keep the stored session and ask for the password again.
+        if (string.IsNullOrEmpty(session.RememberMeTicket))
+        {
+            Session = null;
+            Publish(AuthenticationStatus.LoginFailed);
+            return null;
+        }
+        return UbisoftSession.Parse(await api.Remember(session.RememberMeTicket, token), true)
+            with { Email = session.Email };
+    }
+
+    private async Task<AuthenticationStatus> RecoverRefusedTicketAsync(UbisoftApiException error)
+    {
+        // The ticket is no longer accepted. Reconnect silently when the person asked to stay
+        // signed in; otherwise keep the stored session so the next sign-in is pre-filled.
+        Session = null;
+        log?.Information("Ubisoft: stored ticket refused ({Status}); replaying the remembered sign-in", error.Status);
+        if (await TrySilentSignInAsync(CancellationToken.None)) return AuthenticationStatus;
+        log?.Warning("Ubisoft: could not reconnect automatically; sign-in required");
+        Publish(AuthenticationStatus.LoginFailed);
         return AuthenticationStatus;
     }
     /// <summary>
@@ -191,11 +227,14 @@ public sealed class UbisoftAuthentication(UbisoftApi api, IUbisoftSessionStore s
                 // Silent reconnection cannot answer a code; the dialog completes it.
                 _twoFactorChallenge = challenge.GetString();
                 _remember = true;
+                _pendingEmail = stored.Email;
+                _pendingCredential = stored;
                 return false;
             }
             var session = UbisoftSession.Parse(json, true) with { Email = stored.Email };
             _keepStoredSession = true;
             await Adopt(session, true, timeout.Token);
+            ClearPendingSignIn();
             log?.Information("Ubisoft: reconnected with the remembered sign-in");
             return true;
         }
@@ -293,6 +332,7 @@ public sealed class UbisoftAuthentication(UbisoftApi api, IUbisoftSessionStore s
             StopRenewal();
             _keepStoredSession = false;
             LastEmail = "";
+            ClearPendingSignIn();
             credentials?.Delete();
             await Clear();
             log?.Information("Ubisoft: disconnected and forgot the stored session");
@@ -304,6 +344,7 @@ public sealed class UbisoftAuthentication(UbisoftApi api, IUbisoftSessionStore s
         await store.Delete();
         Session = null;
         _twoFactorChallenge = null;
+        ClearPendingSignIn();
         Publish(AuthenticationStatus.LoggedOut);
     }
 }
