@@ -265,6 +265,7 @@ public static class UiStrings
     public static string ScreenshotUnavailable => Get(nameof(ScreenshotUnavailable));
     public static string SearchDLC => Get(nameof(SearchDLC));
     public static string SearchStoreForQueryFormat => Get(nameof(SearchStoreForQueryFormat));
+    public static string SearchStoresForQueryFormat => Get(nameof(SearchStoresForQueryFormat));
     public static string SearchYourLibrary => Get(nameof(SearchYourLibrary));
     public static string SelectAtLeastOneLanguage => Get(nameof(SelectAtLeastOneLanguage));
     public static string Settings => Get(nameof(Settings));
@@ -287,8 +288,6 @@ public static class UiStrings
     public static string StartTheOperationAgainFromTheLibrary => Get(nameof(StartTheOperationAgainFromTheLibrary));
     public static string StorageSection => Get(nameof(StorageSection));
     public static string Store => Get(nameof(Store));
-    public static string Stores => Get(nameof(Stores));
-    public static string SearchStoresForQueryFormat => Get(nameof(SearchStoresForQueryFormat));
     public static string SystemLanguage => Get(nameof(SystemLanguage));
     public static string TB => Get(nameof(TB));
     public static string TheDesktopShortcutCouldNotBeCreated => Get(nameof(TheDesktopShortcutCouldNotBeCreated));
