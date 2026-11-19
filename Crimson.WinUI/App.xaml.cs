@@ -292,7 +292,7 @@ namespace Crimson
         {
             var services = (App.Current as App)?.Host.Services;
             if (services?.GetService(typeof(IEnumerable<T>)) is IEnumerable<T> all) return all;
-            return services?.GetService(typeof(T)) is T single ? [single] : [];
+            return services?.GetService(typeof(T)) is T single ? new[] { single } : Array.Empty<T>();
         }
 
         public static T GetService<T>() where T : class

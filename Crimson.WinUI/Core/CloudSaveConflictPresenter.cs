@@ -19,7 +19,7 @@ namespace Crimson.Core;
 internal sealed class CloudSaveConflictPresenter : IDisposable
 {
     private readonly FrameworkElement _root;
-    private readonly IReadOnlyList<ICloudSaveConflictSource> _cloudSaves;
+    private readonly ICloudSaveConflictSource[] _cloudSaves;
     private readonly LauncherLibrary _library;
     private readonly DialogCoordinator _dialogs;
     private readonly ILogger _log;

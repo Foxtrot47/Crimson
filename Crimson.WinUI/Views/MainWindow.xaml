@@ -48,14 +48,14 @@
             Canvas.ZIndex="1"
             PlaceholderText="{x:Bind strings:UiStrings.SearchYourLibrary}"
             QuerySubmitted="GlobalSearchBox_QuerySubmitted"
-            TextChanged="GlobalSearchBox_TextChanged"
-            TextMemberPath="DisplayText">
+            SuggestionChosen="GlobalSearchBox_SuggestionChosen"
+            TextChanged="GlobalSearchBox_TextChanged">
             <AutoSuggestBox.QueryIcon>
                 <SymbolIcon Symbol="Find" />
             </AutoSuggestBox.QueryIcon>
             <AutoSuggestBox.ItemTemplate>
-                <DataTemplate>
-                    <Grid MinHeight="52">
+                <DataTemplate x:DataType="local:SearchSuggestion">
+                    <Grid MinHeight="52" AutomationProperties.Name="{x:Bind DisplayText}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="40" />
@@ -69,8 +69,8 @@
                                 Background="{ThemeResource ControlFillColorDefaultBrush}"
                                 CornerRadius="4">
                                 <Grid>
-                                    <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
-                                    <FontIcon FontSize="18" Glyph="{Binding IconGlyph}" />
+                                    <Image Source="{x:Bind Thumbnail}" Stretch="UniformToFill" />
+                                    <FontIcon FontSize="18" Glyph="{x:Bind IconGlyph}" />
                                 </Grid>
                             </Border>
                             <StackPanel
@@ -79,16 +79,16 @@
                                 VerticalAlignment="Center"
                                 Spacing="2">
                                 <TextBlock
-                                    Text="{Binding DisplayText}"
+                                    Text="{x:Bind DisplayText}"
                                     TextTrimming="CharacterEllipsis" />
                                 <TextBlock
                                     FontSize="12"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="{Binding Subtitle}"
+                                    Text="{x:Bind Subtitle}"
                                     TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </Grid>
-                        <Grid Visibility="{Binding SkeletonVisibility}">
+                        <Grid Visibility="{x:Bind SkeletonVisibility}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="40" />
                                 <ColumnDefinition Width="*" />

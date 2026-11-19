@@ -2,6 +2,8 @@
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
         <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+        <!-- The projection bundled with the .NET SDK predates CsWinRT's trim annotations. -->
+        <WindowsSdkPackageVersion>10.0.22621.87</WindowsSdkPackageVersion>
         <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
 		<RootNamespace>Crimson</RootNamespace>
 		<ApplicationManifest>app.manifest</ApplicationManifest>
@@ -14,6 +16,10 @@
         <EnableMsixTooling>true</EnableMsixTooling>
 		<UseRidGraph>true</UseRidGraph>
         <Nullable>enable</Nullable>
+        <IsTrimmable>true</IsTrimmable>
+        <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+        <EnableBindingDiagnostics>true</EnableBindingDiagnostics>
+        <CsWinRTAotWarningLevel>1</CsWinRTAotWarningLevel>
         <!-- ShellLinkInterop uses source-generated COM, which needs unsafe code; classic COM interop is not trim-safe. -->
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
@@ -88,17 +94,28 @@
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
         <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
         <PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.2.251219" />
-        <PackageReference Include="Google.Protobuf" Version="3.29.2" />
+        <PackageReference Include="Google.Protobuf" Version="3.36.2" />
         <PackageReference Include="H.NotifyIcon.WinUI" Version="2.4.1" />
-        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
-        <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.9.0" />
-        <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
-        <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.8249" />
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="11.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="11.0.0" />
+        <!-- The metapackage stays because CommunityToolkit and H.NotifyIcon depend on it; its version must win over theirs. -->
+        <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.7.0">
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <!-- Unused metapackage components: AI, ML (ONNX Runtime/DirectML), Search and Widgets runtimes. -->
+        <PackageReference Include="Microsoft.WindowsAppSDK.AI" Version="2.7.0" ExcludeAssets="all" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.WindowsAppSDK.ML" Version="2.7.0" ExcludeAssets="all" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.Windows.AI.MachineLearning" Version="2.5.96" ExcludeAssets="all" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.WindowsAppSDK.Search" Version="2.7.0" ExcludeAssets="all" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.WindowsAppSDK.Widgets" Version="2.7.0" ExcludeAssets="all" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" >
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
         <PackageReference Include="Serilog" Version="4.4.0" />
-        <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+        <PackageReference Include="Serilog.Extensions.Logging" Version="11.0.0" />
         <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
         <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-        <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
+        <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" />
 		<Manifest Include="$(ApplicationManifest)" />
 	</ItemGroup>
 

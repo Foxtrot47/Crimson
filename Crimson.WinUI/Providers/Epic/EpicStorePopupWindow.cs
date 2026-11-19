@@ -10,7 +10,7 @@ using Serilog;
 
 namespace Crimson.Providers.Epic;
 
-internal sealed class EpicStorePopupWindow : Window
+internal sealed partial class EpicStorePopupWindow : Window
 {
     private static readonly HashSet<EpicStorePopupWindow> OpenWindows = [];
 

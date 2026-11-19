@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 
 namespace Crimson.Tests;
 
@@ -24,7 +24,11 @@ public sealed class SettingsLanguageLayoutTests
         var picker = Assert.Single(page.Descendants(), element => (string?)element.Attribute(xaml + "Name") == "LanguagePicker");
         Assert.Equal("ComboBox", picker.Name.LocalName);
         Assert.Equal("{x:Bind ViewModel.Languages}", (string?)picker.Attribute("ItemsSource"));
-        Assert.Equal("DisplayName", (string?)picker.Attribute("DisplayMemberPath"));
+        var languageTemplate = Assert.Single(picker.Elements(), element => element.Name.LocalName == "ComboBox.ItemTemplate")
+            .Elements().Single();
+        Assert.Equal("DataTemplate", languageTemplate.Name.LocalName);
+        Assert.Equal("core:LanguageOption", (string?)languageTemplate.Attribute(xaml + "DataType"));
+        Assert.Equal("{x:Bind DisplayName}", (string?)Assert.Single(languageTemplate.Elements()).Attribute("Text"));
         Assert.Equal("{x:Bind ViewModel.SelectedLanguage, Mode=OneWay}", (string?)picker.Attribute("SelectedItem"));
         Assert.Equal("LanguageSelectionChanged", (string?)picker.Attribute("SelectionChanged"));
         Assert.Equal("Language", (string?)picker.Parent!.Attribute("Header"));

@@ -93,19 +93,6 @@ public sealed partial class MainWindow : Window
         public required bool CanLaunch { get; init; }
     }
 
-    private sealed class SearchSuggestion
-    {
-        public required string DisplayText { get; init; }
-        public required string Subtitle { get; init; }
-        public string? AppName { get; init; }
-        public string? StoreQuery { get; init; }
-        public StoreDestination? StoreTarget { get; init; }
-        public ImageSource? Thumbnail { get; init; }
-        public string? IconGlyph { get; init; }
-        public bool IsLoading { get; init; }
-        public Visibility SkeletonVisibility { get; init; } = Visibility.Collapsed;
-    }
-
     private bool _windowClosed;
     private Type? _pendingNavigationPageType;
 
@@ -263,6 +250,12 @@ public sealed partial class MainWindow : Window
                 _storeSearchCancellation = null;
             cancellationSource.Dispose();
         }
+    }
+
+    private void GlobalSearchBox_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
+    {
+        if (args.SelectedItem is SearchSuggestion suggestion)
+            sender.Text = suggestion.DisplayText;
     }
 
     private void GlobalSearchBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
@@ -544,7 +537,18 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        NavControl_Navigate(Type.GetType(tag), args.RecommendedNavigationTransitionInfo);
+        switch (tag)
+        {
+            case "Crimson.Views.LibraryPage":
+                NavControl_Navigate(typeof(LibraryPage), args.RecommendedNavigationTransitionInfo);
+                break;
+            case "Crimson.Views.StorePage":
+                NavControl_Navigate(typeof(StorePage), args.RecommendedNavigationTransitionInfo);
+                break;
+            case "Crimson.Views.DownloadsPage":
+                NavControl_Navigate(typeof(DownloadsPage), args.RecommendedNavigationTransitionInfo);
+                break;
+        }
     }
 
     private void NavigateToGame(string appName, NavigationTransitionInfo transitionInfo)
@@ -1072,4 +1076,16 @@ public sealed partial class MainWindow : Window
 
 }
 
-
+/// <summary>A row in the global search suggestions. Named by the item template's <c>x:DataType</c>.</summary>
+internal sealed class SearchSuggestion
+{
+    public required string DisplayText { get; init; }
+    public required string Subtitle { get; init; }
+    public string? AppName { get; init; }
+    public string? StoreQuery { get; init; }
+    public StoreDestination? StoreTarget { get; init; }
+    public ImageSource? Thumbnail { get; init; }
+    public string? IconGlyph { get; init; }
+    public bool IsLoading { get; init; }
+    public Visibility SkeletonVisibility { get; init; } = Visibility.Collapsed;
+}

@@ -15,7 +15,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace Crimson.Utils;
 
-public class BoolToVisibilityConverter : BoolToObjectConverter
+public partial class BoolToVisibilityConverter : BoolToObjectConverter
 {
     public BoolToVisibilityConverter()
     {
@@ -24,7 +24,7 @@ public class BoolToVisibilityConverter : BoolToObjectConverter
     }
 }
 
-public class BoolToInverseVisibilityConverter : BoolToObjectConverter
+public partial class BoolToInverseVisibilityConverter : BoolToObjectConverter
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="BoolToInverseVisibilityConverter"/> class.
@@ -36,7 +36,7 @@ public class BoolToInverseVisibilityConverter : BoolToObjectConverter
     }
 }
 
-public class ImageUrlConverter : IValueConverter
+public partial class ImageUrlConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -65,7 +65,7 @@ public class ImageUrlConverter : IValueConverter
 }
 
 /// <summary>Draws the store mark a provider registers for its library entries.</summary>
-public class ProviderLogoConverter : IValueConverter
+public partial class ProviderLogoConverter : IValueConverter
 {
     public object? Convert(object value, Type targetType, object parameter, string language)
     {
@@ -143,7 +143,7 @@ public static class CachedImageLoader
     }
 }
 
-public class GamePrimaryActionGlyphConverter : IValueConverter
+public partial class GamePrimaryActionGlyphConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language) => value switch
     {
@@ -160,7 +160,7 @@ public class GamePrimaryActionGlyphConverter : IValueConverter
     }
 }
 
-public class DriveSpaceColorConverter : IValueConverter
+public partial class DriveSpaceColorConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {

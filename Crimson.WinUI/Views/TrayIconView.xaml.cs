@@ -1,7 +1,6 @@
 ﻿using Crimson.Resources;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using H.NotifyIcon;
 using System;
@@ -16,12 +15,8 @@ using Crimson.Models;
 
 namespace Crimson.Views
 {
-    [ObservableObject]
     public sealed partial class TrayIconView : UserControl
     {
-        [ObservableProperty]
-        private bool _isWindowVisible;
-
         private IReadOnlyList<TrayGameMenuItem> _installedGames = [];
 
         public TrayIconView()
@@ -79,7 +74,6 @@ namespace Crimson.Views
             {
                 window.Show();
             }
-            IsWindowVisible = window.Visible;
         }
 
         [RelayCommand]

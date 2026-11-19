@@ -3,6 +3,7 @@
     x:Class="Crimson.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:core="using:Crimson.Core"
     xmlns:strings="using:Crimson.Resources"
     xmlns:providers="using:Crimson.Providers"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
@@ -88,10 +89,15 @@
                         x:Name="LanguagePicker"
                         MinWidth="200"
                         ItemsSource="{x:Bind ViewModel.Languages}"
-                        DisplayMemberPath="DisplayName"
                         SelectedItem="{x:Bind ViewModel.SelectedLanguage, Mode=OneWay}"
                         SelectionChanged="LanguageSelectionChanged"
-                        AutomationProperties.Name="{x:Bind strings:UiStrings.Language}" />
+                        AutomationProperties.Name="{x:Bind strings:UiStrings.Language}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="core:LanguageOption">
+                                <TextBlock Text="{x:Bind DisplayName}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
                 </toolkit:SettingsCard>
                 <StackPanel
                     Margin="12,6,12,6"
