@@ -6,9 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.InteropServices.WindowsRuntime;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Models;
@@ -134,23 +132,12 @@ public sealed class GameShortcutManager : IGameShortcutManager
 
     private static bool ReadShortcutOwnership(string path, string appName)
     {
-        IShellLinkW link = (IShellLinkW)new ShellLink();
-        try
-        {
-            ((IPersistFile)link).Load(path, 0);
-            var target = new StringBuilder(32768);
-            var arguments = new StringBuilder(32768);
-            link.GetPath(target, target.Capacity, IntPtr.Zero, 4);
-            link.GetArguments(arguments, arguments.Capacity);
-            var targetsCrimson = string.Equals(target.ToString(), GetPackagedAliasPath(), StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(target.ToString(), Environment.ProcessPath, StringComparison.OrdinalIgnoreCase);
-            if (!targetsCrimson) return false;
-            return MatchesOwnedArguments(arguments.ToString(), appName);
-        }
-        finally
-        {
-            Marshal.FinalReleaseComObject(link);
-        }
+        using var link = ShellLinkInterop.Create();
+        link.Load(path);
+        var target = link.GetPath();
+        var targetsCrimson = string.Equals(target, GetPackagedAliasPath(), StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(target, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase);
+        return targetsCrimson && MatchesOwnedArguments(link.GetArguments(), appName);
     }
 
     /// <summary>Accepts the current qualified command line and the unqualified Epic form written by older builds.</summary>
@@ -324,25 +311,15 @@ public sealed class GameShortcutManager : IGameShortcutManager
         bool? packaged = null)
     {
         RequireAvailableShortcutPath(path, game.AppName);
-        IShellLinkW link = (IShellLinkW)new ShellLink();
-        try
-        {
-            if (packaged ?? IsPackaged())
-                link.SetPath(GetPackagedAliasPath());
-            else
-                link.SetPath(Environment.ProcessPath ?? throw new InvalidOperationException("Executable path is unavailable."));
-            link.SetArguments(GameLaunchRequest.CreateCommandLineArgument(game.AppName));
-
-
-            link.SetDescription(UiStrings.Format(UiStrings.ShortcutDescriptionFormat, game.AppTitle));
-            if (!string.IsNullOrEmpty(iconPath))
-                link.SetIconLocation(iconPath, 0);
-            ((IPersistFile)link).Save(path, true);
-        }
-        finally
-        {
-            Marshal.FinalReleaseComObject(link);
-        }
+        using var link = ShellLinkInterop.Create();
+        link.SetPath((packaged ?? IsPackaged())
+            ? GetPackagedAliasPath()
+            : Environment.ProcessPath ?? throw new InvalidOperationException("Executable path is unavailable."));
+        link.SetArguments(GameLaunchRequest.CreateCommandLineArgument(game.AppName));
+        link.SetDescription(UiStrings.Format(UiStrings.ShortcutDescriptionFormat, game.AppTitle));
+        if (!string.IsNullOrEmpty(iconPath))
+            link.SetIconLocation(iconPath, 0);
+        link.Save(path);
     }
 
     internal static string GetPackagedAliasPath() => Path.Combine(
@@ -362,34 +339,5 @@ public sealed class GameShortcutManager : IGameShortcutManager
         {
             return false;
         }
-    }
-
-    [ComImport]
-    [Guid("00021401-0000-0000-C000-000000000046")]
-    private class ShellLink;
-
-    [ComImport]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    [Guid("000214F9-0000-0000-C000-000000000046")]
-    private interface IShellLinkW
-    {
-        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder file, int maxPath, IntPtr findData, uint flags);
-        void GetIDList(out IntPtr idList);
-        void SetIDList(IntPtr idList);
-        void GetDescription(IntPtr name, int maxName);
-        void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string name);
-        void GetWorkingDirectory(IntPtr directory, int maxPath);
-        void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string directory);
-        void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder arguments, int maxPath);
-        void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string arguments);
-        void GetHotkey(out short hotkey);
-        void SetHotkey(short hotkey);
-        void GetShowCmd(out int showCommand);
-        void SetShowCmd(int showCommand);
-        void GetIconLocation(IntPtr iconPath, int iconPathLength, out int iconIndex);
-        void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string iconPath, int iconIndex);
-        void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string path, uint reserved);
-        void Resolve(IntPtr window, uint flags);
-        void SetPath([MarshalAs(UnmanagedType.LPWStr)] string path);
     }
 }

@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <PlatformTarget>x64</PlatformTarget>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -38,6 +39,7 @@
     <Compile Include="..\Crimson.WinUI\Providers\Ubisoft\UbisoftRuntime.cs" Link="Production\Providers\Ubisoft\UbisoftRuntime.cs" />
     <Compile Include="..\Crimson.WinUI\Providers\Ubisoft\UbisoftProcess.cs" Link="Production\Providers\Ubisoft\UbisoftProcess.cs" />
     <Compile Include="..\Crimson.WinUI\Core\GameShortcutManager.cs" Link="Production\Core\GameShortcutManager.cs" />
+    <Compile Include="..\Crimson.WinUI\Core\ShellLinkInterop.cs" Link="Production\Core\ShellLinkInterop.cs" />
     <Compile Include="..\Crimson.WinUI\Core\GameShortcutNaming.cs" Link="Production\Core\GameShortcutNaming.cs" />
     <Compile Include="..\Crimson.WinUI\Core\OperationDiagnosticActions.cs" Link="Production\Core\OperationDiagnosticActions.cs" />
     <Compile Include="..\Crimson.WinUI\Core\TrayMenuPresenter.cs" Link="Production\Core\TrayMenuPresenter.cs" />

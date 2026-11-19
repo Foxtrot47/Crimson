@@ -14,6 +14,8 @@
         <EnableMsixTooling>true</EnableMsixTooling>
 		<UseRidGraph>true</UseRidGraph>
         <Nullable>enable</Nullable>
+        <!-- ShellLinkInterop uses source-generated COM, which needs unsafe code; classic COM interop is not trim-safe. -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
 
         <!--
