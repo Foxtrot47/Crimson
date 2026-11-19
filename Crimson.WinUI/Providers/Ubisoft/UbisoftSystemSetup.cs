@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -11,6 +11,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
@@ -66,8 +67,10 @@ public sealed class UbisoftSystemSetup(ElevationNotice notice, ILogger log) : IU
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 deadline.CancelAfter(TimeSpan.FromMinutes(5));
                 await client.ConnectAsync(deadline.Token);
-                await SetupPipe.WriteAsync(client, JsonSerializer.Serialize(elevated), deadline.Token);
-                var result = await SetupPipe.ReadAsync<UbisoftSystemSetupResult>(client, deadline.Token);
+                await SetupPipe.WriteAsync(client,
+                    JsonSerializer.Serialize(elevated, UbisoftSetupJsonContext.Default.UbisoftSystemSetupRequest),
+                    deadline.Token);
+                var result = await SetupPipe.ReadAsync(client, UbisoftSetupJsonContext.Default.UbisoftSystemSetupResult, deadline.Token);
                 if (result is null)
                     return new UbisoftSystemSetupResult(false, [], "The setup helper result is empty.");
                 _log.Information("Ubisoft: registry setup {Outcome}", result.Applied ? "applied" : "failed");
@@ -179,9 +182,12 @@ internal static class UbisoftElevatedSystemSetup
             using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(5));
             server.WaitForConnectionAsync(deadline.Token).GetAwaiter().GetResult();
             if (!IsExpectedClient(server.SafePipeHandle, parentPid, expectedPath)) return 2;
-            var request = SetupPipe.ReadAsync<UbisoftSystemSetupRequest>(server, deadline.Token).GetAwaiter().GetResult();
+            var request = SetupPipe.ReadAsync(server, UbisoftSetupJsonContext.Default.UbisoftSystemSetupRequest, deadline.Token)
+                .GetAwaiter().GetResult();
             var result = Apply(request);
-            SetupPipe.WriteAsync(server, JsonSerializer.Serialize(result), deadline.Token).GetAwaiter().GetResult();
+            SetupPipe.WriteAsync(server,
+                JsonSerializer.Serialize(result, UbisoftSetupJsonContext.Default.UbisoftSystemSetupResult), deadline.Token)
+                .GetAwaiter().GetResult();
             return result.Applied ? 0 : 1;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or
@@ -324,10 +330,10 @@ internal static class SetupPipe
         await stream.FlushAsync(ct);
     }
 
-    internal static async Task<T?> ReadAsync<T>(Stream stream, CancellationToken ct)
+    internal static async Task<T?> ReadAsync<T>(Stream stream, JsonTypeInfo<T> type, CancellationToken ct)
     {
         var body = await ReadBytesAsync(stream, ct);
-        return JsonSerializer.Deserialize<T>(body);
+        return JsonSerializer.Deserialize(body, type);
     }
 
     private static async Task<byte[]> ReadBytesAsync(Stream stream, CancellationToken ct)

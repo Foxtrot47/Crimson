@@ -1,3 +1,4 @@
+﻿using Crimson.Utils;
 using System;
 using System.IO;
 using System.Text.Json;
@@ -29,7 +30,7 @@ public sealed class UbisoftSignInCredentialStore(string providerRoot, IUserCrede
         {
             if (!File.Exists(_file)) return null;
             var json = protector.Unprotect(File.ReadAllText(_file));
-            var credential = JsonSerializer.Deserialize<UbisoftSignInCredential>(json);
+            var credential = JsonSerializer.Deserialize(json, CrimsonJsonContext.Default.UbisoftSignInCredential);
             return string.IsNullOrWhiteSpace(credential?.Email) || string.IsNullOrEmpty(credential.Password)
                 ? null : credential;
         }
@@ -50,7 +51,7 @@ public sealed class UbisoftSignInCredentialStore(string providerRoot, IUserCrede
         var temporary = _file + ".tmp";
         try
         {
-            File.WriteAllText(temporary, protector.Protect(JsonSerializer.Serialize(credential)));
+            File.WriteAllText(temporary, protector.Protect(JsonSerializer.Serialize(credential, CrimsonJsonContext.Default.UbisoftSignInCredential)));
             File.Move(temporary, _file, overwrite: true);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }

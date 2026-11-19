@@ -473,7 +473,7 @@ public class EpicLibraryManager
         var userData = await _authManager.GetUserData();
         var gameToken = string.IsNullOrWhiteSpace(responseData)
             ? null
-            : JsonSerializer.Deserialize<GameTokenResponse>(responseData);
+            : JsonSerializer.Deserialize(responseData, CrimsonJsonContext.Default.GameTokenResponse);
         if (gameToken is not null && !string.IsNullOrWhiteSpace(gameToken.Code) && userData is not null)
             return (gameToken.Code, userData);
 

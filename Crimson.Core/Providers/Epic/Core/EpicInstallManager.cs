@@ -45,7 +45,6 @@ public class EpicInstallManager : IDisposable
     private ConcurrentDictionary<BigInteger, List<FileManifest>> _chunkToFileManifestsDictionary = new();
     private ConcurrentDictionary<BigInteger, int> _chunkPartReferences = new();
     private readonly ConcurrentDictionary<string, byte> _ioQueueTaskSet = new();
-    private readonly JsonSerializerOptions _jsonSerializerOptions;
 
     private readonly object _installItemLock = new();
     private readonly int _numberOfThreads;
@@ -102,10 +101,6 @@ public class EpicInstallManager : IDisposable
         _storage = storage;
 
         _numberOfThreads = 12;
-        _jsonSerializerOptions = new JsonSerializerOptions
-        {
-            Converters = { new BigIntegerJsonConverter() }
-        };
     }
 
     private void PublishStatusChanged(InstallItem install)
@@ -1796,7 +1791,7 @@ public class EpicInstallManager : IDisposable
             CompletedChunks = null
         };
 
-        var json = JsonSerializer.Serialize(state, _jsonSerializerOptions);
+        var json = JsonSerializer.Serialize(state, EpicInstallJsonContext.Default.InstallManagerState);
         // Keep ownership until pending-state persistence completes.
         if (!TrySaveStoppedState(CurrentInstall, json)) return;
         CurrentInstall = null;
@@ -2179,7 +2174,7 @@ public class EpicInstallManager : IDisposable
                 CompletedChunks = [.. _completedChunks]
             };
 
-            var json = JsonSerializer.Serialize(state, _jsonSerializerOptions);
+            var json = JsonSerializer.Serialize(state, EpicInstallJsonContext.Default.InstallManagerState);
             _storage.SaveInstallState(json);
             _logger.Information("Saved installation state");
             _logger.Debug("Successfully paused installation of {game}", CurrentInstall.AppName);
@@ -2285,7 +2280,7 @@ public class EpicInstallManager : IDisposable
         if (string.IsNullOrWhiteSpace(jsonData)) return null;
         try
         {
-            return JsonSerializer.Deserialize<InstallManagerState>(jsonData, _jsonSerializerOptions);
+            return JsonSerializer.Deserialize(jsonData, EpicInstallJsonContext.Default.InstallManagerState);
         }
         catch (JsonException)
         {

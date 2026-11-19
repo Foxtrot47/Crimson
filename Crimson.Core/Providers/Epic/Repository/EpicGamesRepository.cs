@@ -1,9 +1,11 @@
-﻿using System.Collections.Generic;
+﻿using Crimson.Utils;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http.Headers;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text;
 using System.Threading.Tasks;
 using System.Threading;
@@ -195,7 +197,7 @@ namespace Crimson.Repository
                 var firstProperty = document.RootElement.EnumerateObject().FirstOrDefault();
                 return firstProperty.Value.ValueKind == JsonValueKind.Undefined
                     ? null
-                    : JsonSerializer.Deserialize<Metadata>(firstProperty.Value.GetRawText());
+                    : JsonSerializer.Deserialize(firstProperty.Value.GetRawText(), CrimsonJsonContext.Default.Metadata);
             }
             catch (Exception ex)
             {
@@ -211,15 +213,15 @@ namespace Crimson.Repository
             if (string.IsNullOrWhiteSpace(nameSpace))
                 return null;
 
-            var payload = JsonSerializer.Serialize(new
+            var payload = new JsonObject
             {
-                query = StoreProductDetailsQuery,
-                variables = new
+                ["query"] = StoreProductDetailsQuery,
+                ["variables"] = new JsonObject
                 {
-                    locale = "en-US",
-                    sandboxId = nameSpace
+                    ["locale"] = "en-US",
+                    ["sandboxId"] = nameSpace
                 }
-            });
+            }.ToJsonString();
 
             try
             {
@@ -272,7 +274,7 @@ namespace Crimson.Repository
                 }
 
                 var result = await response.Content.ReadAsStringAsync();
-                return JsonSerializer.Deserialize<IEnumerable<Asset>>(result);
+                return JsonSerializer.Deserialize(result, CrimsonJsonContext.Default.IEnumerableAsset);
             }
             catch (Exception ex)
             {
@@ -288,20 +290,20 @@ namespace Crimson.Repository
             if (string.IsNullOrWhiteSpace(query))
                 return [];
 
-            var payload = JsonSerializer.Serialize(new
+            var payload = new JsonObject
             {
-                query = StoreSearchQuery,
-                variables = new
+                ["query"] = StoreSearchQuery,
+                ["variables"] = new JsonObject
                 {
-                    count = 5,
-                    country = "US",
-                    keywords = query.Trim(),
-                    locale = "en-US",
-                    sortBy = "relevancy",
-                    sortDir = "DESC",
-                    start = 0
+                    ["count"] = 5,
+                    ["country"] = "US",
+                    ["keywords"] = query.Trim(),
+                    ["locale"] = "en-US",
+                    ["sortBy"] = "relevancy",
+                    ["sortDir"] = "DESC",
+                    ["start"] = 0
                 }
-            });
+            }.ToJsonString();
 
             try
             {
@@ -511,7 +513,7 @@ namespace Crimson.Repository
                 }
 
                 var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                return JsonSerializer.Deserialize<CloudSaveListing>(json)?.Files;
+                return JsonSerializer.Deserialize(json, CrimsonJsonContext.Default.CloudSaveListing)?.Files;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -540,7 +542,10 @@ namespace Crimson.Repository
                 var uri = $"https://{DataStorageHost}/api/v1/access/egstore/savesync/{Uri.EscapeDataString(userData.AccountId)}/{Uri.EscapeDataString(appName)}/";
                 using var request = CreateAuthenticatedRequest(HttpMethod.Post, uri, accessToken);
                 request.Content = new StringContent(
-                    JsonSerializer.Serialize(new { files }),
+                    new JsonObject
+                    {
+                        ["files"] = new JsonArray(files.Select(file => (JsonNode?)JsonValue.Create(file)).ToArray())
+                    }.ToJsonString(),
                     Encoding.UTF8,
                     "application/json");
                 using var response = await _apiClient.SendAsync(request, cancellationToken);
@@ -551,7 +556,7 @@ namespace Crimson.Repository
                 }
 
                 var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                return JsonSerializer.Deserialize<CloudSaveListing>(json)?.Files;
+                return JsonSerializer.Deserialize(json, CrimsonJsonContext.Default.CloudSaveListing)?.Files;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -636,7 +641,7 @@ namespace Crimson.Repository
             CancellationToken cancellationToken)
         {
             var result = await response.Content.ReadAsStringAsync(cancellationToken);
-            var data = JsonSerializer.Deserialize<ManifestUrlData>(result);
+            var data = JsonSerializer.Deserialize(result, CrimsonJsonContext.Default.ManifestUrlData);
             if (data?.Elements is not { Count: > 0 } || data.Elements[0].Manifests is null)
             {
                 _log.Error("GetGameManifest returned invalid manifest metadata");

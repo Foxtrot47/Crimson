@@ -1,10 +1,10 @@
-using System;
+﻿using System;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -22,9 +22,9 @@ public sealed class UbisoftApi(HttpClient http)
     private const string BaseUri = "https://public-ubiservices.ubi.com";
     internal Task<JsonElement> Password(string email, string password, bool remember, CancellationToken token) => Send(
         HttpMethod.Post, "/v3/profiles/sessions", "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(email + ":" + password)),
-        new { rememberMe = remember, enforceTwoFactorSession = false }, null, null, token);
+        new JsonObject { ["rememberMe"] = remember, ["enforceTwoFactorSession"] = false }, null, null, token);
     internal Task<JsonElement> TwoFactor(string challenge, string code, CancellationToken token) => Send(
-        HttpMethod.Post, "/v3/profiles/sessions", "ubi_2fa_v1 t=" + challenge, new { twoFactorCode = code }, null, code, token);
+        HttpMethod.Post, "/v3/profiles/sessions", "ubi_2fa_v1 t=" + challenge, new JsonObject { ["twoFactorCode"] = code }, null, code, token);
     /// <summary>
     /// Extends a session the way the official client does (`JobExtendSession`): re-present the
     /// current ticket before it expires and receive a new one. A ticket that already expired is
@@ -32,23 +32,23 @@ public sealed class UbisoftApi(HttpClient http)
     /// </summary>
     internal Task<JsonElement> Extend(UbisoftSession session, bool remember, CancellationToken token) => Send(
         HttpMethod.Post, "/v3/profiles/sessions", "Ubi_v1 t=" + session.Ticket,
-        new { rememberMe = remember }, session.SessionId, null, token);
+        new JsonObject { ["rememberMe"] = remember }, session.SessionId, null, token);
 
     internal Task<JsonElement> Remember(string ticket, CancellationToken token) => Send(
-        HttpMethod.Post, "/v3/profiles/sessions", "ubi_v1 t=" + ticket, new { }, null, null, token);
+        HttpMethod.Post, "/v3/profiles/sessions", "ubi_v1 t=" + ticket, new JsonObject(), null, null, token);
     public Task<JsonElement> Get(UbisoftSession session, string path, CancellationToken token = default) => Send(
         HttpMethod.Get, path, "Ubi_v1 t=" + session.Ticket, null, session.SessionId, null, token);
-    public Task<JsonElement> Put(UbisoftSession session, string path, object body, CancellationToken token = default) => Send(
+    public Task<JsonElement> Put(UbisoftSession session, string path, JsonObject body, CancellationToken token = default) => Send(
         HttpMethod.Put, path, "Ubi_v1 t=" + session.Ticket, body, session.SessionId, null, token);
-    public Task<JsonElement> Post(UbisoftSession session, string path, object body, CancellationToken token = default) => Send(
+    public Task<JsonElement> Post(UbisoftSession session, string path, JsonObject body, CancellationToken token = default) => Send(
         HttpMethod.Post, path, "Ubi_v1 t=" + session.Ticket, body, session.SessionId, null, token);
     public async Task PlaySession(UbisoftSession session, uint productId, bool end, CancellationToken token)
     {
         var path = $"/v1/profiles/{Uri.EscapeDataString(session.ProfileId)}/global/ubiconnect/playsession/api/sessions";
         await Send(end ? HttpMethod.Delete : HttpMethod.Put, end ? path + "?productId=" + productId : path,
-            "Ubi_v1 t=" + session.Ticket, end ? null : new { productId }, session.SessionId, null, token);
+            "Ubi_v1 t=" + session.Ticket, end ? null : new JsonObject { ["productId"] = productId }, session.SessionId, null, token);
     }
-    private async Task<JsonElement> Send(HttpMethod method, string path, string authorization, object? body,
+    private async Task<JsonElement> Send(HttpMethod method, string path, string authorization, JsonObject? body,
         string? session, string? code, CancellationToken token)
     {
         if (!path.StartsWith('/') || path.StartsWith("//", StringComparison.Ordinal)) throw new ArgumentException("Expected Ubisoft API path.");
@@ -59,7 +59,7 @@ public sealed class UbisoftApi(HttpClient http)
         request.Headers.UserAgent.ParseAdd("Massgate_174.2.0.13389");
         if (!string.IsNullOrEmpty(session)) request.Headers.Add("Ubi-SessionId", session);
         if (code is not null) request.Headers.Add("Ubi-2FA-Code", code);
-        if (body is not null) request.Content = JsonContent.Create(body);
+        if (body is not null) request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
         using var response = await http.SendAsync(request, token);
         if (!response.IsSuccessStatusCode) throw new UbisoftApiException(response.StatusCode);
         if (response.StatusCode == HttpStatusCode.NoContent) return default;

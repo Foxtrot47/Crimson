@@ -87,7 +87,7 @@ public class SettingsManager
     {
         try
         {
-            return JsonSerializer.Deserialize<Settings>(_storage.GetSettingsData()) ?? new Settings();
+            return JsonSerializer.Deserialize(_storage.GetSettingsData(), CrimsonJsonContext.Default.Settings) ?? new Settings();
 
         }
         catch (Exception ex)
@@ -102,7 +102,7 @@ public class SettingsManager
         await _saveGate.WaitAsync();
         try
         {
-            await _storage.SaveSettingsData(JsonSerializer.Serialize(Settings));
+            await _storage.SaveSettingsData(JsonSerializer.Serialize(Settings, CrimsonJsonContext.Default.Settings));
         }
         finally
         {

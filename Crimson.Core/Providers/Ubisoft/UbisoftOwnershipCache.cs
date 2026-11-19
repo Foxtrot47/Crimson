@@ -1,3 +1,4 @@
+﻿using Crimson.Utils;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -26,7 +27,6 @@ public sealed class UbisoftOwnershipCache : IUbisoftProductSource
 {
     private const int FormatVersion = 1;
     private static readonly string[] ObsoleteFiles = ["catalog.bin", "catalog.bin.tmp", "manifests.json", "metadata.json"];
-    private static readonly JsonSerializerOptions SerializerOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     private readonly string _file;
     private readonly UbisoftMetadata _metadata;
@@ -164,7 +164,7 @@ public sealed class UbisoftOwnershipCache : IUbisoftProductSource
         {
             if (!File.Exists(_file)) return [];
             await using var stream = File.OpenRead(_file);
-            var file = await JsonSerializer.DeserializeAsync<CacheFile>(stream, SerializerOptions, ct);
+            var file = await JsonSerializer.DeserializeAsync(stream, UbisoftCamelJsonContext.Default.CacheFile, ct);
             if (file is null || file.Version != FormatVersion || file.UserId != userId || file.Products is null) return [];
             return file.Products.Where(product => product.ProductId != 0).Select(product => product.ToProduct()).ToList();
         }
@@ -182,7 +182,7 @@ public sealed class UbisoftOwnershipCache : IUbisoftProductSource
             var temporary = _file + ".tmp";
             await using (var stream = File.Create(temporary))
                 await JsonSerializer.SerializeAsync(stream, new CacheFile(FormatVersion, userId, DateTimeOffset.UtcNow,
-                    products.Select(CachedProduct.From).ToList()), SerializerOptions, ct);
+                    products.Select(CachedProduct.From).ToList()), UbisoftCamelJsonContext.Default.CacheFile, ct);
             File.Move(temporary, _file, overwrite: true);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -208,10 +208,10 @@ public sealed class UbisoftOwnershipCache : IUbisoftProductSource
             Products.GroupBy(product => product.ProductId).ToDictionary(group => group.Key, group => group.Last());
     }
 
-    private sealed record CacheFile(int Version, string UserId, DateTimeOffset UpdatedAt, List<CachedProduct>? Products);
+    internal sealed record CacheFile(int Version, string UserId, DateTimeOffset UpdatedAt, List<CachedProduct>? Products);
 
     /// <summary>The persisted shape, listed field by field so nothing secret can be added by accident.</summary>
-    private sealed record CachedProduct(uint ProductId, bool Owned, uint ProductType, uint State, uint UplayId, uint DownloadId,
+    internal sealed record CachedProduct(uint ProductId, bool Owned, uint ProductType, uint State, uint UplayId, uint DownloadId,
         string? Configuration, string? LatestManifest, uint ActiveBranchId, List<CachedBranch>? Branches, List<uint>? Associations,
         string? SpaceId, string? AppId, uint ActivationType, uint PackageOwnershipState, uint Balance, uint TargetPartner,
         bool LockedBySubscription, uint SuspensionType)
@@ -229,5 +229,5 @@ public sealed class UbisoftOwnershipCache : IUbisoftProductSource
             LockedBySubscription, SuspensionType);
     }
 
-    private sealed record CachedBranch(uint Id, string? Name);
+    internal sealed record CachedBranch(uint Id, string? Name);
 }

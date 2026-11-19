@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Crimson.Utils;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -139,7 +140,7 @@ public static class UbisoftRuntimeFiles
         {
             var file = RecordPath(root);
             if (!File.Exists(file)) return [];
-            return JsonSerializer.Deserialize<List<string>>(File.ReadAllText(file))?
+            return JsonSerializer.Deserialize(File.ReadAllText(file), CrimsonJsonContext.Default.ListString)?
                 .Where(path => !string.IsNullOrWhiteSpace(path) && !Path.IsPathRooted(path)).ToList() ?? [];
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
@@ -154,7 +155,7 @@ public static class UbisoftRuntimeFiles
         {
             var file = RecordPath(root);
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-            File.WriteAllText(file + ".tmp", JsonSerializer.Serialize(paths));
+            File.WriteAllText(file + ".tmp", JsonSerializer.Serialize(paths, CrimsonJsonContext.Default.ListString));
             File.Move(file + ".tmp", file, overwrite: true);
             return true;
         }

@@ -1,3 +1,4 @@
+﻿using Crimson.Utils;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -214,7 +215,7 @@ internal sealed class UbisoftInstallProgress
         if (!File.Exists(file)) return null;
         try
         {
-            var stored = JsonSerializer.Deserialize<UbisoftInstallProgress>(File.ReadAllText(file));
+            var stored = JsonSerializer.Deserialize(File.ReadAllText(file), CrimsonJsonContext.Default.UbisoftInstallProgress);
             if (stored is null || stored.ProductId != productId ||
                 !string.Equals(stored.ManifestId, manifestId, StringComparison.OrdinalIgnoreCase)) return null;
             stored.Completed = new HashSet<string>(stored.Completed ?? [], StringComparer.OrdinalIgnoreCase);
@@ -235,7 +236,7 @@ internal sealed class UbisoftInstallProgress
         if (!File.Exists(file)) return false;
         try
         {
-            return JsonSerializer.Deserialize<UbisoftInstallProgress>(File.ReadAllText(file))?.ProductId == productId;
+            return JsonSerializer.Deserialize(File.ReadAllText(file), CrimsonJsonContext.Default.UbisoftInstallProgress)?.ProductId == productId;
         }
         catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException)
         {
@@ -304,7 +305,7 @@ internal sealed class UbisoftInstallProgress
     internal void Save(string root)
     {
         string json;
-        lock (_sync) json = JsonSerializer.Serialize(this);
+        lock (_sync) json = JsonSerializer.Serialize(this, CrimsonJsonContext.Default.UbisoftInstallProgress);
         var file = PathFor(root);
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         var temporary = file + ".tmp";

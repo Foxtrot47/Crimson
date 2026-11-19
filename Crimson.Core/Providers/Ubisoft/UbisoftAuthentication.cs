@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Crimson.Utils;
+using System;
 using System.IO;
 using System.Net;
 using System.Text.Json;
@@ -20,14 +21,14 @@ public sealed class UbisoftSessionStore(string providerRoot, ICredentialProtecto
 {
     private readonly string _file = Path.Combine(providerRoot, "session.dat");
     public async Task<UbisoftSession?> Load(CancellationToken token) => File.Exists(_file)
-        ? JsonSerializer.Deserialize<UbisoftSession>(protector.Unprotect(await File.ReadAllTextAsync(_file, token))) : null;
+        ? JsonSerializer.Deserialize(protector.Unprotect(await File.ReadAllTextAsync(_file, token)), CrimsonJsonContext.Default.UbisoftSession) : null;
     public async Task Save(UbisoftSession session, CancellationToken token)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
         var temporary = _file + ".tmp";
         try
         {
-            await File.WriteAllTextAsync(temporary, protector.Protect(JsonSerializer.Serialize(session)), token);
+            await File.WriteAllTextAsync(temporary, protector.Protect(JsonSerializer.Serialize(session, CrimsonJsonContext.Default.UbisoftSession)), token);
             token.ThrowIfCancellationRequested();
             File.Move(temporary, _file, overwrite: true);
         }

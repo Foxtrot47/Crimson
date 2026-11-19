@@ -1,3 +1,4 @@
+﻿using Crimson.Utils;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -45,7 +46,6 @@ public sealed class UbisoftInstalledStore(string providerRoot)
 {
     private const string FileName = "installed.json";
     private const string LegacyFileName = "configuration.json";
-    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     private readonly string _root = Path.GetFullPath(providerRoot);
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -130,7 +130,7 @@ public sealed class UbisoftInstalledStore(string providerRoot)
         if (File.Exists(file))
         {
             await using var stream = File.OpenRead(file);
-            var stored = await JsonSerializer.DeserializeAsync<StoredFile>(stream, Json, ct);
+            var stored = await JsonSerializer.DeserializeAsync(stream, UbisoftInstalledJsonContext.Default.StoredFile, ct);
             foreach (var game in stored?.Games ?? [])
                 if (game.ProductId != 0 && Path.IsPathFullyQualified(game.InstallPath)) games[game.ProductId] = game;
         }
@@ -209,7 +209,8 @@ public sealed class UbisoftInstalledStore(string providerRoot)
             await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 await JsonSerializer.SerializeAsync(stream,
-                    new StoredFile(1, games.OrderBy(game => game.ProductId).ToList()), Json, ct);
+                    new StoredFile(1, games.OrderBy(game => game.ProductId).ToList()),
+                    UbisoftInstalledJsonContext.Default.StoredFile, ct);
                 await stream.FlushAsync(ct);
             }
             File.Move(temporary, file, overwrite: true);
@@ -220,5 +221,5 @@ public sealed class UbisoftInstalledStore(string providerRoot)
         }
     }
 
-    private sealed record StoredFile(int Version, List<UbisoftInstalledGame> Games);
+    internal sealed record StoredFile(int Version, List<UbisoftInstalledGame> Games);
 }

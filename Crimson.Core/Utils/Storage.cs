@@ -97,7 +97,7 @@ namespace Crimson.Utils
                     try
                     {
                         var json = File.ReadAllText(file);
-                        var game = JsonSerializer.Deserialize<Game>(json);
+                        var game = JsonSerializer.Deserialize(json, CrimsonJsonContext.Default.Game);
                         if (game is null)
                             throw new InvalidDataException("Metadata file did not contain a game record.");
 
@@ -123,7 +123,7 @@ namespace Crimson.Utils
             if (string.IsNullOrEmpty(json))
                 return [];
 
-            return JsonSerializer.Deserialize<Dictionary<string, LocalAppState>>(json) ?? [];
+            return JsonSerializer.Deserialize(json, CrimsonJsonContext.Default.DictionaryStringLocalAppState) ?? [];
         }
 
         public Task<UserData> GetUserData()
@@ -134,7 +134,7 @@ namespace Crimson.Utils
                     return Task.FromResult<UserData>(null);
 
                 var jsonString = File.ReadAllText(UserDataFile);
-                return Task.FromResult(JsonSerializer.Deserialize<UserData>(jsonString));
+                return Task.FromResult(JsonSerializer.Deserialize(jsonString, CrimsonJsonContext.Default.UserData));
             }
         }
 
@@ -145,7 +145,7 @@ namespace Crimson.Utils
                 var previous = GetUserData().GetAwaiter().GetResult();
                 if (previous?.AccountId is { Length: > 0 } account && account != data.AccountId)
                     ClearAccountData();
-                File.WriteAllText(UserDataFile, JsonSerializer.Serialize(data));
+                File.WriteAllText(UserDataFile, JsonSerializer.Serialize(data, CrimsonJsonContext.Default.UserData));
             }
             return Task.CompletedTask;
         }
@@ -185,13 +185,13 @@ namespace Crimson.Utils
                     {
                         // Existing installs have assets.json and metadata, but predate the account-bound cache file.
                         if (!File.Exists(GameAssetsFile)) return null;
-                        var legacyAssets = JsonSerializer.Deserialize<List<Asset>>(File.ReadAllText(GameAssetsFile));
+                        var legacyAssets = JsonSerializer.Deserialize(File.ReadAllText(GameAssetsFile), CrimsonJsonContext.Default.ListAsset);
                         return IsValidLibraryAssets(legacyAssets)
                             ? new LibraryCacheSnapshot(account, DateTimeOffset.MinValue, legacyAssets!)
                             : null;
                     }
 
-                    var snapshot = JsonSerializer.Deserialize<LibraryCacheSnapshot>(File.ReadAllText(LibraryCacheFile));
+                    var snapshot = JsonSerializer.Deserialize(File.ReadAllText(LibraryCacheFile), CrimsonJsonContext.Default.LibraryCacheSnapshot);
                     if (snapshot is not null && File.Exists(LibraryCacheStaleFile))
                         snapshot = snapshot with { UpdatedAt = DateTimeOffset.MinValue };
                     return snapshot is not null && snapshot.AccountId == account &&
@@ -237,7 +237,7 @@ namespace Crimson.Utils
                     var account = GetUserData().GetAwaiter().GetResult()?.AccountId;
                     if (string.IsNullOrEmpty(account)) return;
                     var snapshot = new LibraryCacheSnapshot(account, updatedAt, assets);
-                    File.WriteAllText(temporary, JsonSerializer.Serialize(snapshot));
+                    File.WriteAllText(temporary, JsonSerializer.Serialize(snapshot, CrimsonJsonContext.Default.LibraryCacheSnapshot));
                     File.Move(temporary, LibraryCacheFile, overwrite: true);
                     // The new snapshot carries its own timestamp, so an older stale marker no longer applies.
                     File.Delete(LibraryCacheStaleFile);
@@ -283,7 +283,7 @@ namespace Crimson.Utils
                 if (!File.Exists(StoreDetailsCacheFile))
                     return new StoreDetailsCacheSnapshot();
 
-                var cache = JsonSerializer.Deserialize<StoreDetailsCacheSnapshot>(File.ReadAllText(StoreDetailsCacheFile));
+                var cache = JsonSerializer.Deserialize(File.ReadAllText(StoreDetailsCacheFile), CrimsonJsonContext.Default.StoreDetailsCacheSnapshot);
                 if (cache is null) return new StoreDetailsCacheSnapshot();
                 cache.StoreDetails ??= new Dictionary<string, StoreProductDetailsCacheRecord>(StringComparer.Ordinal);
                 return cache;
@@ -300,7 +300,7 @@ namespace Crimson.Utils
             var temporary = StoreDetailsCacheFile + ".tmp";
             try
             {
-                File.WriteAllText(temporary, JsonSerializer.Serialize(cache));
+                File.WriteAllText(temporary, JsonSerializer.Serialize(cache, CrimsonJsonContext.Default.StoreDetailsCacheSnapshot));
                 File.Move(temporary, StoreDetailsCacheFile, overwrite: true);
             }
             catch (Exception ex)
@@ -380,7 +380,7 @@ namespace Crimson.Utils
                 using var streamReader = new StreamReader(fileStream);
                 var jsonString = await streamReader.ReadToEndAsync();
                 streamReader.Close();
-                return JsonSerializer.Deserialize<IEnumerable<Asset>>(jsonString);
+                return JsonSerializer.Deserialize(jsonString, CrimsonJsonContext.Default.IEnumerableAsset);
             }
             catch (Exception ex)
             {
@@ -401,7 +401,7 @@ namespace Crimson.Utils
             {
                 try
                 {
-                    File.WriteAllText(GameAssetsFile, JsonSerializer.Serialize(data));
+                    File.WriteAllText(GameAssetsFile, JsonSerializer.Serialize(data, CrimsonJsonContext.Default.IEnumerableAsset));
                 }
                 catch (Exception ex)
                 {
@@ -439,7 +439,7 @@ namespace Crimson.Utils
 
         public void SaveMetaData(Game game)
         {
-            var jsonString = JsonSerializer.Serialize(game);
+            var jsonString = JsonSerializer.Serialize(game, CrimsonJsonContext.Default.Game);
 
             if (!Directory.Exists(MetaDataDirectory))
                 Directory.CreateDirectory(MetaDataDirectory);
@@ -455,7 +455,7 @@ namespace Crimson.Utils
         {
             _localAppStateDictionary = installedGamesDict;
 
-            var jsonString = JsonSerializer.Serialize(_localAppStateDictionary);
+            var jsonString = JsonSerializer.Serialize(_localAppStateDictionary, CrimsonJsonContext.Default.DictionaryStringLocalAppState);
 
             File.WriteAllText(LocalAppStateFile, jsonString);
         }
@@ -464,7 +464,7 @@ namespace Crimson.Utils
         {
             _localAppStateDictionary[appName] = appState;
 
-            var jsonString = JsonSerializer.Serialize(_localAppStateDictionary);
+            var jsonString = JsonSerializer.Serialize(_localAppStateDictionary, CrimsonJsonContext.Default.DictionaryStringLocalAppState);
 
             File.WriteAllText(LocalAppStateFile, jsonString);
         }

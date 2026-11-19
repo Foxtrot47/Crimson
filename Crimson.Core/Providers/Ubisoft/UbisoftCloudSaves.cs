@@ -1,3 +1,4 @@
+﻿using Crimson.Utils;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -38,7 +39,6 @@ public sealed class UbisoftCloudSaves : ICloudSaveConflictSource
     private const int MaximumSaveBytes = 256 * 1024 * 1024;
     private static readonly string[] StorageHosts =
         ["ubisoft-uplay-savegames.s3.us-east-1.amazonaws.com", "ubisoft-uplay-savegames.s3.amazonaws.com"];
-    private static readonly JsonSerializerOptions SerializerOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     private readonly string _root;
     private readonly UbisoftApi _api;
@@ -442,7 +442,7 @@ public sealed class UbisoftCloudSaves : ICloudSaveConflictSource
             var path = StatePath(productId);
             if (!File.Exists(path)) return new StateFile();
             await using var stream = File.OpenRead(path);
-            return await JsonSerializer.DeserializeAsync<StateFile>(stream, SerializerOptions, ct) ?? new StateFile();
+            return await JsonSerializer.DeserializeAsync(stream, UbisoftCamelJsonContext.Default.StateFile, ct) ?? new StateFile();
         }
         catch (JsonException) { return new StateFile(); }
     }
@@ -452,7 +452,7 @@ public sealed class UbisoftCloudSaves : ICloudSaveConflictSource
         var path = StatePath(productId);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await using (var stream = File.Create(path + ".tmp"))
-            await JsonSerializer.SerializeAsync(stream, file, SerializerOptions, ct);
+            await JsonSerializer.SerializeAsync(stream, file, UbisoftCamelJsonContext.Default.StateFile, ct);
         File.Move(path + ".tmp", path, overwrite: true);
     }
 
@@ -526,7 +526,7 @@ public sealed class UbisoftCloudSaves : ICloudSaveConflictSource
         name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0 && name.IndexOfAny(['/', '\\', ':']) < 0 &&
         name.Trim() == name && !name.EndsWith('.');
 
-    private sealed record CloudSlot(int Id, string Filename, string Hash, long Size, string LastModified)
+    internal sealed record CloudSlot(int Id, string Filename, string Hash, long Size, string LastModified)
     {
         public DateTimeOffset LastModifiedUtc => DateTimeOffset.TryParse(LastModified, CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var value) ? value : DateTimeOffset.MinValue;
@@ -606,7 +606,7 @@ public sealed class UbisoftCloudSaves : ICloudSaveConflictSource
             .ToList();
     }
 
-    private sealed class StateFile
+    internal sealed class StateFile
     {
         public Dictionary<string, ProfileState> Profiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -618,13 +618,13 @@ public sealed class UbisoftCloudSaves : ICloudSaveConflictSource
         }
     }
 
-    private sealed class ProfileState
+    internal sealed class ProfileState
     {
         public int Revision { get; set; }
         public Dictionary<string, SlotState> Slots { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
-    private sealed record SlotState(string CloudHash, string CloudLastModified, long CloudSize, string? LocalMd5)
+    internal sealed record SlotState(string CloudHash, string CloudLastModified, long CloudSize, string? LocalMd5)
     {
         public bool Matches(CloudSlot slot) =>
             string.Equals(CloudHash, slot.Hash, StringComparison.OrdinalIgnoreCase) && CloudLastModified == slot.LastModified;

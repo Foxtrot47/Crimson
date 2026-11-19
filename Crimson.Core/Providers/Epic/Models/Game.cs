@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System;
 
@@ -322,7 +323,7 @@ public class DlcItemList
     public string ApplicationId { get; set; }
 
     [JsonPropertyName("installModes")]
-    public List<object> InstallModes { get; set; }
+    public List<JsonElement> InstallModes { get; set; }
 
     [JsonPropertyName("requiresSecureAccount")]
     public bool? RequiresSecureAccount { get; set; }
@@ -565,7 +566,7 @@ public class Metadata
     public List<DlcItemList> DlcItemList { get; set; }
 
     [JsonPropertyName("installModes")]
-    public List<object> InstallModes { get; set; }
+    public List<JsonElement> InstallModes { get; set; }
 
     [JsonPropertyName("longDescription")]
     public string LongDescription { get; set; }
@@ -649,7 +650,7 @@ public class ReleaseInfo
     public string AppId { get; set; }
 
     [JsonPropertyName("compatibleApps")]
-    public List<object> CompatibleApps { get; set; }
+    public List<JsonElement> CompatibleApps { get; set; }
 
     [JsonPropertyName("dateAdded")]
     public DateTime DateAdded { get; set; }
@@ -712,7 +713,7 @@ public class Asset
     public string LabelName { get; set; }
 
     [JsonPropertyName("metadata")]
-    public object Metadata { get; set; }
+    public JsonElement? Metadata { get; set; }
 
     [JsonPropertyName("namespace")]
     public required string Namespace { get; set; }

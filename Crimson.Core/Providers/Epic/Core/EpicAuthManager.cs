@@ -302,7 +302,7 @@ public class EpicAuthManager
             }
 
             var result = await response.Content.ReadAsStringAsync();
-            var userData = JsonSerializer.Deserialize<UserData>(result);
+            var userData = JsonSerializer.Deserialize(result, CrimsonJsonContext.Default.UserData);
             if (userData?.AccessToken == null)
             {
                 throw new InvalidDataException("The authentication response did not contain an access token.");

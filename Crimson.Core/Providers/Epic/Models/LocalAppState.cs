@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Crimson.Models;
@@ -42,19 +43,19 @@ public class LocalAppState
     public string LaunchParameters { get; set; }
 
     [JsonPropertyName("manifest_path")]
-    public object ManifestPath { get; set; }
+    public JsonElement? ManifestPath { get; set; }
 
     [JsonPropertyName("platform")]
     public string Platform { get; set; }
 
     [JsonPropertyName("prereq_info")]
-    public object PrereqInfo { get; set; }
+    public JsonElement? PrereqInfo { get; set; }
 
     [JsonPropertyName("requires_ot")]
     public bool RequiresOt { get; set; }
 
     [JsonPropertyName("save_path")]
-    public object SavePath { get; set; }
+    public JsonElement? SavePath { get; set; }
 
     [JsonPropertyName("title")]
     public string Title { get; set; }

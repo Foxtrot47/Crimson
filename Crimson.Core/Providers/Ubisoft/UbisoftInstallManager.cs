@@ -1,3 +1,4 @@
+﻿using Crimson.Utils;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -274,7 +275,7 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
         var file = Path.Combine(_providerRoot, PendingFile);
         if (!File.Exists(file)) return;
         PendingOperation? pending;
-        try { pending = JsonSerializer.Deserialize<PendingOperation>(await File.ReadAllTextAsync(file)); }
+        try { pending = JsonSerializer.Deserialize(await File.ReadAllTextAsync(file), CrimsonJsonContext.Default.PendingOperation); }
         catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException)
         {
             DeletePending();
@@ -482,7 +483,7 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
         public Timer? Sampler;
     }
 
-    private sealed record PendingOperation(string AppName, ActionType Action, string Location, string? MoveLocation,
+    internal sealed record PendingOperation(string AppName, ActionType Action, string Location, string? MoveLocation,
         IReadOnlyList<string>? Languages);
 
     private void StartWorker(bool resume = false)
@@ -1269,7 +1270,7 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
     {
         var progressFile = UbisoftInstallProgress.PathFor(root);
         if (!File.Exists(progressFile)) return null;
-        var stored = JsonSerializer.Deserialize<UbisoftInstallProgress>(await File.ReadAllTextAsync(progressFile));
+        var stored = JsonSerializer.Deserialize(await File.ReadAllTextAsync(progressFile), CrimsonJsonContext.Default.UbisoftInstallProgress);
         if (stored is null || stored.ProductId != productId || !stored.Fresh) return null;
         stored.Completed ??= [];
         stored.Touched ??= [];
@@ -1687,8 +1688,9 @@ public sealed class UbisoftInstallManager : ILauncherInstaller, IInstallLanguage
         {
             Directory.CreateDirectory(_providerRoot);
             var file = Path.Combine(_providerRoot, PendingFile);
-            File.WriteAllText(file + ".tmp", JsonSerializer.Serialize(new PendingOperation(item.AppName, item.Action,
-                item.Location, item.MoveLocation, item.Languages)));
+            File.WriteAllText(file + ".tmp", JsonSerializer.Serialize(
+                new PendingOperation(item.AppName, item.Action, item.Location, item.MoveLocation, item.Languages),
+                CrimsonJsonContext.Default.PendingOperation));
             File.Move(file + ".tmp", file, overwrite: true);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
