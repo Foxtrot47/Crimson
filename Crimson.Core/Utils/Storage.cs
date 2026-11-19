@@ -180,23 +180,9 @@ namespace Crimson.Utils
                 {
                     var account = GetUserData().GetAwaiter().GetResult()?.AccountId;
                     if (string.IsNullOrEmpty(account)) return null;
-
-                    if (!File.Exists(LibraryCacheFile))
-                    {
-                        // Existing installs have assets.json and metadata, but predate the account-bound cache file.
-                        if (!File.Exists(GameAssetsFile)) return null;
-                        var legacyAssets = JsonSerializer.Deserialize(File.ReadAllText(GameAssetsFile), CrimsonJsonContext.Default.ListAsset);
-                        return IsValidLibraryAssets(legacyAssets)
-                            ? new LibraryCacheSnapshot(account, DateTimeOffset.MinValue, legacyAssets!)
-                            : null;
-                    }
-
-                    var snapshot = JsonSerializer.Deserialize(File.ReadAllText(LibraryCacheFile), CrimsonJsonContext.Default.LibraryCacheSnapshot);
-                    if (snapshot is not null && File.Exists(LibraryCacheStaleFile))
-                        snapshot = snapshot with { UpdatedAt = DateTimeOffset.MinValue };
-                    return snapshot is not null && snapshot.AccountId == account &&
-                        IsValidLibraryAssets(snapshot.Assets) && snapshot.UpdatedAt <= DateTimeOffset.UtcNow
-                        ? snapshot : null;
+                    return File.Exists(LibraryCacheFile)
+                        ? ReadAccountLibraryCache(account)
+                        : ReadLegacyLibraryCache(account);
                 }
                 catch (Exception ex)
                 {
@@ -205,6 +191,30 @@ namespace Crimson.Utils
                 }
             }
         }
+
+        private LibraryCacheSnapshot? ReadAccountLibraryCache(string account)
+        {
+            var snapshot = JsonSerializer.Deserialize(File.ReadAllText(LibraryCacheFile), CrimsonJsonContext.Default.LibraryCacheSnapshot);
+            if (snapshot is null) return null;
+            if (File.Exists(LibraryCacheStaleFile))
+                snapshot = snapshot with { UpdatedAt = DateTimeOffset.MinValue };
+            return IsUsableLibraryCache(snapshot, account) ? snapshot : null;
+        }
+
+        // Existing installs have assets.json and metadata, but predate the account-bound cache file.
+        private LibraryCacheSnapshot? ReadLegacyLibraryCache(string account)
+        {
+            if (!File.Exists(GameAssetsFile)) return null;
+            var legacyAssets = JsonSerializer.Deserialize(File.ReadAllText(GameAssetsFile), CrimsonJsonContext.Default.ListAsset);
+            return IsValidLibraryAssets(legacyAssets)
+                ? new LibraryCacheSnapshot(account, DateTimeOffset.MinValue, legacyAssets!)
+                : null;
+        }
+
+        private static bool IsUsableLibraryCache(LibraryCacheSnapshot snapshot, string account) =>
+            snapshot.AccountId == account &&
+            IsValidLibraryAssets(snapshot.Assets) &&
+            snapshot.UpdatedAt <= DateTimeOffset.UtcNow;
 
         private static bool IsValidLibraryAssets(List<Asset>? assets) => assets is not null &&
             assets.All(asset => asset is not null &&
