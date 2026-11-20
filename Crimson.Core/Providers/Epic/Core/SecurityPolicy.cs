@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -121,11 +122,27 @@ public sealed class EpicLoginMessageGate
     public bool TryAccept(string? source, string? message, out string exchangeCode)
     {
         exchangeCode = string.Empty;
-        if (!EpicEndpointPolicy.IsAllowedLoginOrigin(source) ||
-            string.IsNullOrEmpty(message) ||
-            message.Length > MaximumMessageLength)
+        if (!IsAllowedMessage(source, message) ||
+            !TryReadExchangeCode(message, out var value) ||
+            !IsValidExchangeCode(value))
             return false;
 
+        var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+        if (!_acceptedCodeDigests.Add(digest))
+            return false;
+
+        exchangeCode = value;
+        return true;
+    }
+
+    private static bool IsAllowedMessage(string? source, [NotNullWhen(true)] string? message) =>
+        EpicEndpointPolicy.IsAllowedLoginOrigin(source) &&
+        !string.IsNullOrEmpty(message) &&
+        message.Length <= MaximumMessageLength;
+
+    private static bool TryReadExchangeCode(string message, out string value)
+    {
+        value = string.Empty;
         try
         {
             using var document = JsonDocument.Parse(message);
@@ -135,16 +152,7 @@ public sealed class EpicLoginMessageGate
                 !root.TryGetProperty("code", out var code) || code.ValueKind != JsonValueKind.String)
                 return false;
 
-            var value = code.GetString();
-            if (string.IsNullOrWhiteSpace(value) || value.Length > MaximumCodeLength ||
-                value.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not '-' and not '_'))
-                return false;
-
-            var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-            if (!_acceptedCodeDigests.Add(digest))
-                return false;
-
-            exchangeCode = value;
+            value = code.GetString() ?? string.Empty;
             return true;
         }
         catch (JsonException)
@@ -152,4 +160,9 @@ public sealed class EpicLoginMessageGate
             return false;
         }
     }
+
+    private static bool IsValidExchangeCode(string value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Length <= MaximumCodeLength &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
 }
