@@ -68,10 +68,18 @@ public sealed class Manifest
 
         using var stream = new MemoryStream(data, writable: false);
         var reader = new EpicBinaryReader(stream);
+        var manifest = ReadHeader(reader);
+        ValidateHeader(reader, manifest);
+        manifest.Data = ReadPayload(reader, manifest);
+        return manifest;
+    }
+
+    private static Manifest ReadHeader(EpicBinaryReader reader)
+    {
         if (reader.ReadUInt32() != HeaderMagic)
             throw new InvalidDataException("Manifest header magic is invalid.");
 
-        var manifest = new Manifest
+        return new Manifest
         {
             HeaderSize = reader.ReadInt32(),
             SizeUncompressed = reader.ReadInt32(),
@@ -80,7 +88,10 @@ public sealed class Manifest
             StoredAs = reader.ReadByte(),
             Version = reader.ReadInt32()
         };
+    }
 
+    private static void ValidateHeader(EpicBinaryReader reader, Manifest manifest)
+    {
         if (manifest.HeaderSize < ExpectedHeaderSize || reader.Position != ExpectedHeaderSize)
             throw new InvalidDataException("Manifest header size is unsupported.");
         // Feature level 22+ grows the header; skip whatever this parser does not know about.
@@ -97,19 +108,21 @@ public sealed class Manifest
         if (manifest.Compressed && manifest.SizeUncompressed >
             Math.Max((long)manifest.SizeCompressed, 1) * EpicProtocolLimits.MaximumManifestDecompressionRatio)
             throw new InvalidDataException("Manifest decompression ratio exceeds the supported limit.");
+    }
 
+    private static byte[] ReadPayload(EpicBinaryReader reader, Manifest manifest)
+    {
         var storedPayload = reader.ReadBytesExact(manifest.SizeCompressed);
-        manifest.Data = manifest.Compressed
+        var data = manifest.Compressed
             ? Decompress(storedPayload, manifest.SizeUncompressed)
             : storedPayload;
-        if (manifest.Data.Length != manifest.SizeUncompressed)
+        if (data.Length != manifest.SizeUncompressed)
             throw new InvalidDataException("Manifest uncompressed size does not match its payload.");
         // Only compressed manifests carry a populated hash, matching legendary.
         if (manifest.Compressed &&
-            !CryptographicOperations.FixedTimeEquals(SHA1.HashData(manifest.Data), manifest.ShaHash))
+            !CryptographicOperations.FixedTimeEquals(SHA1.HashData(data), manifest.ShaHash))
             throw new InvalidDataException("Manifest payload hash does not match.");
-
-        return manifest;
+        return data;
     }
 
     private static void ValidateSize(int size, string name)
