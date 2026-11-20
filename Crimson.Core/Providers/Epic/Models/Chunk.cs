@@ -121,12 +121,7 @@ public sealed class Chunk
             Hash = reader.ReadUInt64(),
             StoredAs = reader.ReadByte()
         };
-        if (chunk.HeaderVersion is < 1 or > 3)
-            throw new InvalidDataException($"Chunk header version {chunk.HeaderVersion} is unsupported.");
-        if ((chunk.StoredAs & ~0x1) != 0)
-            throw new InvalidDataException("Chunk storage flags are unsupported.");
-        if (chunk.CompressedSize > EpicProtocolLimits.MaximumChunkBytes)
-            throw new InvalidDataException("Chunk compressed size exceeds the supported limit.");
+        ValidateHeaderStart(chunk);
 
         if (chunk.HeaderVersion >= 2)
         {
@@ -139,6 +134,27 @@ public sealed class Chunk
             chunk.UncompressedSize = reader.ReadUInt32();
 
         var actualHeaderSize = checked((uint)(reader.Position - headerStart));
+        ValidatePayloadSizes(chunk, actualHeaderSize);
+        if (reader.Remaining < chunk.CompressedSize)
+            throw new EndOfStreamException("Chunk payload is truncated.");
+
+        chunk._storedPayload = reader.ReadBytesExact(checked((int)chunk.CompressedSize));
+        _ = chunk.Data;
+        return chunk;
+    }
+
+    private static void ValidateHeaderStart(Chunk chunk)
+    {
+        if (chunk.HeaderVersion is < 1 or > 3)
+            throw new InvalidDataException($"Chunk header version {chunk.HeaderVersion} is unsupported.");
+        if ((chunk.StoredAs & ~0x1) != 0)
+            throw new InvalidDataException("Chunk storage flags are unsupported.");
+        if (chunk.CompressedSize > EpicProtocolLimits.MaximumChunkBytes)
+            throw new InvalidDataException("Chunk compressed size exceeds the supported limit.");
+    }
+
+    private static void ValidatePayloadSizes(Chunk chunk, uint actualHeaderSize)
+    {
         if (chunk.HeaderSize != actualHeaderSize)
             throw new InvalidDataException("Chunk header size does not match its version.");
         if (chunk.UncompressedSize > EpicProtocolLimits.MaximumChunkBytes)
@@ -146,12 +162,6 @@ public sealed class Chunk
         if (chunk.Compressed && chunk.UncompressedSize >
             Math.Max((long)chunk.CompressedSize, 1) * EpicProtocolLimits.MaximumChunkDecompressionRatio)
             throw new InvalidDataException("Chunk decompression ratio exceeds the supported limit.");
-        if (reader.Remaining < chunk.CompressedSize)
-            throw new EndOfStreamException("Chunk payload is truncated.");
-
-        chunk._storedPayload = reader.ReadBytesExact(checked((int)chunk.CompressedSize));
-        _ = chunk.Data;
-        return chunk;
     }
 
     public byte[] WriteToBuffer() => _serialized?.ToArray()
