@@ -3,6 +3,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Crimson.Core;
+using Crimson.Models;
 using Crimson.Providers;
 using Crimson.Views;
 using Crimson.Utils;
@@ -185,34 +186,15 @@ public sealed partial class EpicStorePage : Page, ILauncherStoreView
 
     private async Task<bool> HandleLauncherRequestAsync(string rawUri)
     {
-        if (!Uri.TryCreate(rawUri, UriKind.Absolute, out var uri) || !IsLauncherRequest(uri))
+        if (!TryParseLauncherRequest(rawUri, _storeWebView?.Source, out var request))
             return false;
-
-        var catalogItemId = uri.Scheme.Equals("com.epicgames.launcher", StringComparison.OrdinalIgnoreCase)
-            ? GetQueryParameter(uri, "catalogItemId")
-            : null;
-        var sandboxId = GetQueryParameter(uri, "sandboxId");
-        var productSlug = GetProductSlug(_storeWebView?.Source);
 
         LoadingRing.IsActive = true;
         try
         {
-            var revision = _refreshPolicy.Revision;
-            _libraryManager.InvalidateCache();
-            var games = await _libraryManager.GetLibraryData();
-            _refreshPolicy.MarkOwnershipRefreshed(revision);
-            var game = games.FirstOrDefault(candidate =>
-                (catalogItemId is not null &&
-                 string.Equals(candidate.AssetInfos?.Windows?.CatalogItemId, catalogItemId, StringComparison.OrdinalIgnoreCase) &&
-                 (sandboxId is null || string.Equals(candidate.AssetInfos?.Windows?.Namespace, sandboxId, StringComparison.OrdinalIgnoreCase))) ||
-                (productSlug is not null &&
-                 string.Equals(candidate.Metadata?.CustomAttributes?.ComEpicgamesAppProductSlug?.Value, productSlug, StringComparison.OrdinalIgnoreCase)));
-
+            var game = await FindRequestedGameAsync(request);
             LoadingRing.IsActive = false;
-            if (game is not null)
-                Frame.Navigate(typeof(GameInfoPage), new GameId(EpicLauncherProvider.ProviderId, game.AppName).ToString());
-            else
-                Frame.Navigate(typeof(LibraryPage));
+            NavigateToRequestedGame(game);
         }
         catch (Exception ex)
         {
@@ -223,6 +205,54 @@ public sealed partial class EpicStorePage : Page, ILauncherStoreView
 
         return true;
     }
+
+    private static bool TryParseLauncherRequest(string rawUri, Uri? storeSource, out LauncherRequest request)
+    {
+        request = default;
+        if (!Uri.TryCreate(rawUri, UriKind.Absolute, out var uri) || !IsLauncherRequest(uri))
+            return false;
+
+        var catalogItemId = IsEpicLauncherScheme(uri) ? GetQueryParameter(uri, "catalogItemId") : null;
+        request = new LauncherRequest(catalogItemId, GetQueryParameter(uri, "sandboxId"), GetProductSlug(storeSource));
+        return true;
+    }
+
+    private async Task<Game?> FindRequestedGameAsync(LauncherRequest request)
+    {
+        var revision = _refreshPolicy.Revision;
+        _libraryManager.InvalidateCache();
+        var games = await _libraryManager.GetLibraryData();
+        _refreshPolicy.MarkOwnershipRefreshed(revision);
+        return games.FirstOrDefault(candidate => MatchesRequest(candidate, request));
+    }
+
+    private void NavigateToRequestedGame(Game? game)
+    {
+        if (game is null)
+        {
+            Frame.Navigate(typeof(LibraryPage));
+            return;
+        }
+
+        Frame.Navigate(typeof(GameInfoPage), new GameId(EpicLauncherProvider.ProviderId, game.AppName).ToString());
+    }
+
+    private static bool MatchesRequest(Game candidate, LauncherRequest request) =>
+        MatchesCatalogItem(candidate, request) || MatchesProductSlug(candidate, request);
+
+    private static bool MatchesCatalogItem(Game candidate, LauncherRequest request) =>
+        request.CatalogItemId is not null &&
+        string.Equals(candidate.AssetInfos?.Windows?.CatalogItemId, request.CatalogItemId, StringComparison.OrdinalIgnoreCase) &&
+        (request.SandboxId is null ||
+         string.Equals(candidate.AssetInfos?.Windows?.Namespace, request.SandboxId, StringComparison.OrdinalIgnoreCase));
+
+    private static bool MatchesProductSlug(Game candidate, LauncherRequest request) =>
+        request.ProductSlug is not null &&
+        string.Equals(candidate.Metadata?.CustomAttributes?.ComEpicgamesAppProductSlug?.Value, request.ProductSlug,
+            StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsEpicLauncherScheme(Uri uri) =>
+        uri.Scheme.Equals("com.epicgames.launcher", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsLauncherRequest(string rawUri)
     {
@@ -304,4 +334,6 @@ public sealed partial class EpicStorePage : Page, ILauncherStoreView
         webView.Close();
         WebViewHost.Children.Remove(webView);
     }
+
+    private readonly record struct LauncherRequest(string? CatalogItemId, string? SandboxId, string? ProductSlug);
 }
