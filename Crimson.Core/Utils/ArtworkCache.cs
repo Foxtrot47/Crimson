@@ -171,21 +171,7 @@ public sealed class ArtworkCache : IArtworkCache
                 !MayBeImage(response.Content.Headers.ContentType?.MediaType))
                 throw new InvalidDataException("The artwork response is not a supported image.");
 
-            await using (var input = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false))
-            await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
-            {
-                var buffer = new byte[81920];
-                long size = 0;
-                int count;
-                while ((count = await input.ReadAsync(buffer.AsMemory(), timeout.Token).ConfigureAwait(false)) > 0)
-                {
-                    size += count;
-                    if (size > MaximumImageBytes)
-                        throw new InvalidDataException("Artwork exceeds the cache size limit.");
-                    await output.WriteAsync(buffer.AsMemory(0, count), timeout.Token).ConfigureAwait(false);
-                }
-                if (size == 0) throw new InvalidDataException("Artwork was empty.");
-            }
+            await CopyResponseBodyAsync(response, temporary, timeout.Token).ConfigureAwait(false);
             if (!HasSupportedImageSignature(temporary))
                 throw new InvalidDataException("Artwork does not have a supported image signature.");
 
@@ -205,6 +191,27 @@ public sealed class ArtworkCache : IArtworkCache
         }
     }
 
+    private static async Task CopyResponseBodyAsync(
+        HttpResponseMessage response,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        await using var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
+        var buffer = new byte[81920];
+        long size = 0;
+        int count;
+        while ((count = await input.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            size += count;
+            if (size > MaximumImageBytes)
+                throw new InvalidDataException("Artwork exceeds the cache size limit.");
+            await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
+        }
+        if (size == 0)
+            throw new InvalidDataException("Artwork was empty.");
+    }
+
     private static bool IsUsableCachedImage(string path)
     {
         try { return new FileInfo(path).Length > 0 && HasSupportedImageSignature(path); }
@@ -220,16 +227,27 @@ public sealed class ArtworkCache : IArtworkCache
             mediaType.Equals("binary/octet-stream", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static ReadOnlySpan<byte> PngSignature => [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
     private static bool HasSupportedImageSignature(string path)
     {
         Span<byte> header = stackalloc byte[12];
         using var file = File.OpenRead(path);
         var read = file.Read(header);
-        return (read >= 8 && header[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A })) ||
-            (read >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF) ||
-            (read >= 6 && (header[..6].SequenceEqual("GIF87a"u8) || header[..6].SequenceEqual("GIF89a"u8))) ||
-            (read >= 12 && header[..4].SequenceEqual("RIFF"u8) && header[8..12].SequenceEqual("WEBP"u8));
+        var bytes = header[..read];
+        return IsPng(bytes) || IsJpeg(bytes) || IsGif(bytes) || IsWebp(bytes);
     }
+
+    private static bool IsPng(ReadOnlySpan<byte> header) => header.StartsWith(PngSignature);
+
+    private static bool IsJpeg(ReadOnlySpan<byte> header) =>
+        header.Length >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF;
+
+    private static bool IsGif(ReadOnlySpan<byte> header) =>
+        header.StartsWith("GIF87a"u8) || header.StartsWith("GIF89a"u8);
+
+    private static bool IsWebp(ReadOnlySpan<byte> header) =>
+        header.Length >= 12 && header.StartsWith("RIFF"u8) && header[8..].StartsWith("WEBP"u8);
 
     public long GetSizeBytes()
     {
