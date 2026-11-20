@@ -56,18 +56,32 @@ internal static class JsonManifestReader
         if (manifestVersion is < 1 or > 24)
             throw new InvalidDataException($"JSON manifest version {manifestVersion} is unsupported.");
 
+        var meta = ReadManifestMeta(root, manifestVersion);
+        var cdl = ReadChunkDataList(root, manifestVersion);
+        var files = ReadFileManifestList(root, cdl);
+        return new Manifest
+        {
+            ManifestMeta = meta,
+            CDL = cdl,
+            FileManifestList = files,
+            CustomFields = ReadCustomFields(root)
+        };
+    }
+
+    private static ManifestMeta ReadManifestMeta(JsonElement root, int manifestVersion)
+    {
         var meta = new ManifestMeta
         {
             FeatureLevel = checked((uint)manifestVersion),
             IsFileData = GetOptionalBoolean(root, "bIsFileData"),
             AppId = unchecked((uint)DecodeInt32(GetOptionalString(root, "AppID") ?? "000000000000")),
-            AppName = GetOptionalString(root, "AppNameString") ?? string.Empty,
-            BuildVersion = GetOptionalString(root, "BuildVersionString") ?? string.Empty,
-            LaunchExe = GetOptionalString(root, "LaunchExeString") ?? string.Empty,
-            LaunchCommand = GetOptionalString(root, "LaunchCommand") ?? string.Empty,
-            PrereqName = GetOptionalString(root, "PrereqName") ?? string.Empty,
-            PrereqPath = GetOptionalString(root, "PrereqPath") ?? string.Empty,
-            PrereqArgs = GetOptionalString(root, "PrereqArgs") ?? string.Empty
+            AppName = GetStringOrEmpty(root, "AppNameString"),
+            BuildVersion = GetStringOrEmpty(root, "BuildVersionString"),
+            LaunchExe = GetStringOrEmpty(root, "LaunchExeString"),
+            LaunchCommand = GetStringOrEmpty(root, "LaunchCommand"),
+            PrereqName = GetStringOrEmpty(root, "PrereqName"),
+            PrereqPath = GetStringOrEmpty(root, "PrereqPath"),
+            PrereqArgs = GetStringOrEmpty(root, "PrereqArgs")
         };
         if (root.TryGetProperty("PrereqIds", out var prereqIds))
         {
@@ -79,6 +93,11 @@ internal static class JsonManifestReader
                 .ToList();
         }
 
+        return meta;
+    }
+
+    private static CDL ReadChunkDataList(JsonElement root, int manifestVersion)
+    {
         var chunkHashes = GetRequiredObject(root, "ChunkHashList");
         var chunkSha = GetRequiredObject(root, "ChunkShaList");
         var chunkGroups = GetRequiredObject(root, "DataGroupList");
@@ -88,109 +107,143 @@ internal static class JsonManifestReader
 
         var cdl = new CDL(manifestVersion) { Version = 0 };
         foreach (var hashProperty in chunkHashes.EnumerateObject())
-        {
-            var guid = ParseGuid(hashProperty.Name);
-            var guidText = hashProperty.Name;
-            if (!chunkSha.TryGetProperty(guidText, out var shaElement) ||
-                !chunkGroups.TryGetProperty(guidText, out var groupElement) ||
-                !chunkFileSizes.TryGetProperty(guidText, out var sizeElement))
-                throw new InvalidDataException($"JSON manifest chunk metadata is incomplete: {guidText}.");
+            cdl.Elements.Add(ReadChunkInfo(hashProperty, chunkSha, chunkGroups, chunkFileSizes, manifestVersion));
 
-            var sha = ParseHexBytes(GetBoundedString(shaElement, "ChunkShaList"), 20);
-            var group = DecodeByteString(GetBoundedString(groupElement, "DataGroupList"));
-            var fileSize = DecodeInt64(GetBoundedString(sizeElement, "ChunkFilesizeList"));
-            if (group > 99 || fileSize < 0 || fileSize > EpicProtocolLimits.MaximumChunkBytes + 4_096L)
-                throw new InvalidDataException($"JSON manifest chunk metadata is out of range: {guidText}.");
-
-            cdl.Elements.Add(new ChunkInfo(manifestVersion)
-            {
-                Guid = guid,
-                Hash = DecodeInt64(GetBoundedString(hashProperty.Value, "ChunkHashList")),
-                ShaHash = sha,
-                GroupNum = group,
-                WindowSize = 1024 * 1024,
-                FileSize = fileSize
-            });
-        }
         cdl.Count = cdl.Elements.Count;
+        return cdl;
+    }
 
+    private static ChunkInfo ReadChunkInfo(
+        JsonProperty hashProperty,
+        JsonElement chunkSha,
+        JsonElement chunkGroups,
+        JsonElement chunkFileSizes,
+        int manifestVersion)
+    {
+        var guid = ParseGuid(hashProperty.Name);
+        var guidText = hashProperty.Name;
+        if (!chunkSha.TryGetProperty(guidText, out var shaElement) ||
+            !chunkGroups.TryGetProperty(guidText, out var groupElement) ||
+            !chunkFileSizes.TryGetProperty(guidText, out var sizeElement))
+            throw new InvalidDataException($"JSON manifest chunk metadata is incomplete: {guidText}.");
+
+        var sha = ParseHexBytes(GetBoundedString(shaElement, "ChunkShaList"), 20);
+        var group = DecodeByteString(GetBoundedString(groupElement, "DataGroupList"));
+        var fileSize = DecodeInt64(GetBoundedString(sizeElement, "ChunkFilesizeList"));
+        if (group > 99 || fileSize < 0 || fileSize > EpicProtocolLimits.MaximumChunkBytes + 4_096L)
+            throw new InvalidDataException($"JSON manifest chunk metadata is out of range: {guidText}.");
+
+        return new ChunkInfo(manifestVersion)
+        {
+            Guid = guid,
+            Hash = DecodeInt64(GetBoundedString(hashProperty.Value, "ChunkHashList")),
+            ShaHash = sha,
+            GroupNum = group,
+            WindowSize = 1024 * 1024,
+            FileSize = fileSize
+        };
+    }
+
+    private static FileManifestList ReadFileManifestList(JsonElement root, CDL cdl)
+    {
         var filesElement = root.GetProperty("FileManifestList");
         if (filesElement.ValueKind != JsonValueKind.Array ||
             filesElement.GetArrayLength() > EpicProtocolLimits.MaximumFileCount)
             throw new InvalidDataException("JSON file manifest list is invalid.");
+
         var files = new FileManifestList { Version = 0 };
         long cumulativeParts = 0;
         foreach (var fileElement in filesElement.EnumerateArray())
-        {
-            // No case-insensitive uniqueness check, matching the binary reader.
-            var filename = GetOptionalString(fileElement, "Filename") ?? string.Empty;
-            byte flags = 0;
-            if (GetOptionalBoolean(fileElement, "bIsReadOnly")) flags |= 0x1;
-            if (GetOptionalBoolean(fileElement, "bIsCompressed")) flags |= 0x2;
-            if (GetOptionalBoolean(fileElement, "bIsUnixExecutable")) flags |= 0x4;
-            var file = new FileManifest
-            {
-                Filename = filename,
-                Hash = DecodeDecimalBytes(GetRequiredString(fileElement, "FileHash"), 20),
-                Flags = flags
-            };
-            if (fileElement.TryGetProperty("InstallTags", out var installTags) &&
-                installTags.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var tag in installTags.EnumerateArray())
-                {
-                    if (tag.ValueKind == JsonValueKind.String)
-                        file.InstallTags.Add(tag.GetString() ?? string.Empty);
-                }
-            }
-            if (!fileElement.TryGetProperty("FileChunkParts", out var parts) ||
-                parts.ValueKind != JsonValueKind.Array ||
-                parts.GetArrayLength() > EpicProtocolLimits.MaximumChunkPartsPerFile)
-                throw new InvalidDataException($"JSON chunk parts are invalid for {filename}.");
+            files.Elements.Add(ReadFileManifest(fileElement, cdl, ref cumulativeParts));
 
-            long fileOffset = 0;
-            foreach (var partElement in parts.EnumerateArray())
-            {
-                cumulativeParts++;
-                if (cumulativeParts > EpicProtocolLimits.MaximumCumulativeChunkParts)
-                    throw new InvalidDataException("JSON cumulative chunk part count exceeds the supported limit.");
-                var offset = DecodeInt32(GetRequiredString(partElement, "Offset"));
-                var size = DecodeInt32(GetRequiredString(partElement, "Size"));
-                if (offset < 0 || size < 0 || (long)offset + size > EpicProtocolLimits.MaximumChunkBytes)
-                    throw new InvalidDataException($"JSON chunk part range is invalid for {filename}.");
-
-                var part = new ChunkPart(ParseGuid(GetRequiredString(partElement, "Guid")), offset, size)
-                {
-                    FileOffset = fileOffset
-                };
-                _ = cdl.GetChunkByGuidNum(part.GuidNum);
-                file.ChunkParts.Add(part);
-                fileOffset = checked(fileOffset + size);
-            }
-
-            file.FileSize = fileOffset;
-            files.Elements.Add(file);
-        }
         files.Count = files.Elements.Count;
+        return files;
+    }
 
-        var customFields = new CustomFields { Version = 0 };
-        if (root.TryGetProperty("CustomFields", out var customElement))
+    private static FileManifest ReadFileManifest(JsonElement fileElement, CDL cdl, ref long cumulativeParts)
+    {
+        // No case-insensitive uniqueness check, matching the binary reader.
+        var file = new FileManifest
         {
-            if (customElement.ValueKind != JsonValueKind.Object ||
-                customElement.EnumerateObject().Count() > EpicProtocolLimits.MaximumCustomFields)
-                throw new InvalidDataException("JSON custom fields are invalid.");
-            foreach (var property in customElement.EnumerateObject())
-                customFields[property.Name] = GetBoundedString(property.Value, "CustomFields");
-            customFields.Count = customElement.EnumerateObject().Count();
+            Filename = GetOptionalString(fileElement, "Filename") ?? string.Empty,
+            Hash = DecodeDecimalBytes(GetRequiredString(fileElement, "FileHash"), 20),
+            Flags = ReadFileFlags(fileElement)
+        };
+        ReadInstallTags(fileElement, file);
+        ReadChunkParts(fileElement, file.Filename, cdl, file, ref cumulativeParts);
+        return file;
+    }
+
+    private static byte ReadFileFlags(JsonElement fileElement)
+    {
+        byte flags = 0;
+        if (GetOptionalBoolean(fileElement, "bIsReadOnly")) flags |= 0x1;
+        if (GetOptionalBoolean(fileElement, "bIsCompressed")) flags |= 0x2;
+        if (GetOptionalBoolean(fileElement, "bIsUnixExecutable")) flags |= 0x4;
+        return flags;
+    }
+
+    private static void ReadInstallTags(JsonElement fileElement, FileManifest file)
+    {
+        if (!fileElement.TryGetProperty("InstallTags", out var installTags) ||
+            installTags.ValueKind != JsonValueKind.Array)
+            return;
+
+        foreach (var tag in installTags.EnumerateArray())
+        {
+            if (tag.ValueKind == JsonValueKind.String)
+                file.InstallTags.Add(tag.GetString() ?? string.Empty);
+        }
+    }
+
+    private static void ReadChunkParts(
+        JsonElement fileElement,
+        string filename,
+        CDL cdl,
+        FileManifest file,
+        ref long cumulativeParts)
+    {
+        if (!fileElement.TryGetProperty("FileChunkParts", out var parts) ||
+            parts.ValueKind != JsonValueKind.Array ||
+            parts.GetArrayLength() > EpicProtocolLimits.MaximumChunkPartsPerFile)
+            throw new InvalidDataException($"JSON chunk parts are invalid for {filename}.");
+
+        long fileOffset = 0;
+        foreach (var partElement in parts.EnumerateArray())
+        {
+            cumulativeParts++;
+            if (cumulativeParts > EpicProtocolLimits.MaximumCumulativeChunkParts)
+                throw new InvalidDataException("JSON cumulative chunk part count exceeds the supported limit.");
+            var offset = DecodeInt32(GetRequiredString(partElement, "Offset"));
+            var size = DecodeInt32(GetRequiredString(partElement, "Size"));
+            if (offset < 0 || size < 0 || (long)offset + size > EpicProtocolLimits.MaximumChunkBytes)
+                throw new InvalidDataException($"JSON chunk part range is invalid for {filename}.");
+
+            var part = new ChunkPart(ParseGuid(GetRequiredString(partElement, "Guid")), offset, size)
+            {
+                FileOffset = fileOffset
+            };
+            _ = cdl.GetChunkByGuidNum(part.GuidNum);
+            file.ChunkParts.Add(part);
+            fileOffset = checked(fileOffset + size);
         }
 
-        return new Manifest
-        {
-            ManifestMeta = meta,
-            CDL = cdl,
-            FileManifestList = files,
-            CustomFields = customFields
-        };
+        file.FileSize = fileOffset;
+    }
+
+    private static CustomFields ReadCustomFields(JsonElement root)
+    {
+        var customFields = new CustomFields { Version = 0 };
+        if (!root.TryGetProperty("CustomFields", out var customElement))
+            return customFields;
+
+        if (customElement.ValueKind != JsonValueKind.Object ||
+            customElement.EnumerateObject().Count() > EpicProtocolLimits.MaximumCustomFields)
+            throw new InvalidDataException("JSON custom fields are invalid.");
+        foreach (var property in customElement.EnumerateObject())
+            customFields[property.Name] = GetBoundedString(property.Value, "CustomFields");
+        customFields.Count = customElement.EnumerateObject().Count();
+        return customFields;
     }
 
     private static JsonElement GetRequiredObject(JsonElement root, string name)
@@ -204,6 +257,9 @@ internal static class JsonManifestReader
         root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    private static string GetStringOrEmpty(JsonElement root, string name) =>
+        GetOptionalString(root, name) ?? string.Empty;
 
     private static bool GetOptionalBoolean(JsonElement root, string name) =>
         root.TryGetProperty(name, out var value) &&
