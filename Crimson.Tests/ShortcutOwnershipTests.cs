@@ -1,5 +1,6 @@
-using Crimson.Core;
+﻿using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 using Serilog;
 
 namespace Crimson.Tests;
@@ -9,6 +10,18 @@ public sealed class ShortcutOwnershipTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"crimson-shortcut-ownership-{Guid.NewGuid():N}");
     private readonly HttpClient _http = new();
     private readonly Serilog.Core.Logger _logger = new LoggerConfiguration().CreateLogger();
+
+    [Fact]
+    public void LegacyUnqualifiedEpicShortcutArgumentsAreOwned()
+    {
+        var qualified = new GameId("epic", "TestGame").ToString();
+        Assert.True(GameShortcutManager.MatchesOwnedArguments(
+            GameLaunchRequest.CreateCommandLineArgument("TestGame"), qualified));
+        Assert.True(GameShortcutManager.MatchesOwnedArguments(
+            GameLaunchRequest.CreateCommandLineArgument(qualified), qualified));
+        Assert.False(GameShortcutManager.MatchesOwnedArguments(
+            GameLaunchRequest.CreateCommandLineArgument("TestGame"), new GameId("ubisoft", "TestGame").ToString()));
+    }
 
     [Fact]
     public void RemovePreservesUnrelatedSameNameFile()
@@ -68,6 +81,23 @@ public sealed class ShortcutOwnershipTests : IDisposable
     }
 
     [Fact]
+    public void RemovePreservesAnotherStoresGameWithTheSameNativeIdAndTitle()
+    {
+        var manager = CreateManager();
+        var ea = new LauncherGame { Id = new GameId("ea", "123"), AppTitle = "Same Title" };
+        var ubisoft = new LauncherGame { Id = new GameId("ubisoft", "123"), AppTitle = "Same Title" };
+        var eaPath = Path.Combine(_root, "desktop", GameShortcutNaming.GetShortcutFileName("Same Title (ea)"));
+        var ubisoftPath = Path.Combine(_root, "desktop", GameShortcutNaming.GetShortcutFileName("Same Title (ubisoft)"));
+        GameShortcutManager.CreateShellLink(eaPath, ea, string.Empty, packaged: true);
+        GameShortcutManager.CreateShellLink(ubisoftPath, ubisoft, string.Empty, packaged: true);
+
+        manager.Remove(ea);
+
+        Assert.False(File.Exists(eaPath));
+        Assert.True(File.Exists(ubisoftPath));
+    }
+
+    [Fact]
     public void RemoveReportsOwnedShortcutDeletionFailureWithoutDeletingTheFile()
     {
         var manager = CreateManager();
@@ -90,15 +120,13 @@ public sealed class ShortcutOwnershipTests : IDisposable
             Path.Combine(_root, "start"), Path.Combine(_root, "icons"));
     }
 
-    private string GetDesktopPath(Game game) =>
+    private string GetDesktopPath(LauncherGame game) =>
         Path.Combine(_root, "desktop", GameShortcutNaming.GetShortcutFileName(game.AppTitle));
 
-    private static Game CreateGame(string appName) => new()
+    private static LauncherGame CreateGame(string appName) => new()
     {
-        AppName = appName,
+        Id = new GameId("epic", appName),
         AppTitle = "Shared Game Title",
-        Metadata = null!,
-        AssetInfos = null!
     };
 
     public void Dispose()

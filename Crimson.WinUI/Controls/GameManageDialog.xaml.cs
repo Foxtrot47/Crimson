@@ -1,10 +1,13 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
+using Crimson.Models;
+using Crimson.Providers;
+using Crimson.Providers.Epic;
 using Crimson.ViewModels;
 using Crimson.Utils;
 using Microsoft.UI.Xaml;
@@ -23,6 +26,7 @@ public sealed partial class GameManageDialog : UserControl
     private CancellationTokenSource? _dialogCancellation;
 
     public GameDlcViewModel Dlcs { get; }
+    public InstallLanguageSelection Languages { get; } = new();
     public GameInfoViewModel? ViewModel { get; private set; }
     public string GameTitle => ViewModel?.Game?.AppTitle ?? string.Empty;
     public string GameStatus => ViewModel?.GameStatusText ?? string.Empty;
@@ -33,8 +37,8 @@ public sealed partial class GameManageDialog : UserControl
     public GameManageDialog()
     {
         Dlcs = new GameDlcViewModel(
-            App.GetService<LibraryManager>(),
-            App.GetService<InstallManager>(),
+            App.GetService<EpicLibraryManager>(),
+            App.GetService<EpicInstallManager>(),
             App.GetService<IUiDispatcher>());
         InitializeComponent();
         _folderLauncher = App.GetService<IFolderLauncher>();
@@ -54,16 +58,22 @@ public sealed partial class GameManageDialog : UserControl
         ViewModel = viewModel;
         using var cancellation = new CancellationTokenSource();
         _dialogCancellation = cancellation;
+        var appName = viewModel.Game.AppName;
+        // DLC management and the cached install size are Epic services; other stores show neither.
+        var isEpic = GameId.Parse(appName).ProviderId == EpicLauncherProvider.ProviderId;
+        ResetDialog();
+        ConfigureActions(appName, isEpic);
         InstalledSizeText.Text = UiStrings.LoadingEllipsis;
+        var installedGame = isEpic ? App.GetService<EpicLibraryManager>().GetGameInfo(GameId.Parse(appName).LocalId) : null;
         var loading = Task.WhenAll(
-            Dlcs.LoadAsync(viewModel.Game, cancellation.Token),
-            LoadInstalledSizeAsync(viewModel.Game.AppName, cancellation.Token));
+            installedGame is null ? Task.CompletedTask : Dlcs.LoadAsync(installedGame, cancellation.Token),
+            isEpic ? LoadInstalledSizeAsync(appName, cancellation.Token) : Task.CompletedTask,
+            LoadLanguagesAsync(appName, cancellation));
         Uri? storeUri = null;
         _isOpen = true;
         try
         {
             ManageContentDialog.XamlRoot = xamlRoot;
-            ResetDialog();
             UpdateSize(availableWidth, availableHeight);
             Bindings.Update();
             await App.GetService<DialogCoordinator>().ShowAsync(
@@ -79,6 +89,7 @@ public sealed partial class GameManageDialog : UserControl
             cancellation.Cancel();
             if (ReferenceEquals(_dialogCancellation, cancellation)) _dialogCancellation = null;
             Dlcs.Close();
+            Languages.Clear();
             await loading;
         }
         return storeUri;
@@ -88,7 +99,7 @@ public sealed partial class GameManageDialog : UserControl
     {
         try
         {
-            var size = await App.GetService<InstallManager>().GetCachedInstallSizeBytes(appName, cancellationToken);
+            var size = await App.GetService<EpicInstallManager>().GetCachedInstallSizeBytes(GameId.Parse(appName).LocalId, cancellationToken);
             if (cancellationToken.IsCancellationRequested) return;
             InstalledSizeText.Text = size.HasValue
                 ? StorageSizeFormatter.FormatMebibytes(size.Value / 1048576d)
@@ -96,6 +107,44 @@ public sealed partial class GameManageDialog : UserControl
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+        }
+    }
+
+    private void ConfigureActions(string appName, bool isEpic)
+    {
+        var installer = App.GetService<LauncherInstaller>();
+        static Visibility Show(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;
+        VerifyRepairButton.Visibility = Show(installer.Supports(appName, ActionType.Repair));
+        MoveButton.Visibility = Show(installer.Supports(appName, ActionType.Move));
+        UninstallSection.Visibility = Show(installer.Supports(appName, ActionType.Uninstall));
+        DlcSectionItem.Visibility = Show(isEpic);
+        InstalledSizeLabel.Visibility = Show(isEpic);
+        InstalledSizeText.Visibility = Show(isEpic);
+        LanguagesSectionItem.Visibility = Visibility.Collapsed;
+    }
+
+    private async Task LoadLanguagesAsync(string appName, CancellationTokenSource cancellation)
+    {
+        var installer = App.GetService<LauncherInstaller>();
+        if (!installer.Supports(appName, ActionType.Repair)) return;
+        try
+        {
+            var choice = await installer.GetInstallLanguages(appName, cancellation.Token);
+            if (choice is null || !ReferenceEquals(cancellation, _dialogCancellation) || cancellation.IsCancellationRequested) return;
+            Languages.Load(choice);
+            LanguagesSectionItem.Visibility = Visibility.Visible;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Log.Warning("Install languages could not be loaded: {ErrorType}", exception.GetType().Name);
+            if (!ReferenceEquals(cancellation, _dialogCancellation)) return;
+            ShowActionError(UiStrings.InstallLanguagesCouldNotBeLoaded, UiStrings.ReopenPropertiesAndTryAgain);
+            installer.ReportPreparationFailure(appName, ActionType.Repair, new OperationFailure(
+                OperationFailureKind.Unknown, "install_languages_unavailable", UiStrings.InstallLanguagesCouldNotBeLoaded,
+                UiStrings.ReopenPropertiesAndTryAgain, false));
         }
     }
 
@@ -120,6 +169,7 @@ public sealed partial class GameManageDialog : UserControl
         GeneralPanel.Visibility = Visibility.Visible;
         InstalledFilesPanel.Visibility = Visibility.Collapsed;
         DlcPanel.Visibility = Visibility.Collapsed;
+        LanguagesPanel.Visibility = Visibility.Collapsed;
         CancelDlcConfirmation();
         UninstallAction.Visibility = Visibility.Visible;
         UninstallConfirmation.Visibility = Visibility.Collapsed;
@@ -140,6 +190,7 @@ public sealed partial class GameManageDialog : UserControl
         GeneralPanel.Visibility = section == "General" ? Visibility.Visible : Visibility.Collapsed;
         InstalledFilesPanel.Visibility = section == "InstalledFiles" ? Visibility.Visible : Visibility.Collapsed;
         DlcPanel.Visibility = section == "Dlc" ? Visibility.Visible : Visibility.Collapsed;
+        LanguagesPanel.Visibility = section == "Languages" ? Visibility.Visible : Visibility.Collapsed;
         CancelUninstallConfirmation();
         CancelDlcConfirmation();
     }
@@ -206,7 +257,7 @@ public sealed partial class GameManageDialog : UserControl
                 exception.GetType().Name);
             if (!ReferenceEquals(cancellation, _dialogCancellation)) return;
             ShowActionError(UiStrings.TheDesktopShortcutCouldNotBeCreated, UiStrings.TryCreatingItAgainFromGameProperties);
-            App.GetService<InstallManager>().ReportPreparationFailure(game.AppName, Crimson.Models.ActionType.Install,
+            App.GetService<LauncherInstaller>().ReportPreparationFailure(game.AppName, Crimson.Models.ActionType.Install,
                 new Crimson.Models.OperationFailure(Crimson.Models.OperationFailureKind.Storage,
                     "desktop_shortcut_failed", UiStrings.TheDesktopShortcutCouldNotBeCreated,
                     UiStrings.TryCreatingItAgainFromGameProperties, false));
@@ -221,6 +272,14 @@ public sealed partial class GameManageDialog : UserControl
                 ShortcutIcon.Visibility = Visibility.Visible;
             }
         }
+    }
+
+    private void ApplyLanguagesClicked(object sender, RoutedEventArgs e)
+    {
+        if (!Languages.CanApply) return;
+        var languages = Languages.SelectedCodes;
+        Close();
+        ViewModel?.ChangeLanguagesCommand.Execute(languages);
     }
 
     private void VerifyRepairClicked(object sender, RoutedEventArgs e)
@@ -307,7 +366,7 @@ public sealed partial class GameManageDialog : UserControl
     {
         Log.Warning("DLC changes could not be queued: {ErrorType}", exception.GetType().Name);
         ShowActionError(UiStrings.DLCChangesCouldNotBeQueued, UiStrings.ReopenPropertiesAndTryAgain);
-        App.GetService<InstallManager>().ReportPreparationFailure(ViewModel?.Game?.AppName ?? string.Empty,
+        App.GetService<LauncherInstaller>().ReportPreparationFailure(ViewModel?.Game?.AppName ?? string.Empty,
             Crimson.Models.ActionType.Install, new Crimson.Models.OperationFailure(
                 Crimson.Models.OperationFailureKind.Unknown, "dlc_changes_failed",
                 UiStrings.DLCChangesCouldNotBeQueued, UiStrings.ReopenPropertiesAndTryAgain, false));
@@ -338,7 +397,7 @@ public sealed partial class GameManageDialog : UserControl
     private void ShowBrowseError(string code, string message)
     {
         ShowActionError(message, UiStrings.CheckThatTheInstallationFolderIsAvailableAndTryAgain);
-        App.GetService<InstallManager>().ReportPreparationFailure(ViewModel?.Game?.AppName ?? string.Empty,
+        App.GetService<LauncherInstaller>().ReportPreparationFailure(ViewModel?.Game?.AppName ?? string.Empty,
             Crimson.Models.ActionType.Install, new Crimson.Models.OperationFailure(
                 Crimson.Models.OperationFailureKind.Storage, code, message,
                 UiStrings.CheckThatTheInstallationFolderIsAvailableAndTryAgain, false));

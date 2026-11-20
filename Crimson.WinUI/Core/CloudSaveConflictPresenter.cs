@@ -1,8 +1,10 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Utils;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -11,15 +13,14 @@ using Serilog;
 namespace Crimson.Core;
 
 /// <summary>
-/// Presents the cloud save conflict dialog on behalf of <see cref="CloudSaveManager"/>,
-/// which runs on background launch/exit paths. The dialog shows which copy is newer and
-/// both file sizes and lets the user keep the local or the cloud copy, or skip syncing.
+/// Presents the cloud save conflict dialog on behalf of every <see cref="ICloudSaveConflictSource"/>
+/// (Epic's <see cref="CloudSaveManager"/>, Ubisoft cloud saves), which run on background launch/exit paths.
 /// </summary>
 internal sealed class CloudSaveConflictPresenter : IDisposable
 {
     private readonly FrameworkElement _root;
-    private readonly CloudSaveManager _cloudSaves;
-    private readonly LibraryManager _library;
+    private readonly ICloudSaveConflictSource[] _cloudSaves;
+    private readonly LauncherLibrary _library;
     private readonly DialogCoordinator _dialogs;
     private readonly ILogger _log;
     private readonly Func<bool> _isWindowVisible;
@@ -30,22 +31,22 @@ internal sealed class CloudSaveConflictPresenter : IDisposable
 
     public CloudSaveConflictPresenter(
         FrameworkElement root,
-        CloudSaveManager cloudSaves,
-        LibraryManager library,
+        IEnumerable<ICloudSaveConflictSource> cloudSaves,
+        LauncherLibrary library,
         DialogCoordinator dialogs,
         ILogger log,
         Func<bool> isWindowVisible,
         Action ensureWindowVisible)
     {
         _root = root;
-        _cloudSaves = cloudSaves;
+        _cloudSaves = [.. cloudSaves];
         _library = library;
         _dialogs = dialogs;
         _log = log;
         _isWindowVisible = isWindowVisible;
         _ensureWindowVisible = ensureWindowVisible;
         _resolver = ResolveAsync;
-        cloudSaves.ConflictResolver = _resolver;
+        foreach (var source in _cloudSaves) source.ConflictResolver = _resolver;
     }
 
     private Task<CloudSaveResolution> ResolveAsync(CloudSaveConflict conflict)
@@ -105,15 +106,18 @@ internal sealed class CloudSaveConflictPresenter : IDisposable
     }
 
     /// <summary>
-    /// Detaches the resolver from the manager so a closed window is never called back, and
+    /// Detaches the resolver from every source so a closed window is never called back, and
     /// resolves a pending conflict as "skip" so the sync does not wait on a dialog that
     /// can no longer be shown.
     /// </summary>
     public void Dispose()
     {
         _disposed = true;
-        if (ReferenceEquals(_cloudSaves.ConflictResolver, _resolver))
-            _cloudSaves.ConflictResolver = null;
+        foreach (var source in _cloudSaves)
+        {
+            if (ReferenceEquals(source.ConflictResolver, _resolver))
+                source.ConflictResolver = null;
+        }
         Interlocked.Exchange(ref _pending, null)?.TrySetResult(CloudSaveResolution.Skip);
     }
 

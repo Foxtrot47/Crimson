@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using System.Reflection;
 using Crimson.Core;
 using Crimson.Models;
@@ -10,12 +10,12 @@ public sealed class InstallerUpdateTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"crimson-update-{Guid.NewGuid():N}");
     private readonly Serilog.Core.Logger _logger = new LoggerConfiguration().CreateLogger();
-    private readonly InstallManager _installer;
+    private readonly EpicInstallManager _installer;
 
     public InstallerUpdateTests()
     {
         Directory.CreateDirectory(_root);
-        _installer = new InstallManager(_logger, null!, null!, null!, null!, null!, null!);
+        _installer = new EpicInstallManager(_logger, null!, null!, null!, null!, null!, null!);
     }
 
     [Fact]
@@ -34,9 +34,9 @@ public sealed class InstallerUpdateTests : IDisposable
             GuidNum = BigInteger.Zero,
             SourceChunkGuidNum = BigInteger.Zero
         };
-        var method = typeof(InstallManager).GetMethod("ProcessCopyTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var method = typeof(EpicInstallManager).GetMethod("ProcessCopyTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var install = new InstallItem("synthetic", ActionType.Update, _root);
-        typeof(InstallManager).GetProperty(nameof(InstallManager.CurrentInstall))!.SetValue(_installer, install);
+        typeof(EpicInstallManager).GetProperty(nameof(EpicInstallManager.CurrentInstall))!.SetValue(_installer, install);
 
         await ((Task)method.Invoke(_installer, [task, _root])!).WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -57,8 +57,8 @@ public sealed class InstallerUpdateTests : IDisposable
             Size = 3, DestinationFileSize = 100, GuidNum = BigInteger.Zero, SourceChunkGuidNum = BigInteger.Zero
         };
         var install = new InstallItem("synthetic", ActionType.Install, _root);
-        typeof(InstallManager).GetProperty(nameof(InstallManager.CurrentInstall))!.SetValue(_installer, install);
-        var method = typeof(InstallManager).GetMethod("ProcessCopyTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        typeof(EpicInstallManager).GetProperty(nameof(EpicInstallManager.CurrentInstall))!.SetValue(_installer, install);
+        var method = typeof(EpicInstallManager).GetMethod("ProcessCopyTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
         await ((Task)method.Invoke(_installer, [task, _root])!).WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -70,7 +70,7 @@ public sealed class InstallerUpdateTests : IDisposable
     public void VerificationFailureCannotReportSuccess()
     {
         var install = new InstallItem("test", ActionType.Update, _root);
-        var method = typeof(InstallManager).GetMethod("EnsureVerificationSucceeded", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var method = typeof(EpicInstallManager).GetMethod("EnsureVerificationSucceeded", BindingFlags.Static | BindingFlags.NonPublic)!;
 
         var exception = Assert.Throws<TargetInvocationException>(() => method.Invoke(null, [install, 2]));
 
@@ -98,7 +98,7 @@ public sealed class InstallerUpdateTests : IDisposable
             SourceFilePath = chunkPath, DestinationFilePath = destination,
             TaskType = IoTaskType.Copy, Offset = offset, Size = size, DestinationFileSize = 3
         };
-        var method = typeof(InstallManager).GetMethod("ProcessCopyTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var method = typeof(EpicInstallManager).GetMethod("ProcessCopyTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
         await Assert.ThrowsAsync<InvalidDataException>(async () =>
             await ((Task)method.Invoke(_installer, [task, _root])!).WaitAsync(TimeSpan.FromSeconds(5)));
@@ -115,7 +115,7 @@ public sealed class InstallerUpdateTests : IDisposable
         await File.WriteAllBytesAsync(destination, original);
         var chunkPath = Path.Combine(_root, "cancelled.chunk");
         await File.WriteAllBytesAsync(chunkPath, CreateUncompressedChunk([1, 2, 3]));
-        var cancellation = (CancellationTokenSource)typeof(InstallManager)
+        var cancellation = (CancellationTokenSource)typeof(EpicInstallManager)
             .GetField("_cancellationTokenSource", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_installer)!;
         cancellation.Cancel();
         var task = new IoTask
@@ -123,7 +123,7 @@ public sealed class InstallerUpdateTests : IDisposable
             SourceFilePath = chunkPath, DestinationFilePath = destination,
             TaskType = IoTaskType.Copy, Size = 3, DestinationFileSize = 3
         };
-        var method = typeof(InstallManager).GetMethod("ProcessCopyTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var method = typeof(EpicInstallManager).GetMethod("ProcessCopyTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await ((Task)method.Invoke(_installer, [task, _root])!).WaitAsync(TimeSpan.FromSeconds(5)));

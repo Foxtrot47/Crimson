@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 
 namespace Crimson.Tests;
 
@@ -48,9 +48,64 @@ public sealed class LibraryViewLayoutTests
             Assert.Equal("FontIcon", icon.Name.LocalName);
             Assert.Equal("14", (string?)icon.Attribute("FontSize"));
         });
-        var import = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "EpicImportButton");
-        Assert.Equal("36", (string?)import.Attribute("Height"));
+        var import = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "ImportButton");
         Assert.Equal("Center", (string?)import.Attribute("VerticalAlignment"));
+    }
+
+    [Fact]
+    public void CardArtworkIsCentredAndFilled()
+    {
+        var document = Load();
+        var card = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "GameCardTemplate" ||
+            (string?)element.Attribute(Xaml + "Key") == "GameCardTemplate");
+        var image = Assert.Single(card.Descendants(), element => element.Name.LocalName == "Image" &&
+            ((string?)element.Attribute("Source"))?.Contains("ImageUrl") == true);
+        Assert.Equal("Fill", (string?)image.Attribute("Stretch"));
+        Assert.Equal("Center", (string?)image.Attribute("HorizontalAlignment"));
+        Assert.Equal("Center", (string?)image.Attribute("VerticalAlignment"));
+        // Missing artwork keeps a placeholder behind the image instead of an empty card.
+        var placeholder = Assert.Single(card.Descendants(), element => element.Name.LocalName == "FontIcon" &&
+            (string?)element.Attribute("Glyph") == "\uE7FC");
+        Assert.Equal("0.35", (string?)placeholder.Attribute("Opacity"));
+    }
+
+    [Fact]
+    public void GridCardLiftsOnHoverAndRevealsItsPrimaryAction()
+    {
+        var document = Load();
+        var card = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Key") == "GameCardTemplate");
+        var navigation = Assert.Single(card.Descendants(), element => element.Name.LocalName == "Button" &&
+            (string?)element.Attribute("Click") == "GameButton_Click");
+        Assert.Equal("GameCard_PointerEntered", (string?)navigation.Attribute("PointerEntered"));
+        Assert.Equal("GameCard_PointerExited", (string?)navigation.Attribute("PointerExited"));
+        var overlay = Assert.Single(card.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "CardOverlay");
+        // Hidden overlays must collapse, not sit at opacity 0, or their text never rasterizes.
+        Assert.Equal("Collapsed", (string?)overlay.Attribute("Visibility"));
+        Assert.Null(overlay.Attribute("Opacity"));
+        var action = Assert.Single(card.Descendants(), element => (string?)element.Attribute("Command") == "{x:Bind PrimaryActionCommand}");
+        Assert.Equal("{x:Bind HasPrimaryAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}", (string?)action.Attribute("Visibility"));
+        Assert.Equal("{x:Bind IsPrimaryActionEnabled, Mode=OneWay}", (string?)action.Attribute("IsEnabled"));
+        Assert.Equal((string?)action.Attribute("ToolTipService.ToolTip"), (string?)action.Attribute("AutomationProperties.Name"));
+        var icon = Assert.Single(action.Descendants(), element => element.Name.LocalName == "FontIcon");
+        Assert.Equal("{x:Bind PrimaryAction, Mode=OneWay, Converter={StaticResource GamePrimaryActionGlyphConverter}}", (string?)icon.Attribute("Glyph"));
+        // The store mark trails the title in an auto-sized column, so it hugs short titles
+        // instead of being pushed to the card's right edge.
+        var mark = Assert.Single(card.Descendants(), element => element.Name.LocalName == "Image" &&
+            (string?)element.Attribute("Source") == "{x:Bind Name, Converter={StaticResource ProviderLogoConverter}}");
+        Assert.Equal("1", (string?)mark.Attribute("Grid.Column"));
+        Assert.Equal("Top", (string?)mark.Attribute("VerticalAlignment"));
+        var titleRow = Assert.IsType<XElement>(mark.Parent);
+        Assert.Equal("Grid", titleRow.Name.LocalName);
+        var columns = titleRow.Elements().Single(element => element.Name.LocalName == "Grid.ColumnDefinitions").Elements().ToList();
+        Assert.Equal(["Auto", "Auto"], columns.Select(column => (string?)column.Attribute("Width")));
+        var title = Assert.Single(titleRow.Elements(), element => (string?)element.Attribute("Text") == "{x:Bind Title}");
+        Assert.Equal("180", (string?)title.Attribute("MaxWidth"));
+        Assert.Equal("2", (string?)title.Attribute("MaxLines"));
+        Assert.True(titleRow.Elements().ToList().IndexOf(title) < titleRow.Elements().ToList().IndexOf(mark));
+        // The card supplies the fill so a nested button keeps its accent colour on hover.
+        var actionStyle = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Key") == "CardActionButtonStyle");
+        Assert.Contains(actionStyle.Descendants(), element => element.Name.LocalName == "Setter" &&
+            (string?)element.Attribute("Property") == "Background");
     }
 
     [Fact]
@@ -61,7 +116,7 @@ public sealed class LibraryViewLayoutTests
         Assert.Equal("Right", (string?)actions.Attribute("HorizontalAlignment"));
         Assert.All(actions.Elements().Single(element => element.Name.LocalName == "Grid.ColumnDefinitions").Elements(),
             column => Assert.Equal("Auto", (string?)column.Attribute("Width")));
-        var import = Assert.Single(actions.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "EpicImportButton");
+        var import = Assert.Single(actions.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "ImportButton");
         Assert.Equal("2", (string?)import.Attribute("Grid.Column"));
     }
 
@@ -93,7 +148,7 @@ public sealed class LibraryViewLayoutTests
         var document = Load();
         var actions = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "LibraryActions");
         Assert.Equal("16,20,16,20", (string?)actions.Attribute("Margin"));
-        var repeater = Assert.Single(document.Descendants(), element => element.Name.LocalName == "ItemsRepeater");
+        var repeater = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "ItemsRepeater");
         Assert.Equal("0,0,0,20", (string?)repeater.Attribute("Margin"));
         var margins = document.Descendants().Where(element => (string?)element.Attribute("Target") == "ItemsRepeater.Margin")
             .Select(element => (string?)element.Attribute("Value")).ToList();
@@ -116,7 +171,7 @@ public sealed class LibraryViewLayoutTests
         Assert.Equal($"{{StaticResource {layout}}}", setters["ItemsRepeater.Layout"]);
         Assert.Equal($"{{StaticResource {template}}}", setters["ItemsRepeater.ItemTemplate"]);
         Assert.Equal(alignment, setters["ItemsRepeater.HorizontalAlignment"]);
-        var repeater = Assert.Single(document.Descendants(), element => element.Name.LocalName == "ItemsRepeater");
+        var repeater = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Name") == "ItemsRepeater");
         Assert.Equal("{x:Bind ViewModel.GamesList, Mode=TwoWay}", (string?)repeater.Attribute("ItemsSource"));
     }
 
@@ -127,8 +182,8 @@ public sealed class LibraryViewLayoutTests
     {
         var document = Load();
         var template = Assert.Single(document.Descendants(), element => (string?)element.Attribute(Xaml + "Key") == templateName);
-        var button = Assert.Single(template.Descendants(), element => element.Name.LocalName == "Button");
-        Assert.Equal("GameButton_Click", (string?)button.Attribute("Click"));
+        var button = Assert.Single(template.Descendants(), element => element.Name.LocalName == "Button" &&
+            (string?)element.Attribute("Click") == "GameButton_Click");
         Assert.Equal("{x:Bind}", (string?)button.Attribute("DataContext"));
         Assert.Single(template.Descendants(), element => (string?)element.Attribute("Text") == "{x:Bind Title}");
         var status = Assert.Single(template.Descendants(), element => (string?)element.Attribute("Text") == "{x:Bind OperationStatus, Mode=OneWay}");

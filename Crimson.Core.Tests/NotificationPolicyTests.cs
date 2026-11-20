@@ -1,6 +1,7 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers.Epic;
 using Crimson.ViewModels;
 using Microsoft.Extensions.Logging.Abstractions;
 using Serilog;
@@ -36,7 +37,7 @@ public sealed class NotificationPolicyTests : IDisposable
     public void SecondaryFailuresRemainInSuccessfulHistoryWithoutBecomingTerminalFailures()
     {
         var item = new InstallItem("base", ActionType.Install, _fixture.BasePath) { Status = ActionStatus.Success };
-        var history = (List<InstallItem>)typeof(InstallManager)
+        var history = (List<InstallItem>)typeof(EpicInstallManager)
             .GetField("_installHistory", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_fixture.Installer)!;
         history.Add(item);
         var failure = new OperationFailure(OperationFailureKind.Storage, "desktop_shortcut_failed", "Shortcut failed.", "Try again.", false);
@@ -54,7 +55,7 @@ public sealed class NotificationPolicyTests : IDisposable
         var previous = operation with { Notice = null };
         Assert.True(DownloadsViewModel.HasOperationListChanged([previous], [operation]));
         using var logger = new LoggerConfiguration().CreateLogger();
-        using var model = new DownloadsViewModel(logger, _fixture.Installer, _fixture.Library, new ImmediateDispatcher());
+        using var model = new DownloadsViewModel(logger, _fixture.Shared.Installer, _fixture.Shared.Library, new ImmediateDispatcher());
         typeof(DownloadsViewModel).GetMethod("FetchHistoryItemsList", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(model, [new[] { operation }]);
         var row = Assert.Single(model.HistoryItems);
@@ -72,8 +73,8 @@ public sealed class NotificationPolicyTests : IDisposable
     [InlineData("base", true, false)]
     public void GameInfoShowsOnlyNonmodalErrorsForItsOwnGame(string appName, bool modal, bool visible)
     {
-        var model = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance, _fixture.Installer,
-            _fixture.Library, _fixture.Storage, new ImmediateDispatcher()) { Game = _fixture.BaseGame };
+        var model = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance, _fixture.Shared.Installer,
+            _fixture.Shared.Library, _fixture.Shared.Registry, new ImmediateDispatcher()) { Game = EpicLauncherProvider.ToLauncherGame(_fixture.BaseGame) };
         var notice = Notice(appName, modal);
 
         Deliver(model, notice);
@@ -86,8 +87,8 @@ public sealed class NotificationPolicyTests : IDisposable
     public void DelayedLocalErrorDoesNotFollowTheUserAwayFromTheOriginatingPage()
     {
         var dispatcher = new QueuedDispatcher();
-        var model = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance, _fixture.Installer,
-            _fixture.Library, _fixture.Storage, dispatcher) { Game = _fixture.BaseGame };
+        var model = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance, _fixture.Shared.Installer,
+            _fixture.Shared.Library, _fixture.Shared.Registry, dispatcher) { Game = EpicLauncherProvider.ToLauncherGame(_fixture.BaseGame) };
         Deliver(model, Notice("base", false));
         model.OnNavigatedFrom();
         dispatcher.Drain();

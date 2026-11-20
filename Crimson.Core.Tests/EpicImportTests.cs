@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Crimson.Core;
@@ -16,7 +16,7 @@ public sealed class EpicImportTests : IDisposable
         _fixture.BaseGame.LocalAppState!.InstallStatus = InstallState.NotInstalled;
         _fixture.BaseGame.LocalAppState.Version = null!;
         _fixture.Storage.SaveUserData(new UserData { AccountId = "synthetic-import-owner" }).GetAwaiter().GetResult();
-        typeof(LibraryManager).GetField("_lastUpdateDateTime", BindingFlags.NonPublic | BindingFlags.Instance)!
+        typeof(EpicLibraryManager).GetField("_lastUpdateDateTime", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(_fixture.Library, DateTimeOffset.Now);
     }
 
@@ -313,7 +313,7 @@ public sealed class EpicImportTests : IDisposable
         _fixture.Storage.SaveMetaData(_fixture.BaseGame);
         _fixture.SetOwned("base");
 
-        var error = Assert.Throws<TargetInvocationException>(() => typeof(InstallManager)
+        var error = Assert.Throws<TargetInvocationException>(() => typeof(EpicInstallManager)
             .GetMethod("CompleteImportAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(_fixture.Installer, [item, _fixture.BaseGame, _fixture.BaseGame.LocalAppState!]));
 
@@ -506,7 +506,7 @@ public sealed class EpicImportTests : IDisposable
         var verify = new InstallItem("base", ActionType.Verify, source.InstallLocation);
         await _fixture.Invoke("CompleteInstallAsync", verify, _fixture.BaseGame, _fixture.BaseGame.LocalAppState);
         Assert.Equal(InstallState.Installed, _fixture.BaseGame.LocalAppState.InstallStatus);
-        var previous = await (Task<Manifest?>)typeof(InstallManager)
+        var previous = await (Task<Manifest?>)typeof(EpicInstallManager)
             .GetMethod("GetUpdateBaseManifestAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(_fixture.Installer, null)!;
         Assert.Equal(2, previous!.FileManifestList.Elements.Count);
@@ -555,7 +555,7 @@ public sealed class EpicImportTests : IDisposable
             EpicImportAccountGeneration = _fixture.Storage.AccountGeneration, Status = ActionStatus.Failed,
             Failure = new OperationFailure(OperationFailureKind.Network, "synthetic_network_failure", "Synthetic failure", "Try again.", true)
         };
-        var history = (List<InstallItem>)typeof(InstallManager)
+        var history = (List<InstallItem>)typeof(EpicInstallManager)
             .GetField("_installHistory", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(_fixture.Installer)!;
         history.Add(failed);
         _fixture.SetCurrent("unrelated-operation");

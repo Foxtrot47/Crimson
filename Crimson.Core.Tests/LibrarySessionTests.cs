@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.Repository;
@@ -20,8 +20,8 @@ public sealed class LibrarySessionTests : IDisposable
     {
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         var repository = new ControlledRepository();
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
-        var library = new LibraryManager(_logger, repository, storage, auth);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new EpicLibraryManager(_logger, repository, storage, auth);
         var published = new List<string>();
         library.LibraryUpdated += games => published.AddRange(games.Select(game => game.AppName));
 
@@ -46,8 +46,8 @@ public sealed class LibrarySessionTests : IDisposable
     {
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         var repository = new ControlledRepository();
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
-        var library = new LibraryManager(_logger, repository, storage, auth);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new EpicLibraryManager(_logger, repository, storage, auth);
         var published = new List<string>();
         library.LibraryUpdated += games => published.AddRange(games.Select(game => game.AppName));
 
@@ -66,8 +66,8 @@ public sealed class LibrarySessionTests : IDisposable
     {
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         var repository = new ControlledRepository { Account = "second" };
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
-        var library = new LibraryManager(_logger, repository, storage, auth);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new EpicLibraryManager(_logger, repository, storage, auth);
         await library.GetLibraryData();
         await auth.Logout();
         repository.Account = "third";
@@ -104,8 +104,8 @@ public sealed class LibrarySessionTests : IDisposable
         storage.SaveStoreProductDetailsCache("example-namespace",
             new StoreProductDetails { ProductName = "Stale product" }, DateTimeOffset.UtcNow.AddDays(-2));
         var repository = new ControlledRepository();
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
-        var library = new LibraryManager(_logger, repository, storage, auth);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new EpicLibraryManager(_logger, repository, storage, auth);
         var updated = new TaskCompletionSource<StoreProductDetails>(TaskCreationOptions.RunContinuationsAsynchronously);
         library.StoreProductDetailsUpdated += (_, details) => updated.TrySetResult(details);
 
@@ -121,8 +121,8 @@ public sealed class LibrarySessionTests : IDisposable
     {
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         var repository = new ControlledRepository();
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
-        var library = new LibraryManager(_logger, repository, storage, auth);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new EpicLibraryManager(_logger, repository, storage, auth);
 
         var first = await library.GetStoreProductDetails("example-namespace");
         var second = await library.GetStoreProductDetails("example-namespace");
@@ -139,8 +139,8 @@ public sealed class LibrarySessionTests : IDisposable
     {
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         var repository = new ControlledRepository { DelayTwoProductRequests = true };
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
-        var library = new LibraryManager(_logger, repository, storage, auth);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new EpicLibraryManager(_logger, repository, storage, auth);
 
         var olderRequest = library.GetStoreProductDetails("example-namespace");
         var newerRequest = library.GetStoreProductDetails("example-namespace");
@@ -161,8 +161,8 @@ public sealed class LibrarySessionTests : IDisposable
     {
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         var repository = new ControlledRepository { ProductDetailsUnavailable = true };
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
-        var library = new LibraryManager(_logger, repository, storage, auth);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new EpicLibraryManager(_logger, repository, storage, auth);
 
         await library.GetStoreProductDetails("example-namespace");
         await library.GetStoreProductDetails("example-namespace");
@@ -230,9 +230,11 @@ public sealed class LibrarySessionTests : IDisposable
     {
         var (library, repository, _) = await PlaytimeLibrary();
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
-        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, null!);
+        var installer = new EpicInstallManager(_logger, library, repository, storage, null!, null!, null!);
+        var host = EpicHost.Create(library, installer, repository);
         var dispatcher = new QueuedDispatcher();
-        var viewModel = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance, installer, library, storage, dispatcher);
+        var viewModel = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance,
+            host.Installer, host.Library, host.Registry, dispatcher);
 
         await viewModel.OnNavigatedTo("second");
         viewModel.OnNavigatedFrom();
@@ -293,11 +295,13 @@ public sealed class LibrarySessionTests : IDisposable
         viewModel.OnNavigatedFrom();
     }
 
-    private GameInfoViewModel PlaytimeViewModel(LibraryManager library, ControlledRepository repository, IUiDispatcher dispatcher)
+    private GameInfoViewModel PlaytimeViewModel(EpicLibraryManager library, ControlledRepository repository, IUiDispatcher dispatcher)
     {
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
-        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, null!);
-        return new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance, installer, library, storage, dispatcher);
+        var installer = new EpicInstallManager(_logger, library, repository, storage, null!, null!, null!);
+        var host = EpicHost.Create(library, installer, repository);
+        return new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance,
+            host.Installer, host.Library, host.Registry, dispatcher);
     }
 
     [Fact]
@@ -328,12 +332,12 @@ public sealed class LibrarySessionTests : IDisposable
         }
     }
 
-    private async Task<(LibraryManager Library, ControlledRepository Repository, AuthManager Auth)> PlaytimeLibrary()
+    private async Task<(EpicLibraryManager Library, ControlledRepository Repository, EpicAuthManager Auth)> PlaytimeLibrary()
     {
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
         var repository = new ControlledRepository { Account = "second" };
-        var auth = new AuthManager(_logger, storage, new TestCredentialProtector(), _http);
-        var library = new LibraryManager(_logger, repository, storage, auth);
+        var auth = new EpicAuthManager(_logger, storage, new TestCredentialProtector(), _http);
+        var library = new EpicLibraryManager(_logger, repository, storage, auth);
         await library.GetLibraryData();
         return (library, repository, auth);
     }
@@ -345,7 +349,7 @@ public sealed class LibrarySessionTests : IDisposable
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
     }
 
-    private sealed class ControlledRepository : IStoreRepository
+    private sealed class ControlledRepository : IEpicGamesRepository
     {
         public string Account = "first";
         public int AssetRequests;

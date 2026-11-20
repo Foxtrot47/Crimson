@@ -1,9 +1,10 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Crimson.Models;
+using Crimson.Providers.Ubisoft;
 
 namespace Crimson.Core;
 
@@ -15,6 +16,7 @@ public static class OperationFailureClassifier
     public static OperationFailure Classify(Exception? exception) => exception switch
     {
         AggregateException { InnerExceptions.Count: > 0 } aggregate => Classify(aggregate.InnerExceptions[0]),
+        UbisoftInstallUnavailableException unavailable => unavailable.ToFailure(),
         UnauthorizedAccessException => Failure(
             OperationFailureKind.Permission,
             "permission_denied",

@@ -1,13 +1,13 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using H.NotifyIcon;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Crimson.Core;
+using Crimson.Providers;
 using Crimson.Models;
 
 // To learn more about WinUI, the WinUI project structure,
@@ -15,12 +15,8 @@ using Crimson.Models;
 
 namespace Crimson.Views
 {
-    [ObservableObject]
     public sealed partial class TrayIconView : UserControl
     {
-        [ObservableProperty]
-        private bool _isWindowVisible;
-
         private IReadOnlyList<TrayGameMenuItem> _installedGames = [];
 
         public TrayIconView()
@@ -29,7 +25,7 @@ namespace Crimson.Views
         }
 
         internal void UpdateInstalledGames(
-            IEnumerable<Game> games,
+            IEnumerable<LauncherGame> games,
             bool isLoggedIn,
             Func<string, bool> hasRelatedOperation)
         {
@@ -78,7 +74,6 @@ namespace Crimson.Views
             {
                 window.Show();
             }
-            IsWindowVisible = window.Visible;
         }
 
         [RelayCommand]

@@ -12,7 +12,7 @@ public class SettingsManager
 {
     private const double DefaultAcrylicOpacity = 60;
 
-    private readonly Storage _storage;
+    private readonly IApplicationStorage _storage;
     private readonly ILogger<SettingsManager> _logger;
     private readonly string _defaultInstallLocation;
     private readonly string _logsDirectory;
@@ -21,7 +21,7 @@ public class SettingsManager
     private Settings Settings { get; set; }
 
     public SettingsManager(
-        Storage storage,
+        IApplicationStorage storage,
         ILogger<SettingsManager> logger,
         string defaultInstallLocation,
         string logsDirectory)
@@ -87,7 +87,7 @@ public class SettingsManager
     {
         try
         {
-            return JsonSerializer.Deserialize<Settings>(_storage.GetSettingsData()) ?? new Settings();
+            return JsonSerializer.Deserialize(_storage.GetSettingsData(), CrimsonJsonContext.Default.Settings) ?? new Settings();
 
         }
         catch (Exception ex)
@@ -102,7 +102,7 @@ public class SettingsManager
         await _saveGate.WaitAsync();
         try
         {
-            await _storage.SaveSettingsData(JsonSerializer.Serialize(Settings));
+            await _storage.SaveSettingsData(JsonSerializer.Serialize(Settings, CrimsonJsonContext.Default.Settings));
         }
         finally
         {

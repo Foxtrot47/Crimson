@@ -1,0 +1,60 @@
+<ContentDialog
+    x:Class="Crimson.Controls.SignInDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:strings="using:Crimson.Resources">
+    <ContentDialog.Resources>
+        <!--  The header and the sign-in view set their own spacing, so a browser page meets the dialog edges.  -->
+        <Thickness x:Key="ContentDialogPadding">0</Thickness>
+        <x:Double x:Key="ContentDialogMinWidth">0</x:Double>
+    </ContentDialog.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid Padding="20,14,10,14" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Border
+                Width="32"
+                Height="32"
+                Background="{x:Bind Store.TileBrush}"
+                CornerRadius="8">
+                <Image
+                    Width="20"
+                    Height="20"
+                    Source="{x:Bind Store.Logo}"
+                    Stretch="Uniform" />
+            </Border>
+            <TextBlock
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="{x:Bind Heading}"
+                TextTrimming="CharacterEllipsis" />
+            <Button
+                x:Name="CloseButton"
+                Grid.Column="2"
+                Width="36"
+                Height="32"
+                Padding="0"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="{x:Bind strings:UiStrings.Close}"
+                Background="Transparent"
+                BorderThickness="0"
+                Click="CloseClicked"
+                ToolTipService.ToolTip="{x:Bind strings:UiStrings.Close}">
+                <FontIcon FontSize="12" Glyph="&#xE8BB;" />
+            </Button>
+        </Grid>
+        <Border
+            x:Name="ViewHost"
+            Grid.Row="1"
+            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="0,1,0,0" />
+    </Grid>
+</ContentDialog>

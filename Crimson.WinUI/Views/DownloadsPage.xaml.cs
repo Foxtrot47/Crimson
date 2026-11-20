@@ -1,4 +1,4 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -52,43 +52,66 @@ public sealed partial class DownloadsPage : Page
 
     private void RateCanvas_SizeChanged(object sender, SizeChangedEventArgs args) => DrawTransferGraph();
 
+    private readonly GeometryGroup _downloadBars = new();
+    private Rect _clipBounds;
+
     private void DrawTransferGraph()
     {
         if (DataContext is not DownloadsViewModel viewModel || RateCanvas.ActualWidth <= 0 || RateCanvas.ActualHeight <= 0) return;
         var history = viewModel.TransferHistory;
-        var peak = history.Count == 0 ? 1 : Math.Max(1d / 1024, history.Max(sample => Math.Max(sample.DownloadMiBPerSecond, sample.WriteMiBPerSecond)));
+        var peak = history.Count == 0 ? 1 : Math.Max(1d / 1024,
+            history.Max(sample => Math.Max(sample.DownloadMiBPerSecond, sample.WriteMiBPerSecond)));
         var scale = Math.Pow(2, Math.Ceiling(Math.Log2(peak)));
         GraphWaitingLabel.Visibility = history.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        RateCanvas.Clip = new RectangleGeometry { Rect = new Rect(0, 0, RateCanvas.ActualWidth, RateCanvas.ActualHeight) };
-        DrawDownloadBars(CreateGraphPoints(history, sample => sample.DownloadMiBPerSecond, scale));
-        DiskWriteRateLine.Points = CreateGraphPoints(history, sample => sample.WriteMiBPerSecond, scale);
+
+        // The clip only changes with the canvas, not with every sample.
+        var bounds = new Rect(0, 0, RateCanvas.ActualWidth, RateCanvas.ActualHeight);
+        if (bounds != _clipBounds)
+        {
+            RateCanvas.Clip = new RectangleGeometry { Rect = bounds };
+            _clipBounds = bounds;
+        }
+
+        DrawDownloadBars(history, scale);
+        DrawWriteLine(history, scale);
     }
 
-    private void DrawDownloadBars(PointCollection points)
+    /// <summary>Lines are edited in place: replacing the geometry per progress event churns the large-object heap.</summary>
+    private void DrawDownloadBars(IReadOnlyList<TransferRateSample> history, double scale)
     {
-        var bars = new GeometryGroup();
-        foreach (var point in points)
-            bars.Children.Add(new LineGeometry
-            {
-                StartPoint = new Point(point.X, RateCanvas.ActualHeight - 1),
-                EndPoint = point
-            });
-        DownloadRateBars.Data = bars;
+        var children = _downloadBars.Children;
+        while (children.Count < history.Count)
+            children.Add(new LineGeometry());
+        while (children.Count > history.Count)
+            children.RemoveAt(children.Count - 1);
+
+        var now = history.Count == 0 ? 0 : history[^1].Seconds;
+        var height = RateCanvas.ActualHeight;
+        for (var index = 0; index < history.Count; index++)
+        {
+            var line = (LineGeometry)children[index];
+            var x = Math.Clamp(1 - (now - history[index].Seconds) / 60, 0, 1) * RateCanvas.ActualWidth;
+            line.StartPoint = new Point(x, height - 1);
+            line.EndPoint = new Point(x, (1 - Math.Clamp(history[index].DownloadMiBPerSecond / scale, 0, 1)) * (height - 2) + 1);
+        }
+        if (!ReferenceEquals(DownloadRateBars.Data, _downloadBars)) DownloadRateBars.Data = _downloadBars;
         DownloadRateBars.StrokeThickness = Math.Clamp(RateCanvas.ActualWidth / 60 * 0.55, 1, 6);
     }
 
-    private PointCollection CreateGraphPoints(
-        IReadOnlyList<TransferRateSample> history, Func<TransferRateSample, double> rate, double scale)
+    private void DrawWriteLine(IReadOnlyList<TransferRateSample> history, double scale)
     {
-        var points = new PointCollection();
-        var now = history.LastOrDefault()?.Seconds ?? 0;
-        foreach (var sample in history)
+        var points = DiskWriteRateLine.Points ??= new PointCollection();
+        var now = history.Count == 0 ? 0 : history[^1].Seconds;
+        var height = RateCanvas.ActualHeight;
+        while (points.Count > history.Count) points.RemoveAt(points.Count - 1);
+        for (var index = 0; index < history.Count; index++)
         {
-            points.Add(new Point(
-                Math.Clamp(1 - (now - sample.Seconds) / 60, 0, 1) * RateCanvas.ActualWidth,
-                (1 - Math.Clamp(rate(sample) / scale, 0, 1)) * (RateCanvas.ActualHeight - 2) + 1));
+            var point = new Point(
+                Math.Clamp(1 - (now - history[index].Seconds) / 60, 0, 1) * RateCanvas.ActualWidth,
+                (1 - Math.Clamp(history[index].WriteMiBPerSecond / scale, 0, 1)) * (height - 2) + 1);
+            if (index < points.Count) points[index] = point;
+            else points.Add(point);
         }
-        return points;
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)

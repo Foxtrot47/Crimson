@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
@@ -23,12 +23,12 @@ namespace Crimson.Core;
 /// Uploads reuse the local save timestamp as the manifest name so a subsequent check
 /// sees both sides as the same age.
 /// </summary>
-public class CloudSaveManager
+public class CloudSaveManager : Crimson.Providers.ICloudSaveConflictSource
 {
     private static readonly TimeSpan SameAgeTolerance = TimeSpan.FromSeconds(60);
 
     private readonly ILogger _log;
-    private readonly IStoreRepository _repository;
+    private readonly IEpicGamesRepository _repository;
     private readonly Storage _storage;
     private readonly ConcurrentDictionary<string, CloudSaveSyncStatus> _syncStates = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _syncGates = new(StringComparer.Ordinal);
@@ -41,7 +41,7 @@ public class CloudSaveManager
     /// </summary>
     public Func<CloudSaveConflict, Task<CloudSaveResolution>>? ConflictResolver { get; set; }
 
-    public CloudSaveManager(ILogger log, IStoreRepository repository, Storage storage)
+    public CloudSaveManager(ILogger log, IEpicGamesRepository repository, Storage storage)
     {
         _log = log;
         _repository = repository;
@@ -383,7 +383,7 @@ public class CloudSaveManager
         {
             var remoteSize = await GetRemoteSaveSizeAsync(remote, cancellationToken);
             var conflict = new CloudSaveConflict(
-                game.AppName,
+                new Crimson.Providers.GameId(Crimson.Providers.Epic.EpicLauncherProvider.ProviderId, game.AppName).ToString(),
                 local.TimestampUtc ?? DateTimeOffset.MinValue,
                 remote.TimestampUtc,
                 local.SizeBytes,

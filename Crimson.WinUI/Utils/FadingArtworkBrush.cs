@@ -1,3 +1,4 @@
+﻿using System;
 using System.Numerics;
 using Crimson.Core;
 using Microsoft.UI;
@@ -40,7 +41,7 @@ public sealed partial class FadingArtworkBrush : XamlCompositionBrushBase
     private void LoadArtwork()
     {
         ReleaseArtwork();
-        if (!_connected || !EpicEndpointPolicy.TryGetContentUri(ImageUrl, out var uri)) return;
+        if (!_connected || !TryGetTrustedUri(ImageUrl, out var uri)) return;
 
         var compositor = CompositionTarget.GetCompositorForCurrentThread();
         _image = LoadedImageSurface.StartLoadFromUri(uri, new Size(1280, 720));
@@ -59,6 +60,13 @@ public sealed partial class FadingArtworkBrush : XamlCompositionBrushBase
         mask.Mask = _fade;
         CompositionBrush = mask;
     }
+
+    /// <summary>
+    /// Artwork is fetched from whichever store owns the game, so the test is the registered content
+    /// policies rather than one store's hosts.
+    /// </summary>
+    private static bool TryGetTrustedUri(string? value, out Uri uri) =>
+        Uri.TryCreate(value, UriKind.Absolute, out uri!) && ArtworkTrust.IsTrusted(uri);
 
     private void ReleaseArtwork()
     {

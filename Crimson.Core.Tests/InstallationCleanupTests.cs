@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Crimson.Core;
 using Crimson.Models;
 
@@ -284,15 +284,15 @@ public sealed class InstallationCleanupTests : IDisposable
 
     private Task Cancel(InstallItem install)
     {
-        typeof(InstallManager).GetProperty(nameof(InstallManager.CurrentInstall))!.SetValue(_fixture.Installer, install);
+        typeof(EpicInstallManager).GetProperty(nameof(EpicInstallManager.CurrentInstall))!.SetValue(_fixture.Installer, install);
         SetField("_userCancelled", true);
         return _fixture.Invoke("HandleInstallationStoppage", "Cancelled by test", null!);
     }
 
-    private void SetField(string name, object value) => typeof(InstallManager)
+    private void SetField(string name, object value) => typeof(EpicInstallManager)
         .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(_fixture.Installer, value);
 
-    private void CompleteUninstall(InstallItem install, Game game) => typeof(InstallManager)
+    private void CompleteUninstall(InstallItem install, Game game) => typeof(EpicInstallManager)
         .GetMethod("CompleteUninstall", BindingFlags.Instance | BindingFlags.NonPublic)!
         .Invoke(_fixture.Installer, [install, game, game.LocalAppState!]);
 

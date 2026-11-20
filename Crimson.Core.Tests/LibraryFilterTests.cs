@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Crimson.Core;
 using Crimson.Models;
 using Crimson.ViewModels;
@@ -17,7 +17,7 @@ public sealed class LibraryFilterTests : IDisposable
         var uninstalled = _fixture.Library.GetGameInfo("available");
         uninstalled.Metadata.MainGameItem = null!;
         uninstalled.AppTitle = "Another game";
-        typeof(LibraryManager).GetField("_lastUpdateDateTime", BindingFlags.NonPublic | BindingFlags.Instance)!
+        typeof(EpicLibraryManager).GetField("_lastUpdateDateTime", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(_fixture.Library, DateTimeOffset.Now);
     }
 
@@ -27,11 +27,11 @@ public sealed class LibraryFilterTests : IDisposable
         var model = Model();
         await model.OnNavigatedTo(null!);
         Assert.False(model.InstalledOnly);
-        Assert.Equal(["available", "base"], model.GamesList.Select(game => game.Name));
+        Assert.Equal(["epic:available", "epic:base"], model.GamesList.Select(game => game.Name));
         model.InstalledOnly = true;
-        Assert.Equal("base", Assert.Single(model.GamesList).Name);
+        Assert.Equal("epic:base", Assert.Single(model.GamesList).Name);
         model.InstalledOnly = false;
-        Assert.Equal(["available", "base"], model.GamesList.Select(game => game.Name));
+        Assert.Equal(["epic:available", "epic:base"], model.GamesList.Select(game => game.Name));
         Assert.False(model.HasNoInstalledGames);
     }
 
@@ -85,7 +85,7 @@ public sealed class LibraryFilterTests : IDisposable
         model.IsListView = listView;
         await model.OnNavigatedTo(null!);
         model.InstalledOnly = true;
-        Assert.Equal("base", Assert.Single(model.GamesList).Name);
+        Assert.Equal("epic:base", Assert.Single(model.GamesList).Name);
         _fixture.Storage.AddToLocalAppState("available", new LocalAppState
         {
             AppName = "available", InstallStatus = InstallState.Installed, InstallPath = _fixture.BasePath
@@ -93,7 +93,7 @@ public sealed class LibraryFilterTests : IDisposable
 
         PublishCompletion("available", ActionType.Import);
 
-        Assert.Equal(["available", "base"], model.GamesList.Select(game => game.Name));
+        Assert.Equal(["epic:available", "epic:base"], model.GamesList.Select(game => game.Name));
         _fixture.Storage.AddToLocalAppState("base", new LocalAppState
         {
             AppName = "base", InstallStatus = InstallState.NotInstalled
@@ -101,7 +101,7 @@ public sealed class LibraryFilterTests : IDisposable
 
         PublishCompletion("base", ActionType.Uninstall);
 
-        Assert.Equal("available", Assert.Single(model.GamesList).Name);
+        Assert.Equal("epic:available", Assert.Single(model.GamesList).Name);
         Assert.True(model.InstalledOnly);
     }
 
@@ -116,7 +116,7 @@ public sealed class LibraryFilterTests : IDisposable
         await model.OnNavigatedTo(null!);
         model.InstalledOnly = true;
         var game = Assert.Single(model.GamesList);
-        Assert.Equal("base", game.Name);
+        Assert.Equal("epic:base", game.Name);
         Assert.True(game.HasActiveOperation);
         Assert.NotEmpty(game.OperationStatus);
     }
@@ -130,7 +130,7 @@ public sealed class LibraryFilterTests : IDisposable
         Assert.False(model.HasNoInstalledGames);
         await model.OnNavigatedTo(null!);
         Assert.False(model.ShowLoadingScreen);
-        Assert.Equal("base", Assert.Single(model.GamesList).Name);
+        Assert.Equal("epic:base", Assert.Single(model.GamesList).Name);
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public sealed class LibraryFilterTests : IDisposable
         model.InstalledOnly = true;
         model.InstalledOnly = false;
         dispatcher.Drain();
-        Assert.Equal(["available", "base"], model.GamesList.Select(game => game.Name));
+        Assert.Equal(["epic:available", "epic:base"], model.GamesList.Select(game => game.Name));
     }
 
     [Fact]
@@ -180,11 +180,11 @@ public sealed class LibraryFilterTests : IDisposable
         Assert.True(model.InstalledOnly);
         Assert.Same(filtered, model.GamesList);
         Assert.Contains(nameof(LibraryViewModel.IsGridView), notifications);
-        Assert.Equal("base", Assert.Single(model.GamesList).Name);
+        Assert.Equal("epic:base", Assert.Single(model.GamesList).Name);
         model.InstalledOnly = false;
         var all = model.GamesList;
         Assert.True(model.IsListView);
-        Assert.Equal(["available", "base"], all.Select(game => game.Name));
+        Assert.Equal(["epic:available", "epic:base"], all.Select(game => game.Name));
 
         model.IsListView = false;
 
@@ -206,8 +206,8 @@ public sealed class LibraryFilterTests : IDisposable
         model.IsListView = listView;
         await model.OnNavigatedTo(null!);
         var list = model.GamesList;
-        var active = list.Single(item => item.Name == "base");
-        var other = list.Single(item => item.Name == "available");
+        var active = list.Single(item => item.Name == "epic:base");
+        var other = list.Single(item => item.Name == "epic:available");
         var listChanges = 0;
         model.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(model.GamesList)) listChanges++; };
 
@@ -215,8 +215,8 @@ public sealed class LibraryFilterTests : IDisposable
         PublishOperation(install);
 
         Assert.Same(list, model.GamesList);
-        Assert.Same(active, model.GamesList.Single(item => item.Name == "base"));
-        Assert.Same(other, model.GamesList.Single(item => item.Name == "available"));
+        Assert.Same(active, model.GamesList.Single(item => item.Name == "epic:base"));
+        Assert.Same(other, model.GamesList.Single(item => item.Name == "epic:available"));
         Assert.Equal(40, active.OperationProgress);
         Assert.Equal(0, listChanges);
         var changes = new List<string?>();
@@ -235,7 +235,7 @@ public sealed class LibraryFilterTests : IDisposable
         install.Status = ActionStatus.Paused;
         PublishOperation(install);
         Assert.Equal("Install paused", active.OperationStatus);
-        typeof(InstallManager).GetProperty(nameof(InstallManager.CurrentInstall))!.SetValue(_fixture.Installer, null);
+        typeof(EpicInstallManager).GetProperty(nameof(EpicInstallManager.CurrentInstall))!.SetValue(_fixture.Installer, null);
         PublishCompletion("base", ActionType.Install);
         Assert.Same(list, model.GamesList);
         Assert.False(active.HasActiveOperation);
@@ -243,19 +243,19 @@ public sealed class LibraryFilterTests : IDisposable
     }
 
     private void PublishOperation(InstallItem install) =>
-        typeof(InstallManager).GetMethod("PublishOperation", BindingFlags.NonPublic | BindingFlags.Instance)!
+        typeof(EpicInstallManager).GetMethod("PublishOperation", BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(_fixture.Installer, [install]);
 
     private LibraryViewModel Model(IUiDispatcher? dispatcher = null)
     {
-        var model = new LibraryViewModel(_logger, _fixture.Installer, _fixture.Library,
+        var model = new LibraryViewModel(_logger, _fixture.Shared.Installer, _fixture.Shared.Library, _fixture.Shared.Registry,
             dispatcher ?? new ImmediateDispatcher());
         _models.Add(model);
         return model;
     }
 
     private void PublishCompletion(string appName, ActionType action) =>
-        typeof(InstallManager).GetMethod("PublishOperation", BindingFlags.NonPublic | BindingFlags.Instance)!
+        typeof(EpicInstallManager).GetMethod("PublishOperation", BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(_fixture.Installer, [new InstallItem(appName, action, _fixture.BasePath)
             {
                 Status = ActionStatus.Success, Phase = OperationPhase.Finalizing

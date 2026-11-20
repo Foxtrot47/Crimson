@@ -1,12 +1,14 @@
-﻿using Crimson.ViewModels;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Crimson.Core;
+using Crimson.Providers;
 using Crimson.Resources;
+using Crimson.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.Windows.AppLifecycle;
-using System;
-using System.Threading.Tasks;
 using Serilog;
 
 namespace Crimson.Views
@@ -17,6 +19,7 @@ namespace Crimson.Views
     public sealed partial class SettingsPage : Page
     {
         public SettingsViewModel ViewModel => (SettingsViewModel)DataContext;
+        public IReadOnlyList<StoreAccountItem> StoreAccounts { get; }
         private bool _restartDialogOpen;
 
         private async void LanguageSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -41,7 +44,7 @@ namespace Crimson.Views
 
         private static bool HasPendingOperations()
         {
-            var installer = App.GetService<InstallManager>();
+            var installer = App.GetService<LauncherInstaller>();
             return installer.CurrentOperation is { IsActive: true } || installer.GetQueueOperations().Count > 0;
         }
 
@@ -100,6 +103,7 @@ namespace Crimson.Views
         {
             InitializeComponent();
             DataContext = App.GetService<SettingsViewModel>();
+            StoreAccounts = StoreAccountItem.Create(ViewModel.Accounts, App.GetService<LauncherFrontendRegistry>());
         }
     }
 }

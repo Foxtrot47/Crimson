@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
     x:Class="Crimson.Controls.AppInstallDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -8,6 +8,7 @@
     xmlns:local="using:Crimson.Controls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Crimson.Models"
+    xmlns:viewModels="using:Crimson.ViewModels"
     mc:Ignorable="d">
 
     <ContentDialog x:Name="InstallContentDialog" MinWidth="800">
@@ -15,7 +16,13 @@
             <!--  This dialog is designed to render wide; other dialogs size to content.  -->
             <x:Double x:Key="ContentDialogWidth">1000</x:Double>
         </ContentDialog.Resources>
-        <StackPanel Spacing="20">
+        <Grid RowSpacing="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
             <!--  Header  -->
             <Grid ColumnSpacing="10">
                 <Grid.ColumnDefinitions>
@@ -52,167 +59,198 @@
                 </Button>
             </Grid>
 
-            <!--  Installation Location  -->
-            <StackPanel Spacing="8">
-                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.InstallLocation}" />
-                <Grid ColumnSpacing="8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+            <!--  The negative margin keeps the scroll bar clear of the content.  -->
+            <ScrollViewer
+                Grid.Row="1"
+                Margin="0,0,-16,0"
+                Padding="0,0,16,0"
+                HorizontalScrollBarVisibility="Disabled"
+                HorizontalScrollMode="Disabled"
+                VerticalScrollBarVisibility="Auto"
+                VerticalScrollMode="Auto">
+                <StackPanel Spacing="20">
+                    <StackPanel Spacing="8">
+                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.InstallLocation}" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
 
-                    <FontIcon Grid.Column="0" Glyph="&#xE8B7;" />
-                    <TextBox
-                        Grid.Column="1"
-                        VerticalAlignment="Center"
-                        IsReadOnly="True"
-                        Text="{x:Bind ViewModel.InstallLocation, Mode=TwoWay}" />
-                    <Button
-                        Grid.Column="2"
-                        Padding="6"
-                        Command="{x:Bind ViewModel.SelectLocationCommand}"
-                        Style="{StaticResource AccentButtonStyle}">
-                        <FontIcon Glyph="&#xE70F;" />
-                    </Button>
-                </Grid>
+                            <FontIcon Grid.Column="0" Glyph="&#xE8B7;" />
+                            <TextBox
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                IsReadOnly="True"
+                                Text="{x:Bind ViewModel.InstallLocation, Mode=TwoWay}" />
+                            <Button
+                                Grid.Column="2"
+                                Padding="6"
+                                Command="{x:Bind ViewModel.SelectLocationCommand}"
+                                Style="{StaticResource AccentButtonStyle}">
+                                <FontIcon Glyph="&#xE70F;" />
+                            </Button>
+                        </Grid>
 
-                <!--  Drive Space Info  -->
-                <StackPanel
-                    Orientation="Horizontal"
-                    Spacing="8"
-                    Visibility="{x:Bind ViewModel.IsDriveSpaceVisible, Mode=OneWay}">
-                    <ProgressBar
-                        Width="200"
-                        Foreground="{x:Bind ViewModel.CanInstall, Mode=OneWay, Converter={StaticResource DriveSpaceColorConverter}}"
-                        Value="{x:Bind ViewModel.DriveSpaceUsagePercent, Mode=OneWay}" />
-                    <TextBlock>
-                        <Run Text="{x:Bind ViewModel.DriveSpaceAvailable, Mode=OneWay}" />
-                        <Run Text="{x:Bind strings:UiStrings.AvailableOf}" />
-                        <Run Text="{x:Bind ViewModel.DriveTotalSpace, Mode=OneWay}" />
-                    </TextBlock>
-                </StackPanel>
-            </StackPanel>
-
-            <!--  Shortcuts  -->
-            <StackPanel Spacing="8">
-                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.Shortcuts}" />
-                <CheckBox
-                    Content="{x:Bind strings:UiStrings.CreateStartMenuShortcut}"
-                    IsChecked="{x:Bind ViewModel.CreateStartMenuShortcut, Mode=TwoWay}" />
-                <CheckBox
-                    Content="{x:Bind strings:UiStrings.CreateDesktopShortcut}"
-                    IsChecked="{x:Bind ViewModel.CreateDesktopShortcut, Mode=TwoWay}" />
-            </StackPanel>
-
-            <!--  Content Selection  -->
-            <StackPanel x:Name="ContentSelection" Visibility="{x:Bind ViewModel.IsLoadingContent, Mode=OneWay, Converter={StaticResource BoolToInverseVisibilityConverter}}">
-                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.ContentToInstall}" />
-
-                <!--  Base Game  -->
-                <Grid
-                    MaxWidth="400"
-                    Margin="0,12,0,0"
-                    HorizontalAlignment="Left"
-                    ColumnSpacing="0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="24" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <CheckBox IsChecked="True" IsEnabled="False" />
-                    <TextBlock
-                        Grid.Column="1"
-                        Margin="8,0,0,0"
-                        VerticalAlignment="Center"
-                        Text="{x:Bind strings:UiStrings.BaseGame}" />
-                    <TextBlock
-                        Grid.Column="2"
-                        Margin="8,0,0,0"
-                        VerticalAlignment="Center"
-                        Text="{x:Bind ViewModel.BaseGameSize, Mode=OneWay}" />
-                </Grid>
-
-                <!--  DLC/Add-ons List  -->
-                <ItemsRepeater
-                    Margin="0,4,0,0"
-                    ItemsSource="{x:Bind ViewModel.AvailableDlcs, Mode=OneWay}"
-                    Visibility="{x:Bind ViewModel.HasDlcs, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                    <ItemsRepeater.ItemTemplate>
-                        <DataTemplate x:DataType="models:DlcOption">
-                            <Grid Margin="0,4,0,0" MaxWidth="400" HorizontalAlignment="Left">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="24" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}" />
-                                <TextBlock
-                                    Grid.Column="1"
-                                    Margin="8,0,0,0"
-                                    VerticalAlignment="Center"
-                                    Text="{x:Bind Title}" />
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsRepeater.ItemTemplate>
-                </ItemsRepeater>
-            </StackPanel>
-
-            <!--  Loading State  -->
-            <StackPanel x:Name="LoadingState" Visibility="{x:Bind ViewModel.IsLoadingContent, Mode=OneWay}">
-                <ProgressRing
-                    Width="50"
-                    Height="50"
-                    IsActive="True" />
-                <TextBlock
-                    Margin="0,8,0,0"
-                    HorizontalAlignment="Center"
-                    Text="{x:Bind strings:UiStrings.CalculatingRequiredSpace}" />
-            </StackPanel>
-
-            <TextBlock
-                Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-                TextWrapping="Wrap"
-                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
-
-            <!--  Summary  -->
-            <Grid ColumnDefinitions="*, Auto">
-                <StackPanel Orientation="Vertical" Spacing="4">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE896;" />
-                        <TextBlock>
-                            <Run Text="{x:Bind ViewModel.TotalDownloadSize, Mode=OneWay}" />
-                            <Run Text="{x:Bind strings:UiStrings.DownloadSize}" />
-                        </TextBlock>
+                        <StackPanel
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            Visibility="{x:Bind ViewModel.IsDriveSpaceVisible, Mode=OneWay}">
+                            <ProgressBar
+                                Width="200"
+                                Foreground="{x:Bind ViewModel.CanInstall, Mode=OneWay, Converter={StaticResource DriveSpaceColorConverter}}"
+                                Value="{x:Bind ViewModel.DriveSpaceUsagePercent, Mode=OneWay}" />
+                            <TextBlock>
+                                <Run Text="{x:Bind ViewModel.DriveSpaceAvailable, Mode=OneWay}" />
+                                <Run Text="{x:Bind strings:UiStrings.AvailableOf}" />
+                                <Run Text="{x:Bind ViewModel.DriveTotalSpace, Mode=OneWay}" />
+                            </TextBlock>
+                        </StackPanel>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xEDA2;" />
-                        <TextBlock>
-                            <Run Text="{x:Bind ViewModel.TotalInstallSize, Mode=OneWay}" />
-                            <Run Text="{x:Bind strings:UiStrings.InstallSize}" />
-                        </TextBlock>
+
+                    <StackPanel Spacing="8">
+                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.Shortcuts}" />
+                        <CheckBox
+                            Content="{x:Bind strings:UiStrings.CreateStartMenuShortcut}"
+                            IsEnabled="{x:Bind ViewModel.SupportsShortcuts, Mode=OneWay}"
+                            IsChecked="{x:Bind ViewModel.CreateStartMenuShortcut, Mode=TwoWay}" />
+                        <CheckBox
+                            Content="{x:Bind strings:UiStrings.CreateDesktopShortcut}"
+                            IsEnabled="{x:Bind ViewModel.SupportsShortcuts, Mode=OneWay}"
+                            IsChecked="{x:Bind ViewModel.CreateDesktopShortcut, Mode=TwoWay}" />
+                    </StackPanel>
+
+                    <StackPanel x:Name="ContentSelection" Visibility="{x:Bind ViewModel.IsLoadingContent, Mode=OneWay, Converter={StaticResource BoolToInverseVisibilityConverter}}">
+                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.ContentToInstall}" />
+
+                        <Grid
+                            MaxWidth="400"
+                            Margin="0,12,0,0"
+                            HorizontalAlignment="Left"
+                            ColumnSpacing="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="24" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <CheckBox IsChecked="True" IsEnabled="False" />
+                            <TextBlock
+                                Grid.Column="1"
+                                Margin="8,0,0,0"
+                                VerticalAlignment="Center"
+                                Text="{x:Bind strings:UiStrings.BaseGame}" />
+                            <TextBlock
+                                Grid.Column="2"
+                                Margin="8,0,0,0"
+                                VerticalAlignment="Center"
+                                Text="{x:Bind ViewModel.BaseGameSize, Mode=OneWay}" />
+                        </Grid>
+
+                        <ItemsRepeater
+                            Margin="0,4,0,0"
+                            ItemsSource="{x:Bind ViewModel.AvailableDlcs, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.HasDlcs, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="models:DlcOption">
+                                    <Grid Margin="0,4,0,0" MaxWidth="400" HorizontalAlignment="Left">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="24" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Margin="8,0,0,0"
+                                            VerticalAlignment="Center"
+                                            Text="{x:Bind Title}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.Languages.HasOptions, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.InstallLanguages}" />
+                        <ItemsRepeater Margin="0,8,0,0" ItemsSource="{x:Bind ViewModel.Languages.Items, Mode=OneWay}">
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="viewModels:InstallLanguageItem">
+                                    <CheckBox Content="{x:Bind DisplayName}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" />
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </StackPanel>
+
+                    <StackPanel x:Name="LoadingState" Visibility="{x:Bind ViewModel.IsLoadingContent, Mode=OneWay}">
+                        <ProgressRing
+                            Width="50"
+                            Height="50"
+                            IsActive="True" />
+                        <TextBlock
+                            Margin="0,8,0,0"
+                            HorizontalAlignment="Center"
+                            Text="{x:Bind strings:UiStrings.CalculatingRequiredSpace}" />
                     </StackPanel>
                 </StackPanel>
+            </ScrollViewer>
 
-                <StackPanel
-                    Grid.Column="1"
-                    Orientation="Horizontal"
-                    Spacing="8">
-                    <Button
-                        Width="80"
-                        Height="50"
-                        Command="{x:Bind ViewModel.CloseDialogCommand}"
-                        Content="{x:Bind strings:UiStrings.Cancel}" />
-                    <Button
-                        Width="80"
-                        Height="50"
-                        Command="{x:Bind ViewModel.ConfirmInstallCommand}"
-                        Content="{x:Bind strings:UiStrings.Install}"
-                        IsEnabled="{x:Bind ViewModel.CanInstall, Mode=OneWay}"
-                        Style="{StaticResource AccentButtonStyle}" />
+            <!--  Footer: always visible, so problems and the install buttons never scroll away.  -->
+            <Border
+                Grid.Row="2"
+                Padding="0,16,0,0"
+                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0">
+                <StackPanel Spacing="12">
+                    <TextBlock
+                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                        Text="{x:Bind strings:UiStrings.SelectAtLeastOneLanguage}"
+                        TextWrapping="Wrap"
+                        Visibility="{x:Bind ViewModel.Languages.IsSelectionMissing, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <TextBlock
+                        Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                        TextWrapping="Wrap"
+                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                        Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <Grid ColumnDefinitions="*, Auto">
+                        <StackPanel Orientation="Vertical" Spacing="4">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE896;" />
+                                <TextBlock>
+                                    <Run Text="{x:Bind ViewModel.TotalDownloadSize, Mode=OneWay}" />
+                                    <Run Text="{x:Bind strings:UiStrings.DownloadSize}" />
+                                </TextBlock>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xEDA2;" />
+                                <TextBlock>
+                                    <Run Text="{x:Bind ViewModel.TotalInstallSize, Mode=OneWay}" />
+                                    <Run Text="{x:Bind strings:UiStrings.InstallSize}" />
+                                </TextBlock>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel
+                            Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <Button
+                                Width="80"
+                                Height="50"
+                                Command="{x:Bind ViewModel.CloseDialogCommand}"
+                                Content="{x:Bind strings:UiStrings.Cancel}" />
+                            <Button
+                                Width="80"
+                                Height="50"
+                                Command="{x:Bind ViewModel.ConfirmInstallCommand}"
+                                Content="{x:Bind strings:UiStrings.Install}"
+                                IsEnabled="{x:Bind ViewModel.CanInstall, Mode=OneWay}"
+                                Style="{StaticResource AccentButtonStyle}" />
+                        </StackPanel>
+                    </Grid>
                 </StackPanel>
-            </Grid>
-        </StackPanel>
+            </Border>
+        </Grid>
     </ContentDialog>
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />

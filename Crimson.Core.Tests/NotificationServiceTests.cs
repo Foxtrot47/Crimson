@@ -1,5 +1,6 @@
-using Crimson.Core;
+﻿using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 
 namespace Crimson.Tests;
 
@@ -110,15 +111,15 @@ public sealed class NotificationServiceTests
     [Fact]
     public void LibraryMessagesNameSingleGameAndSummarizeBatches()
     {
-        var game = new Game { AppName = "game", AppTitle = "Example Game", Metadata = null!, AssetInfos = null! };
+        var game = new LauncherGame { Id = new GameId("epic", "game"), AppTitle = "Example Game" };
         Assert.Null(LibraryNotification.ForAddedGames([]));
         var single = LibraryNotification.ForAddedGames([game]);
         Assert.Equal("New game added", single?.Title);
         Assert.Equal("Example Game is now in your library.", single?.Message);
         Assert.Equal(NotificationSeverity.Success, single?.Severity);
         Assert.Equal("2 games were added to your library.", LibraryNotification.ForAddedGames([game, game])?.Message);
-        game.AppTitle = "";
-        Assert.Equal("game is now in your library.", LibraryNotification.ForAddedGames([game])?.Message);
+        var untitled = new LauncherGame { Id = new GameId("epic", "game"), AppTitle = "" };
+        Assert.Equal("epic:game is now in your library.", LibraryNotification.ForAddedGames([untitled])?.Message);
     }
 
     private sealed class ManualTimeProvider : TimeProvider

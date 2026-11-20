@@ -1,4 +1,4 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -23,7 +23,7 @@ public partial class EpicImportChoice : ObservableObject
 }
 
 public partial class EpicImportViewModel(
-    EpicInstallDiscovery discovery, InstallManager installer, LibraryManager library, Storage storage) : ObservableObject
+    EpicInstallDiscovery discovery, EpicInstallManager installer, EpicLibraryManager library, Storage storage) : ObservableObject
 {
     private int _version;
     private int _accountGeneration = -1;

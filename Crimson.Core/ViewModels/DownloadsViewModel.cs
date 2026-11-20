@@ -1,4 +1,4 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 using Serilog;
 
 namespace Crimson.ViewModels;
@@ -16,8 +17,8 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 {
 
     private readonly ILogger _log;
-    private readonly InstallManager _installManager;
-    private readonly LibraryManager _libraryManager;
+    private readonly LauncherInstaller _installManager;
+    private readonly LauncherLibrary _libraryManager;
     private readonly IUiDispatcher _uiDispatcher;
     private IReadOnlyList<OperationSnapshot> _queueSnapshot = [];
     private IReadOnlyList<OperationSnapshot> _historySnapshot = [];
@@ -78,8 +79,8 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
 
     public DownloadsViewModel(
         ILogger logger,
-        InstallManager installManager,
-        LibraryManager libraryManager,
+        LauncherInstaller installManager,
+        LauncherLibrary libraryManager,
         IUiDispatcher uiDispatcher)
     {
         _log = logger;
@@ -244,22 +245,17 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
             Name = gameInfo.AppName,
             Title = gameInfo.AppTitle,
             InstallState = gameInfo.LocalAppState?.InstallStatus ?? InstallState.NotInstalled,
-            ImageUrl = gameInfo.Metadata.KeyImages
-                .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
+            ImageUrl = gameInfo.CoverImageUrl
         };
         CurrentInstallItemName = CurrentInstallItem.Title;
         CurrentInstallItemImageUrl = CurrentInstallItem.ImageUrl;
         CurrentInstallItemBannerUrl = FindBannerUrl(gameInfo);
     }
 
-    internal static string? FindBannerUrl(Game game) =>
-        game.Metadata.KeyImages.FirstOrDefault(image =>
-            (image.Type is "DieselGameBox" or "OfferImageWide") &&
-            (image.Width <= 0 || image.Height <= 0 || image.Width > image.Height) &&
-            EpicEndpointPolicy.TryGetContentUri(image.Url, out _))?.Url;
+    internal static string? FindBannerUrl(LauncherGame game) => game.LandscapeImageUrl;
 
-    private static string? GetRowArtworkUrl(Game game) =>
-        FindBannerUrl(game) ?? game.Metadata.KeyImages.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url;
+    private static string? GetRowArtworkUrl(LauncherGame game) =>
+        FindBannerUrl(game) ?? game.CoverImageUrl;
 
     private void ApplyOperationPresentation(OperationSnapshot operation)
     {
@@ -274,10 +270,19 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
             ? UiStrings.Retrying
             : FormatTransferRate(transferring ? operation.DownloadSpeedMiB : 0);
         CurrentDiskWriteSpeed = FormatTransferRate(transferring ? operation.WriteSpeedMiB : 0);
-        TransferHistory = operation.TransferHistory ?? [];
+        // The sample list keeps its reference until a new sample lands, so a progress event that only
+        // moved a byte counter does not redraw the graph.
+        if (!ReferenceEquals(operation.TransferHistory, TransferHistory))
+            TransferHistory = operation.TransferHistory ?? [];
         ShowResumeButton = presentation.CanResume;
         ShowPauseButton = !presentation.CanResume;
         EnablePauseButton = presentation.CanPause;
+        if (!_installManager.SupportsPause)
+        {
+            ShowResumeButton = false;
+            ShowPauseButton = false;
+            EnablePauseButton = false;
+        }
         EnableCancelButton = presentation.CanCancel;
     }
 
@@ -307,13 +312,15 @@ public partial class DownloadsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void PauseInstall()
     {
-        Task.Run(() => _installManager.PauseInstall());
+        var appName = CurrentInstallItem.Name;
+        Task.Run(() => _installManager.PauseInstall(appName));
     }
 
     [RelayCommand]
     private void ResumeInstall()
     {
-        Task.Run(() => _installManager.ResumeInstall());
+        var appName = CurrentInstallItem.Name;
+        Task.Run(() => _installManager.ResumeInstall(appName));
     }
 
     private bool UpdateUIProperties(Action updateAction)

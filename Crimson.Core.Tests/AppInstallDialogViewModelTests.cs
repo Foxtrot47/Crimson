@@ -1,6 +1,8 @@
-using System.Text;
+﻿using System.Text;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers.Epic;
+using Crimson.Providers;
 using Crimson.Repository;
 using Crimson.Utils;
 using Crimson.ViewModels;
@@ -15,6 +17,11 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         $"crimson-install-dialog-{Guid.NewGuid():N}");
     private readonly ILogger _logger = new LoggerConfiguration().CreateLogger();
 
+    private LauncherRegistry CreateLaunchers(Storage storage, IEpicGamesRepository repository,
+        EpicLibraryManager library, EpicInstallManager installer) => new([
+            new EpicLauncherProvider(new EpicAuthManager(_logger, storage, new TestCredentialProtector(), new HttpClient()),
+                library, installer, repository)]);
+
     [Fact]
     public async Task OlderInitializationCannotOverwriteNewerGame()
     {
@@ -25,23 +32,24 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         storage.SaveMetaData(firstGame);
         storage.SaveMetaData(secondGame);
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(
+        var installer = new EpicInstallManager(
             _logger,
             library,
             repository,
             storage,
-            new DownloadManager(_logger, new HttpClient()),
+            new EpicDownloadManager(_logger, new HttpClient()),
             new UnusedShortcutManager(),
             new AllowInstallPermissionChecker());
+        var launchers = CreateLaunchers(storage, repository, library, installer);
         var viewModel = new AppInstallDialogViewModel(
             _logger,
-            installer,
-            library,
+            new LauncherInstaller(launchers),
+            new LauncherLibrary(launchers),
             storage,
             new ImmediateUiDispatcher());
 
-        var firstInitialization = viewModel.InitializeAsync(firstGame);
-        var secondInitialization = viewModel.InitializeAsync(secondGame);
+        var firstInitialization = viewModel.InitializeAsync(EpicLauncherProvider.ToLauncherGame(firstGame));
+        var secondInitialization = viewModel.InitializeAsync(EpicLauncherProvider.ToLauncherGame(secondGame));
         repository.Complete("second", CreateJsonManifest(downloadBytes: 200, writeBytes: 20));
         await secondInitialization;
         repository.Complete("first", CreateJsonManifest(downloadBytes: 100, writeBytes: 10));
@@ -66,14 +74,15 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         storage.SaveMetaData(first);
         storage.SaveMetaData(second);
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage,
-            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
-        var vm = new AppInstallDialogViewModel(_logger, installer, library, storage, dispatcher);
+        var installer = new EpicInstallManager(_logger, library, repository, storage,
+            new EpicDownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var launchers = CreateLaunchers(storage, repository, library, installer);
+        var vm = new AppInstallDialogViewModel(_logger, new LauncherInstaller(launchers), new LauncherLibrary(launchers), storage, dispatcher);
 
-        var oldInitialization = vm.InitializeAsync(first);
+        var oldInitialization = vm.InitializeAsync(EpicLauncherProvider.ToLauncherGame(first));
         repository.Complete("first", CreateJsonManifest(100, 10));
         await dispatcher.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var currentInitialization = vm.InitializeAsync(second);
+        var currentInitialization = vm.InitializeAsync(EpicLauncherProvider.ToLauncherGame(second));
         repository.Complete("second", CreateJsonManifest(200, 20));
         try
         {
@@ -104,15 +113,16 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         var game = CreateGame("game", "Game", "box");
         storage.SaveMetaData(game);
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage,
-            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var installer = new EpicInstallManager(_logger, library, repository, storage,
+            new EpicDownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var launchers = CreateLaunchers(storage, repository, library, installer);
         var viewModel = new AppInstallDialogViewModel(
-            _logger, installer, library, storage, new ImmediateUiDispatcher());
+            _logger, new LauncherInstaller(launchers), new LauncherLibrary(launchers), storage, new ImmediateUiDispatcher());
         var requestedClose = false;
         viewModel.RequestClose += () => requestedClose = true;
         using var cancellation = new CancellationTokenSource();
 
-        var initialization = viewModel.InitializeAsync(game, cancellation.Token);
+        var initialization = viewModel.InitializeAsync(EpicLauncherProvider.ToLauncherGame(game), cancellation.Token);
         await requested.Task.WaitAsync(TimeSpan.FromSeconds(5));
         cancellation.Cancel();
         await initialization.WaitAsync(TimeSpan.FromSeconds(5));
@@ -128,16 +138,17 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         var game = CreateGame("game", "Game", "box");
         storage.SaveMetaData(game);
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage,
-            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var installer = new EpicInstallManager(_logger, library, repository, storage,
+            new EpicDownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
         var errors = new List<OperationSnapshot>();
         installer.OperationError += errors.Add;
-        var viewModel = new AppInstallDialogViewModel(_logger, installer, library, storage, new ImmediateUiDispatcher());
+        var host = EpicHost.Create(library, installer, repository);
+        var viewModel = new AppInstallDialogViewModel(_logger, host.Installer, host.Library, storage, new ImmediateUiDispatcher());
         var closed = false;
         viewModel.RequestClose += () => closed = true;
         repository.Fail("game", new HttpRequestException("synthetic-private-url"));
 
-        await viewModel.InitializeAsync(game);
+        await viewModel.InitializeAsync(EpicLauncherProvider.ToLauncherGame(game));
 
         Assert.False(closed);
         Assert.True(viewModel.HasError);
@@ -172,8 +183,8 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
             storage.AddToLocalAppState(game.AppName, game.LocalAppState);
         }
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage,
-            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var installer = new EpicInstallManager(_logger, library, repository, storage,
+            new EpicDownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
         var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var success = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         repository.ManifestRequested += app => { if (app == "uninstall") requested.TrySetResult(); };
@@ -320,7 +331,83 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         Assert.Equal(parent, settings.DefaultInstallLocation);
     }
 
-    private async Task<(AppInstallDialogViewModel ViewModel, Storage Storage, SettingsManager Settings, InstallManager Installer)> CreateLocationFixture(string title = "New Game")
+    [Fact]
+    public async Task OfferedLanguagesArePreselectedResizedOnChangeAndQueuedWithTheInstall()
+    {
+        var (model, provider) = await CreateLanguageFixture(new InstallLanguageChoice(
+            [new("en-US", "English"), new("fr-FR", "French"), new("de-DE", "German")], ["fr-FR", "xx-XX"], true));
+
+        Assert.True(model.Languages.HasOptions);
+        Assert.Equal(["fr-FR"], model.Languages.SelectedCodes);
+        Assert.Equal(["fr-FR"], Assert.Single(provider.Jobs.SizeRequests).Languages);
+        Assert.Equal("200 B", model.TotalInstallSize);
+        Assert.True(model.CanInstall);
+
+        model.Languages.Items.Single(item => item.Code == "en-US").IsSelected = true;
+
+        Assert.Equal(["en-US", "fr-FR"], provider.Jobs.SizeRequests[^1].Languages);
+        Assert.Equal("400 B", model.TotalInstallSize);
+        Assert.Equal("200 B", model.TotalDownloadSize);
+        Assert.True(model.CanInstall);
+
+        await model.ConfirmInstallCommand.ExecuteAsync(null);
+
+        var queued = Assert.Single(provider.Jobs.Queued);
+        Assert.Equal(["en-US", "fr-FR"], queued.Languages!);
+    }
+
+    [Fact]
+    public async Task SingleLanguageGamesKeepExactlyOneChoice()
+    {
+        var (model, _) = await CreateLanguageFixture(new InstallLanguageChoice(
+            [new("en-US", "English"), new("fr-FR", "French")], ["en-US", "fr-FR"], false));
+        Assert.Equal(["en-US"], model.Languages.SelectedCodes);
+
+        model.Languages.Items.Single(item => item.Code == "fr-FR").IsSelected = true;
+
+        Assert.Equal(["fr-FR"], model.Languages.SelectedCodes);
+        Assert.True(model.CanInstall);
+    }
+
+    [Fact]
+    public async Task ClearingEveryLanguageDisablesInstall()
+    {
+        var (model, provider) = await CreateLanguageFixture(new InstallLanguageChoice(
+            [new("en-US", "English"), new("fr-FR", "French")], ["en-US"], true));
+        Assert.True(model.CanInstall);
+
+        model.Languages.Items.Single(item => item.Code == "en-US").IsSelected = false;
+
+        Assert.True(model.Languages.IsSelectionMissing);
+        Assert.False(model.CanInstall);
+        Assert.Single(provider.Jobs.SizeRequests);
+    }
+
+    [Fact]
+    public async Task EpicGamesShowNoLanguageOptions()
+    {
+        var (viewModel, _, _, installer) = await CreateLocationFixture();
+
+        Assert.False(viewModel.Languages.HasOptions);
+        await viewModel.ConfirmInstallCommand.ExecuteAsync(null);
+        Assert.Null(installer.GameGameInQueue("new").Languages);
+    }
+
+    private async Task<(AppInstallDialogViewModel Model, TestLauncherProvider Provider)> CreateLanguageFixture(
+        InstallLanguageChoice? choice)
+    {
+        var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
+        var provider = new TestLauncherProvider("ubisoft");
+        provider.Jobs.LanguageChoice = choice;
+        var game = provider.Games.Add("2688", InstallState.NotInstalled);
+        var registry = new LauncherRegistry([provider]);
+        var model = new AppInstallDialogViewModel(_logger, new LauncherInstaller(registry), new LauncherLibrary(registry),
+            storage, new ImmediateUiDispatcher(), null);
+        await model.InitializeAsync(game);
+        return (model, provider);
+    }
+
+    private async Task<(AppInstallDialogViewModel ViewModel, Storage Storage, SettingsManager Settings, EpicInstallManager Installer)> CreateLocationFixture(string title = "New Game")
     {
         var repository = new ControlledManifestRepository();
         var storage = new Storage(_logger, _root, Path.Combine(_root, "games"));
@@ -331,13 +418,14 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         storage.SaveMetaData(game);
         repository.Complete("new", CreateJsonManifest(100, 10));
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage,
-            new DownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
+        var installer = new EpicInstallManager(_logger, library, repository, storage,
+            new EpicDownloadManager(_logger, new HttpClient()), new UnusedShortcutManager(), new AllowInstallPermissionChecker());
         // Keep the test's confirmed installs queued without starting workers or touching game files.
-        typeof(InstallManager).GetProperty(nameof(InstallManager.CurrentInstall))!.SetValue(installer,
+        typeof(EpicInstallManager).GetProperty(nameof(EpicInstallManager.CurrentInstall))!.SetValue(installer,
             new InstallItem("paused-test", ActionType.Install, _root) { Status = ActionStatus.Paused });
-        var viewModel = new AppInstallDialogViewModel(_logger, installer, library, storage, new ImmediateUiDispatcher(), settings);
-        await viewModel.InitializeAsync(game);
+        var host = EpicHost.Create(library, installer, repository);
+        var viewModel = new AppInstallDialogViewModel(_logger, host.Installer, host.Library, storage, new ImmediateUiDispatcher(), settings);
+        await viewModel.InitializeAsync(EpicLauncherProvider.ToLauncherGame(game));
         return (viewModel, storage, settings, installer);
     }
 
@@ -366,10 +454,10 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         Assert.Equal("60 B", model.TotalInstallSize);
         Assert.True(model.CanInstall);
 
-        model.AvailableDlcs.Single(option => option.AppName == "dlc2").IsSelected = false;
+        model.AvailableDlcs.Single(option => option.AppName == "epic:dlc2").IsSelected = false;
         Assert.Equal("300 B", model.TotalDownloadSize);
         Assert.Equal("30 B", model.TotalInstallSize);
-        model.AvailableDlcs.Single(option => option.AppName == "dlc1").IsSelected = false;
+        model.AvailableDlcs.Single(option => option.AppName == "epic:dlc1").IsSelected = false;
         Assert.Equal("100 B", model.TotalDownloadSize);
         Assert.Equal("10 B", model.TotalInstallSize);
         Assert.Equal("10 B", model.BaseGameSize);
@@ -385,10 +473,10 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         foreach (var option in model.AvailableDlcs) option.IsSelected = false;
         Assert.True(model.CanInstall);
 
-        model.AvailableDlcs.Single(option => option.AppName == "dlc1").IsSelected = true;
+        model.AvailableDlcs.Single(option => option.AppName == "epic:dlc1").IsSelected = true;
         Assert.Equal("30 B", model.TotalInstallSize);
         Assert.False(model.CanInstall);
-        model.AvailableDlcs.Single(option => option.AppName == "dlc1").IsSelected = false;
+        model.AvailableDlcs.Single(option => option.AppName == "epic:dlc1").IsSelected = false;
         Assert.True(model.CanInstall);
     }
 
@@ -403,12 +491,13 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
         storage.SaveMetaData(game);
         storage.SaveMetaData(dlc);
         var library = CreateLibrary(storage, repository);
-        using var installer = new InstallManager(_logger, library, repository, storage, null!, null!, new AllowInstallPermissionChecker());
-        var model = new AppInstallDialogViewModel(_logger, installer, library, storage, new ImmediateUiDispatcher());
+        using var installer = new EpicInstallManager(_logger, library, repository, storage, null!, null!, new AllowInstallPermissionChecker());
+        var host = EpicHost.Create(library, installer, repository);
+        var model = new AppInstallDialogViewModel(_logger, host.Installer, host.Library, storage, new ImmediateUiDispatcher());
         repository.Complete("game", CreateJsonManifest(100, 10));
         repository.Fail("dlc", new HttpRequestException("Synthetic unavailable DLC size"));
 
-        await model.InitializeAsync(game);
+        await model.InitializeAsync(EpicLauncherProvider.ToLauncherGame(game));
 
         Assert.True(model.HasError);
         Assert.False(model.CanInstall);
@@ -428,12 +517,13 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
             storage.SaveMetaData(dlc);
         }
         var library = CreateLibrary(storage, repository);
-        var installer = new InstallManager(_logger, library, repository, storage, null!, null!, new AllowInstallPermissionChecker());
-        var model = new AppInstallDialogViewModel(_logger, installer, library, storage, new ImmediateUiDispatcher());
+        var installer = new EpicInstallManager(_logger, library, repository, storage, null!, null!, new AllowInstallPermissionChecker());
+        var host = EpicHost.Create(library, installer, repository);
+        var model = new AppInstallDialogViewModel(_logger, host.Installer, host.Library, storage, new ImmediateUiDispatcher());
         repository.Complete("game", CreateJsonManifest(100, 10));
         repository.Complete("dlc1", CreateJsonManifest(200, 20));
         repository.Complete("dlc2", CreateJsonManifest(300, 30));
-        await model.InitializeAsync(game);
+        await model.InitializeAsync(EpicLauncherProvider.ToLauncherGame(game));
         return (model, repository, storage);
     }
 
@@ -447,14 +537,14 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
             Directory.Delete(_root, recursive: true);
     }
 
-    private LibraryManager CreateLibrary(Storage storage, IStoreRepository repository)
+    private EpicLibraryManager CreateLibrary(Storage storage, IEpicGamesRepository repository)
     {
-        var auth = new AuthManager(
+        var auth = new EpicAuthManager(
             _logger,
             storage,
             new TestCredentialProtector(),
             new HttpClient());
-        return new LibraryManager(_logger, repository, storage, auth);
+        return new EpicLibraryManager(_logger, repository, storage, auth);
     }
 
     private static Game CreateGame(string appName, string title, string imageUrl) => new()
@@ -554,15 +644,15 @@ public sealed class AppInstallDialogViewModelTests : IDisposable
 
     private sealed class UnusedShortcutManager : IGameShortcutManager
     {
-        public Task CreateAsync(Game game, GameShortcutLocation location, CancellationToken cancellationToken = default) =>
+        public Task CreateAsync(LauncherGame game, GameShortcutLocation location, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public void Remove(Game game)
+        public void Remove(LauncherGame game)
         {
         }
     }
 
-    private sealed class ControlledManifestRepository : IStoreRepository
+    private sealed class ControlledManifestRepository : IEpicGamesRepository
     {
         private readonly Dictionary<string, TaskCompletionSource<byte[]>> _manifests = new();
 

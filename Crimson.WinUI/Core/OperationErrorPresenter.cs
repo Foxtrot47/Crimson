@@ -1,9 +1,10 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Models;
+using Crimson.Providers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Serilog;
@@ -14,8 +15,8 @@ namespace Crimson.Core;
 internal sealed class OperationErrorPresenter : IDisposable
 {
     private readonly FrameworkElement _root;
-    private readonly InstallManager _installer;
-    private readonly LibraryManager _library;
+    private readonly LauncherInstaller _installer;
+    private readonly LauncherLibrary _library;
     private readonly DialogCoordinator _dialogs;
     private readonly ILogger _log;
     private readonly Queue<OperationSnapshot> _pending = new();
@@ -24,8 +25,8 @@ internal sealed class OperationErrorPresenter : IDisposable
     private bool _isShowing;
     private bool _closed;
 
-    public OperationErrorPresenter(FrameworkElement root, InstallManager installer,
-        LibraryManager library, DialogCoordinator dialogs, ILogger log)
+    public OperationErrorPresenter(FrameworkElement root, LauncherInstaller installer,
+        LauncherLibrary library, DialogCoordinator dialogs, ILogger log)
     {
         _root = root;
         _installer = installer;

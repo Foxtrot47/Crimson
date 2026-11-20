@@ -1,5 +1,6 @@
-using Crimson.Core;
+﻿using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.ViewModels;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -43,12 +44,17 @@ public sealed class EpicStoreLinksTests
     [Fact]
     public void GameChangeNotifiesStoreLinkBindings()
     {
-        var viewModel = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance, null!, null!, null!, null!);
+        var provider = new TestLauncherProvider("epic");
+        var game = provider.Games.Add("rocket-league");
+        provider.Games.StorePageUri = new Uri("https://store.epicgames.com/en-US/p/rocket-league");
+        var registry = new LauncherRegistry([provider]);
+        var viewModel = new GameInfoViewModel(NullLogger<GameInfoViewModel>.Instance,
+            new LauncherInstaller(registry), new LauncherLibrary(registry), registry, new InlineDispatcher());
         var changes = new List<string?>();
         viewModel.PropertyChanged += (_, args) => changes.Add(args.PropertyName);
         Assert.False(viewModel.CanViewStore);
 
-        viewModel.Game = Game("rocket-league");
+        viewModel.Game = game;
 
         Assert.True(viewModel.CanViewStore);
         Assert.Equal("/en-US/p/rocket-league", viewModel.StorePageUri!.AbsolutePath);
@@ -72,4 +78,9 @@ public sealed class EpicStoreLinksTests
             }
         }
     };
+
+    private sealed class InlineDispatcher : Crimson.Core.IUiDispatcher
+    {
+        public bool TryEnqueue(Action action) { action(); return true; }
+    }
 }

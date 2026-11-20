@@ -1,6 +1,7 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using Crimson.Core;
 using Crimson.Models;
+using Crimson.Providers;
 using Crimson.Utils;
 using Serilog;
 
@@ -10,7 +11,7 @@ public sealed class GameShortcutManagerTests
 {
     [Theory]
     [InlineData("Game/Name", "Game_Name.lnk")]
-    [InlineData("...", "Epic Game.lnk")]
+    [InlineData("...", "Game.lnk")]
     public void ShortcutFileNameIsSafe(string title, string expected)
     {
         Assert.Equal(expected, GameShortcutNaming.GetShortcutFileName(title));
@@ -45,12 +46,10 @@ public sealed class GameShortcutManagerTests
     public void ShellLinkCanBeCreated()
     {
         var path = Path.Combine(Path.GetTempPath(), $"crimson-{Guid.NewGuid():N}.lnk");
-        var game = new Game
+        var game = new LauncherGame
         {
-            AppName = "TestGame",
+            Id = new GameId("epic", "TestGame"),
             AppTitle = "Test Game",
-            AssetInfos = null!,
-            Metadata = null!
         };
 
         try
@@ -67,7 +66,7 @@ public sealed class GameShortcutManagerTests
                 try
                 {
                     Assert.Equal(GameShortcutManager.GetPackagedAliasPath(), (string)shortcut.TargetPath);
-                    Assert.Equal("--launch-game=TestGame", (string)shortcut.Arguments);
+                    Assert.Equal("--launch-game=epic%3ATestGame", (string)shortcut.Arguments);
                     Assert.StartsWith("C:\\Icons\\TestGame.ico", (string)shortcut.IconLocation);
                 }
                 finally
@@ -95,12 +94,10 @@ public sealed class GameShortcutManagerTests
         var desktopDirectory = Path.Combine(root, "desktop");
         var startMenuDirectory = Path.Combine(root, "start");
         var iconDirectory = Path.Combine(root, "icons");
-        var game = new Game
+        var game = new LauncherGame
         {
-            AppName = "TestGame",
+            Id = new GameId("epic", "TestGame"),
             AppTitle = "Test Game",
-            AssetInfos = null!,
-            Metadata = null!
         };
         var shortcutName = GameShortcutNaming.GetShortcutFileName(game.AppTitle);
         var desktopShortcut = Path.Combine(desktopDirectory, shortcutName);
@@ -108,7 +105,7 @@ public sealed class GameShortcutManagerTests
         var iconPath = Path.Combine(
             iconDirectory,
             "games",
-            GameShortcutNaming.GetIconFileName(game.AppName));
+            GameShortcutNaming.GetIconFileName(game.Id.LocalId));
         var unrelatedShortcut = Path.Combine(startMenuDirectory, "Other Game.lnk");
 
         Directory.CreateDirectory(desktopDirectory);

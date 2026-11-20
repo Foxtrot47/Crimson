@@ -1,9 +1,11 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <Page
     x:Class="Crimson.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:core="using:Crimson.Core"
     xmlns:strings="using:Crimson.Resources"
+    xmlns:providers="using:Crimson.Providers"
     xmlns:converters="using:CommunityToolkit.WinUI.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Crimson.Views"
@@ -14,6 +16,10 @@
 
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:BoolToVisibilityConverter
+            x:Key="InverseBoolToVisibilityConverter"
+            FalseValue="Visible"
+            TrueValue="Collapsed" />
         <x:Double x:Key="SettingsCardSpacing">3</x:Double>
         <Style
             x:Key="SettingsSectionHeaderTextBlockStyle"
@@ -83,10 +89,15 @@
                         x:Name="LanguagePicker"
                         MinWidth="200"
                         ItemsSource="{x:Bind ViewModel.Languages}"
-                        DisplayMemberPath="DisplayName"
                         SelectedItem="{x:Bind ViewModel.SelectedLanguage, Mode=OneWay}"
                         SelectionChanged="LanguageSelectionChanged"
-                        AutomationProperties.Name="{x:Bind strings:UiStrings.Language}" />
+                        AutomationProperties.Name="{x:Bind strings:UiStrings.Language}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="core:LanguageOption">
+                                <TextBlock Text="{x:Bind DisplayName}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
                 </toolkit:SettingsCard>
                 <StackPanel
                     Margin="12,6,12,6"
@@ -104,11 +115,78 @@
 
                 <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="{x:Bind strings:UiStrings.Accounts}" />
 
-                <toolkit:SettingsCard
-                    Command="{x:Bind ViewModel.LogoutCommand}"
-                    Description="{x:Bind strings:UiStrings.ThisWillLogYouOutFromTheCurrentAccountAndReturnToTheSignInScreen}"
-                    Header="{x:Bind strings:UiStrings.Logout}"
-                    IsClickEnabled="True" />
+                <ItemsControl ItemsSource="{x:Bind StoreAccounts}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="providers:StoreAccountItem">
+                            <Grid
+                                MinHeight="68"
+                                Margin="0,0,0,3"
+                                Padding="16,12"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                ColumnSpacing="16"
+                                CornerRadius="{StaticResource ControlCornerRadius}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border
+                                    Width="40"
+                                    Height="40"
+                                    VerticalAlignment="Center"
+                                    Background="{x:Bind TileBrush}"
+                                    CornerRadius="8">
+                                    <Image
+                                        Width="28"
+                                        Height="28"
+                                        Source="{x:Bind Logo}"
+                                        Stretch="Uniform" />
+                                </Border>
+
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="{x:Bind Account.DisplayName}" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon
+                                            Margin="0,1,6,0"
+                                            VerticalAlignment="Center"
+                                            FontSize="12"
+                                            Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                            Glyph="&#xEC61;"
+                                            Visibility="{x:Bind Account.IsConnected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="{x:Bind Account.Summary, Mode=OneWay}"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <Grid Grid.Column="2" VerticalAlignment="Center">
+                                    <Button
+                                        MinWidth="96"
+                                        Command="{x:Bind Account.ConnectCommand}"
+                                        Content="{x:Bind strings:UiStrings.SignIn}"
+                                        IsEnabled="{x:Bind Account.CanConnect, Mode=OneWay}"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        Visibility="{x:Bind Account.IsConnected, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+                                    <Button
+                                        MinWidth="96"
+                                        Command="{x:Bind Account.DisconnectCommand}"
+                                        Content="{x:Bind strings:UiStrings.SignOut}"
+                                        Visibility="{x:Bind Account.IsConnected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                </Grid>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
 
                 <TextBlock Style="{StaticResource SettingsSectionHeaderTextBlockStyle}" Text="{x:Bind strings:UiStrings.AdvancedSettings}" />
 

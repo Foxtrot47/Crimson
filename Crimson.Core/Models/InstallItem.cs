@@ -1,13 +1,23 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace Crimson.Models;
 
 public class InstallItem(string appName, ActionType action, string location)
 {
+    public InstallItem ForGame(string appName)
+    {
+        var copy = (InstallItem)MemberwiseClone();
+        copy.AppName = appName;
+        return copy;
+    }
+
     public string AppName { get; set; } = appName;
     public ActionType Action { get; set; } = action;
     public string Location { get; set; } = location;
     public string MoveLocation { get; set; }
+    /// <summary>Selected install languages; null = provider default / keep current.</summary>
+    public IReadOnlyList<string>? Languages { get; set; }
     public EpicInstallation? EpicImportSource { get; set; }
     public string? EpicImportOwner { get; set; }
     [System.Text.Json.Serialization.JsonIgnore]

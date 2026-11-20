@@ -78,7 +78,8 @@
                     </ListView.ItemContainerStyle>
                     <ListViewItem Content="{x:Bind strings:UiStrings.General}" Tag="General" />
                     <ListViewItem Content="{x:Bind strings:UiStrings.InstalledFiles}" Tag="InstalledFiles" />
-                    <ListViewItem Content="{x:Bind strings:UiStrings.DLC}" Tag="Dlc" />
+                    <ListViewItem x:Name="DlcSectionItem" Content="{x:Bind strings:UiStrings.DLC}" Tag="Dlc" />
+                    <ListViewItem x:Name="LanguagesSectionItem" Content="{x:Bind strings:UiStrings.InstallLanguages}" Tag="Languages" Visibility="Collapsed" />
                 </ListView>
             </Grid>
 
@@ -180,7 +181,7 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Spacing="8">
-                                        <TextBlock Style="{ThemeResource BodyStrongTextBlockStyle}" Text="{x:Bind strings:UiStrings.SizeOfInstallation}" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="InstalledSizeLabel" Style="{ThemeResource BodyStrongTextBlockStyle}" Text="{x:Bind strings:UiStrings.SizeOfInstallation}" TextWrapping="Wrap" />
                                         <TextBlock x:Name="InstalledSizeText" />
                                         <TextBlock
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -203,6 +204,7 @@
 
                             <StackPanel Spacing="10">
                                 <Button
+                                    x:Name="VerifyRepairButton"
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Stretch"
                                     AutomationProperties.Name="{x:Bind strings:UiStrings.VerifyAndRepairGameFiles}"
@@ -224,6 +226,7 @@
                                 </Button>
 
                                 <Button
+                                    x:Name="MoveButton"
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Stretch"
                                     AutomationProperties.Name="{x:Bind strings:UiStrings.MoveGameInstallation}"
@@ -246,6 +249,7 @@
                             </StackPanel>
 
                             <Border
+                                x:Name="UninstallSection"
                                 Padding="18"
                                 BorderBrush="#66C42B1C"
                                 BorderThickness="1"
@@ -397,6 +401,32 @@
                                     <Button Content="{x:Bind strings:UiStrings.ApplyChanges}" Click="ConfirmDlcClicked" />
                                 </StackPanel>
                             </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel x:Name="LanguagesPanel" Spacing="20" Visibility="Collapsed">
+                            <TextBlock Margin="0,0,44,0" Style="{ThemeResource TitleTextBlockStyle}" Text="{x:Bind strings:UiStrings.InstallLanguages}" TextWrapping="Wrap" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind strings:UiStrings.ChangeLanguagesDescription}"
+                                TextWrapping="Wrap" />
+                            <ItemsControl ItemsSource="{x:Bind Languages.Items, Mode=OneWay}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="viewModels:InstallLanguageItem">
+                                        <CheckBox Content="{x:Bind DisplayName}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock
+                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                Text="{x:Bind strings:UiStrings.SelectAtLeastOneLanguage}"
+                                TextWrapping="Wrap"
+                                Visibility="{x:Bind Languages.IsSelectionMissing, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <Button
+                                x:Name="LanguagesApplyButton"
+                                HorizontalAlignment="Right"
+                                Content="{x:Bind strings:UiStrings.ApplyChanges}"
+                                IsEnabled="{x:Bind Languages.CanApply, Mode=OneWay}"
+                                Click="ApplyLanguagesClicked" />
                         </StackPanel>
                     </Grid>
                 </ScrollViewer>

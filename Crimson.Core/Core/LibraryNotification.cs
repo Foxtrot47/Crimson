@@ -1,11 +1,11 @@
-using System.Collections.Generic;
-using Crimson.Models;
+﻿using System.Collections.Generic;
+using Crimson.Providers;
 
 namespace Crimson.Core;
 
 public static class LibraryNotification
 {
-    public static AppNotification? ForAddedGames(IReadOnlyList<Game> games)
+    public static AppNotification? ForAddedGames(IReadOnlyList<LauncherGame> games)
     {
         if (games.Count == 0) return null;
         if (games.Count > 1)

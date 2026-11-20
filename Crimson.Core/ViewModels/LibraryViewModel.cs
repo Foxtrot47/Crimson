@@ -4,9 +4,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Crimson.Core;
 using Crimson.Interfaces;
 using Crimson.Models;
+using Crimson.Providers;
+using Crimson.Resources;
 using Crimson.Utils;
 using Serilog;
 
@@ -47,7 +50,19 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     [ObservableProperty]
     private bool _showQueueItems = false;
 
-    public bool HasNoInstalledGames => InstalledOnly && !ShowLoadingScreen && GamesList.Count == 0;
+    [ObservableProperty]
+    private bool _showEmptyLibrary;
+
+    /// <summary>No store is connected, so the library asks the user to sign in to one.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoInstalledGames))]
+    private bool _showSignInPrompt;
+
+    public bool HasNoInstalledGames =>
+        InstalledOnly && !ShowLoadingScreen && !ShowSignInPrompt && GamesList.Count == 0;
+
+    /// <summary>Raised when a card's install action needs the page to show the install dialog.</summary>
+    public event Func<LauncherGame, Task>? ShowInstallDialogRequested;
 
     partial void OnInstalledOnlyChanged(bool value)
     {
@@ -56,20 +71,23 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     }
 
     private readonly ILogger _log;
-    private readonly InstallManager _installManager;
+    private readonly LauncherInstaller _installManager;
     private readonly IArtworkCache? _artworkCache;
     private int _accountGeneration = -1;
-    private readonly LibraryManager _libraryManager;
+    private readonly LauncherLibrary _libraryManager;
+    private readonly LauncherRegistry _launchers;
     private readonly IUiDispatcher _uiDispatcher;
     private int _navigationGeneration;
-    private Action<IEnumerable<Game>>? _libraryUpdatedHandler;
+    private Action<IEnumerable<LauncherGame>>? _libraryUpdatedHandler;
     private Action<OperationSnapshot>? _operationUpdatedHandler;
-    private IReadOnlyList<Game> _librarySnapshot = [];
+    private IReadOnlyList<LauncherGame> _librarySnapshot = [];
+    private int _artworkFailures;
 
     public LibraryViewModel(
         ILogger logger,
-        InstallManager installManager,
-        LibraryManager libraryManager,
+        LauncherInstaller installManager,
+        LauncherLibrary libraryManager,
+        LauncherRegistry launchers,
         IUiDispatcher uiDispatcher,
         IArtworkCache? artworkCache = null)
     {
@@ -77,6 +95,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         _installManager = installManager;
         _artworkCache = artworkCache;
         _libraryManager = libraryManager;
+        _launchers = launchers;
         _uiDispatcher = uiDispatcher;
     }
 
@@ -91,13 +110,15 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
             ShowLoadingScreen = true;
             ShowAppGrid = false;
         }
+        if (_artworkCache is null)
+            _log.Warning("Artwork cache is unavailable; library images will not load");
         _libraryUpdatedHandler = games => UpdateLibrary(games, generation);
         _operationUpdatedHandler = _ => RefreshOperationStatus(generation);
         _libraryManager.LibraryUpdated += _libraryUpdatedHandler;
         _installManager.OperationUpdated += _operationUpdatedHandler;
         _log.Information("LibraryPage: Loading Page");
         var games = await _libraryManager.GetLibraryData();
-        if (games.Any() || !_libraryManager.IsAuthenticationCheckInProgress)
+        if (games.Any() || !_libraryManager.IsLoading)
             UpdateLibrary(games, generation);
         _log.Information("LibraryPage: Loading finished");
     }
@@ -119,6 +140,8 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         try
         {
             uri = await _artworkCache!.GetImageUriAsync(item.SourceImageUrl);
+            if (uri is null && Interlocked.Increment(ref _artworkFailures) <= 3)
+                _log.Warning("Library artwork was not cached for {Url}", item.SourceImageUrl);
         }
         catch (Exception ex)
         {
@@ -135,7 +158,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
         });
     }
 
-    private void UpdateLibrary(IEnumerable<Game> games, int generation)
+    private void UpdateLibrary(IEnumerable<LauncherGame> games, int generation)
     {
         try
         {
@@ -185,7 +208,7 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
     }
 
     private void ApplyLibrary(
-        IReadOnlyList<Game> games,
+        IReadOnlyList<LauncherGame> games,
         IReadOnlyDictionary<string, OperationSnapshot> operations,
         int generation,
         bool retryArtwork)
@@ -195,53 +218,175 @@ public partial class LibraryViewModel : ObservableObject, INavigationAware
 
         var existing = GamesList.ToDictionary(item => item.Name, StringComparer.Ordinal);
         var items = games
+            // Re-read every game so the list reflects current installed state, not a stale snapshot.
+            .Select(game => _libraryManager.GetGameInfo(game.AppName) ?? game)
             .Where(game => !game.IsDlc() && MatchesInstalledFilter(game))
             .Select(game => CreateOrUpdateLibraryItem(game, operations.GetValueOrDefault(game.AppName),
                 existing.GetValueOrDefault(game.AppName), generation, retryArtwork))
             .OrderBy(item => item.Title)
             .ToList();
         if (!GamesList.SequenceEqual(items)) GamesList = items;
-        ShowLoadingScreen = false;
-        ShowAppGrid = true;
+        LogLibrarySummary(items);
+        UpdateEmptyState(items.Count);
     }
 
-    private bool MatchesInstalledFilter(Game game)
+    private void LogLibrarySummary(IReadOnlyList<LibraryItem> items)
     {
-        if (!InstalledOnly) return true;
-        var current = _libraryManager.GetGameInfo(game.AppName);
-        return current is not null && LibraryManager.IsSidebarListed(current, null);
+        if (items.Count > 0)
+            _log.Information("Library: {Cards} cards, {WithArtwork} with artwork sources; per provider: {Providers}",
+                items.Count, items.Count(item => item.SourceImageUrl is not null),
+                string.Join("; ", items.GroupBy(item => item.ProviderName)
+                    .Select(group => $"{group.Key}: {group.Count(item => item.SourceImageUrl is not null)}/{group.Count()}")));
+        foreach (var missing in items.Where(item => item.SourceImageUrl is null).Take(5))
+            _log.Information("Library: {Provider} card '{Title}' has no artwork source",
+                missing.ProviderName, missing.Title);
     }
+
+    /// <summary>Chooses which empty surface the page shows; an empty list only means something once every store answered.</summary>
+    private void UpdateEmptyState(int cardCount)
+    {
+        var waiting = cardCount == 0 && _libraryManager.IsLoading;
+        ShowSignInPrompt = !waiting && !_launchers.Providers.Any(provider =>
+            provider.Authentication.AuthenticationStatus == AuthenticationStatus.LoggedIn);
+        // The installed-only filter has its own empty message.
+        ShowEmptyLibrary = cardCount == 0 && !waiting && !ShowSignInPrompt && !InstalledOnly;
+        ShowLoadingScreen = waiting;
+        ShowAppGrid = !waiting;
+    }
+
+    private bool MatchesInstalledFilter(LauncherGame game) => !InstalledOnly || IsInstalled(game);
+
+    // Providers report presence through the normalized installation state, never through store metadata.
+    private static bool IsInstalled(LauncherGame game) => game.LocalAppState?.InstallStatus is
+        InstallState.Installed or InstallState.NeedUpdate or InstallState.Broken or InstallState.Playing
+        or InstallState.Installing or InstallState.InstallationPaused
+        or InstallState.Updating or InstallState.UpdatingPaused or InstallState.Repairing;
 
     private LibraryItem CreateOrUpdateLibraryItem(
-        Game game, OperationSnapshot? operation, LibraryItem? item, int generation, bool retryArtwork)
+        LauncherGame game, OperationSnapshot? operation, LibraryItem? item, int generation, bool retryArtwork)
     {
-        var imageUrl = game.Metadata?.KeyImages?
-            .FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
-            ?? game.Metadata?.KeyImages?.FirstOrDefault(image => image.Type == "DieselGameBox")?.Url;
-        var artworkGeneration = _artworkCache?.Generation ?? 0;
-        if (item is null || item.Title != game.AppTitle || item.SourceImageUrl != imageUrl ||
-            item.ArtworkGeneration != artworkGeneration)
-        {
-            item = new LibraryItem
-            {
-                Name = game.AppName,
-                Title = game.AppTitle,
-                SourceImageUrl = imageUrl,
-                ArtworkGeneration = artworkGeneration,
-                ImageUrl = _artworkCache is null ? imageUrl : null
-            };
-        }
-
-        if (_artworkCache is not null && item.ImageUrl is null && imageUrl is not null &&
-            !item.ArtworkLoading && (!item.ArtworkAttempted || retryArtwork))
-        {
-            item.ArtworkLoading = true;
-            item.ArtworkAttempted = true;
-            _ = LoadArtworkAsync(item, generation);
-        }
+        var imageUrl = game.CoverImageUrl ?? game.LandscapeImageUrl;
+        item = RebuildItemIfStale(item, game, imageUrl, _artworkCache?.Generation ?? 0);
+        RequestArtwork(item, imageUrl, generation, retryArtwork);
         UpdateItemOperation(item, operation);
+        UpdateItemAction(item, game, operation);
         return item;
     }
+
+    // Card identity rarely changes; reuse the instance so bound cards keep their state.
+    private LibraryItem RebuildItemIfStale(LibraryItem? item, LauncherGame game, string? imageUrl, int artworkGeneration)
+    {
+        if (item is not null && item.Title == game.AppTitle && item.SourceImageUrl == imageUrl &&
+            item.ArtworkGeneration == artworkGeneration)
+            return item;
+
+        return new LibraryItem
+        {
+            Name = game.AppName,
+            Title = game.AppTitle,
+            ProviderName = _launchers.Get(game.Id.ProviderId).DisplayName,
+            SourceImageUrl = imageUrl,
+            ArtworkGeneration = artworkGeneration,
+            ImageUrl = _artworkCache is null ? imageUrl : null
+        };
+    }
+
+    private void RequestArtwork(LibraryItem item, string? imageUrl, int generation, bool retryArtwork)
+    {
+        if (_artworkCache is null || item.ImageUrl is not null || imageUrl is null) return;
+        if (item.ArtworkLoading || (item.ArtworkAttempted && !retryArtwork)) return;
+
+        item.ArtworkLoading = true;
+        item.ArtworkAttempted = true;
+        _ = LoadArtworkAsync(item, generation);
+    }
+
+    // A card offers only what it can do right now: an active operation owns the card's action row.
+    private void UpdateItemAction(LibraryItem item, LauncherGame game, OperationSnapshot? operation)
+    {
+        var action = operation is null
+            ? GameInfoViewModel.GetPrimaryAction(game.LocalAppState?.InstallStatus)
+            : GamePrimaryAction.None;
+        item.PrimaryAction = action;
+        item.PrimaryActionText = DescribeAction(action);
+        item.HasPrimaryAction = action != GamePrimaryAction.None;
+        item.IsPrimaryActionEnabled = CanRunAction(game, action);
+        item.PrimaryActionCommand ??= new AsyncRelayCommand(() => RunPrimaryActionAsync(item));
+    }
+
+    // Read the localized labels per call: the app can switch language while the library lives.
+    private static string DescribeAction(GamePrimaryAction action) => action switch
+    {
+        GamePrimaryAction.Install => UiStrings.Install,
+        GamePrimaryAction.Play => UiStrings.Play,
+        GamePrimaryAction.Update => UiStrings.Update,
+        GamePrimaryAction.Repair => UiStrings.Repair,
+        _ => string.Empty
+    };
+
+    private bool CanRunAction(LauncherGame game, GamePrimaryAction action) => action switch
+    {
+        GamePrimaryAction.Play => game.CanLaunch,
+        GamePrimaryAction.Install => game.CanInstall && _installManager.Supports(game.AppName, ActionType.Install),
+        GamePrimaryAction.Update => _installManager.Supports(game.AppName, ActionType.Update),
+        GamePrimaryAction.Repair => _installManager.Supports(game.AppName, ActionType.Repair),
+        _ => false
+    };
+
+    private async Task RunPrimaryActionAsync(LibraryItem item)
+    {
+        var game = _librarySnapshot.FirstOrDefault(candidate => candidate.AppName == item.Name);
+        if (game is null || _installManager.GetActiveOperationForGame(game.AppName) is not null)
+            return;
+        if (item.PrimaryAction == GamePrimaryAction.None)
+            return;
+
+        try
+        {
+            ActionErrorMessage = string.Empty;
+            if (item.PrimaryAction == GamePrimaryAction.Install)
+            {
+                await RequestInstallAsync(game);
+                return;
+            }
+
+            if (item.PrimaryAction == GamePrimaryAction.Play)
+            {
+                await _libraryManager.LaunchApp(game.AppName);
+                return;
+            }
+
+            _installManager.AddToQueue(new InstallItem(
+                game.AppName, ToActionType(item.PrimaryAction), game.LocalAppState?.InstallPath ?? string.Empty));
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Library primary action failed for {Game}", game.AppTitle);
+            _installManager.ReportPreparationFailure(game.AppName, ToActionType(item.PrimaryAction), ex);
+            RefreshOperationStatus(Volatile.Read(ref _navigationGeneration));
+        }
+    }
+
+    private async Task RequestInstallAsync(LauncherGame game)
+    {
+        if (ShowInstallDialogRequested is not null)
+        {
+            await ShowInstallDialogRequested.Invoke(game);
+            return;
+        }
+
+        _installManager.ReportPreparationFailure(game.AppName, ActionType.Install,
+            new OperationFailure(OperationFailureKind.Unknown, "install_dialog_unavailable",
+                UiStrings.TheInstallationDialogCouldNotBeOpened,
+                UiStrings.RestartCrimsonAndTryAgain, false));
+    }
+
+    private static ActionType ToActionType(GamePrimaryAction action) => action switch
+    {
+        GamePrimaryAction.Update => ActionType.Update,
+        GamePrimaryAction.Repair => ActionType.Repair,
+        _ => ActionType.Install
+    };
 
     private static void UpdateItemOperation(LibraryItem item, OperationSnapshot? operation)
     {

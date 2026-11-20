@@ -1,0 +1,168 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+
+namespace Crimson.Core;
+
+public static class EpicEndpointPolicy
+{
+    private static readonly HashSet<string> ApiHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "account-public-service-prod03.ol.epicgames.com",
+        "catalog-public-service-prod06.ol.epicgames.com",
+        "datastorage-public-service-liveegs.live.use1a.on.epicgames.com",
+        "ecommerceintegration-public-service-ecomprod02.ol.epicgames.com",
+        "launcher-public-service-prod06.ol.epicgames.com",
+        "library-service.live.use1a.on.epicgames.com"
+    };
+
+    private static readonly HashSet<string> LoginHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "epicgames.com",
+        "www.epicgames.com",
+        "accounts.epicgames.com"
+    };
+
+    private static readonly HashSet<string> StoreHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "launcher.store.epicgames.com",
+        "store.epicgames.com"
+    };
+
+    private static readonly HashSet<string> CloudSaveFileHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "datastorage-public-service-liveegs.live.use1a.on.epicgames.com",
+        "eos-cloudsaves-live.s3.amazonaws.com"
+    };
+
+    private static readonly string[] ContentHostSuffixes =
+    [
+        ".epicgames.com",
+        ".epicgamescdn.com",
+        ".akamaized.net",
+        ".cloudfront.net",
+        // Epic serves egdownload.fastly-edge.com as a manifest base URL.
+        ".fastly-edge.com"
+    ];
+
+    public static Uri RequireApiUri(string value) => Require(value, IsAllowedApiUri, "Epic API");
+
+    public static Uri RequireContentUri(string value) => Require(value, IsAllowedContentUri, "Epic content");
+
+    /// <summary>
+    /// Cloud save read/write links are pre-signed by the savesync API and point at Epic's
+    /// save-data storage, which lives on a dedicated S3 bucket rather than the Epic CDN
+    /// hosts used for game content.
+    /// </summary>
+    public static Uri RequireCloudSaveFileUri(string value) =>
+        Require(value, IsAllowedCloudSaveFileUri, "Epic cloud save");
+
+    public static bool IsAllowedCloudSaveFileUri(Uri uri) =>
+        IsHttps(uri) && CloudSaveFileHosts.Contains(uri.Host);
+
+    public static bool TryGetContentUri(string? value, out Uri uri) =>
+        TryGetAllowedUri(value, IsAllowedContentUri, out uri);
+
+    public static Uri RequireStoreUri(string value) => Require(value, IsAllowedStoreUri, "Epic Store");
+
+    public static bool IsAllowedLoginOrigin(string? value) =>
+        TryGetHttpsUri(value, out var uri) && LoginHosts.Contains(uri.Host);
+
+    public static bool IsAllowedApiUri(Uri uri) => IsHttps(uri) && ApiHosts.Contains(uri.Host);
+
+    public static bool IsAllowedStoreUri(Uri uri) => IsHttps(uri) && StoreHosts.Contains(uri.Host);
+
+    public static bool IsAllowedContentUri(Uri uri) => IsHttps(uri) &&
+        ContentHostSuffixes.Any(suffix => uri.Host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+
+    private static Uri Require(string value, Func<Uri, bool> predicate, string category)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || !predicate(uri))
+            throw new InvalidOperationException($"Unapproved {category} URI.");
+
+        return uri;
+    }
+
+    private static bool TryGetHttpsUri(string? value, out Uri uri) =>
+        TryGetAllowedUri(value, IsHttps, out uri);
+
+    private static bool TryGetAllowedUri(
+        string? value,
+        Func<Uri, bool> predicate,
+        out Uri uri)
+    {
+        if (Uri.TryCreate(value, UriKind.Absolute, out var parsed) && predicate(parsed))
+        {
+            uri = parsed;
+            return true;
+        }
+
+        uri = null!;
+        return false;
+    }
+
+    private static bool IsHttps(Uri uri) =>
+        uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+        uri.Port == 443 &&
+        string.IsNullOrEmpty(uri.UserInfo);
+}
+
+public sealed class EpicLoginMessageGate
+{
+    public const int MaximumMessageLength = 4096;
+    public const int MaximumCodeLength = 2048;
+
+    private readonly HashSet<string> _acceptedCodeDigests = new(StringComparer.Ordinal);
+
+    public bool TryAccept(string? source, string? message, out string exchangeCode)
+    {
+        exchangeCode = string.Empty;
+        if (!IsAllowedMessage(source, message) ||
+            !TryReadExchangeCode(message, out var value) ||
+            !IsValidExchangeCode(value))
+            return false;
+
+        var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+        if (!_acceptedCodeDigests.Add(digest))
+            return false;
+
+        exchangeCode = value;
+        return true;
+    }
+
+    private static bool IsAllowedMessage(string? source, [NotNullWhen(true)] string? message) =>
+        EpicEndpointPolicy.IsAllowedLoginOrigin(source) &&
+        !string.IsNullOrEmpty(message) &&
+        message.Length <= MaximumMessageLength;
+
+    private static bool TryReadExchangeCode(string message, out string value)
+    {
+        value = string.Empty;
+        try
+        {
+            using var document = JsonDocument.Parse(message);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || root.EnumerateObject().Count() != 2 ||
+                !root.TryGetProperty("type", out var type) || type.GetString() != "set_exchange_code" ||
+                !root.TryGetProperty("code", out var code) || code.ValueKind != JsonValueKind.String)
+                return false;
+
+            value = code.GetString() ?? string.Empty;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsValidExchangeCode(string value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Length <= MaximumCodeLength &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+}

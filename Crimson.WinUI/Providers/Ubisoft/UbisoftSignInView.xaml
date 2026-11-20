@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Crimson.Providers.Ubisoft.UbisoftSignInView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:strings="using:Crimson.Resources"
+    mc:Ignorable="d">
+
+    <!--  The sign-in dialog names the store in its header; this form fills the space below it.  -->
+    <StackPanel Padding="24,20,24,24" Spacing="18">
+
+        <TextBlock
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            Style="{StaticResource CaptionTextBlockStyle}"
+            Text="{x:Bind strings:UiStrings.UbisoftPasswordNotice}"
+            TextWrapping="Wrap" />
+
+        <!--  Credentials  -->
+        <StackPanel x:Name="CredentialsPanel" Spacing="12">
+            <TextBox
+                x:Name="EmailBox"
+                Header="{x:Bind strings:UiStrings.Email}"
+                InputScope="EmailSmtpAddress"
+                KeyDown="Field_KeyDown"
+                TextChanged="Input_Changed" />
+            <PasswordBox
+                x:Name="PasswordInput"
+                Header="{x:Bind strings:UiStrings.Password}"
+                KeyDown="Field_KeyDown"
+                PasswordChanged="Input_Changed"
+                PasswordRevealMode="Peek" />
+            <CheckBox
+                x:Name="RememberBox"
+                Content="{x:Bind strings:UiStrings.RememberMe}"
+                IsChecked="True" />
+        </StackPanel>
+
+        <!--  Second step: authenticator code  -->
+        <StackPanel x:Name="TwoFactorPanel" Spacing="12" Visibility="Collapsed">
+            <TextBlock Text="{x:Bind strings:UiStrings.UbisoftTwoFactorPrompt}" TextWrapping="Wrap" />
+            <TextBox
+                x:Name="CodeBox"
+                CharacterSpacing="120"
+                FontSize="20"
+                Header="{x:Bind strings:UiStrings.UbisoftCodeLabel}"
+                InputScope="Number"
+                KeyDown="Field_KeyDown"
+                MaxLength="6"
+                TextChanged="Input_Changed" />
+            <HyperlinkButton x:Name="UseAnotherAccountLink" Click="UseAnotherAccount_Click"
+                Content="{x:Bind strings:UiStrings.UbisoftUseAnotherAccount}" />
+        </StackPanel>
+
+        <InfoBar
+            x:Name="ErrorBar"
+            IsClosable="False"
+            IsOpen="False"
+            Severity="Error" />
+
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <ProgressRing
+                x:Name="BusyRing"
+                Width="20"
+                Height="20"
+                VerticalAlignment="Center"
+                IsActive="False"
+                Visibility="Collapsed" />
+            <Button
+                x:Name="SubmitButton"
+                Grid.Column="1"
+                HorizontalAlignment="Stretch"
+                Click="Submit_Click"
+                Content="{x:Bind strings:UiStrings.SignIn}"
+                Style="{StaticResource AccentButtonStyle}" />
+        </Grid>
+
+        <HyperlinkButton Click="ManageAccount_Click"
+            Content="{x:Bind strings:UiStrings.UbisoftManageAccount}" />
+    </StackPanel>
+</UserControl>

@@ -1,8 +1,9 @@
-using Crimson.Resources;
+﻿using Crimson.Resources;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Crimson.Core;
+using Crimson.Providers;
 using Crimson.Models;
 using Crimson.ViewModels;
 using Microsoft.UI.Xaml;
@@ -12,6 +13,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.Storage.Pickers;
+using Serilog;
 
 namespace Crimson.Views;
 
@@ -31,7 +33,29 @@ public sealed partial class GameInfoPage : Page
         // Subscribe to dialog and picker events
         ViewModel.ShowInstallDialogRequested += ShowInstallDialog;
         ViewModel.FolderPickerRequested += ShowFolderPicker;
+        ViewModel.LaunchFailed += ShowLaunchFailed;
     }
+
+    private void ShowLaunchFailed(string reason) => DispatcherQueue.TryEnqueue(async () =>
+    {
+        if (XamlRoot is null) return;
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                Title = ViewModel.Game?.AppTitle ?? string.Empty,
+                Content = reason,
+                CloseButtonText = UiStrings.Close,
+                XamlRoot = XamlRoot,
+                Style = (Style)Application.Current.Resources["DefaultContentDialogStyle"]
+            };
+            await App.GetService<DialogCoordinator>().ShowAsync(async () => await dialog.ShowAsync());
+        }
+        catch (Exception error)
+        {
+            Log.Warning(error, "Could not show the launch failure dialog");
+        }
+    });
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
@@ -167,14 +191,16 @@ public sealed partial class GameInfoPage : Page
         NavigateToStore(storeUri);
     }
 
+    // The link came from the game's own provider, so it keeps that provider's store destination.
+    private void NavigateToStore(Uri? uri)
+    {
+        if (uri is null || ViewModel.Game is not { } game) return;
+        if (((App)Application.Current).GetWindow() is MainWindow window)
+            window.NavigateToStore(new StoreDestination(game.Id.ProviderId, uri));
+    }
+
     private void ViewInStoreClicked(object sender, RoutedEventArgs e) =>
         NavigateToStore(ViewModel.StorePageUri);
-
-    private static void NavigateToStore(Uri? uri)
-    {
-        if (uri is not null && ((App)Application.Current).GetWindow() is MainWindow window)
-            window.NavigateToStore(uri);
-    }
 
     private void SizeScreenshotViewer()
     {
