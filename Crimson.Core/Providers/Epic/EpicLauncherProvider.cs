@@ -42,13 +42,16 @@ public sealed class EpicLauncherProvider : ILauncherProvider
     {
         Id = new GameId(ProviderId, game.AppName),
         AppTitle = game.AppTitle,
-        CoverImageUrl = game.Metadata?.KeyImages?.FirstOrDefault(image => image.Type == "DieselGameBoxTall")?.Url
-            ?? game.Metadata?.KeyImages?.FirstOrDefault(image => image.Type == "DieselGameBox")?.Url,
-        LandscapeImageUrl = game.Metadata?.KeyImages?.FirstOrDefault(image => image.Type == "DieselGameBox")?.Url,
+        CoverImageUrl = FindImageUrl(game, "DieselGameBoxTall") ?? FindImageUrl(game, "DieselGameBox"),
+        LandscapeImageUrl = FindImageUrl(game, "DieselGameBox"),
         IsDownloadableContent = game.Metadata?.MainGameItem is not null,
         LocalAppState = game.LocalAppState is { } state
-            ? new LauncherInstallation(state.InstallStatus, state.InstallPath) : null
+            ? new LauncherInstallation(state.InstallStatus, state.InstallPath)
+            : null
     };
+
+    private static string? FindImageUrl(Game game, string type) =>
+        game.Metadata?.KeyImages?.FirstOrDefault(image => image.Type == type)?.Url;
 
     private sealed class AuthenticationAdapter : ILauncherAuthentication
     {
