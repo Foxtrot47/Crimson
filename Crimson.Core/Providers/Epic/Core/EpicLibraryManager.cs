@@ -797,12 +797,7 @@ public class EpicLibraryManager
                 continue;
 
             var game = _storage.GetGameMetaData(asset.AppName);
-            var assetUpdated = game is not null &&
-                (asset.BuildVersion != game.AssetInfos?.Windows?.BuildVersion ||
-                 asset.CatalogItemId != game.AssetInfos?.Windows?.CatalogItemId ||
-                 asset.Namespace != game.AssetInfos?.Windows?.Namespace);
-            var metadataOutdated = game is not null && game.MetadataRevision < Game.CurrentMetadataRevision;
-            if (game is not null && !forceMetadataUpdate && !assetUpdated && !metadataOutdated)
+            if (!NeedsMetadataFetch(asset, game, forceMetadataUpdate))
                 continue;
 
             _log.Debug("Scheduling metadata update for {AppName}", asset.AppName);
@@ -815,6 +810,19 @@ public class EpicLibraryManager
         }
 
         return fetchList;
+    }
+
+    private static bool NeedsMetadataFetch(Asset asset, Game? game, bool forceMetadataUpdate)
+    {
+        if (game is null || forceMetadataUpdate)
+            return true;
+        if (game.MetadataRevision < Game.CurrentMetadataRevision)
+            return true;
+
+        var windowsAsset = game.AssetInfos?.Windows;
+        return asset.BuildVersion != windowsAsset?.BuildVersion ||
+            asset.CatalogItemId != windowsAsset?.CatalogItemId ||
+            asset.Namespace != windowsAsset?.Namespace;
     }
 
     private async Task<IReadOnlyList<Game>> FetchMetadataAsync(
