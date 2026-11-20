@@ -98,20 +98,31 @@ public sealed partial class UbisoftSignInView : UserControl, ILauncherSignInView
 
         if (_codeStep)
         {
-            var code = CodeBox.Text.Trim();
-            if (code.Length == 0)
-            {
-                RejectInput(UiStrings.UbisoftCodeRequired, CodeBox);
-                return;
-            }
-            await RunAsync(UiStrings.UbisoftVerifying, async () =>
-            {
-                await _auth.CompleteTwoFactor(code, token);
-                return true;
-            }, token);
+            await SubmitCodeAsync(token);
             return;
         }
 
+        await SubmitCredentialsAsync(token);
+    }
+
+    private async Task SubmitCodeAsync(CancellationToken token)
+    {
+        var code = CodeBox.Text.Trim();
+        if (code.Length == 0)
+        {
+            RejectInput(UiStrings.UbisoftCodeRequired, CodeBox);
+            return;
+        }
+
+        await RunAsync(UiStrings.UbisoftVerifying, async () =>
+        {
+            await _auth.CompleteTwoFactor(code, token);
+            return true;
+        }, token);
+    }
+
+    private async Task SubmitCredentialsAsync(CancellationToken token)
+    {
         var email = EmailBox.Text.Trim();
         var password = PasswordInput.Password;
         if (email.Length == 0 || password.Length == 0)
