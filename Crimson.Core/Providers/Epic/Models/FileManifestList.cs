@@ -70,6 +70,16 @@ public sealed class FileManifestList
                 file.InstallTags.Add(reader.ReadUnrealString());
         }
 
+        ReadChunkParts(reader, list, end);
+        ReadVersionedMetadata(reader, list);
+
+        if (!reader.EndSection(end, "File manifest list"))
+            list.Version = 0;
+        return list;
+    }
+
+    private static void ReadChunkParts(EpicBinaryReader reader, FileManifestList list, long sectionEnd)
+    {
         long cumulativePartCount = 0;
         foreach (var file in list.Elements)
         {
@@ -87,7 +97,7 @@ public sealed class FileManifestList
                     throw new InvalidDataException("Chunk part section is too small.");
 
                 var partEnd = checked(partStart + partSize);
-                if (partEnd > end)
+                if (partEnd > sectionEnd)
                     throw new InvalidDataException("Chunk part extends beyond the file manifest section.");
                 var part = new ChunkPart
                 {
@@ -107,7 +117,10 @@ public sealed class FileManifestList
 
             file.FileSize = fileOffset;
         }
+    }
 
+    private static void ReadVersionedMetadata(EpicBinaryReader reader, FileManifestList list)
+    {
         if (list.Version >= 1)
         {
             foreach (var file in list.Elements)
@@ -128,10 +141,6 @@ public sealed class FileManifestList
             foreach (var file in list.Elements)
                 file.HashSha256 = reader.ReadBytesExact(32);
         }
-
-        if (!reader.EndSection(end, "File manifest list"))
-            list.Version = 0;
-        return list;
     }
 }
 
